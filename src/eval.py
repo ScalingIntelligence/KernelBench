@@ -214,8 +214,8 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                 print("[PASS] New Model matches Model")
             else:
                 print("[FAIL] New Model does NOT match Model")
-                print("output from Model: ", output)
-                print("output from Model New: ", output_new)
+                # print("output from Model: ", output)
+                # print("output from Model New: ", output_new)
 
     return pass_count == num_times
 

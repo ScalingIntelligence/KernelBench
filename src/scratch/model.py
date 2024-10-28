@@ -3,36 +3,32 @@ import torch.nn as nn
 
 class Model(nn.Module):
     """
-    Model that performs a transposed convolution, adds a bias term, clamps, scales, clamps, and divides.
+    Simple model that performs a single matrix multiplication (C = A * B)
     """
-    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor):
+    def __init__(self):
         super(Model, self).__init__()
-        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
-        self.bias = nn.Parameter(torch.randn(bias_shape)) 
-        self.scaling_factor = scaling_factor
+    
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """
+        Performs matrix multiplication.
 
-    def forward(self, x):
-        x = self.conv_transpose(x)
-        x = x + self.bias
-        x = torch.clamp(x, min=0.0, max=1.0)
-        x = x * self.scaling_factor
-        x = torch.clamp(x, min=0.0, max=1.0)
-        x = x / self.scaling_factor
-        return x
+        Args:
+            A: Input tensor of shape (M, K).
+            B: Input tensor of shape (K, N).
 
-batch_size = 128
-in_channels = 3
-out_channels = 16
-height, width = 32, 32
-kernel_size = 3
-stride = 2
-padding = 1
-output_padding = 1
-bias_shape = (out_channels, 1, 1)
-scaling_factor = 2.0
+        Returns:
+            Output tensor of shape (M, N).
+        """
+        return torch.matmul(A, B)
+
+M = 1024
+K = 4096
+N = 2048
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    A = torch.randn(M, K)
+    B = torch.randn(K, N)
+    return [A, B]
 
 def get_init_inputs():
-    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor]
+    return []  # No special initialization inputs needed

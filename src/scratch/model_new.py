@@ -1,94 +1,85 @@
 import torch
 import torch.nn as nn
 from torch.utils.cpp_extension import load_inline
-import os
 
-# Define the custom CUDA kernel for fused operations
-fused_kernel_source = """
+# Define the custom CUDA kernel for matrix multiplication
+matmul_source = """
 #include <torch/extension.h>
-#include <cuda_runtime.h>
-#include <float.h>
 
-__global__ void fused_clamp_mul_clamp(float* input, float* bias, float* output, int size, float scaling_factor, float min_val, float max_val) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        float val = input[idx] + bias[idx];
-        val = fmaxf(min_val, fminf(max_val, val));
-        val = val * scaling_factor;
-        val = fmaxf(min_val, fminf(max_val, val));
-        output[idx] = val / scaling_factor;
+__global__ void matmul_kernel(const float* A, const float* B, float* C, int M, int K, int N) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (i < M && j < N) {
+        float sum = 0.0f;
+        for (int k = 0; k < K; ++k) {
+            sum += A[i * K + k] * B[k * N + j];
+        }
+        C[i * N + j] = sum;
     }
 }
 
-torch::Tensor fused_clamp_mul_clamp_cuda(torch::Tensor input, torch::Tensor bias, float scaling_factor) {
-    int size = input.numel();
-    torch::Tensor output = torch::zeros_like(input);
+torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    int M = A.size(0);
+    int K = A.size(1);
+    int N = B.size(1);
 
-    int threads_per_block = 256;
-    int blocks_per_grid = (size + threads_per_block - 1) / threads_per_block;
+    auto C = torch::zeros({M, N}, A.options());
+    
+    const int block_size = 16;
+    const int num_blocks_x = (N + block_size - 1) / block_size;
+    const int num_blocks_y = (M + block_size - 1) / block_size;
 
-    fused_clamp_mul_clamp<<<blocks_per_grid, threads_per_block>>>(
-        input.data_ptr<float>(),
-        bias.data_ptr<float>(),
-        output.data_ptr<float>(),
-        size,
-        scaling_factor,
-        0.0f,
-        1.0f
+    matmul_kernel<<<dim3(num_blocks_x, num_blocks_y), dim3(block_size, block_size)>>>(
+        A.data_ptr<float>(), B.data_ptr<float>(), C.data_ptr<float>(), M, K, N
     );
 
-    return output;
+    return C;
 }
 """
 
-fused_kernel_cpp_source = "torch::Tensor fused_clamp_mul_clamp_cuda(torch::Tensor input, torch::Tensor bias, float scaling_factor);"
+matmul_cpp_source = "torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B);"
 
-# Compile the inline CUDA code
-fused_kernel = load_inline(
-    name='fused_clamp_mul_clamp',
-    cpp_sources=fused_kernel_cpp_source,
-    cuda_sources=fused_kernel_source,
-    functions=['fused_clamp_mul_clamp_cuda'],
+# Compile the inline CUDA code for matrix multiplication
+matmul = load_inline(
+    name='matmul',
+    cpp_sources=matmul_cpp_source,
+    cuda_sources=matmul_source,
+    functions=['matmul_cuda'],
     verbose=True,
-    extra_cflags=['-I/usr/local/cuda/include'],
-    extra_ldflags=['-L/usr/local/cuda/lib64']
+    extra_cflags=[''],
+    extra_ldflags=['']
 )
 
 class ModelNew(nn.Module):
     """
-    Optimized model that performs a transposed convolution, adds a bias term, clamps, scales, clamps, and divides using custom CUDA kernels.
+    Simple model that performs a single matrix multiplication (C = A * B) using a custom CUDA kernel
     """
-    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor):
+    def __init__(self):
         super(ModelNew, self).__init__()
-        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
-        self.bias = nn.Parameter(torch.randn(bias_shape)) 
-        self.scaling_factor = scaling_factor
+        self.matmul = matmul
 
-    def forward(self, x):
-        x = self.conv_transpose(x)
-        x = fused_kernel.fused_clamp_mul_clamp_cuda(x, self.bias.expand_as(x), self.scaling_factor)
-        return x
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """
+        Performs matrix multiplication using custom CUDA kernel.
 
-# # Example usage
-# batch_size = 128
-# in_channels = 3
-# out_channels = 16
-# height, width = 32, 32
-# kernel_size = 3
-# stride = 2
-# padding = 1
-# output_padding = 1
-# bias_shape = (out_channels, 1, 1)
-# scaling_factor = 2.0
+        Args:
+            A: Input tensor of shape (M, K).
+            B: Input tensor of shape (K, N).
 
-# def get_inputs():
-#     return [torch.randn(batch_size, in_channels, height, width)]
+        Returns:
+            Output tensor of shape (M, N).
+        """
+        return self.matmul.matmul_cuda(A, B)
 
-# def get_init_inputs():
-#     return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor]
+M = 1024
+K = 4096
+N = 2048
 
-# # Instantiate the model
-# model = ModelNew(*get_init_inputs())
-# input_tensor = get_inputs()[0]
-# output_tensor = model(input_tensor)
-# print(output_tensor.shape)
+def get_inputs():
+    A = torch.randn(M, K).cuda()
+    B = torch.randn(K, N).cuda()
+    return [A, B]
+
+def get_init_inputs():
+    return []  # No special initialization inputs needed

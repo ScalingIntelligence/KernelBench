@@ -52,11 +52,12 @@ def prompt_generate_custom_cuda(arc_src: str,
     """
     return prompt
 
-def prompt_generate_custom_cuda_from_file(arch_path, example_ind=0):
+def prompt_generate_custom_cuda_from_file(ref_arch_src, example_ind=0):
     """
     Check example_ind for prompt templates
     """
-    arch = get_arch_definition_from_file(arch_path)
+    # arch = get_arch_definition_from_file(arch_path)
+    arch = ref_arch_src
     # These are strictly defined for now
     
     example_arch_path = os.path.join(REPO_TOP_PATH, f"src/prompts/model_ex_{example_ind}.py")
