@@ -248,14 +248,19 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                 if output.shape != output_new.shape:
                     metadata["correctness_issue"] = f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
                     if verbose: print(f"[FAIL] trial {trial}: Output shape mismatch: Expected {output.shape}, got {output_new.shape}")
-                    break
-                if not torch.allclose(output, output_new, atol=1e-03):
+                    break # no hope, just never run further trials
+                
+                # check output value difference
+                if not torch.allclose(output, output_new, atol=1e-03): # fail
+                    max_diff = torch.max(torch.abs(output - output_new)).item()
+                    avg_diff = torch.mean(torch.abs(output - output_new)).item()
+                    metadata.setdefault("max_difference", []).append(f"{max_diff:.6f}")
+                    metadata.setdefault("avg_difference", []).append(f"{avg_diff:.6f}")
                     metadata["correctness_issue"] = "Output mismatch"
                     if verbose: print(f"[FAIL] trial {trial}: Output mismatch")
-                    break
-                pass_count += 1
-                if verbose:
-                    print(f"[PASS] trial {trial}: New Model matches Model")
+                else: # pass 
+                    pass_count += 1
+                    if verbose: print(f"[PASS] trial {trial}: New Model matches Model")
 
             except Exception as e:
                 print("EXCEPTION HAPPENS during correctness check")
@@ -282,6 +287,8 @@ def run_and_check_correctness(original_model_instance: nn.Module,
     metadata["hardware"] = torch.cuda.get_device_name()
 
     if pass_count == num_times:
+
+
         return KernelExecResult(compiled=True, correctness=True, metadata=metadata)
     else:
         return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
