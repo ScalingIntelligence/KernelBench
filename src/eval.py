@@ -112,7 +112,14 @@ def graceful_eval_cleanup(curr_context: dict):
     Clean up env, gpu cache, and compiled CUDA extensions after evaluation
     """    # delete ran-specific function definitions before next eval run
     del curr_context
+     # Clear CUDA cache and reset GPU state
     torch.cuda.empty_cache()
+
+    # does this help?
+    torch.cuda.reset_peak_memory_stats()
+    
+    torch.cuda.synchronize()  # Wait for all CUDA operations to complete
+    
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
 def eval_kernel_against_ref(original_model_src: str, 
