@@ -98,9 +98,9 @@ def load_custom_model(model_custom_src: str,
 def _cleanup_cuda_extensions():
     """Helper function to cleanup compiled CUDA extensions"""
     import shutil
-    cache_path = os.path.expanduser('~/.cache/torch_extensions')
-    if os.path.exists(cache_path):
-        shutil.rmtree(cache_path)
+    torch_extensions_path = os.path.join(os.path.expanduser("~"), ".cache", "torch_extensions")
+    if os.path.exists(torch_extensions_path):
+        shutil.rmtree(torch_extensions_path)
 
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
