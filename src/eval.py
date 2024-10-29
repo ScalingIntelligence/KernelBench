@@ -113,7 +113,7 @@ def graceful_eval_cleanup(curr_context: dict):
     """    # delete ran-specific function definitions before next eval run
     del curr_context
     torch.cuda.empty_cache()
-    _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
+    # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
@@ -150,18 +150,25 @@ def eval_kernel_against_ref(original_model_src: str,
     #this is where compilation happens
     try:
         ModelNew = load_custom_model(custom_model_src, context)
+        torch.cuda.synchronize() # not sure if this is too much 
     except Exception as e:
-        print(f"Failed to compile custom CUDA kernel: {e}")
+        print(f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}")
         # TODO: add metadata for compilation error (how to we get the compilation error message?)
-        # clean up before returning
         graceful_eval_cleanup(context)
         return KernelExecResult(compiled=False) # skip further steps
-
-    with torch.no_grad():    
-        set_seed(seed_num) # set seed for reproducible weights
-        custom_model = ModelNew(*init_inputs)
-        assert hasattr(custom_model, 'forward')  
+    
+    try:
+        with torch.no_grad():    
+            set_seed(seed_num) # set seed for reproducible weights
+            custom_model = ModelNew(*init_inputs)
+            assert hasattr(custom_model, 'forward')  
+            torch.cuda.synchronize()
         if verbose: print("[Eval] New Model with Custom CUDA Kernel Loaded")
+    except RuntimeError as e:
+        print(f"Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}")
+        # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
+        graceful_eval_cleanup(context)
+        return KernelExecResult(compiled=True, correctness=False) # skip further steps
 
     kernel_exec_result = None
     
@@ -190,6 +197,8 @@ def run_and_check_correctness(original_model_instance: nn.Module,
     run the model and check correctness, 
     assume model already loaded and compiled (loaded and compiled in the caller)
     this is all on GPU, requiring cuda device and transfer .cuda()
+
+    num_times: run the evalutation multiple times with (ideally) different random inputs to ensure correctness
     """
     pass_count = 0
     metadata = ""
