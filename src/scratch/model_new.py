@@ -3,48 +3,59 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.cpp_extension import load_inline
 
-# Define the custom CUDA kernel for element-wise addition
-elementwise_add_source = """
+# Define the custom CUDA kernel for Mish activation function
+mish_source = """
 #include <torch/extension.h>
 #include <cuda_runtime.h>
+#include <math.h>
 
-__global__ void elementwise_add_kernel(const float* a, const float* b, float* out, int size) {
+__global__ void mish_kernel(const float* x, float* out, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
-        out[idx] = a[idx] + b[idx];
+        float exp_x = expf(x[idx]);
+        float exp_2x = expf(2 * x[idx]);
+        float exp_3x = expf(3 * x[idx]);
+        out[idx] = x[idx] * (1 + exp_x) / (1 + exp_x + exp_2x + exp_3x);
     }
 }
 
-torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b) {
-    auto size = a.numel();
-    auto out = torch::zeros_like(a);
+torch::Tensor mish_cuda(torch::Tensor x) {
+    auto size = x.numel();
+    auto out = torch::zeros_like(x);
 
     const int block_size = 256;
     const int num_blocks = (size + block_size - 1) / block_size;
 
-    elementwise_add_kernel<<<num_blocks, block_size>>>(a.data_ptr<float>(), b.data_ptr<float>(), out.data_ptr<float>(), size);
+    mish_kernel<<<num_blocks, block_size>>>(x.data_ptr<float>(), out.data_ptr<float>(), size);
 
     return out;
 }
 """
 
-elementwise_add_cpp_source = "torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b);"
+mish_cpp_source = "torch::Tensor mish_cuda(torch::Tensor x);"
 
-# Compile the inline CUDA code for element-wise addition
-elementwise_add = load_inline(
-    name='elementwise_add',
-    cpp_sources=elementwise_add_cpp_source,
-    cuda_sources=elementwise_add_source,
-    functions=['elementwise_add_cuda'],
+# Compile the inline CUDA code for Mish activation function
+mish = load_inline(
+    name='mish',
+    cpp_sources=mish_cpp_source,
+    cuda_sources=mish_source,
+    functions=['mish_cuda'],
     verbose=True,
     extra_cflags=[''],
-    extra_ldflags=[''],   
+    extra_ldflags=['']
 )
 
 class ModelNew(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.elementwise_add = elementwise_add
+    """
+    Optimized model that performs a convolution, applies custom Mish, and another custom Mish.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.mish = mish
 
-    def forward(self, a, b):
-        return self.elementwise_add.elementwise_add_cuda(a, b)
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.mish.mish_cuda(x)
+        x = self.mish.mish_cuda(x)
+        return x

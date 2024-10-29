@@ -3,18 +3,20 @@ from dataclasses import dataclass
 from tqdm import tqdm
 from src import eval, utils
 import torch
-
+import os
 import multiprocessing as mp
 
 MEASURE_PERFORMANCE = False
 
+RUN_NAME = "level2_run_10_28"
 # RUN_NAME = "kernelbench_prompt_v2_level_2"
 RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
 SERVER_URL = "http://matx3.stanford.edu:9091" 
 
-# sample_id = 2
+problem_id = 3
+sample_id = 16
 
 
 # Check if CUDA is available
@@ -156,6 +158,7 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
     # Set start method to spawn to work with CUDA
     mp.set_start_method('spawn')
 
+    os.makedirs("results", exist_ok=True)
     with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
         f.write(f"Evaluating for problem {problem_id} over sample range {samples_range} \n")
 
