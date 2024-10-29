@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from src import eval, utils
 import torch
-
+import os
 import multiprocessing as mp
 
 MEASURE_PERFORMANCE = False
@@ -14,7 +14,7 @@ PROBLEM_DIR = "KernelBench/level2"
 SERVER_URL = "http://mkt1.stanford.edu:9091" 
 
 problem_id = 3
-sample_id = 17
+sample_id = 16
 
 
 # Check if CUDA is available
@@ -156,6 +156,7 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
     # Set start method to spawn to work with CUDA
     mp.set_start_method('spawn')
 
+    os.makedirs("results", exist_ok=True)
     with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
         f.write(f"Evaluating for problem {problem_id} over sample range {samples_range} \n")
 
@@ -177,15 +178,15 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
             f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 if __name__ == "__main__":
-    problem_id = 2
-    # samples_range = (4, 5)
-    samples_range = (0, 30)
-    multiprocess_eval(problem_id, samples_range)
+    # problem_id = 2
+    # # samples_range = (4, 5)
+    # samples_range = (0, 30)
+    # multiprocess_eval(problem_id, samples_range)
     
     # multiprocess_eval(problem_id, samples_range)
-    curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
-    evaluate_single_sample(curr_work)
-   
+    problem_id = 2
+    sample_id = (16, 19)
+    multiprocess_eval(problem_id, sample_id)
 
 
 
