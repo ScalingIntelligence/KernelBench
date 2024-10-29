@@ -6,21 +6,15 @@ import multiprocessing as mp
 
 MEASURE_PERFORMANCE = False
 
-<<<<<<< HEAD
-=======
+RUN_NAME = "level2_run_10_28"
 # RUN_NAME = "kernelbench_prompt_v2_level_2"
->>>>>>> 798a22afa424c95ac8a1a02a454aaf90507994be
 RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
 SERVER_URL = "http://mkt1.stanford.edu:9091" 
 
-<<<<<<< HEAD
 problem_id = 3
 sample_id = 17
-=======
-# sample_id = 2
->>>>>>> 798a22afa424c95ac8a1a02a454aaf90507994be
 
 
 # Check if CUDA is available
@@ -183,17 +177,14 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
             f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-    # multiprocess_eval()
-    curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
-    evaluate_single_sample(curr_work)
-=======
     problem_id = 2
     # samples_range = (4, 5)
     samples_range = (0, 30)
-    
     multiprocess_eval(problem_id, samples_range)
->>>>>>> 798a22afa424c95ac8a1a02a454aaf90507994be
+    
+    # multiprocess_eval(problem_id, samples_range)
+    curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
+    evaluate_single_sample(curr_work)
    
 
 
