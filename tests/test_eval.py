@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+
+from tqdm import tqdm
 from src import eval, utils
 import torch
 
@@ -10,7 +12,7 @@ MEASURE_PERFORMANCE = False
 RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
-SERVER_URL = "http://mkt1.stanford.edu:9091" 
+SERVER_URL = "http://matx3.stanford.edu:9091" 
 
 # sample_id = 2
 
@@ -158,7 +160,7 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
         f.write(f"Evaluating for problem {problem_id} over sample range {samples_range} \n")
 
     # Main evaluation loop
-    for sample_id in range(*samples_range):
+    for sample_id in tqdm(range(*samples_range)):
 
         print(f"Evaluating for sample {sample_id}")
         curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device, num_times=5)
@@ -175,7 +177,7 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
             f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 if __name__ == "__main__":
-    problem_id = 2
+    problem_id = 4
     # samples_range = (4, 5)
     samples_range = (0, 30)
     
