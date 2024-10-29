@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from src import eval, utils
 import torch
 
@@ -54,7 +55,41 @@ dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
 # NOTE: this should isolate each run
 # however, let me mirgate the monkey codebase code to do this instaed of my little hack
 # DON'T USE THIS YET! just run and see how it would be 
-def evaluate_single_sample(problem_id, sample_id, run_name, dataset, device):
+
+
+@dataclass
+class WorkArgs:
+    problem_id: str
+    sample_idx: int
+    run_name: str
+    dataset: list[str]
+    device: torch.device
+
+
+def run(work, config=None, coordinator=None):
+    """
+    Matching Monkey API, took out some args for config and coordinator
+    """
+    run_inner = evaluate_single_sample
+    # if config.testing: return run_inner(work)
+    try:
+        eval_result = run_inner(work)
+        print("-" * 32)
+        print(f"Eval result for problem {work.problem_id} sample {work.sample_idx}: {eval_result}")
+        print("-" * 32)
+    except Exception as e:
+        print("Error", e, work.problem, work.problem_id, work.sample_idx)
+        return None
+
+
+def evaluate_single_sample(work_args: WorkArgs):
+    # problem_id, sample_id, run_name, dataset, device
+    problem_id = work_args.problem_id
+    sample_id = work_args.sample_idx
+    run_name = work_args.run_name
+    dataset = work_args.dataset
+    device = work_args.device
+
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
     
@@ -79,26 +114,66 @@ def evaluate_single_sample(problem_id, sample_id, run_name, dataset, device):
             return eval_result
         return None
 
-if __name__ == "__main__":
+
+
+def monkey_style_parallal_process_eval():
+    """
+    Same API as monkey maybe_multi_processing
+    This doesn't work yet, suffer the same cascading errors as before
+    """
+    to_run =  []
+    for sample_idx in range(5, 10):
+        
+        to_run.append(
+            WorkArgs(
+                problem_id=problem_id,
+                sample_idx=sample_idx,
+                run_name=RUN_NAME,
+                dataset=dataset,
+                device=device
+            )
+        )
+
     
+    utils.maybe_multiprocess(
+        func=run,
+        instances=to_run,
+        # only limited to 1 worker for now, don't worry about concurrecy
+        num_workers=1, 
+    )
+
+def multiprocess_eval():
+    """
+    This works
+    """
+    
+    # THIS WORKS
     # Set start method to spawn to work with CUDA
     mp.set_start_method('spawn')
 
     # Main evaluation loop
-    for sample_id in range(5, 7):
+    for sample_id in range(5, 10):
+
         print(f"Evaluating for sample {sample_id}")
-        
+        curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
+
         # Create a new process for each evaluation
         with mp.Pool(1) as pool:
             result = pool.apply(
                 evaluate_single_sample,
-                args=(problem_id, sample_id, RUN_NAME, dataset, device)
+                args=(curr_work,)
+                # (problem_id, sample_id, RUN_NAME, dataset, device)
             )
     
         print("-" * 32)
         print(f"Eval result for sample {sample_id}: {result}")
         print("-" * 32)
 
+
+
+if __name__ == "__main__":
+    multiprocess_eval()
+   
 
 
 
