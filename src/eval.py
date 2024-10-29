@@ -69,10 +69,14 @@ def load_original_model_and_inputs(model_original_src: str,
     except SyntaxError as e:
         print(f"Syntax Error in original code {e}")
         return None
+    
+    try:
+        exec(model_original_src, context) # expose to current namespace
+    except Exception as e:
+        print(f"Error in executing original code {e}")
+        return None
 
-    exec(model_original_src, context) # expose to global namespace
-
-    # these should be defined in the model
+    # these should be defined in the original model code and present in the context
     get_init_inputs_fn = context.get('get_init_inputs')
     get_inputs_fn = context.get('get_inputs')
     Model = context.get('Model')
@@ -97,18 +101,27 @@ def load_custom_model(model_custom_src: str,
 
 def _cleanup_cuda_extensions():
     """Helper function to cleanup compiled CUDA extensions"""
+    # SIMON NOTE: is this necessary?
     import shutil
     torch_extensions_path = os.path.join(os.path.expanduser("~"), ".cache", "torch_extensions")
     if os.path.exists(torch_extensions_path):
         shutil.rmtree(torch_extensions_path)
 
+def graceful_eval_cleanup(curr_context: dict):
+    """
+    Clean up env, gpu cache, and compiled CUDA extensions after evaluation
+    """    # delete ran-specific function definitions before next eval run
+    del curr_context
+    torch.cuda.empty_cache()
+    _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
+
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
-                            seed_num: int =42, 
-                            num_times: int =1,
-                            verbose: bool =False, 
-                            measure_performance: bool =False,
-                            device: torch.device =None) -> KernelExecResult:
+                            seed_num: int = 42, 
+                            num_times: int = 1,
+                            verbose: bool = False, 
+                            measure_performance: bool = False,
+                            device: torch.device = None) -> KernelExecResult:
     '''
     Evaluate the custom kernel against the original model
 
@@ -116,12 +129,12 @@ def eval_kernel_against_ref(original_model_src: str,
     '''
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
-
     context = {}
 
     if verbose:
         print("[Eval] Start Evalulation!")
         print("[Eval] Loading Original Model")
+    
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(original_model_src, context)
     set_seed(seed_num) # set seed for reproducible input
     init_inputs = get_init_inputs()
@@ -131,11 +144,9 @@ def eval_kernel_against_ref(original_model_src: str,
         set_seed(seed_num) # set seed for reproducible weights
         original_model = Model(*init_inputs)
         assert hasattr(original_model, 'forward')  
-        if verbose:
-            print("[Eval] Original Model Loaded")
+        if verbose: print("[Eval] Original Model Loaded")
+    if verbose: print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
     
-    if verbose:
-        print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
     #this is where compilation happens
     try:
         ModelNew = load_custom_model(custom_model_src, context)
@@ -143,43 +154,29 @@ def eval_kernel_against_ref(original_model_src: str,
         print(f"Failed to compile custom CUDA kernel: {e}")
         # TODO: add metadata for compilation error (how to we get the compilation error message?)
         # clean up before returning
-        del context
-        torch.cuda.empty_cache()
-        _cleanup_cuda_extensions()
+        graceful_eval_cleanup(context)
         return KernelExecResult(compiled=False) # skip further steps
 
     with torch.no_grad():    
         set_seed(seed_num) # set seed for reproducible weights
         custom_model = ModelNew(*init_inputs)
-
         assert hasattr(custom_model, 'forward')  
-        if verbose:
-            print("[Eval] New Model with Custom CUDA Kernel Loaded")
+        if verbose: print("[Eval] New Model with Custom CUDA Kernel Loaded")
 
     kernel_exec_result = None
+    
     if measure_performance:
-        if verbose:
-            print("[Eval] Checking Both Correctness and Performance")
+        if verbose: print("[Eval] Checking Both Correctness and Performance")
         raise NotImplementedError("Not implemented")
     else:
-        if verbose:
-            print("[Eval] Checking Correctness Only")
+        if verbose: print("[Eval] Checking Correctness Only")
         try:
             kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, num_times=num_times, verbose=verbose, seed=seed_num)
         except Exception as e:
             # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
             kernel_exec_result = KernelExecResult(compiled=True, correctness=False)
-            # clean up before returning
-            del context
-            torch.cuda.empty_cache()
-            _cleanup_cuda_extensions
-            return kernel_exec_result
-    # Clean up
-    # delete ran-specific function definitions before next eval run
-    del context
-    # # release GPU memory
-    torch.cuda.empty_cache()
-    _cleanup_cuda_extensions
+
+    graceful_eval_cleanup(context)
     return kernel_exec_result
     
 
