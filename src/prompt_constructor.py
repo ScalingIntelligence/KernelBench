@@ -39,6 +39,8 @@ def prompt_generate_custom_cuda(arc_src: str,
         prompt += f"""
         Here's an example to show you the syntax of inline embedding custom CUDA operators in torch: The example given architecture is: \n
         ``` \n
+        {example_arch_src}
+        ``` \n
         The example new arch with custom CUDA kernels looks like this: 
         ```
         {example_new_arch_src}
