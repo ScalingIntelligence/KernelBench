@@ -95,6 +95,13 @@ def load_custom_model(model_custom_src: str,
     ModelNew = context.get('ModelNew')
     return ModelNew
 
+def _cleanup_cuda_extensions():
+    """Helper function to cleanup compiled CUDA extensions"""
+    import shutil
+    cache_path = os.path.expanduser('~/.cache/torch_extensions')
+    if os.path.exists(cache_path):
+        shutil.rmtree(cache_path)
+
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
                             seed_num: int =42, 
@@ -134,12 +141,12 @@ def eval_kernel_against_ref(original_model_src: str,
         ModelNew = load_custom_model(custom_model_src, context)
     except Exception as e:
         print(f"Failed to compile custom CUDA kernel: {e}")
-        # TODO: add metadata for compilation error? (show the error message)
+        # TODO: add metadata for compilation error (how to we get the compilation error message?)
         # clean up before returning
-        del Model
-        del ModelNew
+        del context
         torch.cuda.empty_cache()
-        return KernelExecResult(compiled=False, metadata=str(e)) # skip further steps
+        _cleanup_cuda_extensions()
+        return KernelExecResult(compiled=False) # skip further steps
 
     with torch.no_grad():    
         set_seed(seed_num) # set seed for reproducible weights
@@ -158,21 +165,21 @@ def eval_kernel_against_ref(original_model_src: str,
         if verbose:
             print("[Eval] Checking Correctness Only")
         try:
-            is_correct = run_and_check_correctness(original_model, custom_model, get_inputs, num_times=num_times, verbose=verbose, seed=seed_num)
-            kernel_exec_result = KernelExecResult(compiled=True, correctness=is_correct)
+            kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, num_times=num_times, verbose=verbose, seed=seed_num)
         except Exception as e:
-            # TODO: add metadata for correctness error? e.g. runtime error, error in launching kernel, ...
-            kernel_exec_result = KernelExecResult(compiled=True, correctness=False, metadata=str(e))
+            # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
+            kernel_exec_result = KernelExecResult(compiled=True, correctness=False)
             # clean up before returning
-            del Model
-            del ModelNew
+            del context
             torch.cuda.empty_cache()
+            _cleanup_cuda_extensions
             return kernel_exec_result
     # Clean up
     # delete ran-specific function definitions before next eval run
     del context
     # # release GPU memory
     torch.cuda.empty_cache()
+    _cleanup_cuda_extensions
     return kernel_exec_result
     
 
@@ -181,13 +188,14 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                               get_inputs_fn: callable, 
                               num_times: int,
                               verbose=False, 
-                              seed=42) -> tuple[bool, bool, float, float, float, float]:
+                              seed=42) -> KernelExecResult:
     """
     run the model and check correctness, 
     assume model already loaded and compiled (loaded and compiled in the caller)
     this is all on GPU, requiring cuda device and transfer .cuda()
     """
     pass_count = 0
+    metadata = ""
 
     with torch.no_grad():
         
@@ -211,10 +219,19 @@ def run_and_check_correctness(original_model_instance: nn.Module,
             try:
                 output_new = model_new(*inputs)
                 torch.cuda.synchronize()
-                assert(output.shape == output_new.shape)
-        
-                is_correct = torch.allclose(output, output_new, atol=1e-03)
+                if output.shape != output_new.shape:
+                    metadata = f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
+                    if verbose:
+                        print(f"[FAIL] trial {trial}: {metadata}")
+                    break
+                if not torch.allclose(output, output_new, atol=1e-03):
+                    metadata = "Output mismatch"
+                    if verbose:
+                        print(f"[FAIL] trial {trial}: {metadata}")
+                    break
                 pass_count += 1
+                if verbose:
+                    print(f"[PASS] trial {trial}: New Model matches Model")
 
             except Exception as e:
                 # Count this as compilation issue
@@ -222,19 +239,14 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                 # Error in launching kernel for ModelNew CUDA error: invalid configuration argument
                 # Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
                 # NOTE: count runtime CUDA kernel as compile issue for now
-                print(f"Error in launching kernel for ModelNew {e}")
-                is_correct = False
-                continue
+                print(f"[FAIL] trial {trial}: Error in launching kernel for ModelNew {e}")
+                metadata = f"Error in launching kernel for ModelNew {e}"
+                break
 
-        if verbose:
-            if is_correct:
-                print("[PASS] New Model matches Model")
-            else:
-                print("[FAIL] New Model does NOT match Model")
-                # print("output from Model: ", output)
-                # print("output from Model New: ", output_new)
-
-    return pass_count == num_times
+    if pass_count == num_times:
+        return KernelExecResult(compiled=True, correctness=True, metadata="")
+    else:
+        return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
 
 # if __name__ == "__main__":
 #     fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")

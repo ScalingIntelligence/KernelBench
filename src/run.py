@@ -1,7 +1,7 @@
 import subprocess
 import os, sys
 from utils import query_server, read_file, extract_first_code, construct_problem_dataset_from_problem_dir
-from prompt_constructor import prompt_generate_custom_cuda_from_file, prompt_generate_custom_cuda_from_file_save, prompt_fix_compile, prompt_fix_correctness
+from prompt_constructor import prompt_generate_custom_cuda_from_file_one_example, prompt_generate_custom_cuda_oneshot_and_template, prompt_fix_compile, prompt_fix_correctness
 from eval import eval_kernel_against_ref, KernelExecResult, fetch_ref_arch_from_problem_id
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',))
@@ -37,11 +37,19 @@ def get_custom_cuda(prompt):
     custom_cuda = extract_first_code(custom_cuda, "python")
     return custom_cuda
 
-def run(ref_arch_src, save_prompt=False, prompt_example_ind=1) -> KernelExecResult:
+def run(ref_arch_src, save_prompt=False, use_combined_prompt=False, prompt_example_ind=1) -> KernelExecResult:
+    os.makedirs(os.path.join(REPO_TOP_PATH, "src/scratch"), exist_ok=True)
 
     # generate custom CUDA, save in scratch/model_new.py
-    fn_get_prompt = prompt_generate_custom_cuda_from_file_save if save_prompt else prompt_generate_custom_cuda_from_file
-    custom_cuda_prompt = fn_get_prompt(ref_arch_src, prompt_example_ind)
+    if use_combined_prompt:
+        fn_get_prompt = prompt_generate_custom_cuda_oneshot_and_template
+        custom_cuda_prompt = fn_get_prompt(ref_arch_src)
+    else:
+        fn_get_prompt = prompt_generate_custom_cuda_from_file_one_example
+        custom_cuda_prompt = fn_get_prompt(ref_arch_src, prompt_example_ind)
+    if save_prompt:
+        with open(os.path.join(REPO_TOP_PATH, "src/scratch/prompt.txt"), "w") as f:
+            f.write(custom_cuda_prompt)
     custom_cuda = get_custom_cuda(custom_cuda_prompt)
 
     # check LLM is able to generate custom CUDA code
@@ -70,10 +78,12 @@ def run_multiturn(ref_arch_src, turns=10) -> KernelExecResult:
     for turn in range(turns):
         if not result.compiled:
             print(f"Turn {turn}: Fixing compilation error")
+            print(f"Metadata: {result.metadata}")
             custom_cuda = get_custom_cuda(prompt_fix_compile(ref_arch_src, custom_cuda, result.metadata))
             result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
         elif not result.correctness:
             print(f"Turn {turn}: Fixing correctness error")
+            print(f"Metadata: {result.metadata}")
             custom_cuda = get_custom_cuda(prompt_fix_correctness(ref_arch_src, custom_cuda, result.metadata))
             result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
         else:
@@ -96,6 +106,15 @@ if __name__ == "__main__":
     # write to scratch/model.py
     with open(os.path.join(REPO_TOP_PATH, "src/scratch/model.py"), "w") as f:
         f.write(ref_arch_src)
-    # print(run(ref_arch_src))
 
+    # run with one-shot + template combined prompt
+    # print(run(ref_arch_src, use_combined_prompt=True))
+
+    # # run with one-shot from file prompt
+    # print(run(ref_arch_src, use_combined_prompt=False, prompt_example_ind=1))
+
+    # # run with template prompt
+    # print(run(ref_arch_src, use_combined_prompt=False, prompt_example_ind=2))
+    
+    # run multiturn with combined prompt
     print(run_multiturn(ref_arch_src))
