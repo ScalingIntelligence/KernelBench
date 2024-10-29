@@ -6,13 +6,21 @@ import multiprocessing as mp
 
 MEASURE_PERFORMANCE = False
 
+<<<<<<< HEAD
+=======
+# RUN_NAME = "kernelbench_prompt_v2_level_2"
+>>>>>>> 798a22afa424c95ac8a1a02a454aaf90507994be
 RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
 SERVER_URL = "http://mkt1.stanford.edu:9091" 
 
+<<<<<<< HEAD
 problem_id = 3
 sample_id = 17
+=======
+# sample_id = 2
+>>>>>>> 798a22afa424c95ac8a1a02a454aaf90507994be
 
 
 # Check if CUDA is available
@@ -64,6 +72,7 @@ class WorkArgs:
     run_name: str
     dataset: list[str]
     device: torch.device
+    num_times: int
 
 
 def run(work, config=None, coordinator=None):
@@ -89,6 +98,7 @@ def evaluate_single_sample(work_args: WorkArgs):
     run_name = work_args.run_name
     dataset = work_args.dataset
     device = work_args.device
+    num_times = work_args.num_times
 
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
@@ -102,6 +112,7 @@ def evaluate_single_sample(work_args: WorkArgs):
             custom_model_src=kernel_src,
             measure_performance=MEASURE_PERFORMANCE,
             verbose=True,
+            num_times=5,
             device=device
         )
         return eval_result
@@ -134,7 +145,7 @@ def monkey_style_parallal_process_eval():
             )
         )
 
-    
+    # WHY DOES THIS !!!NOT!!! WORK?
     utils.maybe_multiprocess(
         func=run,
         instances=to_run,
@@ -142,7 +153,7 @@ def monkey_style_parallal_process_eval():
         num_workers=1, 
     )
 
-def multiprocess_eval():
+def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
     """
     This works
     """
@@ -151,11 +162,14 @@ def multiprocess_eval():
     # Set start method to spawn to work with CUDA
     mp.set_start_method('spawn')
 
+    with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
+        f.write(f"Evaluating for problem {problem_id} over sample range {samples_range} \n")
+
     # Main evaluation loop
-    for sample_id in range(5, 10):
+    for sample_id in range(*samples_range):
 
         print(f"Evaluating for sample {sample_id}")
-        curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
+        curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device, num_times=5)
 
         # Create a new process for each evaluation
         with mp.Pool(1) as pool:
@@ -164,17 +178,22 @@ def multiprocess_eval():
                 args=(curr_work,)
                 # (problem_id, sample_id, RUN_NAME, dataset, device)
             )
-    
-        print("-" * 32)
-        print(f"Eval result for sample {sample_id}: {result}")
-        print("-" * 32)
-
-
+        with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
+            f.write("-" * 128 + "\n")
+            f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     # multiprocess_eval()
     curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
     evaluate_single_sample(curr_work)
+=======
+    problem_id = 2
+    # samples_range = (4, 5)
+    samples_range = (0, 30)
+    
+    multiprocess_eval(problem_id, samples_range)
+>>>>>>> 798a22afa424c95ac8a1a02a454aaf90507994be
    
 
 
