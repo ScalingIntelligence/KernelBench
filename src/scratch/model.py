@@ -3,32 +3,39 @@ import torch.nn as nn
 
 class Model(nn.Module):
     """
-    Simple model that performs a single matrix multiplication (C = A * B)
+    Model that performs a sequence of operations:
+        - Matrix multiplication
+        - Summation
+        - Max
+        - Average pooling
+        - LogSumExp
+        - LogSumExp
     """
-    def __init__(self):
+    def __init__(self, in_features, out_features):
         super(Model, self).__init__()
-    
-    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        """
-        Performs matrix multiplication.
+        self.linear = nn.Linear(in_features, out_features)
 
+    def forward(self, x):
+        """
         Args:
-            A: Input tensor of shape (M, K).
-            B: Input tensor of shape (K, N).
-
+            x (torch.Tensor): Input tensor of shape (batch_size, in_features).
         Returns:
-            Output tensor of shape (M, N).
+            torch.Tensor: Output tensor of shape (batch_size, 1).
         """
-        return torch.matmul(A.T, B.T)
+        x = self.linear(x)  # (batch_size, out_features)
+        x = torch.sum(x, dim=1, keepdim=True) # (batch_size, 1)
+        x = torch.max(x, dim=1, keepdim=True)[0] # (batch_size, 1)
+        x = torch.mean(x, dim=1, keepdim=True) # (batch_size, 1)
+        x = torch.logsumexp(x, dim=1, keepdim=True) # (batch_size, 1)
+        x = torch.logsumexp(x, dim=1, keepdim=True) # (batch_size, 1)
+        return x
 
-M = 1024
-K = 4096
-N = 2048
+batch_size = 128
+in_features = 10
+out_features = 5
 
 def get_inputs():
-    A = torch.randn(K, M)
-    B = torch.randn(N, K)
-    return [A, B]
+    return [torch.randn(batch_size, in_features)]
 
 def get_init_inputs():
-    return []  # No special initialization inputs needed
+    return [in_features, out_features]
