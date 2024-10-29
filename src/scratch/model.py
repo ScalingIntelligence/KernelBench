@@ -19,15 +19,15 @@ class Model(nn.Module):
         Returns:
             Output tensor of shape (M, N).
         """
-        return torch.matmul(A, B)
+        return torch.matmul(A.T, B.T)
 
 M = 1024
 K = 4096
 N = 2048
 
 def get_inputs():
-    A = torch.randn(M, K)
-    B = torch.randn(K, N)
+    A = torch.randn(K, M)
+    B = torch.randn(N, K)
     return [A, B]
 
 def get_init_inputs():

@@ -48,13 +48,3 @@ class ModelNew(nn.Module):
 
     def forward(self, a, b):
         return self.elementwise_add.elementwise_add_cuda(a, b)
-
-def get_inputs():
-    # randomly generate input tensors based on the model architecture
-    a = torch.randn(4096).cuda()
-    b = torch.randn(4096).cuda()
-    return [a, b]
-
-def get_init_inputs():
-    # randomly generate tensors required for initialization based on the model architecture
-    return []

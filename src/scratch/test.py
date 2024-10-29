@@ -10,6 +10,8 @@ from model import get_inputs
 from model import get_init_inputs
 from model_new import ModelNew
 
+torch.cuda.synchronize()
+
 def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -25,16 +27,15 @@ def check_correctness():
         inputs = get_inputs()
         set_seed(42)
         init_inputs = get_init_inputs()
-        set_seed(42)
-        model = Model(*init_inputs).cuda()
-        set_seed(42)
-        model_new = ModelNew(*init_inputs).cuda()
 
         # move to GPU
         inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in inputs]
         init_inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in init_inputs]
-        model = model.cuda()
-        model_new = model_new.cuda()
+
+        set_seed(42)
+        model = Model(*init_inputs).cuda()
+        set_seed(42)
+        model_new = ModelNew(*init_inputs).cuda()
 
         # forward pass
         output = model(inputs[0])

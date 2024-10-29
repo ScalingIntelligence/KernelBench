@@ -48,11 +48,11 @@ def prompt_generate_custom_cuda(arc_src: str,
     ```
     {arc_src}
     ```
-    Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional.\n
+    Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
     """
     return prompt
 
-def prompt_generate_custom_cuda_from_file(ref_arch_src, example_ind=0):
+def prompt_generate_custom_cuda_from_file(ref_arch_src, example_ind=1):
     """
     Check example_ind for prompt templates
     """
@@ -74,7 +74,7 @@ def prompt_generate_custom_cuda_from_file(ref_arch_src, example_ind=0):
     return prompt_generate_custom_cuda(arch, example_arch, example_new_arch)
     
 
-def prompt_generate_custom_cuda_from_file_save(arch_path, example_ind=0):
+def prompt_generate_custom_cuda_from_file_save(arch_path, example_ind=1):
     generated_prompt = prompt_generate_custom_cuda_from_file(arch_path, example_ind)
 
     os.makedirs(os.path.join(REPO_TOP_PATH, "src/scratch"), exist_ok=True)
@@ -82,3 +82,33 @@ def prompt_generate_custom_cuda_from_file_save(arch_path, example_ind=0):
         f.write(generated_prompt)
 
     return generated_prompt
+
+def prompt_fix_compile(ref_arch_src, custom_cuda, metadata):
+    prompt = prompt_generate_custom_cuda_from_file(ref_arch_src)
+    prompt += f"""
+    You generated the following solution and it failed to compile:
+    ```
+    {custom_cuda}
+    ```
+    Here's the metadata of the compilation error:
+    ```
+    {metadata}
+    ```
+    Please fix the compilation error in the new model code. Please output the corrected code in codeblocks.
+    """
+    return prompt
+
+def prompt_fix_correctness(ref_arch_src, custom_cuda, metadata):
+    prompt = prompt_generate_custom_cuda_from_file(ref_arch_src)
+    prompt += f"""
+    You generated the following solution and it failed correctness:
+    ```
+    {custom_cuda}
+    ```
+    Here's the metadata of the correctness error:
+    ```
+    {metadata}
+    ```
+    Please consider how your custom CUDA kernels are implemented, how it is different from the reference implementation, and fix the correctness error in the new model code. Please output the corrected code in codeblocks.
+    """
+    return prompt
