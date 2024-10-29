@@ -217,7 +217,7 @@ def run_and_check_correctness(original_model_instance: nn.Module,
             torch.cuda.synchronize()
 
             try:
-                output_new = model_new(*inputs)
+                output_new = model_new(*inputs)                # ensure all GPU operations are completed before checking results
                 torch.cuda.synchronize()
                 if output.shape != output_new.shape:
                     metadata = f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
@@ -234,13 +234,20 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                     print(f"[PASS] trial {trial}: New Model matches Model")
 
             except Exception as e:
-                # Count this as compilation issue
                 # NOTE: something to discusss
                 # Error in launching kernel for ModelNew CUDA error: invalid configuration argument
                 # Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
                 # NOTE: count runtime CUDA kernel as compile issue for now
-                print(f"[FAIL] trial {trial}: Error in launching kernel for ModelNew {e}")
-                metadata = f"Error in launching kernel for ModelNew {e}"
+                torch.cuda.synchronize()
+                # check for any CUDA errors that may have occurred
+                if torch.cuda.is_available():
+                    cuda_err = torch.cuda.get_last_error()
+                    if cuda_err.value != 0:  # 0 means no error
+                        metadata = f"Error in launching kernel for ModelNew {e}; CUDA error: {cuda_err}"
+                        if verbose:
+                            print(f"[FAIL] CUDA error detected: {cuda_err}")
+                        break
+                print(metadata)
                 break
 
     if pass_count == num_times:
