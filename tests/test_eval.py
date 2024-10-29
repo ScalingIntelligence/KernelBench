@@ -24,6 +24,7 @@ print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
 
 dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
 
+# NOTE: If you run this this will have cascading errors from previous iterations
 # # evaluate kernel (for some samples)
 # for sample_id in range(1,5):
 #     print(f"Evaluating for sample {sample_id}")
@@ -50,7 +51,9 @@ dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
 #     finally:
 #         torch.cuda.empty_cache()
 
-
+# NOTE: this should isolate each run
+# however, let me mirgate the monkey codebase code to do this instaed of my little hack
+# DON'T USE THIS YET! just run and see how it would be 
 def evaluate_single_sample(problem_id, sample_id, run_name, dataset, device):
     try:
         # fetch reference architecture from problem directory
