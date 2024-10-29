@@ -49,7 +49,7 @@ def set_seed(seed: int):
 class KernelExecResult(BaseModel):
     compiled: bool = False
     correctness: bool = False
-    metadata: str = ""
+    metadata: dict = {}
     # in us, only recorded if we decide to measure performance
     # can reformat this to be wall clock time
     torch_cpu_time: float = -1.0
