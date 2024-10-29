@@ -56,7 +56,8 @@ class KernelExecResult(BaseModel):
     custom_cpu_time: float = -1.0
     custom_gpu_time: float = -1.0
 
-def load_original_model_and_inputs(model_original_src: str) -> tuple[nn.Module, callable, callable]: 
+def load_original_model_and_inputs(model_original_src: str,
+                                   context: dict) -> tuple[nn.Module, callable, callable]: 
     """
     Load class from original NN.module pytorch code
     this is pytorch reference and we feed that to model to see if there will be any improvement
@@ -68,51 +69,56 @@ def load_original_model_and_inputs(model_original_src: str) -> tuple[nn.Module, 
         print(f"Syntax Error in original code {e}")
         return None
 
-    # NOTE: is this safe?
-    exec(model_original_src, globals()) # expose to global namespace
+    exec(model_original_src, context) # expose to global namespace
 
     # these should be defined in the model
-    get_init_inputs_fn = globals().get('get_init_inputs')
-    get_inputs_fn = globals().get('get_inputs')
-
+    get_init_inputs_fn = context.get('get_init_inputs')
+    get_inputs_fn = context.get('get_inputs')
+    Model = context.get('Model')
     return (Model, get_init_inputs_fn, get_inputs_fn)
 
-def load_custom_model(model_custom_src: str) -> nn.Module:
+def load_custom_model(model_custom_src: str,
+                      context: dict) -> nn.Module:
     """
     Load class from custom NN.module pytorch code
     this is the code output by LLM with calls to custom cuda kernels
     """
     try:
         compile(model_custom_src, "<string>", "exec")
-        exec(model_custom_src, globals())
+        exec(model_custom_src, context)
         # DANGER: need to delete refernece from global namespace
     except SyntaxError as e:
         print(f"Syntax Error in original code or Compilation Error {e}")
         return None
 
+    ModelNew = context.get('ModelNew')
     return ModelNew
 
 
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
-                            seed_num=42, 
-                            num_times=1,
-                            verbose=False, 
-                            measure_performance=False) -> KernelExecResult:
+                            seed_num: int =42, 
+                            num_times: int =1,
+                            verbose: bool =False, 
+                            measure_performance: bool =False,
+                            device: torch.device =None) -> KernelExecResult:
     '''
     Evaluate the custom kernel against the original model
 
     num_times: run the evalutation multiple times and take the average
     '''
+    # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
+
+    context = {}
+
     if verbose:
         print("[Eval] Start Evalulation!")
         print("[Eval] Loading Original Model")
-    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(original_model_src)
-
+    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(original_model_src, context)
     set_seed(seed_num) # set seed for reproducible input
     init_inputs = get_init_inputs()
-    # # init_inputs = [x for x in init_inputs] # move to GPU mem
+    init_inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in init_inputs]
 
     with torch.no_grad():
         set_seed(seed_num) # set seed for reproducible weights
@@ -125,7 +131,7 @@ def eval_kernel_against_ref(original_model_src: str,
         print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
     #this is where compilation happens
     try:
-        ModelNew = load_custom_model(custom_model_src)
+        ModelNew = load_custom_model(custom_model_src, context)
     except Exception as e:
         print(f"Failed to compile custom CUDA kernel: {e}")
         return KernelExecResult(compiled=False) # skip further steps
@@ -151,9 +157,8 @@ def eval_kernel_against_ref(original_model_src: str,
         
         kernel_exec_result = KernelExecResult(compiled=True, correctness=is_correct)
     # Clean up
-    # delete global references before next eval run
-    del Model
-    del ModelNew
+    # delete ran-specific function definitions before next eval run
+    del context
     # # release GPU memory
     torch.cuda.empty_cache()
     return kernel_exec_result
