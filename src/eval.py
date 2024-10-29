@@ -185,10 +185,11 @@ def eval_kernel_against_ref(original_model_src: str,
     else:
         if verbose: print("[Eval] Checking Correctness Only")
         try:
-            kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, num_times=num_times, verbose=verbose, seed=seed_num)
+            kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, num_times=num_times, verbose=verbose, seed=seed_num, device=device)
         except Exception as e:
             # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
             kernel_exec_result = KernelExecResult(compiled=True, correctness=False)
+            print("EXCEPTION HAPPENS")
 
     graceful_eval_cleanup(context)
     return kernel_exec_result
@@ -199,7 +200,8 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                               get_inputs_fn: callable, 
                               num_times: int,
                               verbose=False, 
-                              seed=42) -> KernelExecResult:
+                              seed=42,
+                              device=None) -> KernelExecResult:
     """
     run the model and check correctness, 
     assume model already loaded and compiled (loaded and compiled in the caller)
@@ -208,29 +210,35 @@ def run_and_check_correctness(original_model_instance: nn.Module,
     num_times: run the evalutation multiple times with (ideally) different random inputs to ensure correctness
     """
     pass_count = 0
-    metadata = ""
+    metadata = {}
+
+    # Generate num_times seeds deterministically from the initial seed
+    torch.manual_seed(seed)
+    correctness_trial_seeds = [torch.randint(0, 2**32 - 1, (1,)).item() for _ in range(num_times)]
 
     with torch.no_grad():
         
         for trial in range(num_times):
-            if verbose:
-                print(f"[Eval] Generating Random Input with seed {seed}")
             
-            set_seed(seed)
+            trial_seed = correctness_trial_seeds[trial]
+            if verbose: print(f"[Eval] Generating Random Input with seed {trial_seed}")
+
+            set_seed(trial_seed)
             inputs = get_inputs_fn()
             inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in inputs]
 
-            set_seed(seed)
+            set_seed(trial_seed)
             model = original_model_instance.cuda()
 
-            set_seed(seed)
+            set_seed(trial_seed)
             model_new = new_model_instance.cuda()
 
             output = model(*inputs)
             torch.cuda.synchronize()
+            # ensure all GPU operations are completed before checking results
 
             try:
-                output_new = model_new(*inputs)                # ensure all GPU operations are completed before checking results
+                output_new = model_new(*inputs)             
                 torch.cuda.synchronize()
                 if output.shape != output_new.shape:
                     metadata = f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
@@ -247,6 +255,7 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                     print(f"[PASS] trial {trial}: New Model matches Model")
 
             except Exception as e:
+                print("EXCEPTION HAPPENS")
                 # NOTE: something to discusss
                 # Error in launching kernel for ModelNew CUDA error: invalid configuration argument
                 # Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
@@ -263,8 +272,14 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                 print(metadata)
                 break
 
+    if verbose: print(f"[Eval] Pass count: {pass_count}, num_times: {num_times}")
+
+    # put all the useful info here!
+    metadata["correctness"] = f"({pass_count} / {num_times})"
+    metadata["hardware"] = torch.cuda.get_device_name()
+
     if pass_count == num_times:
-        return KernelExecResult(compiled=True, correctness=True, metadata="")
+        return KernelExecResult(compiled=True, correctness=True, metadata=metadata)
     else:
         return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
 
