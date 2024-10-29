@@ -38,8 +38,8 @@ def check_correctness():
         model_new = ModelNew(*init_inputs).cuda()
 
         # forward pass
-        output = model(inputs[0])
-        output_new = model_new(inputs[0])
+        output = model(*inputs)
+        output_new = model_new(*inputs)
 
         # move to CPU
         torch.cuda.synchronize()
