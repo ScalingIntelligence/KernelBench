@@ -6,13 +6,13 @@ import multiprocessing as mp
 
 MEASURE_PERFORMANCE = False
 
-RUN_NAME = "kernelbench_prompt_v2_level_2"
+RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
 SERVER_URL = "http://mkt1.stanford.edu:9091" 
 
-problem_id = 1
-sample_id = 2
+problem_id = 3
+sample_id = 17
 
 
 # Check if CUDA is available
@@ -172,7 +172,9 @@ def multiprocess_eval():
 
 
 if __name__ == "__main__":
-    multiprocess_eval()
+    # multiprocess_eval()
+    curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
+    evaluate_single_sample(curr_work)
    
 
 
