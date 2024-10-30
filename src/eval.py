@@ -7,6 +7,7 @@ import torch.nn as nn
 import os
 from pydantic import BaseModel
 import numpy as np
+import random
 
 from src import utils
 
@@ -51,6 +52,16 @@ def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
     PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, 'level'+str(level))
     dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
+
+def get_kernelbench_subset(level, num_problems=10, random_seed=42):
+    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, 'level'+str(level))
+    dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    # generate num_problem random indices from range(0, len(dataset))
+    random.seed(random_seed)
+    subset_indices = random.sample(range(len(dataset)), num_problems)
+    for i in subset_indices:
+        print(dataset[i])
+    return [(level, i) for i in subset_indices]
 
 def set_seed(seed: int):
     torch.manual_seed(seed)
