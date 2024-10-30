@@ -15,6 +15,11 @@ import numpy as np
 import os
 import importlib.util
 
+"""
+Test all the reference architectures compiles 
+and reproduce the same results when run against itself
+"""
+
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',))
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 

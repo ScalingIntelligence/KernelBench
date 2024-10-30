@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import os
 from pydantic import BaseModel
+import numpy as np
 
 from src import utils
 
@@ -242,6 +243,78 @@ def register_and_format_exception(exception_type: str, exception_msg: Exception 
     metadata[exception_type] = exception_str
     
     return metadata
+
+
+def get_timing_stats(elapsed_times: list[float]) -> dict:
+    """Get timing statistics from a list of elapsed times.
+    
+    Args:
+        elapsed_times: List of elapsed times in milliseconds
+        
+    Returns:
+        Dict containing mean, std, min, max and num_trials
+        all timing are in ms
+    """
+    return {
+        'mean': float(f"{np.mean(elapsed_times):.3g}"),
+        'std': float(f"{np.std(elapsed_times):.3g}"),
+        'min': float(f"{np.min(elapsed_times):.3g}"),
+        'max': float(f"{np.max(elapsed_times):.3g}"),
+        'num_trials': len(elapsed_times),
+    }
+
+def time_execution_with_cuda_event(kernel_fn: callable,
+                      *args,
+                     num_warmup: int = 3, 
+                     num_trials: int = 10, 
+                     verbose: bool = True, 
+                     device: torch.device = None) -> list[float]:
+    """
+    Time a CUDA kernel function over multiple trials using torch.cuda.Event
+    
+    Args:
+        kernel_fn: Function to time
+        *args: Arguments to pass to kernel_fn
+        num_trials: Number of timing trials to run
+        verbose: Whether to print per-trial timing info
+        device: CUDA device to use, if None, use current device
+    
+    Returns:
+        List of elapsed times in milliseconds
+    """
+    if device is None:
+        if verbose: print(f"Using current device: {torch.cuda.current_device()}")
+        device = torch.cuda.current_device()
+    
+    # assert isinstance(device, torch.device) and torch.device(device).type == 'cuda', "Device must be a CUDA device"
+
+    for _ in range(num_warmup):
+        kernel_fn(*args)
+        torch.cuda.synchronize()
+    print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}")
+    elapsed_times = []
+    
+    for trial in range(num_trials):
+        # create event marker default is not interprocess
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+
+        start_event.record()
+        kernel_fn(*args)
+        end_event.record()
+
+        # Synchronize to ensure the events have completed
+        torch.cuda.synchronize(device=device)
+
+        # Calculate the elapsed time in milliseconds
+        elapsed_time_ms = start_event.elapsed_time(end_event)
+        if verbose: print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
+        elapsed_times.append(elapsed_time_ms)
+    
+    return elapsed_times
+
+
+
 
 def run_and_check_correctness(original_model_instance: nn.Module, 
                               new_model_instance: nn.Module, 

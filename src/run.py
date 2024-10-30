@@ -27,7 +27,7 @@ server_args = {
 
 def run_llm(prompt):
     '''
-    Call use common API query function with monkeys
+    query the LLM server with the prompt
     '''
     return query_server(prompt, server_type=SERVER_TYPE
                         , **server_args[SERVER_TYPE])

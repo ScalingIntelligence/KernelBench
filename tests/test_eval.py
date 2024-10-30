@@ -133,7 +133,7 @@ def monkey_style_parallal_process_eval(problem_id: int, samples_range: tuple[int
                 sample_idx=sample_idx,
                 run_name=RUN_NAME,
                 dataset=dataset,
-                device=device,
+                # device=device, 
                 num_times=5
             )
         )
@@ -146,7 +146,7 @@ def monkey_style_parallal_process_eval(problem_id: int, samples_range: tuple[int
         num_workers=1, 
     )
 
-def multiprocess_cuda_eval(problem_id: int, samples_range: tuple[int, int]):
+def multiprocess_cuda_eval(problem_range: tuple[int, int], samples_range: tuple[int, int]):
     """
     This works
     """
@@ -155,49 +155,57 @@ def multiprocess_cuda_eval(problem_id: int, samples_range: tuple[int, int]):
     # Set start method to spawn to work with CUDA
     mp.set_start_method('spawn')
 
-    os.makedirs("results", exist_ok=True)
-    with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
-        f.write(f"Evaluating for problem {problem_id} over sample range {samples_range} \n")
-
     device = torch.device("cuda:1")
     print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
 
 
+    for problem_id in tqdm(range(*problem_range)):
     # Main evaluation loop
-    for sample_id in tqdm(range(*samples_range)):
 
-        print(f"Evaluating for sample {sample_id}")
-        curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device, num_times=5)
-
-        # Create a new process for each evaluation
-        with mp.Pool(1) as pool:
-            try:
-                result = pool.apply(
-                    evaluate_single_sample,
-                    args=(curr_work,)
-                    # (problem_id, sample_id, RUN_NAME, dataset, device)
-                )
-            except KeyboardInterrupt:
-                print("\n [Terminate] Caught KeyboardInterrupt, terminating workers...")
-                pool.terminate()
-                pool.join()
-                raise
-
+        os.makedirs("results", exist_ok=True)
         with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
-            f.write("-" * 128 + "\n")
-            f.write(f"Eval result for sample {sample_id}: {result}\n") 
+            f.write(f"Evaluating for problem {problem_id} over sample range {samples_range} \n")
+
+        for sample_id in tqdm(range(*samples_range)):
+
+            
+            print(f"Evaluating for problem {problem_id} sample {sample_id}")
+            curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device, num_times=5)
+
+            # Create a new process for each evaluation
+            with mp.Pool(1) as pool:
+                try:
+                    result = pool.apply_async(
+                        evaluate_single_sample,
+                        args=(curr_work,),
+                    ).get(timeout=300)
+                except KeyboardInterrupt:
+                    print("\n [Terminate] Caught KeyboardInterrupt, terminating workers...")
+                    pool.terminate()
+                    pool.join()
+                    raise
+                except mp.TimeoutError as e:
+                    with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
+                        f.write("-" * 128 + "\n")
+                        f.write(f"Eval result for sample {sample_id}: timed out\n") 
+                    continue
+
+            with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
+                f.write("-" * 128 + "\n")
+                f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 if __name__ == "__main__":
-    problem_id = 7
+    # problem_id = 7
     # samples_range = (4, 5)
-    samples_range = (0, 30)
+    problem_range = (9, 54)
+    samples_range = (0, 2) # 30 samples
     
     # Check if CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. This test requires a GPU.")
 
-
-    multiprocess_cuda_eval(problem_id, samples_range)
+    # for problem_id in range(8, 54):
+    multiprocess_cuda_eval(problem_range, samples_range)
     # monkey_style_parallal_process_eval(problem_id, samples_range)
 
 

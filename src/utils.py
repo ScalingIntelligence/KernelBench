@@ -4,6 +4,7 @@
 ########################
 
 
+import multiprocessing
 import subprocess
 import re
 from openai import OpenAI
@@ -287,34 +288,34 @@ def maybe_multithread(func, instances, num_workers, *shared_args, **shared_kwarg
 
     return output_data
 
-def maybe_multiprocess(func, instances, num_workers, *shared_args, **shared_kwargs):
-    output_data = []
-    if num_workers not in [1, None]:
-        with tqdm(total=len(instances), smoothing=0) as pbar:
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                # Create a future for running each instance
-                futures = {
-                    executor.submit(
-                        func,
-                        instance,
-                        *shared_args,
-                        **shared_kwargs
-                    ): None
-                    for instance in instances
-                }
-                # Wait for each future to complete
-                for future in as_completed(futures):
-                    pbar.update(1)
-                    try:
-                        result = future.result()
-                        if result is not None:
-                            output_data.append(result)
-                    except Exception as e:
-                        print("Got an error!", e)
-                        continue
-    else:
-        for instance in tqdm(instances):
-            output = func(instance, *shared_args, **shared_kwargs)
-            if output is not None: output_data.append(output)
 
+def maybe_multiprocess_cuda(func, instances, num_workers, *shared_args, **shared_kwargs):
+    """
+    From monkeys, but modified to work with CUDA
+    """
+    output_data = []
+    multiprocessing.set_start_method('spawn', force=True)  # this is necessary for CUDA to work
+
+    with tqdm(total=len(instances), smoothing=0) as pbar:
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            # Create a future for running each instance
+            futures = {
+                executor.submit(
+                    func,
+                    instance,
+                    *shared_args,
+                    **shared_kwargs
+                ): None
+                for instance in instances
+            }
+            # Wait for each future to complete
+            for future in as_completed(futures):
+                pbar.update(1)
+                try:
+                    result = future.result()
+                    if result is not None:
+                        output_data.append(result)
+                except Exception as e:
+                    print("Got an error!", e)
+                    continue
     return output_data
