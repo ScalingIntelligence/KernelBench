@@ -6,7 +6,7 @@ import torch
 import os
 import multiprocessing as mp
 
-MEASURE_PERFORMANCE = False
+MEASURE_PERFORMANCE = True
 
 RUN_NAME = "level2_run_10_28"
 # RUN_NAME = "kernelbench_prompt_v2_level_2"
@@ -55,7 +55,7 @@ class WorkArgs:
     run_name: str
     dataset: list[str]
     device: torch.device
-    num_times: int
+    num_correct_trials: int
 
 
 def run(work, config=None, coordinator=None):
@@ -85,7 +85,7 @@ def evaluate_single_sample(work_args: WorkArgs):
     run_name = work_args.run_name
     dataset = work_args.dataset
     device = work_args.device
-    num_times = work_args.num_times
+    num_correct_trials = work_args.num_correct_trials
 
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
@@ -102,7 +102,7 @@ def evaluate_single_sample(work_args: WorkArgs):
             custom_model_hash=kernel_hash,
             measure_performance=MEASURE_PERFORMANCE,
             verbose=True,
-            num_times=num_times,
+            num_correct_trials=num_correct_trials,
             # move this to config in monkeys
             build_dir=f"/matx/u/simonguo/kernel_eval_build/{run_name}/{problem_id}/{sample_id}",
             device=device
@@ -134,7 +134,7 @@ def monkey_style_parallal_process_eval(problem_id: int, samples_range: tuple[int
                 run_name=RUN_NAME,
                 dataset=dataset,
                 # device=device, 
-                num_times=5
+                num_correct_trials=5
             )
         )
 
@@ -170,7 +170,7 @@ def multiprocess_cuda_eval(problem_range: tuple[int, int], samples_range: tuple[
 
             
             print(f"Evaluating for problem {problem_id} sample {sample_id}")
-            curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device, num_times=5)
+            curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device, num_correct_trials=5)
 
             # Create a new process for each evaluation
             with mp.Pool(1) as pool:
@@ -197,16 +197,23 @@ def multiprocess_cuda_eval(problem_range: tuple[int, int], samples_range: tuple[
 if __name__ == "__main__":
     # problem_id = 7
     # samples_range = (4, 5)
-    problem_range = (9, 54)
-    samples_range = (0, 2) # 30 samples
+    problem_range = (15, 54)
+    samples_range = (2, 10) # 30 samples
     
+    # problem_range = (15, 16)
+    # samples_range = (0, 1)
     # Check if CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. This test requires a GPU.")
 
-    # for problem_id in range(8, 54):
+    # this works great
     multiprocess_cuda_eval(problem_range, samples_range)
+
+    # this doesn't work fully yet
     # monkey_style_parallal_process_eval(problem_id, samples_range)
 
+    # use this to debug (e.g. pdb)
+    # device = torch.device("cuda:1")
+    # evaluate_single_sample(WorkArgs(problem_id=15, sample_idx=0, run_name=RUN_NAME, dataset=dataset, device=device, num_correct_trials=5))
 
 

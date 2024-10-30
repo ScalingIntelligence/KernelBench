@@ -51,12 +51,14 @@ class KernelExecResult(BaseModel):
     compiled: bool = False
     correctness: bool = False
     metadata: dict = {}
+    runtime: float = -1.0 # in us, only recorded if we decide to measure performance
+    runtime_stats: dict = {} # only recorded if we decide to measure performance
     # in us, only recorded if we decide to measure performance
     # can reformat this to be wall clock time
-    torch_cpu_time: float = -1.0
-    torch_gpu_time: float = -1.0
-    custom_cpu_time: float = -1.0
-    custom_gpu_time: float = -1.0
+    # torch_cpu_time: float = -1.0
+    # torch_gpu_time: float = -1.0
+    # custom_cpu_time: float = -1.0
+    # custom_gpu_time: float = -1.0
 
 def load_original_model_and_inputs(model_original_src: str,
                                    context: dict) -> tuple[nn.Module, callable, callable]: 
@@ -137,7 +139,8 @@ def eval_kernel_against_ref(original_model_src: str,
                             custom_model_src: str, 
                             custom_model_hash: str,
                             seed_num: int = 42, 
-                            num_times: int = 1,
+                            num_correct_trials: int = 1,
+                            num_perf_trials: int = 10,
                             verbose: bool = False, 
                             measure_performance: bool = False,
                             build_dir: str = None,
@@ -145,7 +148,7 @@ def eval_kernel_against_ref(original_model_src: str,
     '''
     Evaluate the custom kernel against the original model
 
-    num_times: run the evalutation multiple times and take the average
+    num_correct_trials: run the evalutation multiple times and take the average
     '''
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -211,19 +214,39 @@ def eval_kernel_against_ref(original_model_src: str,
 
     kernel_exec_result = None
     
-    if measure_performance:
-        if verbose: print("[Eval] Checking Both Correctness and Performance")
-        raise NotImplementedError("Not implemented")
-    else:
-        if verbose: print("[Eval] Checking Correctness Only")
-        try:
-            kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, metadata=metadata, num_times=num_times, verbose=verbose, seed=seed_num, device=device)
-        except Exception as e:
-            # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
-            metadata["runtime_error"] = e
-            kernel_exec_result = KernelExecResult(compiled=True, correctness=False, metadata=metadata)
-            # print("EXCEPTION HAPPENS")
+    # Check Correctness
+    if verbose: print("[Eval] Checking Correctness")
+    try:
+        kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, metadata=metadata, num_correct_trials=num_correct_trials, verbose=verbose, seed=seed_num, device=device)
+    except Exception as e:
+        # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
+        metadata["runtime_error"] = e
+        kernel_exec_result = KernelExecResult(compiled=True, correctness=False, metadata=metadata)
+        # print("EXCEPTION HAPPENS")
 
+    # Measure Performance [Optional] | conditioned on compilation + correctness + no exception so far
+    if measure_performance:
+        try: 
+            if kernel_exec_result and kernel_exec_result.correctness:
+                if verbose: print("[Eval] Measuring Performance as Sample is Correct")
+
+                torch.cuda.synchronize(device=device)
+                set_seed(seed_num)
+                inputs = get_inputs()
+                inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
+                model_new = custom_model.cuda(device=device)
+                torch.cuda.synchronize(device=device)
+
+                elapsed_times = time_execution_with_cuda_event(model_new, *inputs, num_trials=num_perf_trials, verbose=verbose, device=device)
+                runtime_stats = get_timing_stats(elapsed_times, device=device)
+                
+                if verbose: print(f"[Eval] Performance Stats: {runtime_stats}")
+                kernel_exec_result.runtime = runtime_stats['mean']
+                kernel_exec_result.runtime_stats = runtime_stats
+        except Exception as e:
+            if verbose: print(f"[Eval] Error in Measuring Performance: {e}")
+            kernel_exec_result.metadata["error_during_performance"] = e
+            
     graceful_eval_cleanup(context, device)
     return kernel_exec_result
     
@@ -245,23 +268,30 @@ def register_and_format_exception(exception_type: str, exception_msg: Exception 
     return metadata
 
 
-def get_timing_stats(elapsed_times: list[float]) -> dict:
+def get_timing_stats(elapsed_times: list[float], device: torch.device=None) -> dict:
     """Get timing statistics from a list of elapsed times.
     
     Args:
         elapsed_times: List of elapsed times in milliseconds
-        
+        device: CUDA device, record device info
     Returns:
         Dict containing mean, std, min, max and num_trials
         all timing are in ms
     """
-    return {
+
+    stats = {
         'mean': float(f"{np.mean(elapsed_times):.3g}"),
         'std': float(f"{np.std(elapsed_times):.3g}"),
         'min': float(f"{np.min(elapsed_times):.3g}"),
         'max': float(f"{np.max(elapsed_times):.3g}"),
         'num_trials': len(elapsed_times),
     }
+
+    if device:
+        stats["hardware"] = torch.cuda.get_device_name(device=device)
+        stats["device"] = device # for debugging
+
+    return stats
 
 def time_execution_with_cuda_event(kernel_fn: callable,
                       *args,
@@ -290,7 +320,7 @@ def time_execution_with_cuda_event(kernel_fn: callable,
 
     for _ in range(num_warmup):
         kernel_fn(*args)
-        torch.cuda.synchronize()
+        torch.cuda.synchronize(device=device)
     print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}")
     elapsed_times = []
     
@@ -320,7 +350,7 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                               new_model_instance: nn.Module, 
                               get_inputs_fn: callable, 
                               metadata: dict,
-                              num_times: int,
+                              num_correct_trials: int,
                               verbose=False, 
                               seed=42,
                               device=None) -> KernelExecResult:
@@ -329,17 +359,17 @@ def run_and_check_correctness(original_model_instance: nn.Module,
     assume model already loaded and compiled (loaded and compiled in the caller)
     this is all on GPU, requiring cuda device and transfer .cuda()
 
-    num_times: run the evalutation multiple times with (ideally) different random inputs to ensure correctness
+    num_correct_trials: run the evalutation multiple times with (ideally) different random inputs to ensure correctness
     """
     pass_count = 0
 
-    # Generate num_times seeds deterministically from the initial seed
+    # Generate num_correct_trials seeds deterministically from the initial seed
     torch.manual_seed(seed)
-    correctness_trial_seeds = [torch.randint(0, 2**32 - 1, (1,)).item() for _ in range(num_times)]
+    correctness_trial_seeds = [torch.randint(0, 2**32 - 1, (1,)).item() for _ in range(num_correct_trials)]
 
     with torch.no_grad():
         
-        for trial in range(num_times):
+        for trial in range(num_correct_trials):
             
             trial_seed = correctness_trial_seeds[trial]
             if verbose: print(f"[Eval] Generating Random Input with seed {trial_seed}")
@@ -389,12 +419,12 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                 # break
 
 
-    if verbose: print(f"[Eval] Pass count: {pass_count}, num_times: {num_times}")
+    if verbose: print(f"[Eval] Pass count: {pass_count}, num_correct_trials: {num_correct_trials}")
 
     # put all the useful info here!
-    metadata["correctness_trials"] = f"({pass_count} / {num_times})"
+    metadata["correctness_trials"] = f"({pass_count} / {num_correct_trials})"
 
-    if pass_count == num_times:
+    if pass_count == num_correct_trials:
         return KernelExecResult(compiled=True, correctness=True, metadata=metadata)
     else:
         return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
