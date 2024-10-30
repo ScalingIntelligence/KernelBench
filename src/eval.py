@@ -136,6 +136,13 @@ def eval_kernel_against_ref(original_model_src: str,
     '''
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
+    torch.set_printoptions(
+        precision=4,        # Decimal places
+        threshold=10,     # Total number of elements before truncating
+        edgeitems=3,       # Number of elements at beginning and end of dimensions
+        linewidth=80       # Maximum width before wrapping
+    )
+    
     context = {}
 
     if verbose:
@@ -164,8 +171,9 @@ def eval_kernel_against_ref(original_model_src: str,
     except Exception as e:
         print(f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}")
         # TODO: add metadata for compilation error (how to we get the compilation error message?)
+        metadata["compilation_error"] = e
         graceful_eval_cleanup(context)
-        return KernelExecResult(compiled=False) # skip further steps
+        return KernelExecResult(compiled=False, metadata=metadata) # skip further steps
     
     try:
         with torch.no_grad():    
@@ -199,6 +207,22 @@ def eval_kernel_against_ref(original_model_src: str,
     graceful_eval_cleanup(context)
     return kernel_exec_result
     
+
+def register_and_format_exception(exception_type: str, exception_msg: Exception | str, metadata: dict, verbose:bool=False, truncate=False, max_length=200):
+    """
+    max_length characters
+
+    NOTE: I can't get torch truncate to work during exception handling so I have this for now
+    """
+    # Truncate exception message if too long
+    exception_str = str(exception_msg)
+    if truncate and len(exception_str) > max_length:
+        exception_str = exception_str[:max_length-3] + "..."
+    
+    if verbose: print(f"[Exception {exception_type}] {exception_str} ")
+    metadata[exception_type] = exception_str
+    
+    return metadata
 
 def run_and_check_correctness(original_model_instance: nn.Module, 
                               new_model_instance: nn.Module, 
@@ -246,7 +270,9 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                 output_new = model_new(*inputs)             
                 torch.cuda.synchronize()
                 if output.shape != output_new.shape:
-                    metadata["correctness_issue"] = f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
+                    metadata = register_and_format_exception(
+                        "correctness_issue",  f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}", metadata
+                    )
                     if verbose: print(f"[FAIL] trial {trial}: Output shape mismatch: Expected {output.shape}, got {output_new.shape}")
                     break # no hope, just never run further trials
                 
@@ -262,23 +288,14 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                     pass_count += 1
                     if verbose: print(f"[PASS] trial {trial}: New Model matches Model")
 
-            except Exception as e:
-                print("EXCEPTION HAPPENS during correctness check")
-                # NOTE: something to discusss
-                # Error in launching kernel for ModelNew CUDA error: invalid configuration argument
-                # Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
-                # NOTE: count runtime CUDA kernel as compile issue for now
-                torch.cuda.synchronize()
-                # check for any CUDA errors that may have occurred
-                if torch.cuda.is_available():
-                    cuda_err = torch.cuda.get_last_error()
-                    if cuda_err.value != 0:  # 0 means no error
-                        metadata["runtime_error"] = f"Error in launching kernel for ModelNew {e}; CUDA error: {cuda_err}"
-                        if verbose:
-                            print(f"[FAIL] CUDA error detected: {cuda_err}")
-                        break
-                print(metadata)
-                break
+            except Exception as e:                
+                print("[Error] Exception happens during correctness check")
+                print(f"Error in launching kernel for ModelNew: {e}")
+
+                metadata = register_and_format_exception("runtime_error", e, metadata, truncate=True)
+                return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
+                # break
+
 
     if verbose: print(f"[Eval] Pass count: {pass_count}, num_times: {num_times}")
 
@@ -287,8 +304,6 @@ def run_and_check_correctness(original_model_instance: nn.Module,
     metadata["hardware"] = torch.cuda.get_device_name()
 
     if pass_count == num_times:
-
-
         return KernelExecResult(compiled=True, correctness=True, metadata=metadata)
     else:
         return KernelExecResult(compiled=True, correctness=False, metadata=metadata)

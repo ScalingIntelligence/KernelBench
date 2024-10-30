@@ -15,10 +15,6 @@ PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
 SERVER_URL = "http://matx3.stanford.edu:9091" 
 
-problem_id = 3
-sample_id = 16
-
-
 # Check if CUDA is available
 if not torch.cuda.is_available():
     raise RuntimeError("CUDA device not available. This test requires a GPU.")
@@ -26,6 +22,7 @@ if not torch.cuda.is_available():
 device = torch.cuda.current_device()
 print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
 
+torch.set_printoptions(precision=4, threshold=10)
 
 dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
 
@@ -79,6 +76,10 @@ def run(work, config=None, coordinator=None):
     # if config.testing: return run_inner(work)
     try:
         eval_result = run_inner(work)
+        with open(f"results/eval_result_problem_{work.problem_id}.txt", "a") as f:
+            f.write("-" * 128 + "\n")
+            f.write(f"Eval result for sample {work.sample_idx}: {eval_result}\n") 
+
         print("-" * 32)
         print(f"Eval result for problem {work.problem_id} sample {work.sample_idx}: {eval_result}")
         print("-" * 32)
@@ -108,7 +109,7 @@ def evaluate_single_sample(work_args: WorkArgs):
             custom_model_src=kernel_src,
             measure_performance=MEASURE_PERFORMANCE,
             verbose=True,
-            num_times=5,
+            num_times=num_times,
             device=device
         )
         return eval_result
@@ -123,13 +124,13 @@ def evaluate_single_sample(work_args: WorkArgs):
 
 
 
-def monkey_style_parallal_process_eval():
-    """
+def monkey_style_parallal_process_eval(problem_id: int, samples_range: tuple[int, int]):
+    """"
     Same API as monkey maybe_multi_processing
     This doesn't work yet, suffer the same cascading errors as before
     """
     to_run =  []
-    for sample_idx in range(5, 10):
+    for sample_idx in range(*samples_range):
         
         to_run.append(
             WorkArgs(
@@ -137,12 +138,13 @@ def monkey_style_parallal_process_eval():
                 sample_idx=sample_idx,
                 run_name=RUN_NAME,
                 dataset=dataset,
-                device=device
+                device=device,
+                num_times=5
             )
         )
 
     # WHY DOES THIS !!!NOT!!! WORK?
-    utils.maybe_multiprocess(
+    utils.maybe_multiprocess_cuda(
         func=run,
         instances=to_run,
         # only limited to 1 worker for now, don't worry about concurrecy
@@ -180,12 +182,12 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
             f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 if __name__ == "__main__":
-    problem_id = 4
+    problem_id = 5
     # samples_range = (4, 5)
     samples_range = (0, 30)
     
-    multiprocess_eval(problem_id, samples_range)
-   
+    # multiprocess_eval(problem_id, samples_range)
+    monkey_style_parallal_process_eval(problem_id, samples_range)
 
 
 
