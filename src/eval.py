@@ -10,6 +10,9 @@ import numpy as np
 
 from src import utils
 
+REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',))
+KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+
 def fetch_kernel_from_database(run_name: str, problem_id: int, sample_id: int, server_url: str):
     """
     Intenral to us with our django database
@@ -24,7 +27,7 @@ def fetch_kernel_from_database(run_name: str, problem_id: int, sample_id: int, s
     assert str(response_json["problem_id"]) == str(problem_id)
     return response_json
 
-def fetch_ref_arch_from_problem_id(problem_id, problems) -> str:
+def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str:
     
     '''
     Fetches the reference architecture in string for a given problem_id
@@ -39,8 +42,15 @@ def fetch_ref_arch_from_problem_id(problem_id, problems) -> str:
         raise FileNotFoundError(f"Problem file at {problem_path} does not exist.")
     
     ref_arch = utils.read_file(problem_path)
-    return ref_arch
+    if not with_name:
+        return ref_arch
+    else:
+        return (problem_path, ref_arch)
 
+def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
+    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, 'level'+str(level))
+    dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 def set_seed(seed: int):
     torch.manual_seed(seed)
@@ -430,7 +440,8 @@ def run_and_check_correctness(original_model_instance: nn.Module,
         return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
 
 # if __name__ == "__main__":
-#     fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")
+    # fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")
+    # print(fetch_ref_arch_from_level_problem_id("2", 1, with_name=True))
 
 
 
