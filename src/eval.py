@@ -43,7 +43,7 @@ def fetch_ref_arch_from_problem_id(problem_id, problems) -> str:
 
 def set_seed(seed: int):
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed(seed) # note this only sets the current device
 
 
 class KernelExecResult(BaseModel):
@@ -107,18 +107,19 @@ def _cleanup_cuda_extensions():
     if os.path.exists(torch_extensions_path):
         shutil.rmtree(torch_extensions_path)
 
-def graceful_eval_cleanup(curr_context: dict):
+def graceful_eval_cleanup(curr_context: dict, device: torch.device):
     """
     Clean up env, gpu cache, and compiled CUDA extensions after evaluation
     """    # delete ran-specific function definitions before next eval run
     del curr_context
      # Clear CUDA cache and reset GPU state
-    torch.cuda.empty_cache()
+    with torch.cuda.device(device):
+        torch.cuda.empty_cache()
 
-    # does this help?
-    torch.cuda.reset_peak_memory_stats()
+        # does this help?
+        torch.cuda.reset_peak_memory_stats(device=device)
     
-    torch.cuda.synchronize()  # Wait for all CUDA operations to complete
+        torch.cuda.synchronize(device=device)  # Wait for all CUDA operations to complete
     
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
@@ -128,7 +129,7 @@ def eval_kernel_against_ref(original_model_src: str,
                             num_times: int = 1,
                             verbose: bool = False, 
                             measure_performance: bool = False,
-                            device: torch.device = None) -> KernelExecResult:
+                            device: torch.device = torch.cuda.current_device()) -> KernelExecResult:
     '''
     Evaluate the custom kernel against the original model
 
@@ -143,16 +144,19 @@ def eval_kernel_against_ref(original_model_src: str,
         linewidth=80       # Maximum width before wrapping
     )
     
+    # set CUDA device
+    torch.cuda.set_device(device)
+
     context = {}
 
     if verbose:
-        print("[Eval] Start Evalulation!")
+        print(f"[Eval] Start Evalulation! on device: {device}")
         print("[Eval] Loading Original Model")
     
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(original_model_src, context)
     set_seed(seed_num) # set seed for reproducible input
     init_inputs = get_init_inputs()
-    init_inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in init_inputs]
+    init_inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs]
 
     with torch.no_grad():
         set_seed(seed_num) # set seed for reproducible weights
@@ -161,18 +165,20 @@ def eval_kernel_against_ref(original_model_src: str,
         if verbose: print("[Eval] Original Model Loaded")
     if verbose: print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
     
-    metadata = {} # for result metadata
+    metadata = {} # for storing result metadata
+    metadata["hardware"] = torch.cuda.get_device_name(device=device)
+    metadata["device"] = device # for debugging
 
     #this is where compilation happens
     try:
-        os.environ['TORCH_USE_CUDA_DSA'] = "1"
+        os.environ['TORCH_USE_CUDA_DSA'] = "1" # compile with device side assertion
         ModelNew = load_custom_model(custom_model_src, context)
-        torch.cuda.synchronize() # not sure if this is too much 
+        torch.cuda.synchronize(device=device) # not sure if this is too much 
     except Exception as e:
         print(f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}")
         # TODO: add metadata for compilation error (how to we get the compilation error message?)
         metadata["compilation_error"] = e
-        graceful_eval_cleanup(context)
+        graceful_eval_cleanup(context, device)
         return KernelExecResult(compiled=False, metadata=metadata) # skip further steps
     
     try:
@@ -180,12 +186,12 @@ def eval_kernel_against_ref(original_model_src: str,
             set_seed(seed_num) # set seed for reproducible weights
             custom_model = ModelNew(*init_inputs)
             assert hasattr(custom_model, 'forward')  
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(device=device)
         if verbose: print("[Eval] New Model with Custom CUDA Kernel Loaded")
     except RuntimeError as e:
         print(f"Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}")
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
-        graceful_eval_cleanup(context)
+        graceful_eval_cleanup(context, device)
         metadata["runtime_error"] = e
         return KernelExecResult(compiled=True, correctness=False, metadata=metadata) # skip further steps
 
@@ -197,14 +203,14 @@ def eval_kernel_against_ref(original_model_src: str,
     else:
         if verbose: print("[Eval] Checking Correctness Only")
         try:
-            kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, num_times=num_times, verbose=verbose, seed=seed_num, device=device)
+            kernel_exec_result = run_and_check_correctness(original_model, custom_model, get_inputs, metadata=metadata, num_times=num_times, verbose=verbose, seed=seed_num, device=device)
         except Exception as e:
             # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
             metadata["runtime_error"] = e
             kernel_exec_result = KernelExecResult(compiled=True, correctness=False, metadata=metadata)
             # print("EXCEPTION HAPPENS")
 
-    graceful_eval_cleanup(context)
+    graceful_eval_cleanup(context, device)
     return kernel_exec_result
     
 
@@ -227,6 +233,7 @@ def register_and_format_exception(exception_type: str, exception_msg: Exception 
 def run_and_check_correctness(original_model_instance: nn.Module, 
                               new_model_instance: nn.Module, 
                               get_inputs_fn: callable, 
+                              metadata: dict,
                               num_times: int,
                               verbose=False, 
                               seed=42,
@@ -239,7 +246,6 @@ def run_and_check_correctness(original_model_instance: nn.Module,
     num_times: run the evalutation multiple times with (ideally) different random inputs to ensure correctness
     """
     pass_count = 0
-    metadata = {}
 
     # Generate num_times seeds deterministically from the initial seed
     torch.manual_seed(seed)
@@ -254,27 +260,27 @@ def run_and_check_correctness(original_model_instance: nn.Module,
 
             set_seed(trial_seed)
             inputs = get_inputs_fn()
-            inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in inputs]
+            inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
 
             set_seed(trial_seed)
-            model = original_model_instance.cuda()
+            model = original_model_instance.cuda(device=device)
 
             set_seed(trial_seed)
-            model_new = new_model_instance.cuda()
+            model_new = new_model_instance.cuda(device=device)
 
             output = model(*inputs)
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(device=device)
             # ensure all GPU operations are completed before checking results
 
             try:
                 output_new = model_new(*inputs)             
-                torch.cuda.synchronize()
+                torch.cuda.synchronize(device=device)
                 if output.shape != output_new.shape:
                     metadata = register_and_format_exception(
                         "correctness_issue",  f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}", metadata
                     )
                     if verbose: print(f"[FAIL] trial {trial}: Output shape mismatch: Expected {output.shape}, got {output_new.shape}")
-                    break # no hope, just never run further trials
+                    return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
                 
                 # check output value difference
                 if not torch.allclose(output, output_new, atol=1e-03): # fail
@@ -301,7 +307,6 @@ def run_and_check_correctness(original_model_instance: nn.Module,
 
     # put all the useful info here!
     metadata["correctness_trials"] = f"({pass_count} / {num_times})"
-    metadata["hardware"] = torch.cuda.get_device_name()
 
     if pass_count == num_times:
         return KernelExecResult(compiled=True, correctness=True, metadata=metadata)

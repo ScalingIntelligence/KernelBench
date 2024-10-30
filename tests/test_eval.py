@@ -14,13 +14,7 @@ RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
 SERVER_URL = "http://matx3.stanford.edu:9091" 
-
-# Check if CUDA is available
-if not torch.cuda.is_available():
-    raise RuntimeError("CUDA device not available. This test requires a GPU.")
-
-device = torch.cuda.current_device()
-print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
+# SERVER_URL = "http://localhost:9091"
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -52,10 +46,6 @@ dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
 #         print(f"THIS SHOULD NOT PRINT for sample {sample_id}: Some issue evaluating for kernel: {e} ")
 #     finally:
 #         torch.cuda.empty_cache()
-
-# NOTE: this should isolate each run
-# however, let me mirgate the monkey codebase code to do this instaed of my little hack
-# DON'T USE THIS YET! just run and see how it would be 
 
 
 @dataclass
@@ -151,7 +141,7 @@ def monkey_style_parallal_process_eval(problem_id: int, samples_range: tuple[int
         num_workers=1, 
     )
 
-def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
+def multiprocess_cuda_eval(problem_id: int, samples_range: tuple[int, int]):
     """
     This works
     """
@@ -164,6 +154,10 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
     with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
         f.write(f"Evaluating for problem {problem_id} over sample range {samples_range} \n")
 
+    device = torch.device("cuda:1")
+    print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
+
+
     # Main evaluation loop
     for sample_id in tqdm(range(*samples_range)):
 
@@ -172,22 +166,34 @@ def multiprocess_eval(problem_id: int, samples_range: tuple[int, int]):
 
         # Create a new process for each evaluation
         with mp.Pool(1) as pool:
-            result = pool.apply(
-                evaluate_single_sample,
-                args=(curr_work,)
-                # (problem_id, sample_id, RUN_NAME, dataset, device)
-            )
+            try:
+                result = pool.apply(
+                    evaluate_single_sample,
+                    args=(curr_work,)
+                    # (problem_id, sample_id, RUN_NAME, dataset, device)
+                )
+            except KeyboardInterrupt:
+                print("\n [Terminate] Caught KeyboardInterrupt, terminating workers...")
+                pool.terminate()
+                pool.join()
+                raise
+
         with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
             f.write("-" * 128 + "\n")
             f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 if __name__ == "__main__":
-    problem_id = 5
+    problem_id = 7
     # samples_range = (4, 5)
     samples_range = (0, 30)
     
-    # multiprocess_eval(problem_id, samples_range)
-    monkey_style_parallal_process_eval(problem_id, samples_range)
+    # Check if CUDA is available
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA device not available. This test requires a GPU.")
+
+
+    multiprocess_cuda_eval(problem_id, samples_range)
+    # monkey_style_parallal_process_eval(problem_id, samples_range)
 
 
 
