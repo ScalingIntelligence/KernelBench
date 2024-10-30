@@ -21,7 +21,7 @@ def fetch_kernel_from_database(run_name: str, problem_id: int, sample_id: int, s
     assert response.status_code == 200
     response_json = response.json()
     assert str(response_json["problem_id"]) == str(problem_id)
-    return response_json["kernel"]
+    return response_json
 
 def fetch_ref_arch_from_problem_id(problem_id, problems) -> str:
     
@@ -83,11 +83,20 @@ def load_original_model_and_inputs(model_original_src: str,
     return (Model, get_init_inputs_fn, get_inputs_fn)
 
 def load_custom_model(model_custom_src: str,
-                      context: dict) -> nn.Module:
+                      context: dict,
+                      build_directory: str = None) -> nn.Module:
     """
     Load class from custom NN.module pytorch code
     this is the code output by LLM with calls to custom cuda kernels
     """
+    if build_directory:
+        context['BUILD_DIRECTORY'] = build_directory
+        # Add import at the start of the source code
+        model_custom_src = (
+            "import os\n"
+            f"os.environ['TORCH_EXTENSIONS_DIR'] = '{build_directory}'\n"
+        ) + model_custom_src
+    
     try:
         compile(model_custom_src, "<string>", "exec")
         exec(model_custom_src, context)
@@ -125,10 +134,12 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
 
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
+                            custom_model_hash: str,
                             seed_num: int = 42, 
                             num_times: int = 1,
                             verbose: bool = False, 
                             measure_performance: bool = False,
+                            build_dir: str = None,
                             device: torch.device = torch.cuda.current_device()) -> KernelExecResult:
     '''
     Evaluate the custom kernel against the original model
@@ -172,7 +183,9 @@ def eval_kernel_against_ref(original_model_src: str,
     #this is where compilation happens
     try:
         os.environ['TORCH_USE_CUDA_DSA'] = "1" # compile with device side assertion
-        ModelNew = load_custom_model(custom_model_src, context)
+        # add hash later to distinguish between multi-turn kernels
+        if build_dir: build_dir = os.path.join(build_dir, custom_model_hash)
+        ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device) # not sure if this is too much 
     except Exception as e:
         print(f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}")

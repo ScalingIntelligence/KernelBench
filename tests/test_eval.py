@@ -91,15 +91,20 @@ def evaluate_single_sample(work_args: WorkArgs):
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
     
     # fetch kernel code from database
-    kernel_src = eval.fetch_kernel_from_database(run_name, problem_id, sample_id, SERVER_URL)
+    kernel = eval.fetch_kernel_from_database(run_name, problem_id, sample_id, SERVER_URL)
+    kernel_src = kernel["kernel"]
+    kernel_hash = kernel["kernel_hash"]
     assert kernel_src is not None, f"Kernel not found for sample {sample_id}"
     try:
         eval_result = eval.eval_kernel_against_ref(
         original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
+            custom_model_hash=kernel_hash,
             measure_performance=MEASURE_PERFORMANCE,
             verbose=True,
             num_times=num_times,
+            # move this to config in monkeys
+            build_dir=f"/matx/u/simonguo/kernel_eval_build/{run_name}/{problem_id}/{sample_id}",
             device=device
         )
         return eval_result
