@@ -156,6 +156,36 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
     
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
+
+
+def build_compile_cache( custom_model_src: str, 
+                        custom_model_hash: str,
+                        verbose: bool = False, 
+                        build_dir: str = None) -> True:
+    '''
+    Try to build the compiled cuda code for sample and store in the cache directory
+    Should be able to run on CPUs to do this massively in parallel
+    
+    Don't limit ninja to set default number of workers, let it use all the cpu cores possible
+    '''
+    context = {}
+    
+    if verbose:
+        print("[Compilation] Pre-compile custom cuda binaries")
+
+    try:
+        if build_dir: build_dir = os.path.join(build_dir, custom_model_hash)
+        
+        os.environ['TORCH_USE_CUDA_DSA'] = "1" # compile with device side assertion
+        # add hash for later to distinguish between multi-turn kernels
+        load_custom_model(custom_model_src, context, build_dir)
+        if verbose: print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
+    except Exception as e:
+        print(f"Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        return False
+    
+    return True
+
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
                             custom_model_hash: str,
@@ -169,7 +199,9 @@ def eval_kernel_against_ref(original_model_src: str,
     '''
     Evaluate the custom kernel against the original model
 
-    num_correct_trials: run the evalutation multiple times and take the average
+    num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
+    num_perf_trials: run the evalutation many times to take the average
+    device: GPU (cuda) device to run the evalutation on
     '''
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -208,7 +240,7 @@ def eval_kernel_against_ref(original_model_src: str,
     #this is where compilation happens
     try:
         os.environ['TORCH_USE_CUDA_DSA'] = "1" # compile with device side assertion
-        # add hash later to distinguish between multi-turn kernels
+        # add hash for later to distinguish between multi-turn kernels
         if build_dir: build_dir = os.path.join(build_dir, custom_model_hash)
         ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device) # not sure if this is too much 
@@ -219,6 +251,7 @@ def eval_kernel_against_ref(original_model_src: str,
         graceful_eval_cleanup(context, device)
         return KernelExecResult(compiled=False, metadata=metadata) # skip further steps
     
+    # at this point we passed compilation
     try:
         with torch.no_grad():    
             set_seed(seed_num) # set seed for reproducible weights
