@@ -92,6 +92,7 @@ def evaluate_single_sample(work_args: WorkArgs, configs: dict):
     device = work_args.device
     num_correct_trials = configs["num_correct_trials"]
     num_perf_trials = configs["num_perf_trials"]    
+    verbose = configs["verbose"]
 
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
@@ -107,7 +108,7 @@ def evaluate_single_sample(work_args: WorkArgs, configs: dict):
             custom_model_src=kernel_src,
             custom_model_hash=kernel_hash,
             measure_performance=MEASURE_PERFORMANCE,
-            verbose=True,
+            verbose=verbose,
             num_correct_trials=num_correct_trials,
             num_perf_trials=num_perf_trials,
             # move this to config in monkeys
@@ -232,11 +233,32 @@ def batch_eval(problem_range: tuple[int, int], samples_range: tuple[int, int], c
                 (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=RUN_NAME, dataset=dataset, device=torch.device(f"cuda:{i%NUM_GPU_DEVICES}")), configs)
                 for i, (p_id, s_idx) in enumerate(curr_work_batch)
             ]
+
+
             start_time = time.time()
-            results = pool.starmap(
-                evaluate_single_sample,
-                work_args
-            )
+
+            async_results = []
+            for work_arg in work_args:
+                async_results.append(pool.apply_async(evaluate_single_sample, work_arg))
+
+            # Collect results with individual timeouts
+            results = []
+            for i, async_result in enumerate(async_results):
+                try:
+                    result = async_result.get(timeout=configs["timeout"])  # 5 minutes timeout per evaluation
+                    results.append(result)
+                except mp.TimeoutError:
+                    problem_id, sample_idx = curr_work_batch[i]
+                    print(f"[WARNING] Evaluation timed out for Problem ID: {problem_id}, Sample ID: {sample_idx}")
+                    results.append(None)
+                except Exception as e:
+                    problem_id, sample_idx = curr_work_batch[i]
+                    print(f"[ERROR] Evaluation failed for Problem ID: {problem_id}, Sample ID: {sample_idx}: {str(e)}")
+                    results.append(None)
+            # results = pool.starmap(
+            #     evaluate_single_sample,
+            #     work_args
+            # )
             end_time = time.time()
 
             for result in results:
@@ -260,11 +282,12 @@ if __name__ == "__main__":
     # Check if CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. This test requires a GPU.")
+    
+    # these will go into pydra in the future
+    configs = {"num_correct_trials": 5, "num_perf_trials": 100, "timeout": 100, "verbose": False}
 
-    configs = {"num_correct_trials": 5, "num_perf_trials": 10}
-
-    problem_range = (38, 39)
-    samples_range = (0, 10)
+    problem_range = (3, 4)
+    samples_range = (0, 15)
 
     # this works great, launch process one at a time
     # cuda_eval_process(problem_range, samples_range, configs)
