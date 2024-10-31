@@ -1,20 +1,28 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class Model(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
+    """
+    Simple model that performs a convolution, applies Mish, and another Mish.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(Model, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
 
-    def forward(self, a, b):
-        return a + b
+    def forward(self, x):
+        x = self.conv(x)
+        x = torch.nn.functional.mish(x)
+        x = torch.nn.functional.mish(x)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
 
 def get_inputs():
-    # randomly generate input tensors based on the model architecture
-    a = torch.randn(1, 128).cuda()
-    b = torch.randn(1, 128).cuda()
-    return [a, b]
+    return [torch.randn(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
-    # randomly generate tensors required for initialization based on the model architecture
-    return []
+    return [in_channels, out_channels, kernel_size]
