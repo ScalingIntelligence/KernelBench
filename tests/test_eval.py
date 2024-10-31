@@ -93,6 +93,7 @@ def evaluate_single_sample(work_args: WorkArgs, configs: dict):
     num_correct_trials = configs["num_correct_trials"]
     num_perf_trials = configs["num_perf_trials"]    
     verbose = configs["verbose"]
+    timeout = configs["timeout"]
 
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
@@ -170,6 +171,7 @@ def cuda_eval_process(problem_range: tuple[int, int], samples_range: tuple[int, 
     device = torch.device("cuda:1")
     print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
     
+    timeout = configs["timeout"]
 
     for problem_id in tqdm(range(*problem_range)):
     # Main evaluation loop
@@ -190,7 +192,7 @@ def cuda_eval_process(problem_range: tuple[int, int], samples_range: tuple[int, 
                     result = pool.apply_async(
                         evaluate_single_sample,
                         args=(curr_work, configs),
-                    ).get(timeout=300)
+                    ).get(timeout=timeout)
                 except KeyboardInterrupt:
                     print("\n [Terminate] Caught KeyboardInterrupt, terminating workers...")
                     pool.terminate()
@@ -207,7 +209,7 @@ def cuda_eval_process(problem_range: tuple[int, int], samples_range: tuple[int, 
                 f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 
-def batch_eval(problem_range: tuple[int, int], samples_range: tuple[int, int], configs: dict):
+def batch_eval(total_work: list[tuple[int, int]], configs: dict):
     """
     Batch evaluation across multiple GPUs
     """
@@ -215,60 +217,61 @@ def batch_eval(problem_range: tuple[int, int], samples_range: tuple[int, int], c
         mp.set_start_method('spawn')
 
     # construct a list of work args
-    total_work = []
-    for problem_id in range(*problem_range):
-        for sample_id in range(*samples_range):
-            total_work.append((problem_id, sample_id))
+    num_gpu_devices = configs.get("num_gpu_devices", torch.cuda.device_count())
+    batch_size = num_gpu_devices
+    
+    with tqdm(total=len(total_work), desc="Processing batches") as pbar:
 
-    while len(total_work) > 0:
-        curr_work_batch = total_work[:NUM_GPU_DEVICES]
-        total_work = total_work[NUM_GPU_DEVICES:]
-        print(f"[Total Work] {len(total_work)}")
+        while len(total_work) > 0:
+            curr_work_batch = total_work[:batch_size]
+            total_work = total_work[batch_size:] # pop the first batch_size elements
+            print(f"[Curr Batch] {len(curr_work_batch)} tasks over {num_gpu_devices} GPUs; [Total Work left] {len(total_work)}")
 
-        assert len(curr_work_batch) <= NUM_GPU_DEVICES
+            assert len(curr_work_batch) <= num_gpu_devices
 
-        with mp.Pool(NUM_GPU_DEVICES) as pool:
+            with mp.Pool(num_gpu_devices) as pool:
 
-            work_args = [
-                (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=RUN_NAME, dataset=dataset, device=torch.device(f"cuda:{i%NUM_GPU_DEVICES}")), configs)
-                for i, (p_id, s_idx) in enumerate(curr_work_batch)
-            ]
+                work_args = [
+                    (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=RUN_NAME, dataset=dataset, device=torch.device(f"cuda:{i%batch_size}")), configs)
+                    for i, (p_id, s_idx) in enumerate(curr_work_batch)
+                ]
+                
+                start_time = time.time()
 
+                async_results = []
+                for work_arg in work_args:
+                    async_results.append(pool.apply_async(evaluate_single_sample, work_arg))
 
-            start_time = time.time()
-
-            async_results = []
-            for work_arg in work_args:
-                async_results.append(pool.apply_async(evaluate_single_sample, work_arg))
-
-            # Collect results with individual timeouts
-            results = []
-            for i, async_result in enumerate(async_results):
-                try:
-                    result = async_result.get(timeout=configs["timeout"])  # 5 minutes timeout per evaluation
-                    results.append(result)
-                except mp.TimeoutError:
+                # Collect results with individual timeouts
+                results = []
+                for i, async_result in enumerate(async_results):
                     problem_id, sample_idx = curr_work_batch[i]
-                    print(f"[WARNING] Evaluation timed out for Problem ID: {problem_id}, Sample ID: {sample_idx}")
-                    results.append(None)
-                except Exception as e:
-                    problem_id, sample_idx = curr_work_batch[i]
-                    print(f"[ERROR] Evaluation failed for Problem ID: {problem_id}, Sample ID: {sample_idx}: {str(e)}")
-                    results.append(None)
-            # results = pool.starmap(
-            #     evaluate_single_sample,
-            #     work_args
-            # )
-            end_time = time.time()
 
-            for result in results:
+                    try:
+                        result = async_result.get(timeout=configs["timeout"])  # 5 minutes timeout per evaluation
+                        results.append((problem_id, sample_idx, result))
+                    except mp.TimeoutError:
+                        print(f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_idx}")
+                        results.append((problem_id, sample_idx, None))
+                    except Exception as e:
+                        print(f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_idx}: {str(e)}")
+                        results.append((problem_id, sample_idx, None))
+
+                        # results.append(None)
+                # results = pool.starmap(
+                #     evaluate_single_sample,
+                #     work_args
+                # )
+                end_time = time.time()
+
+                for problem_id, sample_idx, result in results:
+                    print("-" * 128)
+                    print(f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_idx}")
+                    print(result)
                 print("-" * 128)
-                problem_id, sample_idx = curr_work_batch[results.index(result)]
-                print(f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_idx}")
-                print(result)
-            print("-" * 128)
-            print(f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds")
+                print(f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds")
 
+                pbar.update(len(curr_work_batch))
 
 
 if __name__ == "__main__":
@@ -284,16 +287,23 @@ if __name__ == "__main__":
         raise RuntimeError("CUDA device not available. This test requires a GPU.")
     
     # these will go into pydra in the future
-    configs = {"num_correct_trials": 5, "num_perf_trials": 100, "timeout": 100, "verbose": False}
+    configs = {"num_correct_trials": 5, "num_perf_trials": 100, "timeout": 20, "verbose": False, "num_gpu_devices": NUM_GPU_DEVICES}
 
     problem_range = (3, 4)
-    samples_range = (0, 15)
+    samples_range = (0, 6)
 
     # this works great, launch process one at a time
     # cuda_eval_process(problem_range, samples_range, configs)
 
-    # this does it in a batch manner
-    batch_eval(problem_range, samples_range, configs)
+    # batch eval, in our experiment server it will be replaced by fetching from database
+    total_work = [] # a list of (problem_id, sample_id)
+    for problem_id in range(*problem_range):
+        for sample_id in range(*samples_range):
+            total_work.append((problem_id, sample_id))
+    
+    
+    # # this does it in a batch manner
+    batch_eval(total_work, configs)
 
     
     # use this to debug (e.g. pdb)
