@@ -8,6 +8,7 @@ import os
 from pydantic import BaseModel
 import numpy as np
 import random
+import json
 
 from src import utils
 
@@ -235,7 +236,7 @@ def eval_kernel_against_ref(original_model_src: str,
     
     metadata = {} # for storing result metadata
     metadata["hardware"] = torch.cuda.get_device_name(device=device)
-    metadata["device"] = device # for debugging
+    metadata["device"] = str(device) # for debugging
 
     #this is where compilation happens
     try:
@@ -342,7 +343,7 @@ def get_timing_stats(elapsed_times: list[float], device: torch.device=None) -> d
 
     if device:
         stats["hardware"] = torch.cuda.get_device_name(device=device)
-        stats["device"] = device # for debugging
+        stats["device"] =str(device) # for debugging
 
     return stats
 
@@ -480,9 +481,32 @@ def run_and_check_correctness(original_model_instance: nn.Module,
     else:
         return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
 
+
+
+def check_metadata_serializable(metadata: dict):
+    """
+    Ensure metadata is JSON serializable, 
+    if not, convert non-serializable values to strings
+    """
+    try:
+        json.dumps(metadata)
+    except (TypeError, OverflowError) as e:
+        print(f"[WARNING] Metadata is not JSON serializable, error: {str(e)}")
+        # Convert non-serializable values to strings
+        metadata = {
+            "eval_0": {
+                k: str(v) if not isinstance(v, (dict, list, str, int, float, bool, type(None))) 
+                else v
+                for k, v in metadata["eval_0"].items()
+            }
+        }
+        print(f"[WARNING] Metadata now converted to string: {metadata} to be JSON serializable")
+
+    return metadata
 # if __name__ == "__main__":
     # fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")
     # print(fetch_ref_arch_from_level_problem_id("2", 1, with_name=True))
+
 
 
 

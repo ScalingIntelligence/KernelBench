@@ -89,7 +89,7 @@ def evaluate_single_sample(work_args: WorkArgs, configs: dict):
     num_correct_trials = configs["num_correct_trials"]
     num_perf_trials = configs["num_perf_trials"]    
     verbose = configs["verbose"]
-
+    measure_performance = configs["measure_performance"]
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
     
@@ -103,7 +103,7 @@ def evaluate_single_sample(work_args: WorkArgs, configs: dict):
         original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             custom_model_hash=kernel_hash,
-            measure_performance=MEASURE_PERFORMANCE,
+            measure_performance=measure_performance,
             verbose=verbose,
             num_correct_trials=num_correct_trials,
             num_perf_trials=num_perf_trials,
@@ -282,7 +282,7 @@ if __name__ == "__main__":
         raise RuntimeError("CUDA device not available. This test requires a GPU.")
     
     # these will go into pydra in the future
-    configs = {"num_correct_trials": 5, "num_perf_trials": 100, "timeout": 20, "verbose": False, "num_gpu_devices": NUM_GPU_DEVICES}
+    configs = {"num_correct_trials": 5, "num_perf_trials": 100, "timeout": 20, "verbose": False, "num_gpu_devices": NUM_GPU_DEVICES, "measure_performance": True}
 
     problem_range = (3, 4)
     samples_range = (0, 6)
