@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import time
 
 from tqdm import tqdm
 from src import eval, utils
@@ -6,15 +7,20 @@ import torch
 import os
 import multiprocessing as mp
 
+
+# Global Configs
+ 
 MEASURE_PERFORMANCE = True
 
 RUN_NAME = "level2_run_10_28"
 # RUN_NAME = "kernelbench_prompt_v2_level_2"
-RUN_NAME = "level2_run_10_28"
+# RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level2"
 # query from database, make sure the server is up
 SERVER_URL = "http://matx3.stanford.edu:9091" 
 # SERVER_URL = "http://localhost:9091"
+
+NUM_GPU_DEVICES = 6
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -55,7 +61,6 @@ class WorkArgs:
     run_name: str
     dataset: list[str]
     device: torch.device
-    num_correct_trials: int
 
 
 def run(work, config=None, coordinator=None):
@@ -78,14 +83,15 @@ def run(work, config=None, coordinator=None):
         return None
 
 
-def evaluate_single_sample(work_args: WorkArgs):
+def evaluate_single_sample(work_args: WorkArgs, configs: dict):
     # problem_id, sample_id, run_name, dataset, device
     problem_id = work_args.problem_id
     sample_id = work_args.sample_idx
     run_name = work_args.run_name
     dataset = work_args.dataset
     device = work_args.device
-    num_correct_trials = work_args.num_correct_trials
+    num_correct_trials = configs["num_correct_trials"]
+    num_perf_trials = configs["num_perf_trials"]    
 
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
@@ -103,17 +109,22 @@ def evaluate_single_sample(work_args: WorkArgs):
             measure_performance=MEASURE_PERFORMANCE,
             verbose=True,
             num_correct_trials=num_correct_trials,
+            num_perf_trials=num_perf_trials,
             # move this to config in monkeys
             build_dir=f"/matx/u/simonguo/kernel_eval_build/{run_name}/{problem_id}/{sample_id}",
             device=device
         )
         return eval_result
     except Exception as e:
-        print(f"THIS SHOULD NOT PRINT for sample {sample_id}: Some issue evaluating for kernel: {e} ")
+        print(f"[WARNING] Last level catch on {sample_id}: Some issue evaluating for kernel: {e} ")
         if "CUDA error" in str(e):
-            # TODO: should we count it like this?
+            # NOTE: count this as compilation failure as it is not runnable code
+            metadata = {"cuda_error": f"CUDA Error: {str(e)}",
+                        "hardware": torch.cuda.get_device_name(device=device),
+                        "device": device
+                        } # for debugging
             eval_result = eval.KernelExecResult(compiled=False, correctness=False, 
-                                                metadata={"cuda_error": f"CUDA Error: {str(e)}"})
+                                                metadata=metadata)
             return eval_result
         return None
 
@@ -146,18 +157,18 @@ def monkey_style_parallal_process_eval(problem_id: int, samples_range: tuple[int
         num_workers=1, 
     )
 
-def multiprocess_cuda_eval(problem_range: tuple[int, int], samples_range: tuple[int, int]):
+def cuda_eval_process(problem_range: tuple[int, int], samples_range: tuple[int, int], configs: dict):
     """
-    This works
+    This works, but one at at time
     """
-    
     # THIS WORKS
     # Set start method to spawn to work with CUDA
-    mp.set_start_method('spawn')
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method('spawn')
 
     device = torch.device("cuda:1")
     print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
-
+    
 
     for problem_id in tqdm(range(*problem_range)):
     # Main evaluation loop
@@ -170,14 +181,14 @@ def multiprocess_cuda_eval(problem_range: tuple[int, int], samples_range: tuple[
 
             
             print(f"Evaluating for problem {problem_id} sample {sample_id}")
-            curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device, num_correct_trials=5)
+            curr_work = WorkArgs(problem_id=problem_id, sample_idx=sample_id, run_name=RUN_NAME, dataset=dataset, device=device)
 
             # Create a new process for each evaluation
             with mp.Pool(1) as pool:
                 try:
                     result = pool.apply_async(
                         evaluate_single_sample,
-                        args=(curr_work,),
+                        args=(curr_work, configs),
                     ).get(timeout=300)
                 except KeyboardInterrupt:
                     print("\n [Terminate] Caught KeyboardInterrupt, terminating workers...")
@@ -194,11 +205,55 @@ def multiprocess_cuda_eval(problem_range: tuple[int, int], samples_range: tuple[
                 f.write("-" * 128 + "\n")
                 f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
+
+def batch_eval(problem_range: tuple[int, int], samples_range: tuple[int, int], configs: dict):
+    """
+    Batch evaluation across multiple GPUs
+    """
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method('spawn')
+
+    # construct a list of work args
+    total_work = []
+    for problem_id in range(*problem_range):
+        for sample_id in range(*samples_range):
+            total_work.append((problem_id, sample_id))
+
+    while len(total_work) > 0:
+        curr_work_batch = total_work[:NUM_GPU_DEVICES]
+        total_work = total_work[NUM_GPU_DEVICES:]
+        print(f"[Total Work] {len(total_work)}")
+
+        assert len(curr_work_batch) <= NUM_GPU_DEVICES
+
+        with mp.Pool(NUM_GPU_DEVICES) as pool:
+
+            work_args = [
+                (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=RUN_NAME, dataset=dataset, device=torch.device(f"cuda:{i%NUM_GPU_DEVICES}")), configs)
+                for i, (p_id, s_idx) in enumerate(curr_work_batch)
+            ]
+            start_time = time.time()
+            results = pool.starmap(
+                evaluate_single_sample,
+                work_args
+            )
+            end_time = time.time()
+
+            for result in results:
+                print("-" * 128)
+                problem_id, sample_idx = curr_work_batch[results.index(result)]
+                print(f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_idx}")
+                print(result)
+            print("-" * 128)
+            print(f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds")
+
+
+
 if __name__ == "__main__":
     # problem_id = 7
     # samples_range = (4, 5)
-    problem_range = (15, 54)
-    samples_range = (2, 10) # 30 samples
+    # problem_range = (15, 54)
+    # samples_range = (2, 10) # 30 samples
     
     # problem_range = (15, 16)
     # samples_range = (0, 1)
@@ -206,14 +261,25 @@ if __name__ == "__main__":
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. This test requires a GPU.")
 
-    # this works great
-    multiprocess_cuda_eval(problem_range, samples_range)
+    configs = {"num_correct_trials": 5, "num_perf_trials": 10}
 
-    # this doesn't work fully yet
-    # monkey_style_parallal_process_eval(problem_id, samples_range)
+    problem_range = (38, 39)
+    samples_range = (0, 10)
 
+    # this works great, launch process one at a time
+    # cuda_eval_process(problem_range, samples_range, configs)
+
+    # this does it in a batch manner
+    batch_eval(problem_range, samples_range, configs)
+
+    
     # use this to debug (e.g. pdb)
     # device = torch.device("cuda:1")
     # evaluate_single_sample(WorkArgs(problem_id=15, sample_idx=0, run_name=RUN_NAME, dataset=dataset, device=device, num_correct_trials=5))
 
 
+
+
+
+    # this doesn't work fully yet
+    # monkey_style_parallal_process_eval(problem_id, samples_range)

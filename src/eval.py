@@ -222,7 +222,6 @@ def eval_kernel_against_ref(original_model_src: str,
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
         metadata["runtime_error"] = e
         kernel_exec_result = KernelExecResult(compiled=True, correctness=False, metadata=metadata)
-        # print("EXCEPTION HAPPENS")
 
     # Measure Performance [Optional] | conditioned on compilation + correctness + no exception so far
     if measure_performance:
@@ -316,8 +315,6 @@ def time_execution_with_cuda_event(kernel_fn: callable,
         if verbose: print(f"Using current device: {torch.cuda.current_device()}")
         device = torch.cuda.current_device()
     
-    # assert isinstance(device, torch.device) and torch.device(device).type == 'cuda', "Device must be a CUDA device"
-
     for _ in range(num_warmup):
         kernel_fn(*args)
         torch.cuda.synchronize(device=device)
