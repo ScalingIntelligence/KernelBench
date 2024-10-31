@@ -85,15 +85,10 @@ def run(work, config=None, coordinator=None):
 
 def evaluate_single_sample(work_args: WorkArgs, configs: dict):
     # problem_id, sample_id, run_name, dataset, device
-    problem_id = work_args.problem_id
-    sample_id = work_args.sample_idx
-    run_name = work_args.run_name
-    dataset = work_args.dataset
-    device = work_args.device
+    problem_id, sample_id, run_name, dataset, device = work_args.problem_id, work_args.sample_idx, work_args.run_name, work_args.dataset, work_args.device
     num_correct_trials = configs["num_correct_trials"]
     num_perf_trials = configs["num_perf_trials"]    
     verbose = configs["verbose"]
-    timeout = configs["timeout"]
 
     # fetch reference architecture from problem directory
     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
@@ -209,7 +204,7 @@ def cuda_eval_process(problem_range: tuple[int, int], samples_range: tuple[int, 
                 f.write(f"Eval result for sample {sample_id}: {result}\n") 
 
 
-def batch_eval(total_work: list[tuple[int, int]], configs: dict):
+def batch_eval(total_work: list[tuple[int, int, int]], run_name: str, dataset: list[str], configs: dict):
     """
     Batch evaluation across multiple GPUs
     """
@@ -232,10 +227,10 @@ def batch_eval(total_work: list[tuple[int, int]], configs: dict):
             with mp.Pool(num_gpu_devices) as pool:
 
                 work_args = [
-                    (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=RUN_NAME, dataset=dataset, device=torch.device(f"cuda:{i%batch_size}")), configs)
-                    for i, (p_id, s_idx) in enumerate(curr_work_batch)
+                    (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=run_name, dataset=dataset, device=torch.device(f"cuda:{i%batch_size}")), configs)
+                    for i, (p_id, s_idx, k_id) in enumerate(curr_work_batch)
                 ]
-                
+
                 start_time = time.time()
 
                 async_results = []
@@ -245,17 +240,17 @@ def batch_eval(total_work: list[tuple[int, int]], configs: dict):
                 # Collect results with individual timeouts
                 results = []
                 for i, async_result in enumerate(async_results):
-                    problem_id, sample_idx = curr_work_batch[i]
+                    problem_id, sample_idx, kernel_id = curr_work_batch[i]
 
                     try:
                         result = async_result.get(timeout=configs["timeout"])  # 5 minutes timeout per evaluation
-                        results.append((problem_id, sample_idx, result))
+                        results.append((problem_id, sample_idx, kernel_id, result))
                     except mp.TimeoutError:
                         print(f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_idx}")
-                        results.append((problem_id, sample_idx, None))
+                        results.append((problem_id, sample_idx, kernel_id, None))
                     except Exception as e:
                         print(f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_idx}: {str(e)}")
-                        results.append((problem_id, sample_idx, None))
+                        results.append((problem_id, sample_idx, kernel_id, None))
 
                         # results.append(None)
                 # results = pool.starmap(
@@ -264,9 +259,9 @@ def batch_eval(total_work: list[tuple[int, int]], configs: dict):
                 # )
                 end_time = time.time()
 
-                for problem_id, sample_idx, result in results:
+                for problem_id, sample_idx, kernel_id, result in results:
                     print("-" * 128)
-                    print(f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_idx}")
+                    print(f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_idx}, Kernel ID: {kernel_id}")
                     print(result)
                 print("-" * 128)
                 print(f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds")
@@ -299,11 +294,12 @@ if __name__ == "__main__":
     total_work = [] # a list of (problem_id, sample_id)
     for problem_id in range(*problem_range):
         for sample_id in range(*samples_range):
-            total_work.append((problem_id, sample_id))
+            kernel_id = -1 # fake example
+            total_work.append((problem_id, sample_id, kernel_id))
     
     
     # # this does it in a batch manner
-    batch_eval(total_work, configs)
+    batch_eval(total_work, RUN_NAME, dataset, configs)
 
     
     # use this to debug (e.g. pdb)
