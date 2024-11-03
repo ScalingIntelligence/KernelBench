@@ -14,7 +14,7 @@ def fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=False)
     dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
-def get_time(level_num, problem_id, num_trials=50, torch_compile=False):
+def get_time(level_num, problem_id, num_trials=100, torch_compile=False):
     ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=True)
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(ref_arch_src, context)
