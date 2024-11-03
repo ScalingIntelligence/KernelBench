@@ -98,20 +98,19 @@ def query_server(
 
     
     if server_type == "anthropic":
-        # HACK for now
-        assert type(prompt) == list
-        assert num_completions == 1
-        assert prompt[0]["role"] == "system"
-        assert prompt[1]["role"] == "user"
-            
+        assert type(prompt) == str
+        assert model_name=="claude-3-5-sonnet-20241022", "Only test this version of Claude for now"
         response = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
-            messages=prompt[1:],
-            system=prompt[0]["content"],
+            model=model_name,
+            system="You are a helpful assistant",
+            messages=[
+                {"role": "user", "content": prompt},
+            ],
             temperature=temperature,
             max_tokens=max_tokens,
         )
         outputs = [choice.text for choice in response.content]
+    
     elif server_type == "gemini":
         # HACK for now
         response = model.generate_content(prompt)
@@ -235,7 +234,7 @@ def extract_first_code(output_string: str, code_language_type: str) -> str:
 
     return None
 
-def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[dict]:
+def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
     """
     Construct a list of relative paths to all the python files in the problem directory
     Sorted by the numerical prefix of the filenames
