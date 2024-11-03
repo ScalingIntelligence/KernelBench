@@ -1,5 +1,5 @@
 import os
-from utils import read_file
+from src.utils import read_file
 '''
 Construct Prompts
 As basic as we can be, not to steer the LLM too much
