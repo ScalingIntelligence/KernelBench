@@ -59,50 +59,67 @@ def is_safe_to_send_to_deepseek(prompt):
 
 
 def query_server(
-    prompt, # string if normal prompt, list of dicts if chat prompt
-    temperature=0.,
-    top_p=1.0,
-    max_tokens=128,
-    num_completions=1,  
-    server_port=30000, # only for local server hosted on SGLang
-    server_type="sglang", 
-    model_name="default" # specify model type
+    prompt: str | list[dict], # string if normal prompt, list of dicts if chat prompt,
+    system_prompt: str = "You are a helpful assistant", # only used for chat prompts
+    temperature: float = 0.0,
+    top_p: float = 1.0,
+    top_k: int = 1, # nucleus sampling
+    max_tokens: int = 128, # max output tokens to generate
+    num_completions: int = 1,  
+    server_port: int = 30000, # only for local server hosted on SGLang
+    server_type: str = "sglang", 
+    model_name: str = "default" # specify model type
 ):
-    if server_type == "sglang":
-        url = f"http://localhost:{server_port}"
-        client = OpenAI(
-            api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
-        )
-        model = "default"
-    elif server_type == "deepseek":
-        client = OpenAI(
-            api_key=DEEPSEEK_KEY, base_url="https://api.deepseek.com", timeout=10000000, max_retries=3
-        )
-        print(f"Querying DeepSeek ... with temp {temperature} max tokens {max_tokens}")
-        model = "deepseek-coder" # only set to do this for now
-        if not is_safe_to_send_to_deepseek(prompt):
-            raise RuntimeError("Prompt is too long for DeepSeek")
-    elif server_type == "anthropic":
-        client = anthropic.Anthropic(
-            api_key=ANTHROPIC_KEY,
-        )
-    elif server_type == "gemini":
-        # TODO: Find best temperature for Gemini
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-    elif server_type == "together":
-        client = Together(api_key=TOGETHER_KEY)
-        model = model_name
-    else:
-        raise NotImplementedError
+    """
+    Query various sort of LLM inference API providers
+    Supports:
+    - Deepseek
+    - Together
+    - Anthropic
+    - Gemini (TODO)
+    - OpenAI (TODO)
+    - SGLang (Local Server)
+    """
 
+    # First pass: select model and client based on arguments
+    match server_type:
+        case "sglang":
+            url = f"http://localhost:{server_port}"
+            client = OpenAI(
+                api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
+            )
+            model = "default"
+        case "deepseek":
+            client = OpenAI(
+                api_key=DEEPSEEK_KEY, base_url="https://api.deepseek.com", timeout=10000000, max_retries=3
+            )
+            print(f"Querying DeepSeek ... with temp {temperature} max tokens {max_tokens}")
+            model = "deepseek-coder" # only set to do this for now
+            if not is_safe_to_send_to_deepseek(prompt):
+                raise RuntimeError("Prompt is too long for DeepSeek")
+        case "anthropic":
+            client = anthropic.Anthropic(
+                api_key=ANTHROPIC_KEY,
+            )
+        case "gemini":
+            # TODO: Find best temperature for Gemini
+            # TODO: use GCP vertex AI instead
+            genai.configure(api_key=GEMINI_KEY)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+        case "together":
+            client = Together(api_key=TOGETHER_KEY)
+            model = model_name
+        case _:
+            raise NotImplementedError
     
+    assert client is not None, "Client is not set, cannot proceed to generations"
+
     if server_type == "anthropic":
         assert type(prompt) == str
         assert model_name=="claude-3-5-sonnet-20241022", "Only test this version of Claude for now"
         response = client.messages.create(
             model=model_name,
-            system="You are a helpful assistant",
+            system=system_prompt,
             messages=[
                 {"role": "user", "content": prompt},
             ],
@@ -120,7 +137,7 @@ def query_server(
         response = client.chat.completions.create(
             model="deepseek-coder",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant"},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
             stream=False,
@@ -175,6 +192,8 @@ def query_server(
             )
             outputs = [choice.message.content for choice in response.choices]
 
+
+    # output processing
     if len(outputs) == 1:
         return outputs[0]
     else:
