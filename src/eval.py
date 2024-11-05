@@ -9,6 +9,8 @@ from pydantic import BaseModel
 import numpy as np
 import random
 import json
+from contextlib import redirect_stdout, redirect_stderr
+from io import StringIO
 
 from src import utils
 
@@ -162,33 +164,43 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
 
 
 
-def build_compile_cache( custom_model_src: str, 
+def build_compile_cache(custom_model_src: str, 
                         custom_model_hash: str,
                         verbose: bool = False, 
-                        build_dir: str = None) -> True:
+                        build_dir: str = None) -> tuple[bool, str]:
     '''
     Try to build the compiled cuda code for sample and store in the cache directory
     Should be able to run on CPUs to do this massively in parallel
     
     Don't limit ninja to set default number of workers, let it use all the cpu cores possible
+
+    NOTE: currently stdout_buffer does not capture all the compiler warning and failure messages
+    Returns:
+        tuple[bool, str]: whether compilation is successful, stdout content as string
     '''
     context = {}
+    stdout_buffer = StringIO()
     
     if verbose:
         print("[Compilation] Pre-compile custom cuda binaries")
 
     try:
+        # add hash for later to distinguish between multi-turn kernels
         if build_dir: build_dir = os.path.join(build_dir, custom_model_hash)
         
         os.environ['TORCH_USE_CUDA_DSA'] = "1" # compile with device side assertion
-        # add hash for later to distinguish between multi-turn kernels
-        load_custom_model(custom_model_src, context, build_dir)
+
+        # Capture stdout during compilation
+        with redirect_stdout(stdout_buffer), redirect_stderr(stdout_buffer):
+            load_custom_model(custom_model_src, context, build_dir)
+        
         if verbose: print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
     except Exception as e:
         print(f"Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
-        return False
+
+        return False, stdout_buffer.getvalue()
     
-    return True
+    return True, stdout_buffer.getvalue()
 
 def eval_kernel_against_ref(original_model_src: str, 
                             custom_model_src: str, 
