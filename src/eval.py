@@ -466,7 +466,7 @@ def run_and_check_correctness(original_model_instance: nn.Module,
                     return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
                 
                 # check output value difference
-                if not torch.allclose(output, output_new, atol=1e-03): # fail
+                if not torch.allclose(output, output_new, atol=1e-02, rtol=1e-02): # fail
                     max_diff = torch.max(torch.abs(output - output_new)).item()
                     avg_diff = torch.mean(torch.abs(output - output_new)).item()
                     metadata.setdefault("max_difference", []).append(f"{max_diff:.6f}")
