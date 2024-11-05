@@ -167,7 +167,7 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
 def build_compile_cache(custom_model_src: str, 
                         custom_model_hash: str,
                         verbose: bool = False, 
-                        build_dir: str = None) -> tuple[bool, str]:
+                        build_dir: os.PathLike = None) -> tuple[bool, str]:
     '''
     Try to build the compiled cuda code for sample and store in the cache directory
     Should be able to run on CPUs to do this massively in parallel
@@ -184,10 +184,7 @@ def build_compile_cache(custom_model_src: str,
     if verbose:
         print("[Compilation] Pre-compile custom cuda binaries")
 
-    try:
-        # add hash for later to distinguish between multi-turn kernels
-        if build_dir: build_dir = os.path.join(build_dir, custom_model_hash)
-        
+    try:        
         os.environ['TORCH_USE_CUDA_DSA'] = "1" # compile with device side assertion
 
         # Capture stdout during compilation
@@ -210,7 +207,7 @@ def eval_kernel_against_ref(original_model_src: str,
                             num_perf_trials: int = 10,
                             verbose: bool = False, 
                             measure_performance: bool = False,
-                            build_dir: str = None,
+                            build_dir: os.PathLike = None,
                             device: torch.device = torch.cuda.current_device()) -> KernelExecResult:
     '''
     Evaluate the custom kernel against the original model
@@ -257,7 +254,6 @@ def eval_kernel_against_ref(original_model_src: str,
     try:
         os.environ['TORCH_USE_CUDA_DSA'] = "1" # compile with device side assertion
         # add hash for later to distinguish between multi-turn kernels
-        if build_dir: build_dir = os.path.join(build_dir, custom_model_hash)
         ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device) # not sure if this is too much 
     except Exception as e:
