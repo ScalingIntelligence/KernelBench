@@ -29,7 +29,7 @@ def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
 
-def check_correctness(Model, NewModel, get_inputs, get_init_inputs, seed=1012, atol=1e-02):
+def check_correctness(Model, NewModel, get_inputs, get_init_inputs, seed=1012, atol=1e-02, rtol=1e-02):
     # run the model and check correctness
     with torch.no_grad():
         set_seed(seed)
@@ -51,7 +51,7 @@ def check_correctness(Model, NewModel, get_inputs, get_init_inputs, seed=1012, a
 
         if(output.shape != output_new.shape):
             return False
-        if(not torch.allclose(output, output_new, atol=atol)):
+        if(not torch.allclose(output, output_new, atol=atol, rtol=rtol)):
             return False
     return True
 

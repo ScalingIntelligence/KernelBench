@@ -285,7 +285,7 @@ if __name__ == "__main__":
     configs = {"num_correct_trials": 5, "num_perf_trials": 100, "timeout": 20, "verbose": False, "num_gpu_devices": NUM_GPU_DEVICES, "measure_performance": True}
 
     problem_range = (3, 4)
-    samples_range = (0, 6)
+    samples_range = (0, )
 
     # this works great, launch process one at a time
     # cuda_eval_process(problem_range, samples_range, configs)
