@@ -12,16 +12,17 @@ import multiprocessing as mp
  
 MEASURE_PERFORMANCE = True
 
-RUN_NAME = "level2_run_10_28"
+# RUN_NAME = "level2_run_10_28"
+RUN_NAME = "level1_trial_11_01_sonnet"
 # RUN_NAME = "kernelbench_prompt_v2_level_2"
 # RUN_NAME = "level2_run_10_28"
-PROBLEM_DIR = "KernelBench/level2"
+PROBLEM_DIR = "KernelBench/level1"
 # query from database, make sure the server is up
 SERVER_URL = "http://matx3.stanford.edu:9091" 
 # SERVER_URL = "http://localhost:9091"
 
-NUM_CPU_WORKERS = 20
-NUM_GPU_DEVICES = 6
+NUM_CPU_WORKERS = 50
+# NUM_GPU_DEVICES = 6
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -180,14 +181,17 @@ if __name__ == "__main__":
     #     raise RuntimeError("CUDA device not available. This test requires a GPU.")
     
     # these will go into pydra in the future
-    configs = {"timeout": 100, "verbose": False}
+    configs = {"timeout": 900, "verbose": False}
 
     # problem_range = (3, 4)
     # samples_range = (0, 15)
 
-
-    problem_range = (39, 54)
-    samples_range = (0, 30)
+    # problem_range = (0, 45)
+    # problem_range = (45, 87)
+    # problem_range = (39, 54)
+    # samples_range = (0, 30)
+    problem_range = (0, len(dataset))
+    samples_range = (0, 10)
 
     # compile_single_sample(WorkArgs(problem_id=40, sample_idx=0, run_name=RUN_NAME, dataset=dataset, device=None), configs)
     # evaluate_single_sample(WorkArgs(problem_id=15, sample_idx=0, run_name=RUN_NAME, dataset=dataset, device=device, num_correct_trials=5))

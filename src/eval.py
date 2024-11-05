@@ -514,6 +514,20 @@ def check_metadata_serializable(metadata: dict):
         print(f"[WARNING] Metadata now converted to string: {metadata} to be JSON serializable")
 
     return metadata
+
+
+def fetch_baseline_time(level_name: str, problem_id: int, dataset: list[str], baseline_time_filepath: str) -> dict:
+    """
+    Fetch the baseline time from the time
+    """
+    with open(baseline_time_filepath, "r") as f:
+        baseline_json = json.load(f)
+
+    problem_name = dataset[problem_id].split("/")[-1]
+    # import pdb; pdb.set_trace()
+    baseline_time = baseline_json[level_name][problem_name]
+    return baseline_time
+
 # if __name__ == "__main__":
     # fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")
     # print(fetch_ref_arch_from_level_problem_id("2", 1, with_name=True))
