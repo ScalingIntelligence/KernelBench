@@ -89,6 +89,11 @@ def query_server(
                 api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
             )
             model = "default"
+        case "openai":
+            client = OpenAI(
+                api_key=OPENAI_KEY, base_url="https://api.openai.com", timeout=10000000, max_retries=3
+            )
+            model = model_name
         case "deepseek":
             client = OpenAI(
                 api_key=DEEPSEEK_KEY, base_url="https://api.deepseek.com", timeout=10000000, max_retries=3
@@ -101,6 +106,7 @@ def query_server(
             client = anthropic.Anthropic(
                 api_key=ANTHROPIC_KEY,
             )
+            model = model_name
         case "gemini":
             # TODO: Find best temperature for Gemini
             # TODO: use GCP vertex AI instead
@@ -116,14 +122,18 @@ def query_server(
 
     if server_type == "anthropic":
         assert type(prompt) == str
-        assert model_name=="claude-3-5-sonnet-20241022", "Only test this version of Claude for now"
+        assert model=="claude-3-5-sonnet-20241022", "Only test this version of Claude for now"
+        print(f"Querying Anthropic {model} with temp {temperature} max tokens {max_tokens}")
+
         response = client.messages.create(
-            model=model_name,
+            model=model,
             system=system_prompt,
             messages=[
                 {"role": "user", "content": prompt},
             ],
             temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
             max_tokens=max_tokens,
         )
         outputs = [choice.text for choice in response.content]
@@ -150,7 +160,7 @@ def query_server(
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "together":
         assert model=="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "Only test this for now" 
-
+        print(f"Querying Together {model} with temp {temperature} max tokens {max_tokens}")
         response = client.chat.completions.create(
             model=model,
             max_tokens=max_tokens,
@@ -160,7 +170,7 @@ def query_server(
                 {"role": "user", "content": prompt},
             ],
             top_p=top_p,
-            # top_k=top_k,
+            top_k=top_k,
             # repetition_penalty=1,
             stop=["<|eot_id|>","<|eom_id|>"],
             # truncate=32256,

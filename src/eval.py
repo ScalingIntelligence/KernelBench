@@ -524,7 +524,6 @@ def fetch_baseline_time(level_name: str, problem_id: int, dataset: list[str], ba
         baseline_json = json.load(f)
 
     problem_name = dataset[problem_id].split("/")[-1]
-    # import pdb; pdb.set_trace()
     baseline_time = baseline_json[level_name][problem_name]
     return baseline_time
 
