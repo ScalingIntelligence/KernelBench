@@ -100,11 +100,9 @@ def query_server(
                 api_key=ANTHROPIC_KEY,
             )
             model = model_name
-        case "gemini":
-            # TODO: Find best temperature for Gemini
-            # TODO: use GCP vertex AI instead
+        case "google":
             genai.configure(api_key=GEMINI_KEY)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+
         case "together":
             client = Together(api_key=TOGETHER_KEY)
             model = model_name
@@ -114,7 +112,8 @@ def query_server(
         case _:
             raise NotImplementedError
     
-    assert client is not None, "Client is not set, cannot proceed to generations"
+    if server_type != "google":
+        assert client is not None, "Client is not set, cannot proceed to generations"
 
     if server_type == "anthropic":
         assert type(prompt) == str
@@ -134,10 +133,31 @@ def query_server(
         )
         outputs = [choice.text for choice in response.content]
     
-    elif server_type == "gemini":
-        # HACK for now
+    elif server_type == "google":
+
+        assert model_name == "gemini-1.5-flash-002", "Only test this for now"
+        print(f"Querying Gemini {model_name} ... with temp {temperature} max tokens {max_tokens}")
+
+        generation_config = {
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "max_output_tokens": max_tokens,
+            "response_mime_type": "text/plain",
+        }
+
+        assert model_name == "gemini-1.5-flash-002", "Only test this for now"
+
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_prompt,
+            generation_config=generation_config,
+        )
+
         response = model.generate_content(prompt)
+
         return response.text
+    
     elif server_type == "deepseek":
         assert model=="deepseek-coder", "Only test this for now" 
         print(f"Querying DeepSeek ... with temp {temperature} max tokens {max_tokens}")
@@ -157,21 +177,31 @@ def query_server(
         
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "openai":
-        assert model=="gpt-4o-2024-08-06", "Only test this for now" 
+        # Don't use o1 unless for baseline, as it is expensive
+        assert model=="gpt-4o-2024-08-06", "Only test this for now"
         print(f"Querying OpenAI {model} ... with temp {temperature} max tokens {max_tokens}")
-
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            stream=False,
-            temperature=temperature,
-            n=num_completions,
-            max_tokens=max_tokens,
-            top_p=top_p
-        )
+        if model == "o1-preview-2024-09-12":
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                # n=num_completions,
+                # max_tokens=max_tokens,
+            )
+        else:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                temperature=temperature,
+                n=num_completions,
+                max_tokens=max_tokens,
+                top_p=top_p
+            )
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "together":
         assert model=="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" or "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "Only test this for now" 
