@@ -74,13 +74,16 @@ class Model(nn.Module):
 
         return self.final_conv(dec1)
 
+batch_size = 8
+in_channels = 16
+out_channels = 32
+height = 256
+width = 256
+features = 64
+
 # Test code for UNet
 def get_inputs():
-    batch_size = 8
-    channels = 16
-    height = 256
-    width = 256
-    return [torch.randn(batch_size, channels, height, width)]
+    return [torch.randn(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
-    return [16, 32, 64]  # in_channels, out_channels, features
+    return [in_channels, out_channels, features]
