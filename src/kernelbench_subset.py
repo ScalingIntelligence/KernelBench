@@ -2,4 +2,4 @@ level1_subset = ['1_Square_matrix_multiplication_.py', '3_Batched_matrix_multipl
 
 level2_subset = ['1_Conv2D_ReLU_BiasAdd.py', '2_ConvTranspose2d_BiasAdd_Clamp_Scaling_Clamp_Divide.py', '8_Conv3d_Divide_Max_GlobalAvgPool_BiasAdd_Sum.py', '18_Matmul_Sum_Max_AvgPool_LogSumExp_LogSumExp.py', '23_Conv3d_GroupNorm_Mean.py', '28_BMM_InstanceNorm_Sum_ResidualAdd_Multiply.py', '33_Gemm_Scale_BatchNorm.py', '43_Conv3d_Max_LogSumExp_ReLU.py']
 
-level3_subset = ['1_MLP.py', '5_AlexNet.py', '8_ResNetBasicBlock.py', '11_VGG16.py', '20_MobileNetV2.py', '21_EfficientNetMBConv.py', '33_VanillaRNN.py', '38_LTSMBidirectional.py', '44_MinGPTCausalAttention.py']
+level3_subset = ['1_MLP.py', '5_AlexNet.py', '8_ResNetBasicBlock.py', '11_VGG16.py', '20_MobileNetV2.py', '21_EfficientNetMBConv.py', '33_VanillaRNN.py', '38_LTSMBidirectional.py', '43_MinGPTCausalAttention.py']
