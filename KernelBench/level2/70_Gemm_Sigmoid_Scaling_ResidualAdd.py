@@ -20,8 +20,8 @@ class Model(nn.Module):
         Returns:
             torch.Tensor: Output tensor of shape (batch_size, hidden_size).
         """
-        original_x = x
         x = self.gemm(x)
+        original_x = x
         x = torch.sigmoid(x)
         x = x * self.scaling_factor
         x = x + original_x

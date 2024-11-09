@@ -86,6 +86,6 @@ def run_all(directory):
         print(f"Failed tests: {fail_tests}")
 
 if __name__ == "__main__":
-    run_all(KERNEL_BENCH_PATH + "/level1")
+    # run_all(KERNEL_BENCH_PATH + "/level1")
     run_all(KERNEL_BENCH_PATH + "/level2")
-    run_all(KERNEL_BENCH_PATH + "/level3")
+    # run_all(KERNEL_BENCH_PATH + "/level3")

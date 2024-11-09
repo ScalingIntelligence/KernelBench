@@ -3,28 +3,37 @@ import torch.nn as nn
 
 class Model(nn.Module):
     """
-    Simple model that performs a convolution, applies ReLU, and adds a bias term.
+    Model implementing the pattern "Gemm_Sigmoid_Scaling_ResidualAdd".
     """
-    def __init__(self, in_channels, out_channels, kernel_size, bias_shape):
+    def __init__(self, input_size, hidden_size, scaling_factor):
         super(Model, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
-        self.bias = nn.Parameter(torch.randn(bias_shape)) 
+        self.gemm = nn.Linear(input_size, hidden_size)
+        self.scaling_factor = scaling_factor
 
     def forward(self, x):
-        x = self.conv(x)
-        x = torch.relu(x)
-        x = x + self.bias
+        """
+        Forward pass of the model.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, input_size).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, hidden_size).
+        """
+        x = self.gemm(x)
+        original_x = x
+        x = torch.sigmoid(x)
+        x = x * self.scaling_factor
+        x = x + original_x
         return x
 
 batch_size = 128
-in_channels = 3
-out_channels = 16
-height, width = 32, 32
-kernel_size = 3
-bias_shape = (out_channels, 1, 1)
+input_size = 1024
+hidden_size = 512
+scaling_factor = 2.0
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.randn(batch_size, input_size)]
 
 def get_init_inputs():
-    return [in_channels, out_channels, kernel_size, bias_shape]
+    return [input_size, hidden_size, scaling_factor]
