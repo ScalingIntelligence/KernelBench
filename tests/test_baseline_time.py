@@ -36,11 +36,6 @@ def get_time(level_num, problem_id, num_trials=100, torch_compile=False):
         torch.cuda.synchronize(device=device)
         elapsed_times = time_execution_with_cuda_event(model, *inputs, num_trials=num_trials, verbose=False, device=device)
         runtime_stats = get_timing_stats(elapsed_times, device=device)
-        # print(f"Level {level_num} Problem {problem_id} Runtime Stats: {runtime_stats}")
-        # # save stats to results/baseline_time.txt
-        # save_path = f"results/baseline_time{'_torch_compile' if torch_compile else ''}.txt"
-        # with open(save_path, "a") as f:
-        #     f.write(f"Level {level_num} Problem {problem_id} Runtime Stats: {runtime_stats}\n")
         json_results[f"level{level_num}"][ref_arch_name] = runtime_stats
     except Exception as e:
         print(f"[Eval] Error in Measuring Performance: {e}")
@@ -71,9 +66,9 @@ if __name__ == "__main__":
         get_time(3, problem_id, torch_compile=torch_compile)
 
     if torch_compile:
-        save_path = f"results/baseline_time_torch_compile.json"
+        save_path = f"tests/baseline_time_torch_compile.json"
     else:
-        save_path = f"results/baseline_time.json"
+        save_path = f"tests/baseline_time.json"
     with open(save_path, "w") as f:
         json.dump(json_results, f)
 
