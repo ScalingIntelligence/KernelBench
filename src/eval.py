@@ -12,7 +12,7 @@ import json
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 
-from src import utils
+from . import utils
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',))
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
@@ -259,9 +259,17 @@ def eval_kernel_against_ref(original_model_src: str,
     except Exception as e:
         print(f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}")
         # TODO: add metadata for compilation error (how to we get the compilation error message?)
-        metadata["compilation_error"] = e
-        graceful_eval_cleanup(context, device)
-        return KernelExecResult(compiled=False, metadata=metadata) # skip further steps
+
+        if "lock" in str(e) or "No such file or directory" in str(e):
+            # this is a lock file error, likely due to concurrent compilation
+            # this does not necessarily mean the compilation failed, but we should retry
+            print(f"[Eval] Lock file error during compilation, Please retry. Error: {e}")
+            graceful_eval_cleanup(context, device)
+            return None
+        else:
+            metadata["compilation_error"] = e
+            graceful_eval_cleanup(context, device)
+            return KernelExecResult(compiled=False, metadata=metadata) # skip further steps
     
     # at this point we passed compilation
     try:

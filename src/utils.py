@@ -178,7 +178,7 @@ def query_server(
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "openai":
         # Don't use o1 unless for baseline, as it is expensive
-        assert model=="gpt-4o-2024-08-06", "Only test this for now"
+        # assert model=="gpt-4o-2024-08-06", "Only test this for now"
         print(f"Querying OpenAI {model} ... with temp {temperature} max tokens {max_tokens}")
         if model == "o1-preview-2024-09-12":
             response = client.chat.completions.create(
@@ -204,7 +204,7 @@ def query_server(
             )
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "together":
-        assert model=="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" or "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "Only test this for now" 
+        assert model=="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "Only test this for now" 
         print(f"Querying Together {model} with temp {temperature} max tokens {max_tokens}")
         response = client.chat.completions.create(
             model=model,
