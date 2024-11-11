@@ -532,13 +532,13 @@ def fetch_baseline_time(level_name: str, problem_id: int, dataset: list[str], ba
         baseline_json = json.load(f)
 
     problem_name = dataset[problem_id].split("/")[-1]
-    baseline_time = baseline_json[level_name][problem_name]
+    baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
     # fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")
     # print(fetch_ref_arch_from_level_problem_id("2", 1, with_name=True))
-
+    # fetch_baseline_time("level1", 0, ["1_Square_matrix_multiplication_.py"], "tests/baseline_time_matx3.json")
 
 
 
