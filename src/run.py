@@ -86,33 +86,90 @@ def compare_results(best_result, new_result):
         return True
     # TODO: compare performance
 
-def run_multiturn(ref_arch_src, turns=10) -> KernelExecResult:
+# def run_multiturn(ref_arch_src, turns=10) -> KernelExecResult:
 
-    custom_cuda, result = run(ref_arch_src)
-    best_custom_cuda = custom_cuda
-    best_result = result
+#     custom_cuda, result = run(ref_arch_src)
+#     best_custom_cuda = custom_cuda
+#     best_result = result
 
-    for turn in range(turns):
-        if not result.compiled:
-            print(f"Turn {turn}: Fixing compilation error")
-            print(f"Metadata: {result.metadata}")
-            custom_cuda = get_custom_cuda(prompt_fix_compile(ref_arch_src, custom_cuda, result.metadata))
-            result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
-        elif not result.correctness:
-            print(f"Turn {turn}: Fixing correctness error")
-            print(f"Metadata: {result.metadata}")
-            custom_cuda = get_custom_cuda(prompt_fix_correctness(ref_arch_src, custom_cuda, result.metadata))
-            result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
-        else:
-            # TODO: we should try to improve performance
-            # custom_cuda = get_custom_cuda(improve_perf_prompt)
-            # result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
-            print(f"Turn {turn}: Improving performance")
-        if compare_results(best_result, result):
-            best_result = result
-            best_custom_cuda = custom_cuda
+#     for turn in range(turns):
+#         if not result.compiled:
+#             print(f"Turn {turn}: Fixing compilation error")
+#             print(f"Metadata: {result.metadata}")
+#             custom_cuda = get_custom_cuda(prompt_fix_compile(ref_arch_src, custom_cuda, result.metadata))
+#             result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
+#         elif not result.correctness:
+#             print(f"Turn {turn}: Fixing correctness error")
+#             print(f"Metadata: {result.metadata}")
+#             custom_cuda = get_custom_cuda(prompt_fix_correctness(ref_arch_src, custom_cuda, result.metadata))
+#             result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
+#         else:
+#             # TODO: we should try to improve performance
+#             # custom_cuda = get_custom_cuda(improve_perf_prompt)
+#             # result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
+#             print(f"Turn {turn}: Improving performance")
+#         if compare_results(best_result, result):
+#             best_result = result
+#             best_custom_cuda = custom_cuda
 
-    return (best_custom_cuda, best_result)
+#     return (best_custom_cuda, best_result)
+
+def run_multiturn_helper(ref_arch_src, custom_cuda) -> KernelExecResult:
+    # try compile
+    # write to scratch/model_new.py
+    with open(os.path.join(REPO_TOP_PATH, "src/scratch/model_new.py"), "w") as f:
+        f.write(custom_cuda)
+    # use sys to execute python scratch/model_new.py, print output to file log.txt
+    cmd = f"python {os.path.join(REPO_TOP_PATH, 'src/scratch/model_new.py')}"
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    with open(os.path.join(REPO_TOP_PATH, "src/scratch/log.txt"), "w") as f:
+        f.write(result.stdout)
+        f.write(result.stderr)
+    metadata = 
+    if result.returncode != 0:
+        return KernelExecResult(compiled=False, correctness=False, m)
+    
+    # try correctness
+    # try performance
+    pass
+
+def run_multiturn(ref_arch_src, turns=10, use_combined_prompt=False, prompt_example_ind=1) -> KernelExecResult:
+
+    os.makedirs(os.path.join(REPO_TOP_PATH, "src/scratch"), exist_ok=True)
+    # generate custom CUDA, save in scratch/model_new.py
+    if use_combined_prompt:
+        fn_get_prompt = prompt_generate_custom_cuda_oneshot_and_template
+        custom_cuda_prompt = fn_get_prompt(ref_arch_src)
+    else:
+        fn_get_prompt = prompt_generate_custom_cuda_from_file_one_example
+        custom_cuda_prompt = fn_get_prompt(ref_arch_src, prompt_example_ind)
+    custom_cuda = get_custom_cuda(custom_cuda_prompt)
+
+    run_multiturn_helper(ref_arch_src, custom_cuda)
+
+    # custom_cuda = get_custom_cuda(custom_cuda_prompt)
+
+    # for turn in range(turns):
+    #     if not result.compiled:
+    #         print(f"Turn {turn}: Fixing compilation error")
+    #         print(f"Metadata: {result.metadata}")
+    #         custom_cuda = get_custom_cuda(prompt_fix_compile(ref_arch_src, custom_cuda, result.metadata))
+    #         result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
+    #     elif not result.correctness:
+    #         print(f"Turn {turn}: Fixing correctness error")
+    #         print(f"Metadata: {result.metadata}")
+    #         custom_cuda = get_custom_cuda(prompt_fix_correctness(ref_arch_src, custom_cuda, result.metadata))
+    #         result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
+    #     else:
+    #         # TODO: we should try to improve performance
+    #         # custom_cuda = get_custom_cuda(improve_perf_prompt)
+    #         # result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
+    #         print(f"Turn {turn}: Improving performance")
+    #     if compare_results(best_result, result):
+    #         best_result = result
+    #         best_custom_cuda = custom_cuda
+
+    # return (best_custom_cuda, best_result)
 
 
 if __name__ == "__main__":
