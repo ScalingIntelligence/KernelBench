@@ -315,25 +315,6 @@ def extract_first_code(output_string: str, code_language_type: str) -> str:
     return None
 
 
-def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
-    """
-    Construct a list of relative paths to all the python files in the problem directory
-    Sorted by the numerical prefix of the filenames
-    """
-    DATASET = []
-
-    for file_name in os.listdir(problem_dir):
-        if file_name.endswith(".py"):
-            # Construct the path starting with "CUDABench/..."
-            # relative_path = os.path.join("KernelBenchInternal", file_name)
-            relative_path = os.path.join(problem_dir, file_name)
-            DATASET.append(relative_path)
-
-    # Sort the DATASET based on the numerical prefix of the filenames
-    DATASET.sort(key=lambda x: int(os.path.basename(x).split("_")[0]))
-
-    return DATASET
-
 
 ################################################################################
 # Scale up experiments in parallel
