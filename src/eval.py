@@ -1,5 +1,5 @@
 """
-Bunch of helpful functions for evaluation
+Helpers for Evaluations
 """
 
 import requests
@@ -67,37 +67,22 @@ def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 
-def get_kernelbench_subset(level, num_problems=10, random_seed=42, names=False):
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
-    # generate num_problem random indices from range(0, len(dataset))
-    random.seed(random_seed)
-    subset_indices = random.sample(range(len(dataset)), num_problems)
-    for i in subset_indices:
-        print(dataset[i])
-    if names:
-        return sorted([dataset[i] for i in subset_indices])
-    else:
-        return [(level, i) for i in subset_indices]
-
-
 def set_seed(seed: int):
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)  # note this only sets the current device
+    # NOTE: this only sets on current cuda device
+    torch.cuda.manual_seed(seed)
 
 
 class KernelExecResult(BaseModel):
+    """
+    Single Kernel Execution
+    """
+
     compiled: bool = False
     correctness: bool = False
     metadata: dict = {}
     runtime: float = -1.0  # in us, only recorded if we decide to measure performance
     runtime_stats: dict = {}  # only recorded if we decide to measure performance
-    # in us, only recorded if we decide to measure performance
-    # can reformat this to be wall clock time
-    # torch_cpu_time: float = -1.0
-    # torch_gpu_time: float = -1.0
-    # custom_cpu_time: float = -1.0
-    # custom_gpu_time: float = -1.0
 
 
 def load_original_model_and_inputs(

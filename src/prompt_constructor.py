@@ -2,8 +2,11 @@ import os
 from .utils import read_file
 
 """
-Construct Prompts
-As basic as we can be, not to steer the LLM too much
+Construct Prompt
+
+Design principles: 
+- To evaluate base model performance on KernelBench, we use the simplest prompt possible to guide model output to generated desired output format.
+- However, we do not do extensive prompt engineering or few-shot example in the LLM to steer behaviour. 
 """
 
 REPO_TOP_PATH = os.path.abspath(

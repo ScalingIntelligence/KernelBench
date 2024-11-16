@@ -1,28 +1,27 @@
 ########################
-# Utils
-# could cut this down more
+# Utils Functions
 ########################
-
 
 import multiprocessing
 import subprocess
 import re
-from openai import OpenAI
-import google.generativeai as genai
 import random
 import tempfile
 from pathlib import Path
 import re
-
 import math
 import os
 import json
-import pickle
-from together import Together
 from tqdm import tqdm
 
-# from datasets import load_dataset
+# API clients
+from together import Together
+from openai import OpenAI
+import google.generativeai as genai
 import anthropic
+
+
+# from datasets import load_dataset
 import numpy as np
 from contextlib import contextmanager
 from collections import defaultdict
@@ -35,7 +34,6 @@ import hashlib
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-
 # Define API key access
 TOGETHER_KEY = os.environ.get("TOGETHER_API_KEY")
 DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -47,6 +45,7 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 @cache
 def load_deepseek_tokenizer():
+    # TODO: Should we update this for new deepseek? Same tokenizer?
     return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Instruct-0724")
 
 
@@ -79,14 +78,14 @@ def query_server(
     """
     Query various sort of LLM inference API providers
     Supports:
+    - OpenAI
     - Deepseek
     - Together
     - Anthropic
-    - Gemini (TODO)
-    - OpenAI
+    - Gemini / Google AI Studio
     - SGLang (Local Server)
     """
-    # First pass: select model and client based on arguments
+    # Select model and client based on arguments
     match server_type:
         case "sglang":
             url = f"http://localhost:{server_port}"
@@ -124,14 +123,12 @@ def query_server(
     if server_type != "google":
         assert client is not None, "Client is not set, cannot proceed to generations"
 
+    print(
+        f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
+    )
+    # Logic to query the LLM
     if server_type == "anthropic":
         assert type(prompt) == str
-        assert (
-            model == "claude-3-5-sonnet-20241022"
-        ), "Only test this version of Claude for now"
-        print(
-            f"Querying Anthropic {model} with temp {temperature} max tokens {max_tokens}"
-        )
 
         response = client.messages.create(
             model=model,
@@ -147,11 +144,7 @@ def query_server(
         outputs = [choice.text for choice in response.content]
 
     elif server_type == "google":
-
         assert model_name == "gemini-1.5-flash-002", "Only test this for now"
-        print(
-            f"Querying Gemini {model_name} ... with temp {temperature} max tokens {max_tokens}"
-        )
 
         generation_config = {
             "temperature": temperature,
@@ -160,8 +153,6 @@ def query_server(
             "max_output_tokens": max_tokens,
             "response_mime_type": "text/plain",
         }
-
-        assert model_name == "gemini-1.5-flash-002", "Only test this for now"
 
         model = genai.GenerativeModel(
             model_name=model_name,
@@ -174,9 +165,6 @@ def query_server(
         return response.text
 
     elif server_type == "deepseek":
-        assert model == "deepseek-coder", "Only test this for now"
-        print(f"Querying DeepSeek ... with temp {temperature} max tokens {max_tokens}")
-
         response = client.chat.completions.create(
             model="deepseek-coder",
             messages=[
@@ -192,19 +180,14 @@ def query_server(
 
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "openai":
-        # Don't use o1 unless for baseline, as it is expensive
-        # assert model=="gpt-4o-2024-08-06", "Only test this for now"
-        print(
-            f"Querying OpenAI {model} ... with temp {temperature} max tokens {max_tokens}"
-        )
-        if model == "o1-preview-2024-09-12":
+        if (
+            model == "o1-preview-2024-09-12"
+        ):  # o1 does not support system prompt and decode config
             response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "user", "content": prompt},
                 ],
-                # n=num_completions,
-                # max_tokens=max_tokens,
             )
         else:
             response = client.chat.completions.create(
@@ -221,12 +204,6 @@ def query_server(
             )
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "together":
-        assert (
-            model == "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
-        ), "Only test this for now"
-        print(
-            f"Querying Together {model} with temp {temperature} max tokens {max_tokens}"
-        )
         response = client.chat.completions.create(
             model=model,
             max_tokens=max_tokens,
@@ -244,6 +221,7 @@ def query_server(
         )
         outputs = [choice.message.content for choice in response.choices]
 
+    # for all other kinds of servers, use standard API
     else:
         if type(prompt) == str:
             response = client.completions.create(
@@ -256,8 +234,6 @@ def query_server(
             )
             outputs = [choice.text for choice in response.choices]
         else:
-            print("Chat prompt")
-            # print("Temperature:",temperature)
             response = client.chat.completions.create(
                 model=model,
                 messages=prompt,
@@ -299,6 +275,9 @@ def print_messages(messages):
 
 
 def extract_python_code(text):
+    """
+    Extract python code from model output
+    """
     pattern = r"```python\n(.*?)```"
     matches = re.findall(pattern, text, re.DOTALL)
     return "\n".join(matches) if matches else ""
@@ -312,6 +291,9 @@ def remove_code_block_header(code, code_language_type):
 
 
 def extract_first_code(output_string: str, code_language_type: str) -> str:
+    """
+    Extract first code block from model output, specified by code_language_type
+    """
     trimmed = output_string.strip()
 
     # Extracting the first occurrence of content between backticks

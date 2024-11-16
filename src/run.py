@@ -1,6 +1,6 @@
 import subprocess
 import os, sys
-from utils import (
+from .utils import (
     query_server,
     read_file,
     extract_first_code,
@@ -17,8 +17,9 @@ from eval import (
     KernelExecResult,
     fetch_ref_arch_from_problem_id,
     fetch_ref_arch_from_level_problem_id,
-    get_kernelbench_subset,
 )
+
+from .dataset import get_kernelbench_subset
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -115,6 +116,9 @@ def run(
     return (custom_cuda, kernel_exec_result)
 
 
+# IDK WHAT THIS PART IS FOR
+
+
 def compare_results(best_result, new_result):
     if best_result is None:
         return True
@@ -126,6 +130,7 @@ def compare_results(best_result, new_result):
 
 
 def run_multiturn(ref_arch_src, turns=10) -> KernelExecResult:
+    # NOTE: WIP
 
     custom_cuda, result = run(ref_arch_src)
     best_custom_cuda = custom_cuda
