@@ -1,21 +1,29 @@
 import os
 from .utils import read_file
-'''
+
+"""
 Construct Prompts
 As basic as we can be, not to steer the LLM too much
-'''
+"""
 
-REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',))
+REPO_TOP_PATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+    )
+)
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+
 
 def get_arch_definition_from_file(arch_path):
     arch_src = read_file(arch_path)
     return get_arch_definition(arch_src)
-    
+
+
 def get_arch_definition(arch_src):
-    '''
-    Construct torch definition from original torch nn.Module definition 
-    '''
+    """
+    Construct torch definition from original torch nn.Module definition
+    """
     prompt = f"Here is a pytorch defintion of a neural network architecture in the file model.py: ```{arch_src}```\n"
     return prompt
 
@@ -30,9 +38,10 @@ PROBLEM_INSTRUCTION = """
 Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
 """
 
-def prompt_generate_custom_cuda(arc_src: str,
-                                 example_arch_src: str,
-                                 example_new_arch_src: str) -> str:
+
+def prompt_generate_custom_cuda(
+    arc_src: str, example_arch_src: str, example_new_arch_src: str
+) -> str:
     prompt = PROBLEM_STATEMENT
 
     if example_arch_src != "" and example_new_arch_src != "":
@@ -56,13 +65,22 @@ def prompt_generate_custom_cuda(arc_src: str,
     prompt += PROBLEM_INSTRUCTION
     return prompt
 
+
 def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str) -> str:
     prompt = PROBLEM_STATEMENT
 
-    example_vectoradd_model = read_file(os.path.join(REPO_TOP_PATH, "src/prompts/model_ex_1.py"))
-    example_vectoradd_model_new = read_file(os.path.join(REPO_TOP_PATH, "src/prompts/model_new_ex_1.py"))
-    example_fuse_pseudocode_model = read_file(os.path.join(REPO_TOP_PATH, "src/prompts/model_ex_2.py"))
-    example_fuse_pseudocode_model_new = read_file(os.path.join(REPO_TOP_PATH, "src/prompts/model_new_ex_2.py"))
+    example_vectoradd_model = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/model_ex_1.py")
+    )
+    example_vectoradd_model_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/model_new_ex_1.py")
+    )
+    example_fuse_pseudocode_model = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/model_ex_2.py")
+    )
+    example_fuse_pseudocode_model_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/model_new_ex_2.py")
+    )
 
     prompt += f"""
     Here's an example to show you the syntax of inline embedding custom CUDA operators in torch. This given architecture is a pointwise addition example: \n
@@ -95,6 +113,7 @@ def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str) -> str:
     prompt += PROBLEM_INSTRUCTION
     return prompt
 
+
 def prompt_generate_custom_cuda_from_file_one_example(ref_arch_src, example_ind=1):
     """
     Check example_ind for prompt templates
@@ -102,19 +121,28 @@ def prompt_generate_custom_cuda_from_file_one_example(ref_arch_src, example_ind=
     # arch = get_arch_definition_from_file(arch_path)
     arch = ref_arch_src
     # These are strictly defined for now
-    
-    example_arch_path = os.path.join(REPO_TOP_PATH, f"src/prompts/model_ex_{example_ind}.py")
-    example_new_arch_path = os.path.join(REPO_TOP_PATH, f"src/prompts/model_new_ex_{example_ind}.py")
-    
+
+    example_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_ex_{example_ind}.py"
+    )
+    example_new_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_new_ex_{example_ind}.py"
+    )
+
     if not os.path.exists(example_arch_path):
-        raise FileNotFoundError(f"Example architecture file not found: {example_arch_path}")
+        raise FileNotFoundError(
+            f"Example architecture file not found: {example_arch_path}"
+        )
     if not os.path.exists(example_new_arch_path):
-        raise FileNotFoundError(f"Example new architecture file not found: {example_new_arch_path}")
+        raise FileNotFoundError(
+            f"Example new architecture file not found: {example_new_arch_path}"
+        )
 
     example_arch = read_file(example_arch_path)
     example_new_arch = read_file(example_new_arch_path)
 
     return prompt_generate_custom_cuda(arch, example_arch, example_new_arch)
+
 
 def prompt_fix_compile(ref_arch_src, custom_cuda, metadata):
     prompt = PROBLEM_STATEMENT
@@ -134,6 +162,7 @@ def prompt_fix_compile(ref_arch_src, custom_cuda, metadata):
     Please fix the compilation error in the new model code. Please output the corrected code in codeblocks.
     """
     return prompt
+
 
 def prompt_fix_correctness(ref_arch_src, custom_cuda, metadata):
     prompt = PROBLEM_STATEMENT

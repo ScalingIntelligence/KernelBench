@@ -6,7 +6,7 @@ start_index = 30
 
 i = 1
 files = os.listdir(dir)
-files = sorted(files, key=lambda x: x.split('_')[1])
+files = sorted(files, key=lambda x: x.split("_")[1])
 # print(files)
 # raise
 for file in files:

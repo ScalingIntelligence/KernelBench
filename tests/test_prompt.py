@@ -8,32 +8,48 @@ from src.prompt_constructor import prompt_generate_custom_cuda_from_file_one_exa
 SERVER_TYPE = "anthropic"
 
 server_args = {
-    "deepseek": {
-        "temperature": 1.6,
-        "max_tokens": 4096
-    },
-    "gemini": {}, # need to experiment with temperature,
-    "together": { # this is Llama 3.1
+    "deepseek": {"temperature": 1.6, "max_tokens": 4096},
+    "gemini": {},  # need to experiment with temperature,
+    "together": {  # this is Llama 3.1
         "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
         "temperature": 0.7,
-        "max_tokens": 4096
+        "max_tokens": 4096,
     },
-    "sglang": { # this is Llama 3 ran locally
+    "sglang": {  # this is Llama 3 ran locally
         "temperature": 0.7,
     },
-    "anthropic": { # for Claude 3.5 Sonnet
+    "anthropic": {  # for Claude 3.5 Sonnet
         "model_name": "claude-3-5-sonnet-20241022",
         "temperature": 0.8,
-        "max_tokens": 4096
-    }
+        "max_tokens": 4096,
+    },
+    "openai": {
+        "model_name": "gpt-4o-2024-08-06",
+        "temperature": 0.0,
+        "max_tokens": 4096,
+    },
+    "openai_o1": {
+        "model_name": "o1-preview-2024-09-12",
+        "temperature": 0.0,
+        "max_tokens": 4096,
+    },
+    "google": {
+        "model_name": "gemini-1.5-flash-002",
+        "temperature": 0.7,
+        "max_tokens": 8192,
+    },
 }
 
-def run_llm(prompt):
-    '''
-    Call use common API query function with monkeys
-    '''
-    return utils.query_server(prompt, server_type=SERVER_TYPE
-                        , **server_args[SERVER_TYPE])
+
+def run_llm(prompt: str | list[dict], greedy_sample: bool = False):
+    """
+    Simple wrapper to query API server
+    """
+    if greedy_sample:
+        server_args[SERVER_TYPE]["temperature"] = 0.0
+    return utils.query_server(
+        prompt, server_type=SERVER_TYPE, **server_args[SERVER_TYPE]
+    )
 
 
 ############################################
@@ -44,7 +60,7 @@ def run(arch_path):
     arch = utils.read_file(arch_path)
     # Ensure the ./scratch directory exists
     os.makedirs("./scratch", exist_ok=True)
-    
+
     # Write the architecture to ./scratch/model.py
     with open("./scratch/model.py", "w") as f:
         f.write(arch)
@@ -67,7 +83,9 @@ def run(arch_path):
     custom_cuda = utils.extract_first_code(custom_cuda, "python")
     # check LLM is able to generate custom CUDA code
     assert custom_cuda is not None, "Custom CUDA code generation failed"
-    print("[Verification] Torch moduel with Custom CUDA code **GENERATED** successfully")
+    print(
+        "[Verification] Torch moduel with Custom CUDA code **GENERATED** successfully"
+    )
 
     with open(f"./scratch/model_new_{SERVER_TYPE}.py", "w") as f:
         f.write(custom_cuda)
@@ -78,13 +96,11 @@ def run(arch_path):
     except Exception as e:
         raise RuntimeError(f"Error compiling generated custom cuda code: {e}")
 
- 
-
     # check generated code is correct / functionally equivalent.
     # run test harness, save output in log.txt
     # with open('./scratch/log.txt', 'w') as log_file:
     #     process = subprocess.run(
-    #         ['python', './scratch/test.py'], 
+    #         ['python', './scratch/test.py'],
     #         stdout=log_file,  # Redirect stdout to log.txt
     #         stderr=subprocess.STDOUT  # Redirect stderr to log.txt as well
     #     )
@@ -94,6 +110,7 @@ def run(arch_path):
     #     else:
     #         print("[Verification] Custom CUDA kernel **FAIL** to match reference in terms of correctness")
     #         return "FAIL"
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
