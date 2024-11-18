@@ -162,19 +162,24 @@ def make_dataset_examples(dir_path, level):
 make_dataset_examples("../KernelBench/level1", 1)
 make_dataset_examples("../KernelBench/level2", 2)
 make_dataset_examples("../KernelBench/level3", 3)
+make_dataset_examples("../KernelBench/level4", 4)
 
 level_1 = [ex for ex in dataset_list if ex["level"] == 1]
 level_2 = [ex for ex in dataset_list if ex["level"] == 2]
 level_3 = [ex for ex in dataset_list if ex["level"] == 3]
+level_4 = [ex for ex in dataset_list if ex["level"] == 4]
+
 
 hf_level_1 = Dataset.from_list(level_1)
 hf_level_2 = Dataset.from_list(level_2)
 hf_level_3 = Dataset.from_list(level_3)
+hf_level_4 = Dataset.from_list(level_4)
 
 dataset_dict = DatasetDict({
     "level_1": hf_level_1,
     "level_2": hf_level_2,
-    "level_3": hf_level_3
+    "level_3": hf_level_3,
+    "level_4": hf_level_4
 })
 
 dataset_dict.push_to_hub("anneouyang/kbtest-priv")
