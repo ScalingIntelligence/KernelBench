@@ -4,15 +4,17 @@ from .utils import (
     query_server,
     read_file,
     extract_first_code,
-    construct_problem_dataset_from_problem_dir,
 )
-from prompt_constructor import (
+from .dataset import (
+    construct_problem_dataset_from_problem_dir
+)
+from .prompt_constructor import (
     prompt_generate_custom_cuda_from_file_one_example,
     prompt_generate_custom_cuda_oneshot_and_template,
     prompt_fix_compile,
     prompt_fix_correctness,
 )
-from eval import (
+from .eval import (
     eval_kernel_against_ref,
     KernelExecResult,
     fetch_ref_arch_from_problem_id,
@@ -49,7 +51,7 @@ def run_llm(prompt, server_type=SERVER_TYPE, temperature=None):
     """
     query the LLM server with the prompt
     """
-    if temperature is not None:
+    if temperature is not None: # always override temperature
         server_args[server_type]["temperature"] = temperature
     return query_server(prompt, server_type=server_type, **server_args[server_type])
 
@@ -89,7 +91,11 @@ def get_custom_cuda(prompt):
 
 
 def run(
-    ref_arch_src, save_prompt=False, use_combined_prompt=False, prompt_example_ind=1
+    ref_arch_src, 
+    save_prompt=False, 
+    use_combined_prompt=False, 
+    prompt_example_ind=1,
+    inference_fn=run_llm
 ) -> KernelExecResult:
     os.makedirs(os.path.join(REPO_TOP_PATH, "src/scratch"), exist_ok=True)
 
@@ -103,12 +109,17 @@ def run(
     if save_prompt:
         with open(os.path.join(REPO_TOP_PATH, "src/scratch/prompt.txt"), "w") as f:
             f.write(custom_cuda_prompt)
-    custom_cuda = get_custom_cuda(custom_cuda_prompt)
+
+    # custom_cuda = get_custom_cuda(custom_cuda_prompt)
+    custom_cuda = inference_fn(custom_cuda_prompt)
+    custom_cuda = extract_first_code(custom_cuda, "python")
 
     # check LLM is able to generate custom CUDA code
     assert custom_cuda is not None, "Custom CUDA code generation failed"
-    with open(os.path.join(REPO_TOP_PATH, "src/scratch/model_new.py"), "w") as f:
-        f.write(custom_cuda)
+    
+    # this should be optional
+    # with open(os.path.join(REPO_TOP_PATH, "src/scratch/model_new.py"), "w") as f:
+    #     f.write(custom_cuda)
 
     kernel_exec_result = eval_kernel_against_ref(
         ref_arch_src, custom_cuda, verbose=False, measure_performance=False

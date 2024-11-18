@@ -36,6 +36,8 @@ KernelBenchInternal/
 conda create --name kernel-bench python=3.10
 conda activate kernel-bench
 pip install -r requirements.txt
+# set up the repo
+pip install -e . 
 ```
 
 Set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
