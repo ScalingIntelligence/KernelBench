@@ -12,11 +12,13 @@ from model_new import ModelNew
 
 torch.cuda.synchronize()
 
+
 def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
+
 
 def check_correctness():
     # run the model and check correctness
@@ -30,7 +32,9 @@ def check_correctness():
 
         # move to GPU
         inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in inputs]
-        init_inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in init_inputs]
+        init_inputs = [
+            x.cuda() if isinstance(x, torch.Tensor) else x for x in init_inputs
+        ]
 
         set_seed(42)
         model = Model(*init_inputs).cuda()
@@ -47,10 +51,11 @@ def check_correctness():
         output_new = output_new.cpu()
 
         # check correctness
-        assert(output.shape == output_new.shape)
-        assert(torch.allclose(output, output_new, atol=1e-02))
+        assert output.shape == output_new.shape
+        assert torch.allclose(output, output_new, atol=1e-02)
 
     return "PASS"
+
 
 def run(random_seed=42):
 
@@ -58,6 +63,7 @@ def run(random_seed=42):
     check_correctness()
 
     return "PASS"
+
 
 if __name__ == "__main__":
     print(run())

@@ -60,24 +60,37 @@ conv_relu_cpp_source = "torch::Tensor conv_relu_cuda(torch::Tensor input, torch:
 
 # Compile the inline CUDA code for convolution + ReLU
 conv_relu = load_inline(
-    name='conv_relu',
+    name="conv_relu",
     cpp_sources=conv_relu_cpp_source,
     cuda_sources=conv_relu_source,
-    functions=['conv_relu_cuda'],
+    functions=["conv_relu_cuda"],
     verbose=True,
-    extra_cflags=[''],
-    extra_ldflags=['']
+    extra_cflags=[""],
+    extra_ldflags=[""],
 )
+
 
 class ModelNew(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, bias_shape):
         super(ModelNew, self).__init__()
-        self.weight = nn.Parameter(torch.randn(out_channels, in_channels, kernel_size, kernel_size))
+        self.weight = nn.Parameter(
+            torch.randn(out_channels, in_channels, kernel_size, kernel_size)
+        )
         self.bias = nn.Parameter(torch.randn(bias_shape))
         self.conv_relu = conv_relu
 
     def forward(self, x):
         batch_size, _, height, width = x.shape
-        x = self.conv_relu.conv_relu_cuda(x, self.weight, self.bias, batch_size, self.weight.shape[1], self.weight.shape[0], height, width, self.weight.shape[2])
+        x = self.conv_relu.conv_relu_cuda(
+            x,
+            self.weight,
+            self.bias,
+            batch_size,
+            self.weight.shape[1],
+            self.weight.shape[0],
+            height,
+            width,
+            self.weight.shape[2],
+        )
         x = x + self.bias
         return x

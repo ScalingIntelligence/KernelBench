@@ -315,7 +315,6 @@ def extract_first_code(output_string: str, code_language_type: str) -> str:
     return None
 
 
-
 ################################################################################
 # Scale up experiments in parallel
 ################################################################################

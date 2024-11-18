@@ -28,18 +28,21 @@ torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b) {
 }
 """
 
-elementwise_add_cpp_source = "torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b);"
+elementwise_add_cpp_source = (
+    "torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b);"
+)
 
 # Compile the inline CUDA code for element-wise addition
 elementwise_add = load_inline(
-    name='elementwise_add',
+    name="elementwise_add",
     cpp_sources=elementwise_add_cpp_source,
     cuda_sources=elementwise_add_source,
-    functions=['elementwise_add_cuda'],
+    functions=["elementwise_add_cuda"],
     verbose=True,
-    extra_cflags=[''],
-    extra_ldflags=['']
+    extra_cflags=[""],
+    extra_ldflags=[""],
 )
+
 
 class ModelNew(nn.Module):
     def __init__(self) -> None:

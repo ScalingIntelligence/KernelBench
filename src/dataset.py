@@ -18,7 +18,6 @@ REPO_TOP_PATH = os.path.abspath(
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
 
-
 def assign_problem_hash(problem_path: str) -> list[int]:
     """
     Assign a unique hash to a problem in the dataset
@@ -30,13 +29,13 @@ def assign_problem_hash(problem_path: str) -> list[int]:
 
 def get_code_hash(problem_src: str) -> list[int]:
     """
-    Assign a unique hash to some piece of code 
+    Assign a unique hash to some piece of code
     Important to strip out the comments and whitespace as they are not functionally part of the code
-    """ 
+    """
     # Remove multi-line comments first
-    problem_src = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', '', problem_src)
+    problem_src = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', "", problem_src)
     # Remove inline comments and all whitespace
-    cleaned_problem_src = re.sub(r'#.*$|\s+', '', problem_src, flags=re.MULTILINE)
+    cleaned_problem_src = re.sub(r"#.*$|\s+", "", problem_src, flags=re.MULTILINE)
 
     # hash only on code
     return hashlib.md5(cleaned_problem_src.encode()).hexdigest()
@@ -60,19 +59,25 @@ def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
 
     return DATASET
 
+
 def construct_kernelbench_dataset(level: int) -> list[str]:
-    return construct_problem_dataset_from_problem_dir(os.path.join(KERNEL_BENCH_PATH,  f"level{level}"))
+    return construct_problem_dataset_from_problem_dir(
+        os.path.join(KERNEL_BENCH_PATH, f"level{level}")
+    )
+
 
 KERNELBENCH_LEVEL_1_DATASET = construct_kernelbench_dataset(level=1)
 KERNELBENCH_LEVEL_2_DATASET = construct_kernelbench_dataset(level=2)
-KERNELBENCH_LEVEL_3_DATASET = construct_kernelbench_dataset(level=3)  
+KERNELBENCH_LEVEL_3_DATASET = construct_kernelbench_dataset(level=3)
 
 ################################################################################
 # Eval on Subsets of KernelBench
 ################################################################################
 
 
-def get_kernelbench_subset(level: int, num_subset_problems: int = 10, random_seed: int = 42) -> tuple[list[str], list[int]]:
+def get_kernelbench_subset(
+    level: int, num_subset_problems: int = 10, random_seed: int = 42
+) -> tuple[list[str], list[int]]:
     """
     Get a random subset of problems from the KernelBench dataset
     """
@@ -85,7 +90,8 @@ def get_kernelbench_subset(level: int, num_subset_problems: int = 10, random_see
 
     subset = sorted([full_dataset[i] for i in subset_indices])
     return subset, subset_indices
-    
+
+
 # Representative subsets of KernelBench
 level1_representative_subset = [
     "1_Square_matrix_multiplication_.py",
