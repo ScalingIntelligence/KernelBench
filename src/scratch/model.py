@@ -3,37 +3,38 @@ import torch.nn as nn
 
 class Model(nn.Module):
     """
-    Model implementing the pattern "Gemm_Sigmoid_Scaling_ResidualAdd".
-    """
-    def __init__(self, input_size, hidden_size, scaling_factor):
-        super(Model, self).__init__()
-        self.gemm = nn.Linear(input_size, hidden_size)
-        self.scaling_factor = scaling_factor
+    Model that gathers values from an input tensor along a specified dimension using an index tensor.
 
-    def forward(self, x):
+    Parameters:
+        dim (int): The dimension along which to gather values.
+    """
+    
+    def __init__(self, dim):
+        super(Model, self).__init__()
+        self.dim = dim
+
+    def forward(self, x, index):
         """
-        Forward pass of the model.
+        Gather values along `dim` using the index tensor.
 
         Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, input_size).
-
+            x (torch.Tensor): Input tensor of shape (batch_size, *input_shape).
+            index (torch.LongTensor): Index tensor with values to gather along `dim`.
+        
         Returns:
-            torch.Tensor: Output tensor of shape (batch_size, hidden_size).
+            torch.Tensor: Gathered tensor of the same shape as `index`.
         """
-        x = self.gemm(x)
-        original_x = x
-        x = torch.sigmoid(x)
-        x = x * self.scaling_factor
-        x = x + original_x
-        return x
+        return torch.gather(x, self.dim, index)
 
+# Define input dimensions and parameters
 batch_size = 128
-input_size = 1024
-hidden_size = 512
-scaling_factor = 2.0
+input_shape = (8, 10)  # Example shape (arbitrary)
+dim = 1
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    x = torch.randn(batch_size, *input_shape)
+    index = torch.randint(0, input_shape[dim], (batch_size, *input_shape[:dim], *input_shape[dim:]))
+    return [x, index]
 
 def get_init_inputs():
-    return [input_size, hidden_size, scaling_factor]
+    return [dim]

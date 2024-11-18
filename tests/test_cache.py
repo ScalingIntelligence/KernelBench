@@ -9,7 +9,7 @@ import multiprocessing as mp
 
 
 # Global Configs
- 
+
 MEASURE_PERFORMANCE = True
 
 # RUN_NAME = "level2_run_10_28"
@@ -18,7 +18,7 @@ RUN_NAME = "level1_trial_11_01_sonnet"
 # RUN_NAME = "level2_run_10_28"
 PROBLEM_DIR = "KernelBench/level1"
 # query from database, make sure the server is up
-SERVER_URL = "http://matx3.stanford.edu:9091" 
+SERVER_URL = "http://matx3.stanford.edu:9091"
 # SERVER_URL = "http://localhost:9091"
 
 NUM_CPU_WORKERS = 50
@@ -47,42 +47,57 @@ def compile_single_sample(work_args: WorkArgs, configs: dict):
     # device = work_args.device
     verbose = configs["verbose"]
 
-
     # fetch kernel code from database
-    kernel = eval.fetch_kernel_from_database(run_name, problem_id, sample_id, SERVER_URL)
+    kernel = eval.fetch_kernel_from_database(
+        run_name, problem_id, sample_id, SERVER_URL
+    )
     kernel_src = kernel["kernel"]
     kernel_hash = kernel["kernel_hash"]
     assert kernel_src is not None, f"Kernel not found for sample {sample_id}"
     try:
-        compiled_and_cached = eval.build_compile_cache(custom_model_src=kernel_src,
-                                                       custom_model_hash=kernel_hash, 
-            verbose=verbose, 
-            build_dir=f"/matx/u/simonguo/kernel_eval_build/{run_name}/{problem_id}/{sample_id}")
+        compiled_and_cached = eval.build_compile_cache(
+            custom_model_src=kernel_src,
+            custom_model_hash=kernel_hash,
+            verbose=verbose,
+            build_dir=f"/matx/u/simonguo/kernel_eval_build/{run_name}/{problem_id}/{sample_id}",
+        )
 
         return compiled_and_cached
     except Exception as e:
-        print(f"[WARNING] Last level catch on {sample_id}: Some issue while compiling and attempting to cache for kernel: {e} ")
+        print(
+            f"[WARNING] Last level catch on {sample_id}: Some issue while compiling and attempting to cache for kernel: {e} "
+        )
         return None
 
 
-def batch_compile(problem_range: tuple[int, int], samples_range: tuple[int, int], configs: dict):
+def batch_compile(
+    problem_range: tuple[int, int], samples_range: tuple[int, int], configs: dict
+):
     """
     Batch compile cache across CPUs
     """
     if mp.get_start_method(allow_none=True) is None:
-        mp.set_start_method('spawn')
-
+        mp.set_start_method("spawn")
 
     # construct a list of work args
     total_work = []
     for problem_id in range(*problem_range):
         for sample_id in range(*samples_range):
             total_work.append((problem_id, sample_id))
-    try: 
+    try:
         with mp.Pool(NUM_CPU_WORKERS) as pool:
             # Create work args for each task
             work_args = [
-                (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=RUN_NAME, dataset=dataset, device=None), configs)
+                (
+                    WorkArgs(
+                        problem_id=p_id,
+                        sample_idx=s_idx,
+                        run_name=RUN_NAME,
+                        dataset=dataset,
+                        device=None,
+                    ),
+                    configs,
+                )
                 for p_id, s_idx in total_work
             ]
 
@@ -93,18 +108,24 @@ def batch_compile(problem_range: tuple[int, int], samples_range: tuple[int, int]
 
             # Collect results with timeouts
             results = []
-            for i, async_result in enumerate(tqdm(async_results, desc="Compile & Cache Progress")):
+            for i, async_result in enumerate(
+                tqdm(async_results, desc="Compile & Cache Progress")
+            ):
                 try:
                     result = async_result.get(timeout=configs["timeout"])
                     # TODO: do something with this result?
                     results.append(result)
                 except mp.TimeoutError:
                     problem_id, sample_id = total_work[i]
-                    print(f"[WARNING] Compilation timed out for Problem ID: {problem_id}, Sample ID: {sample_id}. Cannot cache this kernel")
+                    print(
+                        f"[WARNING] Compilation timed out for Problem ID: {problem_id}, Sample ID: {sample_id}. Cannot cache this kernel"
+                    )
                     results.append(None)
                 except Exception as e:
                     problem_id, sample_id = total_work[i]
-                    print(f"[ERROR] Compilation failed for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}")
+                    print(
+                        f"[ERROR] Compilation failed for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
+                    )
                     results.append(None)
 
             return results
@@ -129,7 +150,6 @@ def batch_compile(problem_range: tuple[int, int], samples_range: tuple[int, int]
     #             (WorkArgs(problem_id=p_id, sample_idx=s_idx, run_name=RUN_NAME, dataset=dataset, device=torch.device(f"cuda:{i%NUM_GPU_DEVICES}")), configs)
     #             for i, (p_id, s_idx) in enumerate(curr_work_batch)
     #         ]
-
 
     #         start_time = time.time()
 
@@ -166,20 +186,18 @@ def batch_compile(problem_range: tuple[int, int], samples_range: tuple[int, int]
     #         print(f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds")
 
 
-
-
 if __name__ == "__main__":
     # problem_id = 7
     # samples_range = (4, 5)
     # problem_range = (15, 54)
     # samples_range = (2, 10) # 30 samples
-    
+
     # problem_range = (15, 16)
     # samples_range = (0, 1)
     # Check if CUDA is available
     # if not torch.cuda.is_available():
     #     raise RuntimeError("CUDA device not available. This test requires a GPU.")
-    
+
     # these will go into pydra in the future
     configs = {"timeout": 900, "verbose": False}
 

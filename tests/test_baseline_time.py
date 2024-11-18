@@ -10,8 +10,6 @@ device = torch.device("cuda:0")
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',))
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
-json_results = {}
-
 def fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=False):
     PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, 'level'+str(level_num))
     dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
@@ -19,61 +17,61 @@ def fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=False)
 
 def get_time(level_num, problem_id, num_trials=100, torch_compile=False):
     ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=True)
+    ref_arch_name = ref_arch_name.split("/")[-1]
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(ref_arch_src, context)
     try: 
-        torch.cuda.synchronize(device=device)
-        set_seed(42)
-        inputs = get_inputs()
-        set_seed(42)
-        init_inputs = get_init_inputs()
-        inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
-        init_inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs]
-        model = Model(*init_inputs)
-        if torch_compile:
-            model = torch.compile(model)
-        model = model.cuda(device=device)
-        torch.cuda.synchronize(device=device)
-        elapsed_times = time_execution_with_cuda_event(model, *inputs, num_trials=num_trials, verbose=False, device=device)
-        runtime_stats = get_timing_stats(elapsed_times, device=device)
-        # print(f"Level {level_num} Problem {problem_id} Runtime Stats: {runtime_stats}")
-        # # save stats to results/baseline_time.txt
-        # save_path = f"results/baseline_time{'_torch_compile' if torch_compile else ''}.txt"
-        # with open(save_path, "a") as f:
-        #     f.write(f"Level {level_num} Problem {problem_id} Runtime Stats: {runtime_stats}\n")
-        json_results[f"level{level_num}"][ref_arch_name] = runtime_stats
+        with torch.no_grad():
+            torch.cuda.synchronize(device=device)
+            set_seed(42)
+            inputs = get_inputs()
+            set_seed(42)
+            init_inputs = get_init_inputs()
+            inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
+            init_inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs]
+            model = Model(*init_inputs)
+            if torch_compile:
+                model = torch.compile(model)
+            model = model.cuda(device=device)
+            torch.cuda.synchronize(device=device)
+            elapsed_times = time_execution_with_cuda_event(model, *inputs, num_trials=num_trials, verbose=False, device=device)
+            runtime_stats = get_timing_stats(elapsed_times, device=device)
+            # json_results[f"level{level_num}"][ref_arch_name] = runtime_stats
+            print(f"{ref_arch_name} {runtime_stats}")
+            return (ref_arch_name, runtime_stats)
     except Exception as e:
         print(f"[Eval] Error in Measuring Performance: {e}")
 
 if __name__ == "__main__":
 
-    REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..',))
-    KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+    for torch_compile in [True, False]:
 
-    torch_compile = True
+        json_results = {}
+        PROBLEM_DIR_LEVEL1 = "KernelBench/level1"
+        dataset_level1 = construct_problem_dataset_from_problem_dir(PROBLEM_DIR_LEVEL1)
+        json_results["level1"] = {}
+        for problem_id in range(len(dataset_level1)):
+            ref_arch_name, runtime_stats = get_time(1, problem_id, torch_compile=torch_compile)
+            json_results["level1"][ref_arch_name] = runtime_stats
 
-    PROBLEM_DIR_LEVEL1 = "KernelBench/level1"
-    dataset_level1 = construct_problem_dataset_from_problem_dir(PROBLEM_DIR_LEVEL1)
-    json_results["level1"] = {}
-    for problem_id in range(len(dataset_level1)):
-        get_time(1, problem_id, torch_compile=torch_compile)
+        PROBLEM_DIR_LEVEL2 = "KernelBench/level2"
+        dataset_level2 = construct_problem_dataset_from_problem_dir(PROBLEM_DIR_LEVEL2)
+        json_results["level2"] = {}
+        for problem_id in range(len(dataset_level2)):
+            ref_arch_name, runtime_stats = get_time(2, problem_id, torch_compile=torch_compile)
+            json_results["level2"][ref_arch_name] = runtime_stats
 
-    PROBLEM_DIR_LEVEL2 = "KernelBench/level2"
-    dataset_level2 = construct_problem_dataset_from_problem_dir(PROBLEM_DIR_LEVEL2)
-    json_results["level2"] = {}
-    for problem_id in range(len(dataset_level2)):
-        get_time(2, problem_id, torch_compile=torch_compile)
+        PROBLEM_DIR_LEVEL3 = "KernelBench/level3"
+        dataset_level3 = construct_problem_dataset_from_problem_dir(PROBLEM_DIR_LEVEL3)
+        json_results["level3"] = {}
+        for problem_id in range(len(dataset_level3)):
+            ref_arch_name, runtime_stats = get_time(3, problem_id, torch_compile=torch_compile)
+            json_results["level3"][ref_arch_name] = runtime_stats
 
-    PROBLEM_DIR_LEVEL3 = "KernelBench/level3"
-    dataset_level3 = construct_problem_dataset_from_problem_dir(PROBLEM_DIR_LEVEL3)
-    json_results["level3"] = {}
-    for problem_id in range(len(dataset_level3)):
-        get_time(3, problem_id, torch_compile=torch_compile)
-
-    if torch_compile:
-        save_path = f"results/baseline_time_torch_compile.json"
-    else:
-        save_path = f"results/baseline_time.json"
-    with open(save_path, "w") as f:
-        json.dump(json_results, f)
+        if torch_compile:
+            save_path = f"tests/baseline_time_torch_compile.json"
+        else:
+            save_path = f"tests/baseline_time.json"
+        with open(save_path, "w") as f:
+            json.dump(json_results, f)
 
