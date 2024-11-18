@@ -27,7 +27,7 @@ def assign_problem_hash(problem_path: str) -> list[int]:
     return get_code_hash(problem_src)
 
 
-def get_code_hash(problem_src: str) -> list[int]:
+def get_code_hash(problem_src: str) -> str:
     """
     Assign a unique hash to some piece of code
     Important to strip out the comments and whitespace as they are not functionally part of the code
@@ -36,7 +36,6 @@ def get_code_hash(problem_src: str) -> list[int]:
     problem_src = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', "", problem_src)
     # Remove inline comments and all whitespace
     cleaned_problem_src = re.sub(r"#.*$|\s+", "", problem_src, flags=re.MULTILINE)
-
     # hash only on code
     return hashlib.md5(cleaned_problem_src.encode()).hexdigest()
 

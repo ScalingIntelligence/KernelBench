@@ -1,6 +1,4 @@
-# from dataclasses import dataclass
 # import time
-
 # from tqdm import tqdm
 # from src import eval, utils
 # import torch
@@ -54,7 +52,7 @@ class EvalConfig(Config):
         # local (requires a GPU), modal?
         self.eval_mode = "local"
 
-        self.level = "level_1"
+        self.level = 1
 
         # let's just eval 1 problem right now!
         self.problem_id = 0
@@ -86,7 +84,7 @@ def main(config: EvalConfig):
         os.makedirs(config.logdir, exist_ok=True)
         
     # just make it simple for now
-    curr_level_dataset = dataset[config.level]
+    curr_level_dataset = dataset[f"level_{config.level}"]
 
     num_problems = len(curr_level_dataset)
     print(f"Number of problems in Level {config.level}: {num_problems}")
@@ -130,6 +128,7 @@ def main(config: EvalConfig):
 
     if config.log:
         with open(os.path.join(config.logdir, f"eval_result_level{config.level}_problem_{config.problem_id}.txt"), "w") as f:
+            f.write(f"Problem Name: {problem_name}\n")
             f.write(str(kernel_exec_result))
 
 
