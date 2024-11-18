@@ -58,12 +58,14 @@ class EvalConfig(Config):
         self.problem_id = 0
 
         # Inference
-        self.temperature = 0.0 # for greedy
         self.max_tokens = 4096
         self.server_type = "deepseek"
 
         # enforce for now
         self.num_workers = 1
+
+    def greedy(self):
+        self.temperature = 0.0
 
     def __repr__(self):
         return f"EvalConfig({self.to_dict()})"

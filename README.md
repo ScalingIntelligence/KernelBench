@@ -4,8 +4,6 @@ A benchmark for evaluating LLMs' ability to generate GPU kernels
 
 ![KernelBenchMascot](./assets/figures/KernelBenchMascot.png)
 
-
-
 ## Task Description
 
 We construct Kernel Bench to have 3 Levels of difficulty:
@@ -18,6 +16,8 @@ We construct Kernel Bench to have 3 Levels of difficulty:
 
 So far we have curated 250 problems across all levels..
 
+You can find the KernelBench dataset on HuggingFace: [TODO: ADD LINK]
+
 ## Directory Structure
 TODO: Update this
 ```
@@ -25,10 +25,11 @@ KernelBenchInternal/
 ├── assets/
 ├── KernelBench/
 ├── src/
-│   ├── analysis.py
-│   ├── eval.py
-│   └── utils/
-├── 
+│   ├── tests/  
+│   ├── prompts/
+│   ├── other files
+├── scripts/
+├── results/
 ```
 
 ## Set up
@@ -47,3 +48,8 @@ Running and profiling kernels require a GPU. If you don't have GPU available loc
 ## How to use
 Run Eval
 You can set up a database to go with this or you can write to a local JSON file.
+
+Pick one problem
+```
+python3 scripts/eval_from_hf.py level=1 problem_id=0
+```

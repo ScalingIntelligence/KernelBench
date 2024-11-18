@@ -46,8 +46,8 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 @cache
 def load_deepseek_tokenizer():
     # TODO: Should we update this for new deepseek? Same tokenizer?
-    return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Instruct-0724")
-
+    # return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Instruct-0724")
+    return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-V2", trust_remote_code=True)
 
 # Buffer because deepseek totally blocks us if we send stuff that's too long :(
 TOO_LONG_FOR_DEEPSEEK = 115_000
