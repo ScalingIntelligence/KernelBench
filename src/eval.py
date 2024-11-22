@@ -171,7 +171,6 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
 
 def build_compile_cache(
     custom_model_src: str,
-    # custom_model_hash: str,
     verbose: bool = False,
     build_dir: os.PathLike = None,
 ) -> tuple[bool, str]:
@@ -211,7 +210,6 @@ def build_compile_cache(
 def eval_kernel_against_ref(
     original_model_src: str,
     custom_model_src: str,
-    # custom_model_hash: str, # not sure what would we need this for?
     seed_num: int = 42,
     num_correct_trials: int = 1,
     num_perf_trials: int = 10,

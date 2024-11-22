@@ -300,7 +300,7 @@ def remove_code_block_header(code, code_language_type):
     return code
 
 
-def extract_first_code(output_string: str, code_language_type: str) -> str:
+def extract_first_code(output_string: str, code_language_types: list[str]) -> str:
     """
     Extract first code block from model output, specified by code_language_type
     """
@@ -316,9 +316,9 @@ def extract_first_code(output_string: str, code_language_type: str) -> str:
         # depends on code_language_type: cpp, python, etc.
         # sometimes the block of code is ```cpp ... ``` instead of ``` ... ```
         # in this case strip the cpp out
-
-        if code.startswith(code_language_type):
-            code = code[len(code_language_type) :].strip()
+        for code_type in code_language_types:
+            if code.startswith(code_type):
+                code = code[len(code_type) :].strip()
 
         return code
 
