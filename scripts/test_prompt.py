@@ -28,7 +28,7 @@ server_args = {
         "temperature": 0.0,
         "max_tokens": 4096,
     },
-    "openai_o1": {
+    "openai_o1": { # this could be expensive!! Be careful
         "model_name": "o1-preview-2024-09-12",
         "temperature": 0.0,
         "max_tokens": 4096,

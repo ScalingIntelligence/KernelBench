@@ -15,7 +15,7 @@ from datasets import load_dataset
 
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_file_one_example
-from src.utils import extract_first_code, query_server
+from src.utils import extract_first_code, query_server, set_gpu_arch
 from src.run import run_llm
 
 """
@@ -55,7 +55,8 @@ class EvalConfig(Config):
         self.level = 1
 
         # let's just eval 1 problem right now!
-        self.problem_id = 0
+        # NOTE: this is the logical index (problem id the problem_name)
+        self.problem_id = 1
 
         # Inference
         self.max_tokens = 4096
@@ -63,6 +64,11 @@ class EvalConfig(Config):
 
         # enforce for now
         self.num_workers = 1
+
+        # Construct this from mapping from architecture name to torch cuda arch list in the future
+        # you can either specify SM version or just use the name
+        self.gpu_arch = ["Ada"]
+
 
     def greedy(self):
         self.temperature = 0.0
@@ -82,6 +88,9 @@ def main(config: EvalConfig):
 
     dataset = load_dataset(config.dataset_name)
 
+    if config.gpu_arch:
+        set_gpu_arch(config.gpu_arch)  # otherwise build for all architectures
+
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)
         
@@ -91,13 +100,18 @@ def main(config: EvalConfig):
     num_problems = len(curr_level_dataset)
     print(f"Number of problems in Level {config.level}: {num_problems}")
 
-    assert config.problem_id < len(
-        curr_level_dataset
-    ), f"Problem ID {config.problem_id} out of range for Level {config.level}"
+    assert config.problem_id <= num_problems, f"Problem ID {config.problem_id} out of range for Level {config.level}"
+
+    problem_idx_in_dataset = config.problem_id - 1 # due to dataset being 0-indexed
 
     # 1. fetch reference architecture from problem directory
-    ref_arch_src = curr_level_dataset[config.problem_id]["code"]
-    problem_name = curr_level_dataset[config.problem_id]["name"]
+    ref_arch_src = curr_level_dataset[problem_idx_in_dataset]["code"]
+    problem_name = curr_level_dataset[problem_idx_in_dataset]["name"]
+
+    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
+    problem_number = int(problem_name.split("_")[0])
+    assert problem_number <= config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    
     # 2. generate samples
 
     # Create inference function with config parameters
@@ -128,11 +142,13 @@ def main(config: EvalConfig):
         ref_arch_src, custom_cuda, verbose=False, measure_performance=True
     )
 
+    # NOTE: should I replace this with a json file? rather than just a text log?
     if config.log:
         with open(os.path.join(config.logdir, f"eval_result_level{config.level}_problem_{config.problem_id}.txt"), "w") as f:
             f.write(f"Problem Name: {problem_name}\n")
             f.write(str(kernel_exec_result))
 
+            
 
 if __name__ == "__main__":
     main()
