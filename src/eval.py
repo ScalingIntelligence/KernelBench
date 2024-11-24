@@ -131,7 +131,7 @@ def load_custom_model(
         exec(model_custom_src, context)
         # DANGER: need to delete refernece from global namespace
     except SyntaxError as e:
-        print(f"Syntax Error in original code or Compilation Error {e}")
+        print(f"Syntax Error in custom generated code or Compilation Error {e}")
         return None
 
     ModelNew = context.get("ModelNew")

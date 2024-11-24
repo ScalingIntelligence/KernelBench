@@ -41,7 +41,7 @@ OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
-
+SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
 
 @cache
 def load_deepseek_tokenizer():
@@ -268,6 +268,10 @@ Model output processing
 
 
 def read_file(file_path) -> str:
+    if not os.path.exists(file_path):
+        print(f"File {file_path} does not exist")
+        return ""
+    
     try:
         with open(file_path, "r") as file:
             return file.read()
@@ -324,6 +328,49 @@ def extract_first_code(output_string: str, code_language_types: list[str]) -> st
 
     return None
 
+
+def extract_last_code(output_string: str, code_language_types: list[str]) -> str:
+    """
+    Extract last code block from model output, specified by code_language_type
+    """
+    trimmed = output_string.strip()
+
+    # Find all matches of code blocks
+    code_matches = re.finditer(r"```(.*?)```", trimmed, re.DOTALL)
+    
+    # Get the last match by converting to list and taking the last element
+    matches_list = list(code_matches)
+    if matches_list:
+        last_match = matches_list[-1]
+        code = last_match.group(1).strip()
+
+        # Remove language type headers
+        for code_type in code_language_types:
+            if code.startswith(code_type):
+                code = code[len(code_type):].strip()
+
+        return code
+    
+    return None
+
+def extract_code_blocks(text, code_language_types: list[str]) -> str:
+    '''
+    Extract all code blocks from text, combine them to return as a single string
+    '''
+    pattern = r'```.*?\n(.*?)```'
+    matches = re.findall(pattern, text, re.DOTALL)
+
+    # Combine all code blocks and remove language type headers
+    combined_code = []
+    for match in matches:
+        code = match.strip()
+        # Remove any language type headers
+        for lang_type in code_language_types:
+            if code.startswith(lang_type):
+                code = code[len(lang_type):].strip()
+        combined_code.append(code)
+    
+    return " \n ".join(combined_code) if combined_code else ""
 
 ################################################################################
 # Scale up experiments in parallel
