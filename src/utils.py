@@ -91,6 +91,7 @@ def query_server(
     - OpenAI
     - Deepseek
     - Together
+    - Sambanova
     - Anthropic
     - Gemini / Google AI Studio
     - SGLang (Local Server)
@@ -124,6 +125,10 @@ def query_server(
         case "together":
             client = Together(api_key=TOGETHER_KEY)
             model = model_name
+        case "sambanova":
+            client = OpenAI(api_key=SAMBANOVA_API_KEY, base_url="https://api.sambanova.ai/v1")
+            model = model_name
+            
         case "openai":
             client = OpenAI(api_key=OPENAI_KEY)
             model = model_name
@@ -219,7 +224,7 @@ def query_server(
             max_tokens=max_tokens,
             temperature=temperature,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant"},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
             top_p=top_p,
@@ -230,7 +235,18 @@ def query_server(
             stream=False,
         )
         outputs = [choice.message.content for choice in response.choices]
-
+    elif server_type == "sambanova":
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            top_p=top_p,
+        )
+        outputs = [choice.message.content for choice in response.choices]
     # for all other kinds of servers, use standard API
     else:
         if type(prompt) == str:

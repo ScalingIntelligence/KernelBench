@@ -41,6 +41,11 @@ SERVER_PRESETS = {
         "temperature": 0.0,
         "max_tokens": 4096,
     },
+    "sambanova": {
+        "model_name": "Meta-Llama-3.1-405B-Instruct",
+        "temperature": 0.1,
+        "max_tokens": 8192,
+    },
 }
 
 
@@ -60,7 +65,8 @@ def create_inference_server_from_presets(server_type: str = None,
             server_args.update(kwargs)
         if greedy_sample:
             server_args["temperature"] = 0.0
-
+            server_args["top_p"] = 1.0
+            server_args["top_k"] = 1
         if verbose:
             print(f"Querying server {server_type} with args: {server_args}")
         
@@ -112,7 +118,7 @@ def inference_with_prompt(arch_path, inference_server: callable = None, log_to_l
     # check LLM is able to generate custom CUDA code
     assert custom_cuda is not None, "Custom CUDA code generation failed"
     print(
-        "[Verification] Torch moduel with Custom CUDA code **GENERATED** successfully"
+        "[Verification] Torch module with Custom CUDA code **GENERATED** successfully"
     )
 
     if log_to_local:
@@ -137,7 +143,7 @@ def test_inference(inference_server: callable):
 if __name__ == "__main__":
 
     inference_server = create_inference_server_from_presets(server_type="together",
-                                                        model_name="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+                                                        # model_name="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
                                                         greedy_sample=True,
                                                         verbose=True, 
                                                         time_generation=True)
@@ -148,5 +154,7 @@ if __name__ == "__main__":
     else:
         # run from KernelBench top level directory
         arch_path = "./KernelBench/level1/1_Square_matrix_multiplication_.py"
+        # representative of long problem
+        # arch_path = "./KernelBench/level3/45_UNetSoftmax.py" 
     
     inference_with_prompt(arch_path, inference_server, log_to_local=True)
