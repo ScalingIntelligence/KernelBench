@@ -31,7 +31,7 @@ REPO_TOP_PATH = os.path.abspath(
 )
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
-SERVER_TYPE = "gemini"
+SERVER_TYPE = "deepseek"
 
 server_args = {
     "deepseek": {"temperature": 1.6, "max_tokens": 4096},
@@ -141,7 +141,6 @@ def compare_results(best_result, new_result):
 
 
 def run_multiturn(ref_arch_src, turns=10) -> KernelExecResult:
-    # NOTE: WIP
 
     custom_cuda, result = run(ref_arch_src)
     best_custom_cuda = custom_cuda
@@ -171,6 +170,7 @@ def run_multiturn(ref_arch_src, turns=10) -> KernelExecResult:
             # custom_cuda = get_custom_cuda(improve_perf_prompt)
             # result = eval_kernel_against_ref(ref_arch_src, custom_cuda, verbose=False, measure_performance=False)
             print(f"Turn {turn}: Improving performance")
+        print(f"Result: {result}")
         if compare_results(best_result, result):
             best_result = result
             best_custom_cuda = custom_cuda
@@ -180,12 +180,12 @@ def run_multiturn(ref_arch_src, turns=10) -> KernelExecResult:
 
 if __name__ == "__main__":
 
-    # PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level2")
-    # dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
-    # ref_arch_src = fetch_ref_arch_from_problem_id(17, dataset)
-    # # write to scratch/model.py
-    # with open(os.path.join(REPO_TOP_PATH, "src/scratch/model.py"), "w") as f:
-    #     f.write(ref_arch_src)
+    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level2")
+    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    ref_arch_src = fetch_ref_arch_from_problem_id(17, dataset)
+    # write to scratch/model.py
+    with open(os.path.join(REPO_TOP_PATH, "src/scratch/model.py"), "w") as f:
+        f.write(ref_arch_src)
 
     # run with one-shot + template combined prompt
     # print(run(ref_arch_src, use_combined_prompt=True))
@@ -197,20 +197,20 @@ if __name__ == "__main__":
     # print(run(ref_arch_src, use_combined_prompt=False, prompt_example_ind=2))
 
     # run multiturn with combined prompt
-    # print(run_multiturn(ref_arch_src))
+    print(run_multiturn(ref_arch_src))
 
-    # run temperature sweep
-    # get kernelbench subset
-    kernelbench_subset = (
-        get_kernelbench_subset(level=1, num_problems=5)
-        + get_kernelbench_subset(level=2, num_problems=3)
-        + get_kernelbench_subset(level=3, num_problems=2)
-    )
-    for level, problem_id in kernelbench_subset:
-        get_temperature_sweep_generations(
-            server_type="gemini",
-            temperatures=[0.7, 1.0, 1.3, 1.6],
-            level_num=level,
-            problem_id=problem_id,
-        )
-        # TODO: deepseek, gemini, gpt, claude, llama
+    # # run temperature sweep
+    # # get kernelbench subset
+    # kernelbench_subset = (
+    #     get_kernelbench_subset(level=1, num_problems=5)
+    #     + get_kernelbench_subset(level=2, num_problems=3)
+    #     + get_kernelbench_subset(level=3, num_problems=2)
+    # )
+    # for level, problem_id in kernelbench_subset:
+    #     get_temperature_sweep_generations(
+    #         server_type="gemini",
+    #         temperatures=[0.7, 1.0, 1.3, 1.6],
+    #         level_num=level,
+    #         problem_id=problem_id,
+    #     )
+    #     # TODO: deepseek, gemini, gpt, claude, llama
