@@ -4,19 +4,52 @@ A benchmark for evaluating LLMs' ability to generate GPU kernels
 
 ![KernelBenchMascot](./assets/figures/KernelBenchMascot.png)
 
-
 ## Task Description
-TODO
 
+We construct Kernel Bench to have 3 Levels of difficulty:
+- Level 1: Single-kernel operators (100 Problems)
+    The foundational building blocks of neural nets (Convolutions, Matrix multiplies, Layer normalization)
+- Level 2: Simple fusion patterns (100 Problems)
+    A fused kernel would be faster than separated kernels (Conv + Bias + ReLU, Matmul + Scale + Sigmoid)
+- Level 3: Full model architectures (50 Problems)
+    Optimize entire model architectures end-to-end (MobileNet, VGG, MiniGPT, Mamba)
+
+So far we have curated 250 problems across all levels..
+
+You can find the KernelBench dataset on HuggingFace: [TODO: ADD LINK]
+
+## Directory Structure
+TODO: Update this
+```
+KernelBenchInternal/
+├── assets/
+├── KernelBench/
+├── src/
+│   ├── tests/  
+│   ├── prompts/
+│   ├── other files
+├── scripts/
+├── results/
+```
 
 ## Set up
 ```
 conda create --name kernel-bench python=3.10
 conda activate kernel-bench
 pip install -r requirements.txt
+# set up the repo
+pip install -e . 
 ```
-Set your `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY` API key and Modal token in environment as needed.
 
+Set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
+
+Running and profiling kernels require a GPU. If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token.
 
 ## How to use
-TODO
+Run Eval
+You can set up a database to go with this or you can write to a local JSON file.
+
+Pick one problem
+```
+python3 scripts/eval_from_hf.py level=1 problem_id=0
+```
