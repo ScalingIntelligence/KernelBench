@@ -86,7 +86,11 @@ def run_profile(level_num, problem_id, num_trials=10):
                     prof_compiled.step()
         print(f"\nProfiling results for compiled model:")
         print(prof_compiled.key_averages().table(sort_by="cuda_time_total", row_limit=10))
-            
+
+
+        prof.export_chrome_trace("trace_non_compiled.json")
+        prof_compiled.export_chrome_trace("trace_compiled.json")
+
     # except Exception as e:
         # print(f"[Eval] Error in Measuring Performance: {e}")
 
