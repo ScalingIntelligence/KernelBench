@@ -77,11 +77,12 @@ def query_server(
     prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,
     system_prompt: str = "You are a helpful assistant",  # only used for chat prompts
     temperature: float = 0.0,
-    top_p: float = 1.0,
-    top_k: int = 1,  # nucleus sampling
+    top_p: float = 1.0, # nucleus sampling
+    top_k: int = 50, 
     max_tokens: int = 128,  # max output tokens to generate
     num_completions: int = 1,
     server_port: int = 30000,  # only for local server hosted on SGLang
+    server_address: str = "localhost",
     server_type: str = "sglang",
     model_name: str = "default",  # specify model type
 ):
@@ -99,7 +100,7 @@ def query_server(
     # Select model and client based on arguments
     match server_type:
         case "sglang":
-            url = f"http://localhost:{server_port}"
+            url = f"http://{server_address}:{server_port}"
             client = OpenAI(
                 api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
             )
@@ -121,7 +122,7 @@ def query_server(
             model = model_name
         case "google":
             genai.configure(api_key=GEMINI_KEY)
-
+            model = model_name
         case "together":
             client = Together(api_key=TOGETHER_KEY)
             model = model_name
@@ -159,7 +160,7 @@ def query_server(
         outputs = [choice.text for choice in response.content]
 
     elif server_type == "google":
-        assert model_name == "gemini-1.5-flash-002", "Only test this for now"
+        # assert model_name == "gemini-1.5-flash-002", "Only test this for now"
 
         generation_config = {
             "temperature": temperature,

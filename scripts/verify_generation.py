@@ -28,7 +28,10 @@ SERVER_PRESETS = {
         "max_tokens": 4096,
     },
     "sglang": {  # this is for running locally, mostly for Llama
-        "temperature": 0.7,
+        "temperature": 0.8, # human eval pass@N temperature
+        "server_port": 10210,
+        "server_address": "matx2.stanford.edu",
+        "max_tokens": 8192,
     },
     "anthropic": {  # for Claude 3.5 Sonnet
         "model_name": "claude-3-5-sonnet-20241022",
@@ -134,7 +137,7 @@ def test_inference(inference_server: callable):
     """
 
     start_time = time.time()
-    lm_response = inference_server("Hello, world!")
+    lm_response = inference_server("What is 2+2?")
     end_time = time.time()
     print(f"[Timing] Inference took {end_time - start_time:.2f} seconds")
     print(lm_response)
@@ -142,19 +145,22 @@ def test_inference(inference_server: callable):
 
 if __name__ == "__main__":
 
-    inference_server = create_inference_server_from_presets(server_type="together",
-                                                        # model_name="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-                                                        greedy_sample=True,
-                                                        verbose=True, 
-                                                        time_generation=True)
+    # inference_server = create_inference_server_from_presets(server_type="together",
+    #                                                     # model_name="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+    #                                                     greedy_sample=True,
+    #                                                     verbose=True, 
+    #                                                     time_generation=True)
+    inference_server = create_inference_server_from_presets(server_type="sglang",
+                                                            verbose=True, 
+                                                            time_generation=True)
 
-    # test_inference(inference_server)
-    if len(sys.argv) > 1:
-        arch_path = sys.argv[1]
-    else:
-        # run from KernelBench top level directory
-        arch_path = "./KernelBench/level1/1_Square_matrix_multiplication_.py"
-        # representative of long problem
-        # arch_path = "./KernelBench/level3/45_UNetSoftmax.py" 
+    test_inference(inference_server)
+    # if len(sys.argv) > 1:
+    #     arch_path = sys.argv[1]
+    # else:
+    #     # run from KernelBench top level directory
+    #     arch_path = "./KernelBench/level1/1_Square_matrix_multiplication_.py"
+    #     # representative of long problem
+    #     # arch_path = "./KernelBench/level3/45_UNetSoftmax.py" 
     
-    inference_with_prompt(arch_path, inference_server, log_to_local=True)
+    # inference_with_prompt(arch_path, inference_server, log_to_local=True)

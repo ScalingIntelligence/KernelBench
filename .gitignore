@@ -4,6 +4,8 @@ scratch/
 *.egg-info/
 **build/
 **dist/
-**results/
+# **results/
+results/*
+!results/timing/
 
 

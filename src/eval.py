@@ -173,7 +173,7 @@ def build_compile_cache(
     custom_model_src: str,
     verbose: bool = False,
     build_dir: os.PathLike = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, str]:
     """
     Try to build the compiled cuda code for sample and store in the cache directory
     Should be able to run on CPUs to do this massively in parallel
@@ -200,11 +200,10 @@ def build_compile_cache(
         if verbose:
             print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
     except Exception as e:
-        print(f"Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        print(f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        return False, stdout_buffer.getvalue(), str(e)
 
-        return False, stdout_buffer.getvalue()
-
-    return True, stdout_buffer.getvalue()
+    return True, stdout_buffer.getvalue(), None
 
 
 def eval_kernel_against_ref(
@@ -216,7 +215,7 @@ def eval_kernel_against_ref(
     verbose: bool = False,
     measure_performance: bool = False,
     build_dir: os.PathLike = None,
-    device: torch.device = torch.cuda.current_device(),
+    device: torch.device = torch.cuda.current_device() if torch.cuda.is_available() else None, # have to run on GPU
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model

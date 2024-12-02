@@ -47,10 +47,3 @@ def get_cuda_tokens(kernel_src: str, tokenizer: AutoTokenizer) -> int:
     num_cuda_tokens = sum(get_token_count(code, tokenizer) for code in all_cuda_code)
     return num_cuda_tokens
 
-
-# with open("results/eval_logs/gru.py", "r") as file:
-#     all_cuda_code = extract_all_cuda_sources(file.read())
-#     print(all_cuda_code)
-#     num_cuda_tokens = sum(get_token_count(utils.load_deepseek_tokenizer(), code) for code in all_cuda_code)
-
-#     print(num_cuda_tokens)

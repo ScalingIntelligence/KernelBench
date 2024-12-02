@@ -25,8 +25,6 @@ Eval Script using Hugging Face Datasets
 Heavily inspired by 
 https://github.com/princeton-nlp/SWE-bench/blob/main/swebench/harness/run_evaluation.py
 
-
-This is a simple version, I will ship the more compelx version when I get the others one fixed up
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
