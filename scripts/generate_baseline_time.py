@@ -38,49 +38,57 @@ def run_profile(level_num, problem_id, num_trials=10):
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
         ref_arch_src, context
     )
-    try:
-        with torch.no_grad():
-            torch.cuda.synchronize(device=device)
-            set_seed(42)
-            inputs = get_inputs()
-            set_seed(42)
-            init_inputs = get_init_inputs()
-            inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in inputs
-            ]
-            init_inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in init_inputs
-            ]
+    # try:
+    with torch.no_grad():
+        profiling_scheduler = torch.profiler.schedule(
+            wait=1,
+            warmup=2,
+            active=7,
+        )
+        torch.cuda.synchronize(device=device)
+        set_seed(42)
+        inputs = get_inputs()
+        set_seed(42)
+        init_inputs = get_init_inputs()
+        inputs = [
+            x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+            for x in inputs
+        ]
+        init_inputs = [
+            x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+            for x in init_inputs
+        ]
+        
+        # Create base model
+        model = Model(*init_inputs)
+        model = model.cuda(device=device)
+        
+        # Profile non-compiled model
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            schedule=profiling_scheduler
+        ) as prof:
+            with record_function("non_compiled_forward"):
+                for _ in range(num_trials):
+                    model(*inputs)
+                    prof.step()
+        print(f"\nProfiling results for non-compiled model:")
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+        
+        # Profile compiled model
+        model_compiled = torch.compile(model)
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]
+        ) as prof_compiled:
+            with record_function("compiled_forward"):
+                for _ in range(num_trials):
+                    model_compiled(*inputs)
+                    prof_compiled.step()
+        print(f"\nProfiling results for compiled model:")
+        print(prof_compiled.key_averages().table(sort_by="cuda_time_total", row_limit=10))
             
-            # Create base model
-            model = Model(*init_inputs)
-            model = model.cuda(device=device)
-            
-            # Profile non-compiled model
-            with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-            ) as prof:
-                with record_function("non_compiled_forward"):
-                    for _ in range(num_trials):
-                        model(*inputs)
-            print(f"\nProfiling results for non-compiled model:")
-            print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
-            
-            # Profile compiled model
-            model_compiled = torch.compile(model)
-            with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-            ) as prof_compiled:
-                with record_function("compiled_forward"):
-                    for _ in range(num_trials):
-                        model_compiled(*inputs)
-            print(f"\nProfiling results for compiled model:")
-            print(prof_compiled.key_averages().table(sort_by="cuda_time_total", row_limit=10))
-            
-    except Exception as e:
-        print(f"[Eval] Error in Measuring Performance: {e}")
+    # except Exception as e:
+        # print(f"[Eval] Error in Measuring Performance: {e}")
 
 
 def get_time(level_num, problem_id, num_trials=100, torch_compile=False):
@@ -217,5 +225,5 @@ if __name__ == "__main__":
     # record_baseline_times()
 
     run_profile(2, 43)
-    get_time(2, 43, torch_compile=False)
-    get_time(2, 43, torch_compile=True)
+    # get_time(2, 43, torch_compile=False)
+    # get_time(2, 43, torch_compile=True)
