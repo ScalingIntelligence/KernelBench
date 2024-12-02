@@ -149,14 +149,17 @@ def make_dataset_examples(dir_path, level):
             file_path = os.path.join(dir_path, f)
             code = open(file_path, "r").read()
             name = f.split(".")[0]
+            problem_id = int(name.split("_")[0])
             json_object = {
                 "code": "",
                 "level": 0,
-                "name": ""
+                "name": "",
+                "problem_id": 0
             }
             json_object["code"] = code
             json_object["level"] = level
             json_object["name"] = name
+            json_object["problem_id"] = problem_id
             dataset_list.append(json_object)
             # count += 1
 
