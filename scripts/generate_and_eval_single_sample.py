@@ -26,7 +26,7 @@ class EvalConfig(Config):
         self.dataset_src = REQUIRED # either huggingface or local
 
         # name of dataset name on Hugging Face
-        self.dataset_name = "anneouyang/kbtest"
+        self.dataset_name = "ScalingIntelligence/KernelBench"
 
 
         # Problem Specification
@@ -94,20 +94,26 @@ def main(config: EvalConfig):
 
     assert config.problem_id <= num_problems, f"Problem ID {config.problem_id} out of range for Level {config.level}"
 
-    problem_idx_in_dataset = config.problem_id - 1 # due to dataset being 0-indexed
 
     # 1. Fetch Problem
     if config.dataset_src == "huggingface":
-        ref_arch_src = curr_level_dataset[problem_idx_in_dataset]["code"]
-        problem_name = curr_level_dataset[problem_idx_in_dataset]["name"]
+
+        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
+        ref_arch_src = curr_problem_row["code"][0]
+        problem_name = curr_problem_row["name"][0]
+
     elif config.dataset_src == "local":
+        problem_idx_in_dataset = config.problem_id - 1 # due to dataset list being 0-indexed locally
         ref_arch_path = curr_level_dataset[problem_idx_in_dataset]
+
         problem_name = os.path.basename(ref_arch_path)
         ref_arch_src = read_file(ref_arch_path)
+    # import pdb; pdb.set_trace()
 
     # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
     problem_number = int(problem_name.split("_")[0])
-    assert problem_number <= config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    
     
     # 2. Generate Sample
     # Create inference function with config parameters

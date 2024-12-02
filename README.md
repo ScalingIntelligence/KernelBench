@@ -58,9 +58,12 @@ Running and profiling kernels require a GPU. If you don't have GPU available loc
 
 ## 🚀 Usage
 ### Run on a single problem 
-It is easier to debug with a single problem.
+It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample.
+
 ```
-python3 scripts/generate_and_eval_single_sample.py level=1 problem_id=0
+python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" level=2 problem_id=40
+# dataset_src could be "local" or "huggingface"
+# add .verbose_logging for more visbility
 ```
 
 ### Run on all problems 
