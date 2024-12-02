@@ -11,6 +11,7 @@ from src.dataset import construct_problem_dataset_from_problem_dir
 import os
 import logging
 import json
+from torch.profiler import profile, record_function, ProfilerActivity
 
 device = torch.device("cuda:0")
 
@@ -27,6 +28,59 @@ def fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=False)
     PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level_num))
     dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
+
+def run_profile(level_num, problem_id, num_trials=10):
+    ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
+        level_num, problem_id, with_name=True
+    )
+    ref_arch_name = ref_arch_name.split("/")[-1]
+    context = {}
+    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
+        ref_arch_src, context
+    )
+    try:
+        with torch.no_grad():
+            torch.cuda.synchronize(device=device)
+            set_seed(42)
+            inputs = get_inputs()
+            set_seed(42)
+            init_inputs = get_init_inputs()
+            inputs = [
+                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+                for x in inputs
+            ]
+            init_inputs = [
+                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+                for x in init_inputs
+            ]
+            
+            # Create base model
+            model = Model(*init_inputs)
+            model = model.cuda(device=device)
+            
+            # Profile non-compiled model
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            ) as prof:
+                with record_function("non_compiled_forward"):
+                    for _ in range(num_trials):
+                        model(*inputs)
+            print(f"\nProfiling results for non-compiled model:")
+            print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+            
+            # Profile compiled model
+            model_compiled = torch.compile(model)
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            ) as prof_compiled:
+                with record_function("compiled_forward"):
+                    for _ in range(num_trials):
+                        model_compiled(*inputs)
+            print(f"\nProfiling results for compiled model:")
+            print(prof_compiled.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+            
+    except Exception as e:
+        print(f"[Eval] Error in Measuring Performance: {e}")
 
 
 def get_time(level_num, problem_id, num_trials=100, torch_compile=False):
@@ -160,4 +214,8 @@ def record_baseline_times():
 
 if __name__ == "__main__":
     # get_torch_compile_triton(1, 12)
-    record_baseline_times()
+    # record_baseline_times()
+
+    run_profile(2, 43)
+    get_time(2, 43, torch_compile=False)
+    get_time(2, 43, torch_compile=True)
