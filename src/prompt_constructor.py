@@ -119,6 +119,9 @@ def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str) -> str:
 
 def prompt_generate_custom_cuda_from_file_one_example(ref_arch_src, example_ind=1):
     """
+    Deprecated: use prompt_generate_custom_cuda_from_prompt_template instead
+    Keep this around for background compatibility
+    NOTE: Anne to clean this up
     Check example_ind for prompt templates
     """
     # arch = get_arch_definition_from_file(arch_path)
@@ -130,6 +133,37 @@ def prompt_generate_custom_cuda_from_file_one_example(ref_arch_src, example_ind=
     )
     example_new_arch_path = os.path.join(
         REPO_TOP_PATH, f"src/prompts/model_new_ex_{example_ind}.py"
+    )
+
+    if not os.path.exists(example_arch_path):
+        raise FileNotFoundError(
+            f"Example architecture file not found: {example_arch_path}"
+        )
+    if not os.path.exists(example_new_arch_path):
+        raise FileNotFoundError(
+            f"Example new architecture file not found: {example_new_arch_path}"
+        )
+
+    example_arch = read_file(example_arch_path)
+    example_new_arch = read_file(example_new_arch_path)
+
+    return prompt_generate_custom_cuda(arch, example_arch, example_new_arch)
+
+
+def prompt_generate_custom_cuda_from_prompt_template(ref_arch_src: str) -> str:
+    """
+    Using prompt example (an element-wise addition) for prompt templates
+    The most basic form of example just to show LLM the task and the expected output format
+    """
+    arch = ref_arch_src
+    # These are strictly defined for now
+
+    # path to prompt template, show an example of Model (torch specifications) and ModelNew (torch + custom CUDA kernels)
+    example_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_ex_add.py"
+    )
+    example_new_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_new_ex_add.py"
     )
 
     if not os.path.exists(example_arch_path):

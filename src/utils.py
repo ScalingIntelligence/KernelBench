@@ -43,6 +43,12 @@ SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
 
+
+
+########################################################
+# Inference Helpers
+########################################################
+
 @cache
 def load_deepseek_tokenizer():
     # TODO: Should we update this for new deepseek? Same tokenizer?
@@ -277,6 +283,85 @@ def query_server(
     else:
         return outputs
 
+
+# a list of presets for API server configs
+SERVER_PRESETS = {
+    "deepseek": {
+        "temperature": 1.6, 
+        "model_name": "deepseek",
+        "max_tokens": 4096
+    },
+    "google": {
+        "model_name": "gemini-1.5-flash-002",
+        "temperature": 0.7, # need to experiment with temperature
+        "max_tokens": 8192,
+    },
+    "together": { # mostly for Llama 3.1
+        "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        # "model_name": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+        "temperature": 0.7,
+        "max_tokens": 4096,
+    },
+    "sglang": {  # this is for running locally, mostly for Llama
+        "temperature": 0.8, # human eval pass@N temperature
+        "server_port": 10210,
+        "server_address": "matx2.stanford.edu",
+        "max_tokens": 8192,
+    },
+    "anthropic": {  # for Claude 3.5 Sonnet
+        "model_name": "claude-3-5-sonnet-20241022",
+        "temperature": 0.8,
+        "max_tokens": 4096,
+    },
+    "openai": {
+        "model_name": "gpt-4o-2024-08-06",
+        # "model_name": "o1-preview-2024-09-12", # be careful with this one
+        "temperature": 0.0,
+        "max_tokens": 4096,
+    },
+    "sambanova": {
+        "model_name": "Meta-Llama-3.1-405B-Instruct",
+        "temperature": 0.1,
+        "max_tokens": 8192,
+    },
+}
+
+
+def create_inference_server_from_presets(server_type: str = None, 
+                                         greedy_sample: bool = False,   
+                                         verbose: bool = False,
+                                         time_generation: bool = False,
+                                         **kwargs,
+                                         ) -> callable:
+    """
+    Return a callable function that queries LLM with given settings
+    """
+    def _query_llm(prompt: str | list[dict]):
+        server_args = SERVER_PRESETS[server_type].copy()
+
+        if kwargs:
+            server_args.update(kwargs)
+        if greedy_sample:
+            server_args["temperature"] = 0.0
+            server_args["top_p"] = 1.0
+            server_args["top_k"] = 1
+        if verbose:
+            print(f"Querying server {server_type} with args: {server_args}")
+        
+        if time_generation:
+            start_time = time.time()
+            response = query_server(
+                prompt, server_type=server_type, **server_args
+            )
+            end_time = time.time()
+            print(f"[Timing] Inference took {end_time - start_time:.2f} seconds")
+            return response
+        else:
+            return query_server(
+                prompt, server_type=server_type, **server_args
+            )
+    
+    return _query_llm
 
 """
 Model output processing

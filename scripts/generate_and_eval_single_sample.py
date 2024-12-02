@@ -16,12 +16,9 @@ from datasets import load_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_file_one_example
 from src.utils import extract_first_code, query_server, set_gpu_arch
-from src.run import run_llm
 
 """
-Make this an all-in-one script for now
-Eval Script using Hugging Face Datasets
-
+Using from HF or 
 Heavily inspired by 
 https://github.com/princeton-nlp/SWE-bench/blob/main/swebench/harness/run_evaluation.py
 
@@ -32,11 +29,23 @@ REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 torch.set_printoptions(precision=4, threshold=10)
 
 
+
+def run_llm(prompt, server_type=SERVER_TYPE, temperature=None):
+    """
+    query the LLM server with the prompt
+    """
+    if temperature is not None: # always override temperature
+        server_args[server_type]["temperature"] = temperature
+    return query_server(prompt, server_type=server_type, **server_args[server_type])
+
+
 class EvalConfig(Config):
     def __init__(self):
+
+        self.dataset_mode = REQUIRED # either huggingface or local
+
         # name of dataset name on Hugging Face
         self.dataset_name = REQUIRED
-
         self.dataset_name = "anneouyang/kbtest"
 
         # TODO to decide
