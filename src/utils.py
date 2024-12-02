@@ -478,19 +478,31 @@ def extract_code_blocks(text, code_language_types: list[str]) -> str:
 # Scale up experiments in parallel
 ################################################################################
 
-
-def maybe_multithread(func, instances, num_workers, *shared_args, **shared_kwargs):
+def maybe_multithread(func, instances, num_workers, time_interval=0.0, *shared_args, **shared_kwargs):
+    """
+    Multithreaded execution of func, with optional time interval between queries
+    Ideal for querying LLM APIs, does not provide process isolation
+    """
     output_data = []
     if num_workers not in [1, None]:
         with tqdm(total=len(instances), smoothing=0) as pbar:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=num_workers
-            ) as executor:
-                # Create a future for running each instance
-                futures = {
-                    executor.submit(func, instance, *shared_args, **shared_kwargs): None
-                    for instance in instances
-                }
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+
+                # Submit tasks one at a time with delay between them
+                futures = []
+                for instance in instances:
+                    futures.append(
+                        executor.submit(
+                            func,
+                            instance,
+                            *shared_args,
+                            **shared_kwargs
+                        )
+                    )
+                    time.sleep(time_interval)  # sleep between submitting each task
+
+
+
                 # Wait for each future to complete
                 for future in concurrent.futures.as_completed(futures):
                     pbar.update(1)
@@ -504,8 +516,7 @@ def maybe_multithread(func, instances, num_workers, *shared_args, **shared_kwarg
     else:
         for instance in tqdm(instances):
             output = func(instance, *shared_args, **shared_kwargs)
-            if output is not None:
-                output_data.append(output)
+            if output is not None: output_data.append(output)
 
     return output_data
 
