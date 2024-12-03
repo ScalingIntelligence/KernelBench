@@ -1,5 +1,5 @@
 # KernelBench - Can LLMs Write GPU Kernels?
-[blog post](https://scalingintelligence.stanford.edu/) | [dataset](https://huggingface.co/datasets/kernelbench)
+[blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [dataset](https://huggingface.co/datasets/kernelbench)
 
 A benchmark for evaluating LLMs' ability to generate GPU kernels
 
@@ -7,7 +7,7 @@ A benchmark for evaluating LLMs' ability to generate GPU kernels
 
 <!-- TODO: Add blog post -->
 
-See [blog post](https://scalingintelligence.stanford.edu/) for more details.
+See [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) for more details.
 
 ## 👋 Task Description
 We structure the problem for LLM to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity it desires to.
