@@ -160,7 +160,7 @@ def main(config: GenerationConfig):
         assert config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level, f"Subset range {config.subset} out of range for Level {config.level}"
         problem_id_range = range(config.subset[0], config.subset[1])
 
-    print(f"Generating on 1 sample each for level {config.level} problems {problem_id_range}")
+    print(f"Generating on 1 sample each for level {config.level} problems: {problem_id_range}")
 
     # set up run directory
     run_dir = os.path.join(config.runs_dir, config.run_name)

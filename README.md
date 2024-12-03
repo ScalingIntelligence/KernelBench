@@ -76,7 +76,7 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 python3 scripts/generate_samples.py run_name="test_hf_level_1" dataset_src="huggingface" level="1" num_workers=50 server_type="deepseek" model_name="deepseek-coder" temperature=0
 
 # 2. Evaluate on all problems
-python3 scripts/eval_from_generation.py level=1
+python3 scripts/eval_from_generations.py level=1 run_name="test_hf_level_1" dataset_src="huggingface" level="1" 
 ```
 
 We provide some reference baseline times on NVIDIA L40S in `results/timing` (soon also on H100).
