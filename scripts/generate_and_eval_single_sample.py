@@ -53,6 +53,7 @@ class EvalConfig(Config):
         self.verbose = False
 
         self.log = False
+        self.log_prompt = False
         self.log_generated_kernel = False
         self.log_eval_result = False
 
