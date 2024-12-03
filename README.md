@@ -72,8 +72,8 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 ### Run on all problems 
 
 ```
-# 1. Generate responses and store them locally
-python3 scripts/generate_samples.py level=1
+# 1. Generate responses and store kernels locally to runs/{run_name} directory
+python3 scripts/generate_samples.py run_name="test_hf_level_1" dataset_src="huggingface" level="1" num_workers=50 server_type="deepseek" model_name="deepseek-coder" temperature=0
 
 # 2. Evaluate on all problems
 python3 scripts/eval_from_generation.py level=1

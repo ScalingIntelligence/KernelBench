@@ -54,17 +54,13 @@ class GenerationConfig(Config):
         self.runs_dir = os.path.join(REPO_TOP_DIR, "runs")
     
         self.verbose = False
-
         self.store_type = "local" # TODO: add Database Integration
 
         # Future support
         # Migrate Monkeys code base to KernelBench
         # self.num_samples = 0 # for sampling multiple samples per problem
 
-        # logging verbosity level#  # TODO
-        # self.log = False
-        # self.log_prompt = False
-        # self.log_generated_kernel = False
+        self.log_prompt = False
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -79,17 +75,66 @@ class WorkArgs:
     problem_id: int # logically indexed
     sample_id: int
 
-def generate_sample(work, config, dataset, inference_server):
-    print(f"Generating sample {work.problem_id} {work.sample_id}")
-    pass    
+def generate_sample_single(work: WorkArgs, config: GenerationConfig, dataset, inference_server: callable, run_dir: str) -> bool:
 
-def generate_sample_launcher(work, config, dataset, inference_server):
+    # 1. Fetch Problem
+    if config.dataset_src == "huggingface":
+        curr_problem_row = dataset.filter(lambda x: x["problem_id"] == work.problem_id)
+        ref_arch_src = curr_problem_row["code"][0]
+        problem_name = curr_problem_row["name"][0]
+
+    elif config.dataset_src == "local":
+        problem_idx_in_dataset = work.problem_id - 1 # due to dataset list being 0-indexed locally
+        ref_arch_path = dataset[problem_idx_in_dataset]
+
+        problem_name = os.path.basename(ref_arch_path)
+        ref_arch_src = read_file(ref_arch_path)
+
+    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
+    problem_number = int(problem_name.split("_")[0])
+    assert problem_number == work.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    
+    
+
+    # Construct Prompt   
+    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    if config.log_prompt:
+        prompt_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt")
+        with open(prompt_path, "w") as f:
+            f.write(custom_cuda_prompt)
+
+    # Query server with constructed prompt
+    custom_cuda = inference_server(custom_cuda_prompt)
+    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    # check LLM is able to generate custom CUDA code
+    assert custom_cuda is not None, "Custom CUDA code generation failed"
+
+    if config.verbose:
+        print(f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}")
+
+    # Store to local file
+    kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py")
+    with open(kernel_path, "w") as f:
+        f.write(custom_cuda)
+    
+    return True
+    
+
+def generate_sample_launcher(work: WorkArgs, config: GenerationConfig, dataset, inference_server: callable, run_dir: str):
     try:
-        return generate_sample(work, config, dataset, inference_server)
+        return generate_sample_single(work, config, dataset, inference_server, run_dir)
     except Exception as e:
         print(f"Error generating sample {work.problem_id} {work.sample_id}: {e}")
         return None
 
+
+def check_kernel_exists(run_dir: str, level: int, problem_id: int, sample_id: int) -> bool:
+    """
+    Check if a kernel for a given problem and sample ID already exists in the run directory
+    """
+    kernel_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py")
+    return os.path.exists(kernel_path)
+    
 
 @pydra.main(base=GenerationConfig)
 def main(config: GenerationConfig):
@@ -112,7 +157,7 @@ def main(config: GenerationConfig):
     if config.subset == (None, None):
         problem_id_range = range(1, num_problems_in_level)
     else:
-        assert config.subset[1] <= num_problems_in_level, f"Subset range {config.subset} out of range for Level {config.level}"
+        assert config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level, f"Subset range {config.subset} out of range for Level {config.level}"
         problem_id_range = range(config.subset[0], config.subset[1])
 
     print(f"Generating on 1 sample each for level {config.level} problems {problem_id_range}")
@@ -125,17 +170,15 @@ def main(config: GenerationConfig):
     assert config.store_type == "local", "supporting local file-system based storage for now" # database integreation coming soon, need to migrate from CUDA Monkeys code
 
     problems_to_run = []
-    for problem_id in problem_id_range:
-        
-        # TODO: check if already exist 
-        problems_to_run.append(
-            WorkArgs(
-                problem_id=int(problem_id),
-                sample_id=0 # fix to 0 for now
-            )
+    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+        # assume sample id is 0 for now
+        if not check_kernel_exists(run_dir, config.level, problem_id, sample_id=0):
+            problems_to_run.append(
+                WorkArgs(
+                    problem_id=int(problem_id),
+                    sample_id=0 # fix to 0 for now
+                )
         )
-
-
 
     # Create inference function with config parameters
     # We provide some presets in utils but you can also pass in your own, see query_server for more details
@@ -144,60 +187,23 @@ def main(config: GenerationConfig):
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
                                                         verbose=config.verbose)
+
+    # Launch workers
+    generation_results = maybe_multithread(generate_sample_launcher, 
+                      problems_to_run, 
+                      config.num_workers, 
+                      time_interval=config.api_query_interval, 
+                      # extra args
+                      config=config, 
+                      dataset=curr_level_dataset, 
+                      inference_server=inference_server,
+                      run_dir=run_dir
+                      )
     
-
-    maybe_multithread(generate_sample_launcher, problems_to_run, config.num_workers, time_interval=config.api_query_interval, config=config, dataset=curr_level_dataset, inference_server=inference_server)
-
-    return
-
-        
-
-
-    # 1. Fetch Problem
-    if config.dataset_src == "huggingface":
-
-        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-    elif config.dataset_src == "local":
-        problem_idx_in_dataset = config.problem_id - 1 # due to dataset list being 0-indexed locally
-        ref_arch_path = curr_level_dataset[problem_idx_in_dataset]
-
-        problem_name = os.path.basename(ref_arch_path)
-        ref_arch_src = read_file(ref_arch_path)
-    # import pdb; pdb.set_trace()
-
-    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
-    problem_number = int(problem_name.split("_")[0])
-    assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
-    
-    
-    # 2. Generate Sample
-
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
-
-    # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
-    # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
-
-
-    # psuedo code
-    # # need to crate to_run lists
-    # make run query and record result!
-    # need to figure out how to store files locally 
-    # ideally similar to monkeys code base
-
-
-
-    # this should be optional
-    if config.log:
-        with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py"), "w") as f:
-            f.write(custom_cuda)
-    
-    
+    num_generated_samples = len(generation_results)
+    total_problems = len(problems_to_run)
+    num_failed_problems = total_problems - num_generated_samples
+    print(f"Generated {num_generated_samples} samples for total {total_problems} problems, Please retry for the {num_failed_problems} failed problems.")
 
 
 if __name__ == "__main__":
