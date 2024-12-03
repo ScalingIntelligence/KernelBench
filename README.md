@@ -10,9 +10,8 @@ A benchmark for evaluating LLMs' ability to generate GPU kernels
 See [blog post](https://scalingintelligence.stanford.edu/) for more details.
 
 ## 👋 Task Description
-*NEED ANNE FEEDBACK*
-We structure the problem for LLM to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity.
-<!-- ADD A DIAGRAM -->
+We structure the problem for LLM to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity it desires to.
+![KernelBenchMascot](./assets/figures/KernelBenchWorkFlow.png)
 
 We construct Kernel Bench to have 4 Levels of categories:
 - Level 1: Single-kernel operators (100 Problems)
@@ -24,24 +23,24 @@ We construct Kernel Bench to have 4 Levels of categories:
 - Level 4: Level Hugging Face
     Optimize whole model architectures from HuggngFace
 
-*TODO: JUSTIFY CRITIERA*
-We care whether if a solution 
-- compiles: (WDYM BY COMPILE)
-- is correct: explain correctness criteria (how do we check)
-- is fast: we compare against baseline (how many times)
+For this benchmark, we care whether if a solution 
+- compiles: generated torch code was able to load the inline embedded CUDA Kernel and build the kernel
+- is correct: check against reference torch operators n_correctness times on randomized inputs
+- is fast: compare against reference torch operators n_trial times for both eager mode and torch.compile execution
 
 ## 🔍 Directory Structure
 We organize the repo into the following structure:
 ```
 KernelBenchInternal/
 ├── assets/
-├── KernelBench/
-├── src/
-│   ├── tests/  
+├── KernelBench/ # Benchmark dataset files
+├── src/ # KernelBench logic code
+│   ├── unit_tests/  
 │   ├── prompts/
-│   ├── other files
-├── scripts/
-├── results/
+│   ├── ....
+├── scripts/ # helpful scripts to run the benchmark
+├── results/ # some baseline times
+├── runs/ # where your runs will be stored
 ```
 
 ## 🔧 Set up
@@ -54,7 +53,8 @@ pip install -e .
 
 To call LLM API providers, set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
 
-Running and profiling kernels require a GPU. If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token.
+Running and profiling kernels require a GPU. 
+[Coming soon] If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token.
 
 ## 🚀 Usage
 ### Run on a single problem 
@@ -75,10 +75,12 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 # 1. Generate responses and store kernels locally to runs/{run_name} directory
 python3 scripts/generate_samples.py run_name="test_hf_level_1" dataset_src="huggingface" level="1" num_workers=50 server_type="deepseek" model_name="deepseek-coder" temperature=0
 
-# 2. Evaluate on all problems
-python3 scripts/eval_from_generations.py level=1 run_name="test_hf_level_1" dataset_src="huggingface" level="1" 
+# 2. Evaluate on all generated kernels in runs/{run_name} directory
+python3 scripts/eval_from_generations.py level=1 run_name="test_hf_level_1" dataset_src="local" level="1" num_gpu_devices=8 timeout=300
+
 ```
 
+You can check out `scripts/greedy_analysis.py` to analyze the eval results.
 We provide some reference baseline times on NVIDIA L40S in `results/timing` (soon also on H100).
 
 ## 🛣️ Upcoming Roadmap
