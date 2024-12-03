@@ -1,4 +1,4 @@
-# KernelBench
+# KernelBench - Can LLMs Write GPU Kernels?
 [blog post](https://scalingintelligence.stanford.edu/) | [dataset](https://huggingface.co/datasets/kernelbench)
 
 A benchmark for evaluating LLMs' ability to generate GPU kernels
@@ -31,7 +31,7 @@ For this benchmark, we care whether if a solution
 ## 🔍 Directory Structure
 We organize the repo into the following structure:
 ```
-KernelBenchInternal/
+KernelBench/
 ├── assets/
 ├── KernelBench/ # Benchmark dataset files
 ├── src/ # KernelBench logic code
