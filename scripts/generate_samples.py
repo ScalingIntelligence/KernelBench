@@ -34,7 +34,7 @@ class GenerationConfig(Config):
         # Problem Specification
         self.level = REQUIRED
         
-        # subset of problems to generate on all problems in the level
+        # subset of problems to generate, otherwise generate on all problems in the level
         self.subset = (None, None) # (problem_id, problem_name), these are the logical index
 
         self.run_name = REQUIRED # name of the run
@@ -50,7 +50,7 @@ class GenerationConfig(Config):
         self.temperature = 0.0
         
         # Logging
-        # Directory to Store Runs
+        # Top Directory to Store Runs
         self.runs_dir = os.path.join(REPO_TOP_DIR, "runs")
     
         self.verbose = False
@@ -76,10 +76,10 @@ class WorkArgs:
     sample_id: int
 
 def generate_sample_single(work: WorkArgs, config: GenerationConfig, dataset, inference_server: callable, run_dir: str) -> bool:
-
     # 1. Fetch Problem
     if config.dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(lambda x: x["problem_id"] == work.problem_id)
+        curr_problem_row = dataset.filter(lambda x: x["problem_id"] == work.problem_id, desc=None)
+
         ref_arch_src = curr_problem_row["code"][0]
         problem_name = curr_problem_row["name"][0]
 
@@ -165,6 +165,7 @@ def main(config: GenerationConfig):
     # set up run directory
     run_dir = os.path.join(config.runs_dir, config.run_name)
     os.makedirs(run_dir, exist_ok=True)
+    pydra.save_yaml(config.to_dict(), os.path.join(run_dir, "generation_config.yaml"))
 
 
     assert config.store_type == "local", "supporting local file-system based storage for now" # database integreation coming soon, need to migrate from CUDA Monkeys code

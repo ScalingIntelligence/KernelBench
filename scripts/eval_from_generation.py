@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 import time
+import pydra
+from pydra import REQUIRED, Config
 
 from tqdm import tqdm
 from src import eval, utils
@@ -7,51 +9,68 @@ import torch
 import os
 import multiprocessing as mp
 
+"""
+Batch Eval from Existing Generations
 
-# Global Configs
+Usually with eval, we check
+- correctness: 5 randomized input trials
+- performance: 100 randomized input trials
 
-MEASURE_PERFORMANCE = True
+TODO: add CPU Cache building (already exist, need to migrate)
 
-RUN_NAME = "level2_run_10_28"
-# RUN_NAME = "kernelbench_prompt_v2_level_2"
-# RUN_NAME = "level2_run_10_28"
-PROBLEM_DIR = "KernelBench/level2"
-# query from database, make sure the server is up
-SERVER_URL = "http://matx3.stanford.edu:9091"
-# SERVER_URL = "http://localhost:9091"
+You can increase the number of trials
+"""
 
-NUM_GPU_DEVICES = 6
+REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 torch.set_printoptions(precision=4, threshold=10)
 
-dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
 
-# NOTE: If you run this this will have cascading errors from previous iterations
-# # evaluate kernel (for some samples)
-# for sample_id in range(1,5):
-#     print(f"Evaluating for sample {sample_id}")
-#     print(f"[Curr Eval] Evaluating Kernel for Run {RUN_NAME} on Problem {problem_id} with Sample {sample_id} on CUDA device {device}: {torch.cuda.get_device_name(device)}")
+class EvalConfig(Config):
+    def __init__(self):
 
-#     # fetch reference architecture from problem directory
-#     ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
+        self.run_name = REQUIRED # name of the run to evaluate
 
-#     # fetch kernel code from database
-#     kernel_src = eval.fetch_kernel_from_database(RUN_NAME, problem_id, sample_id, SERVER_URL)
-#     assert kernel_src is not None, f"Kernel not found for sample {sample_id}"
+        self.dataset_src = REQUIRED # either huggingface or local
 
-#     try:
-#         eval_result = eval.eval_kernel_against_ref(original_model_src=ref_arch_src,
-#                                                custom_model_src=kernel_src,
-#                                                measure_performance=MEASURE_PERFORMANCE,
-#                                                verbose=True,
-#                                                device=device)
-#         print("-" * 32)
-#         print(f"Eval result for sample {sample_id}: {eval_result}")
-#         print("-" * 32)
-#     except Exception as e:
-#         print(f"THIS SHOULD NOT PRINT for sample {sample_id}: Some issue evaluating for kernel: {e} ")
-#     finally:
-#         torch.cuda.empty_cache()
+        # name of dataset name on Hugging Face
+        self.dataset_name = "ScalingIntelligence/KernelBench"
+
+
+        # Problem Specification
+        self.level = REQUIRED
+
+        # subset of problems to evaluate
+        self.subset = (None, None) # (problem_id, problem_name), these are the logical index
+
+        # Evaluation
+        # local (requires a GPU), modal (cloud GPU) coming soon
+        self.eval_mode = "local"
+
+        # Construct this from mapping from architecture name to torch cuda arch list in the future
+        # you can either specify SM version or just use the name
+        self.gpu_arch = ["Ada"]
+
+
+        # Logging
+        # Top Directory to Store Runs
+        self.runs_dir = os.path.join(REPO_TOP_DIR, "runs")
+        
+        self.verbose = False
+
+        # Eval settings
+        self.num_correct_trials = 5
+        self.num_perf_trials = 100
+        self.timeout = 200
+        self.measure_performance = True
+
+        
+        # number of GPUs to do batch evaluation
+        self.num_gpu_devices = 1
+
+
+    def __repr__(self):
+        return f"EvalConfig({self.to_dict()})"
 
 
 @dataclass
@@ -63,29 +82,11 @@ class WorkArgs:
     device: torch.device
 
 
-def run(work, config=None, coordinator=None):
-    """
-    Matching Monkey API, took out some args for config and coordinator
-    """
-    run_inner = evaluate_single_sample
-    # if config.testing: return run_inner(work)
-    try:
-        eval_result = run_inner(work)
-        with open(f"results/eval_result_problem_{work.problem_id}.txt", "a") as f:
-            f.write("-" * 128 + "\n")
-            f.write(f"Eval result for sample {work.sample_idx}: {eval_result}\n")
-
-        print("-" * 32)
-        print(
-            f"Eval result for problem {work.problem_id} sample {work.sample_idx}: {eval_result}"
-        )
-        print("-" * 32)
-    except Exception as e:
-        print("Error", e, work.problem, work.problem_id, work.sample_idx)
-        return None
-
 
 def evaluate_single_sample(work_args: WorkArgs, configs: dict):
+    """
+    Evaluate a single sample
+    """
     # problem_id, sample_id, run_name, dataset, device
     problem_id, sample_id, run_name, dataset, device = (
         work_args.problem_id,
@@ -138,98 +139,6 @@ def evaluate_single_sample(work_args: WorkArgs, configs: dict):
             )
             return eval_result
         return None
-
-
-def monkey_style_parallal_process_eval(problem_id: int, samples_range: tuple[int, int]):
-    """ "
-    Same API as monkey maybe_multi_processing
-    This doesn't work yet, suffer the same cascading errors as before
-    """
-    to_run = []
-    for sample_idx in range(*samples_range):
-
-        to_run.append(
-            WorkArgs(
-                problem_id=problem_id,
-                sample_idx=sample_idx,
-                run_name=RUN_NAME,
-                dataset=dataset,
-                # device=device,
-                num_correct_trials=5,
-            )
-        )
-
-    # WHY DOES THIS !!!NOT!!! WORK?
-    utils.maybe_multiprocess_cuda(
-        func=run,
-        instances=to_run,
-        # only limited to 1 worker for now, don't worry about concurrecy
-        num_workers=1,
-    )
-
-
-def cuda_eval_process(
-    problem_range: tuple[int, int], samples_range: tuple[int, int], configs: dict
-):
-    """
-    This works, but one at at time
-    """
-    # THIS WORKS
-    # Set start method to spawn to work with CUDA
-    if mp.get_start_method(allow_none=True) is None:
-        mp.set_start_method("spawn")
-
-    device = torch.device("cuda:1")
-    print(f"Using CUDA device {device}: {torch.cuda.get_device_name(device)}")
-
-    timeout = configs["timeout"]
-
-    for problem_id in tqdm(range(*problem_range)):
-        # Main evaluation loop
-
-        os.makedirs("results", exist_ok=True)
-        with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
-            f.write(
-                f"Evaluating for problem {problem_id} over sample range {samples_range} \n"
-            )
-
-        for sample_id in tqdm(range(*samples_range)):
-
-            print(f"Evaluating for problem {problem_id} sample {sample_id}")
-            curr_work = WorkArgs(
-                problem_id=problem_id,
-                sample_idx=sample_id,
-                run_name=RUN_NAME,
-                dataset=dataset,
-                device=device,
-            )
-
-            # Create a new process for each evaluation
-            with mp.Pool(1) as pool:
-                try:
-                    result = pool.apply_async(
-                        evaluate_single_sample,
-                        args=(curr_work, configs),
-                    ).get(timeout=timeout)
-                except KeyboardInterrupt:
-                    print(
-                        "\n [Terminate] Caught KeyboardInterrupt, terminating workers..."
-                    )
-                    pool.terminate()
-                    pool.join()
-                    raise
-                except mp.TimeoutError as e:
-                    with open(
-                        f"results/eval_result_problem_{problem_id}.txt", "a"
-                    ) as f:
-                        f.write("-" * 128 + "\n")
-                        f.write(f"Eval result for sample {sample_id}: timed out\n")
-                    continue
-
-            with open(f"results/eval_result_problem_{problem_id}.txt", "a") as f:
-                f.write("-" * 128 + "\n")
-                f.write(f"Eval result for sample {sample_id}: {result}\n")
-
 
 def batch_eval(
     total_work: list[tuple[int, int, int]],
@@ -324,43 +233,37 @@ def batch_eval(
                 pbar.update(len(curr_work_batch))
 
 
-if __name__ == "__main__":
-    # problem_id = 7
-    # samples_range = (4, 5)
-    # problem_range = (15, 54)
-    # samples_range = (2, 10) # 30 samples
 
-    # problem_range = (15, 16)
-    # samples_range = (0, 1)
+@pydra.main(base=EvalConfig)
+def main(config: EvalConfig):
+    """
+    Batch Eval Samples from Particular Run
+    Store Eval Results in specified eval results file
+    """
+    print(f"Starting Batch Eval with config: {config}")
+    
     # Check if CUDA is available
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA device not available. This test requires a GPU.")
+        raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
 
-    # these will go into pydra in the future
-    configs = {
-        "num_correct_trials": 5,
-        "num_perf_trials": 100,
-        "timeout": 20,
-        "verbose": False,
-        "num_gpu_devices": NUM_GPU_DEVICES,
-        "measure_performance": True,
-    }
+    
 
-    problem_range = (3, 4)
-    samples_range = (0,)
 
-    # this works great, launch process one at a time
-    # cuda_eval_process(problem_range, samples_range, configs)
+    # problem_range = (3, 4)
+    # samples_range = (0,)
 
-    # batch eval, in our experiment server it will be replaced by fetching from database
-    total_work = []  # a list of (problem_id, sample_id)
-    for problem_id in range(*problem_range):
-        for sample_id in range(*samples_range):
-            kernel_id = -1  # fake example
-            total_work.append((problem_id, sample_id, kernel_id))
+    # # this works great, launch process one at a time
+    # # cuda_eval_process(problem_range, samples_range, configs)
 
-    # # this does it in a batch manner
-    batch_eval(total_work, RUN_NAME, dataset, configs)
+    # # batch eval, in our experiment server it will be replaced by fetching from database
+    # total_work = []  # a list of (problem_id, sample_id)
+    # for problem_id in range(*problem_range):
+    #     for sample_id in range(*samples_range):
+    #         kernel_id = -1  # fake example
+    #         total_work.append((problem_id, sample_id, kernel_id))
+
+    # # # this does it in a batch manner
+    # batch_eval(total_work, RUN_NAME, dataset, configs)
 
     # use this to debug (e.g. pdb)
     # device = torch.device("cuda:1")
@@ -368,3 +271,9 @@ if __name__ == "__main__":
 
     # this doesn't work fully yet
     # monkey_style_parallal_process_eval(problem_id, samples_range)
+
+
+
+if __name__ == "__main__":
+    main()
+  
