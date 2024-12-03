@@ -101,8 +101,7 @@ def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -
     Either from Hugging Face or Local Dataset
     """
     if dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(lambda x: x["problem_id"] == problem_id, desc=None)
-
+        curr_problem_row = dataset.filter(lambda x: x["problem_id"] == problem_id, num_proc=1, desc=None)
         ref_arch_src = curr_problem_row["code"][0]
         problem_name = curr_problem_row["name"][0]
     
@@ -176,23 +175,24 @@ def evaluate_single_sample(work_args: WorkArgs, configs: EvalConfig, dataset, ru
                 "cuda_error": f"CUDA Error: {str(e)}",
                 "hardware": torch.cuda.get_device_name(device=device),
                 "device": device,
-            }  # for debugging
+            }  # log this for debugging as this usually signifies illegal memory access
             eval_result = KernelExecResult(
                 compiled=False, correctness=False, metadata=metadata
             )
             return eval_result
         return None
     
-def cuda_single_eval_wrapper(curr_work: WorkArgs, configs: dict, run_dir: str):
+def cuda_single_eval_wrapper(curr_work: WorkArgs, configs: dict, dataset, run_dir: str):
     """
     Wrapper to handle timeout and keyboard interrupt
     """
+
     with mp.Pool(1) as pool:
         try:
             result = pool.apply_async(
                 evaluate_single_sample,
-                args=(curr_work, configs, run_dir),
-            ).get(timeout=configs["timeout"])
+                args=(curr_work, configs, dataset, run_dir),
+            ).get(timeout=configs.timeout)
         except KeyboardInterrupt:
             print(
                 "\n [Terminate] Caught KeyboardInterrupt, terminating workers..."
@@ -339,6 +339,15 @@ def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: Kerne
     with open(eval_file_path, "w") as f:
         json.dump(eval_results, f)
 
+def single_eval_example(config: EvalConfig, curr_level_dataset: list[str], run_dir: str, eval_file_path ):
+    device = torch.device("cuda:0")
+    example_work = WorkArgs(problem_id=1, sample_id=0, device=device)
+    # example_eval_result = evaluate_single_sample(example_work, config, curr_level_dataset, run_dir)
+    example_eval_result = cuda_single_eval_wrapper(example_work, config, curr_level_dataset, run_dir)
+    print(example_eval_result)
+    if not check_if_eval_exists_local(1, 0, eval_file_path):
+        add_to_eval_results_file(1, 0, example_eval_result, eval_file_path)
+
 
 
 @pydra.main(base=EvalConfig)
@@ -352,6 +361,9 @@ def main(config: EvalConfig):
     # Check if CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
+
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method("spawn")
 
     # Dataset Configurations
     if config.dataset_src == "huggingface":
@@ -378,28 +390,17 @@ def main(config: EvalConfig):
     set_gpu_arch(config.gpu_arch)
 
     # To Debug
-    # device = torch.device("cuda:1")
-    example_work = WorkArgs(problem_id=1, sample_id=0, device=torch.device("cuda:1"))
-    example_eval_result = evaluate_single_sample(example_work, config, curr_level_dataset, run_dir)
-    print(example_eval_result)
-    # import pdb; pdb.set_trace()
-    if not check_if_eval_exists_local(1, 0, eval_file_path):
-        add_to_eval_results_file(1, 0, example_eval_result, eval_file_path)
+    # single_eval_example(config, curr_level_dataset, run_dir, eval_file_path)
 
-    # evaluate_single_sample(WorkArgs(problem_id=15, sample_id=0, run_name=RUN_NAME, dataset=dataset, device=device, num_correct_trials=5))
+    total_work = []
+    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+        sample_id = 0 # only evaluate 1 sample for now
+        if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
+            total_work.append((problem_id, sample_id))
 
-
-    # # this works great, launch process one at a time
-    # # cuda_eval_process(problem_range, samples_range, configs)
-
-    # # batch eval, in our experiment server it will be replaced by fetching from database
-    # total_work = []  # a list of (problem_id, sample_id)
-    # for problem_id in range(*problem_range):
-    #     for sample_id in range(*samples_range):
-    #         kernel_id = -1  # fake example
-    #         total_work.append((problem_id, sample_id, kernel_id))
-
-    # # # this does it in a batch manner
+    print(f"Start evaluation on {len(total_work)} unevaluated samples in range: {problem_id_range}")
+    
+    # Batch Eval on multiple GPUs in parallel
     # batch_eval(total_work, RUN_NAME, dataset, configs)
 
 
