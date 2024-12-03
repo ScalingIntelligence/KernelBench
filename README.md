@@ -1,5 +1,5 @@
 # KernelBench - Can LLMs Write GPU Kernels?
-[blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [dataset](https://huggingface.co/datasets/kernelbench)
+[blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench)
 
 A benchmark for evaluating LLMs' ability to generate GPU kernels
 
