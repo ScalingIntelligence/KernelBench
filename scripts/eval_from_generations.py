@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import shutil
 import time
 import pydra
 from pydra import REQUIRED, Config
@@ -14,8 +15,7 @@ import multiprocessing as mp
 from datasets import load_dataset
 
 from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref, KernelExecResult, check_metadata_serializable
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from src.eval import build_compile_cache, eval_kernel_against_ref, KernelExecResult, check_metadata_serializable_all_types
 from src.utils import extract_first_code, set_gpu_arch, read_file, create_inference_server_from_presets, maybe_multithread
 
 """
@@ -74,7 +74,7 @@ class EvalConfig(Config):
         # Eval settings
         self.num_correct_trials = 5
         self.num_perf_trials = 100
-        self.timeout = 180
+        self.timeout = 180 # in seconds
         self.measure_performance = True
 
         
@@ -172,13 +172,20 @@ def evaluate_single_sample(work_args: WorkArgs, configs: EvalConfig, dataset, ru
             metadata = {
                 "cuda_error": f"CUDA Error: {str(e)}",
                 "hardware": torch.cuda.get_device_name(device=device),
-                "device": device,
+                "device": str(device),
             }  # log this for debugging as this usually signifies illegal memory access
             eval_result = KernelExecResult(
                 compiled=False, correctness=False, metadata=metadata
             )
             return eval_result
-        return None
+        else:
+            metadata = {"other_error": f"error: {str(e)}",
+                        "hardware": torch.cuda.get_device_name(device=device),
+                        "device": str(device)
+                        } # for debugging
+            eval_result = KernelExecResult(compiled=False, correctness=False, 
+                                                metadata=metadata)
+            return eval_result
     
 def cuda_single_eval_wrapper(curr_work: WorkArgs, configs: dict, dataset, run_dir: str):
     """
@@ -204,11 +211,23 @@ def cuda_single_eval_wrapper(curr_work: WorkArgs, configs: dict, dataset, run_di
         print(f"[Eval Result] Problem ID: {curr_work.problem_id}, Sample ID: {curr_work.sample_id}: {result}")
         return result
 
+
+def remove_cache_dir(cache_dir: str, run_name: str, problem_id, sample_id):
+    """
+    Remove the cached folder for sample compilation so it can start a clean build next time
+    useful for time out, failed build, etc.
+    """
+    problem_cache_dir = os.path.join(cache_dir, run_name, f"{problem_id}", f"{sample_id}")
+    print(f"cache_dir to remove: {problem_cache_dir}")
+    if os.path.exists(cache_dir):
+        try:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+            print(f"\n[INFO] Removed cached folder for Problem ID: {problem_id}, Sample ID: {sample_id}")
+        except Exception as e:
+            print(f"\n[WARNING] Failed to remove cache directory {cache_dir}: {str(e)}")
+
 def batch_eval(
     total_work: list[tuple[int, int]],
-    # run_name: str,
-    # dataset: list[str],
-    # configs: dict,
     config: EvalConfig,
     curr_level_dataset,
     run_dir: str,
@@ -216,6 +235,8 @@ def batch_eval(
 ):
     """
     Batch evaluation across multiple GPUs, do batch_size of work one on each GPU all at once
+    We put in time out for each batch, consider trying again with larger time out if it didn't finish building.
+    Cache directory is removed if evaluation times out or fails
     """
     # construct a list of work args
     batch_size = config.num_gpu_devices
@@ -253,56 +274,55 @@ def batch_eval(
                     async_results.append(
                         pool.apply_async(evaluate_single_sample, work_arg)
                     )
-
-                # Collect results with individual timeouts
+            
+                # Collect results with a batch timeout
                 results = []
+                batch_timeout = config.timeout
                 for i, async_result in enumerate(async_results):
                     problem_id, sample_id = curr_work_batch[i]
 
                     try:
-                        result = async_result.get(
-                            timeout=config.timeout
-                        )
+                        elapsed_time = time.time() - start_time
+                        remaining_time = max(0, batch_timeout - elapsed_time)
+                        result = async_result.get(timeout=remaining_time)
                         results.append((problem_id, sample_id, result))
+                        
                     except mp.TimeoutError:
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
                         results.append((problem_id, sample_id, None))
+                    
+                        remove_cache_dir(config.kernel_eval_build_dir, config.run_name, problem_id, sample_id)
                     except Exception as e:
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
                         )
                         results.append((problem_id, sample_id, None))
+                        remove_cache_dir(config.kernel_eval_build_dir, config.run_name, problem_id, sample_id)
 
-                        # results.append(None)
-                # results = pool.starmap(
-                #     evaluate_single_sample,
-                #     work_args
-                # )
                 end_time = time.time()
 
+                # current batch summary
                 for problem_id, sample_id, result in results:
                     print("-" * 128)
                     print(
                         f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_id}"
                     )
                     print(result)
-                    
-                    # add results to eval file
+
+                    # add all the batch results here to avoid file race condition
+                    # add to eval result if valid result
                     if result is not None:
+                        print(f"Adding Eval Result to file for problem {problem_id} sample {sample_id}")
                         add_to_eval_results_file(problem_id, sample_id, result, eval_file_path)
-                    
+
                 print("-" * 128)
-
-                # TODO: add Eval Results to eval file
-
                 print(
                     f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds"
                 )
 
                 pbar.update(len(curr_work_batch))
-
 
 def check_if_eval_exists_local(problem_id: int, sample_id: int, eval_file_path: str) -> bool:
     """
@@ -332,7 +352,7 @@ def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: Kerne
         'sample_id': sample_id,
         'compiled': eval_result.compiled,
         'correctness': eval_result.correctness,
-        'metadata': check_metadata_serializable(eval_result.metadata),
+        'metadata': check_metadata_serializable_all_types(eval_result.metadata),
         'runtime': eval_result.runtime,
         'runtime_stats': eval_result.runtime_stats,
     }
@@ -405,7 +425,9 @@ def main(config: EvalConfig):
             total_work.append((problem_id, sample_id))
 
     print(f"Start evaluation on {len(total_work)} unevaluated samples in range: {problem_id_range}")
-    
+    # Build Cache on CPU as that is faster
+
+
     # Batch Eval on multiple GPUs in parallel
     batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
 

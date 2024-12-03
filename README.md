@@ -83,7 +83,7 @@ We provide some reference baseline times on NVIDIA L40S in `results/timing` (soo
 
 ## 🛣️ Upcoming Roadmap
 - [ ] More reference baseline times on various GPU platforms
-- [ ] Easy-to-useCloud GPU Integration (Modal)
+- [ ] Easy-to-use Cloud GPU Integration (via Modal)
 - [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
 - [ ] Add backward pass
 - [ ] Integrate with toolchains such as NCU
@@ -91,6 +91,5 @@ We provide some reference baseline times on NVIDIA L40S in `results/timing` (soo
 
 <!-- Add Citation -->
 
-<!-- Add License -->
 ## 🪪 License
 MIT. Check `LICENSE.md` for more details.
