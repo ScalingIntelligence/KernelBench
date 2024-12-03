@@ -3,6 +3,7 @@ import time
 import pydra
 from pydra import REQUIRED, Config
 
+import json
 from tqdm import tqdm
 from src import eval, utils
 import torch
@@ -13,7 +14,7 @@ import multiprocessing as mp
 from datasets import load_dataset
 
 from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
+from src.eval import eval_kernel_against_ref, KernelExecResult, check_metadata_serializable
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
 from src.utils import extract_first_code, set_gpu_arch, read_file, create_inference_server_from_presets, maybe_multithread
 
@@ -94,6 +95,34 @@ class WorkArgs:
     device: torch.device
 
 
+def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -> str | None:
+    """
+    Fetch reference architecture from problem directory
+    Either from Hugging Face or Local Dataset
+    """
+    if dataset_src == "huggingface":
+        curr_problem_row = dataset.filter(lambda x: x["problem_id"] == problem_id, desc=None)
+
+        ref_arch_src = curr_problem_row["code"][0]
+        problem_name = curr_problem_row["name"][0]
+    
+    elif dataset_src == "local":
+        problem_idx_in_dataset = problem_id - 1 # due to dataset list being 0-indexed locally
+        ref_arch_path = dataset[problem_idx_in_dataset]
+
+        problem_name = os.path.basename(ref_arch_path)
+        ref_arch_src = read_file(ref_arch_path)
+
+    # verify
+        # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
+    problem_number = int(problem_name.split("_")[0])
+    assert problem_number == problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({problem_id})"
+    
+    return ref_arch_src
+
+
+
+
 def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> str | None:
     """
     Fetch kernel file from disk (stored in runs/{run_name})
@@ -105,7 +134,7 @@ def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id:
     else:
         return None
 
-def evaluate_single_sample(work_args: WorkArgs, configs: EvalConfig, dataset, run_dir: str):
+def evaluate_single_sample(work_args: WorkArgs, configs: EvalConfig, dataset, run_dir: str) -> KernelExecResult | None:
     """
     Evaluate a single sample on a single GPU
     """
@@ -114,55 +143,45 @@ def evaluate_single_sample(work_args: WorkArgs, configs: EvalConfig, dataset, ru
         work_args.sample_id,
         work_args.device,
     )
-    num_correct_trials = configs.num_correct_trials
-    num_perf_trials = configs.num_perf_trials
-    verbose = configs.verbose
-    measure_performance = configs.measure_performance
-    
-    # TODO:fetch reference architecture from problem directory
-    # ref_arch_src = eval.fetch_ref_arch_from_problem_id(problem_id, dataset)
+    # fetch reference architecture from problem directory
+    ref_arch_src = fetch_ref_arch_from_problem_id(dataset, problem_id, configs.dataset_src)
 
+    # fetch kernel from disk
+    # Add database support in the future
     kernel_src = fetch_kernel_from_disk(run_dir, configs.level, problem_id, sample_id)
 
-    # fetch kernel code from database
-    # kernel_src = eval.fetch_kernel_from_database(
-    #     run_name, problem_id, sample_id, SERVER_URL
-    # )
-
     assert kernel_src is not None, f"Kernel not found for problem {problem_id} sample {sample_id}"
-    import pdb; pdb.set_trace()
 
-    return None
-    # try:
-    #     eval_result = eval.eval_kernel_against_ref(
-    #         original_model_src=ref_arch_src,
-    #         custom_model_src=kernel_src,
-    #         custom_model_hash=kernel_hash,
-    #         measure_performance=measure_performance,
-    #         verbose=verbose,
-    #         num_correct_trials=num_correct_trials,
-    #         num_perf_trials=num_perf_trials,
-    #         # move this to config in monkeys
-    #         build_dir=f"/matx/u/simonguo/kernel_eval_build/{run_name}/{problem_id}/{sample_id}",
-    #         device=device,
-    #     )
-    #     return eval_result
-    # except Exception as e:
-    #     print(
-    #         f"[WARNING] Last level catch on {sample_id}: Some issue evaluating for kernel: {e} "
-    #     )
-    #     if "CUDA error" in str(e):
-    #         # NOTE: count this as compilation failure as it is not runnable code
-    #         metadata = {
-    #             "cuda_error": f"CUDA Error: {str(e)}",
-    #             "hardware": torch.cuda.get_device_name(device=device),
-    #             "device": device,
-    #         }  # for debugging
-    #         eval_result = eval.KernelExecResult(
-    #             compiled=False, correctness=False, metadata=metadata
-    #         )
-    #         return eval_result
-    #     return None
+    build_dir = os.path.join(configs.kernel_eval_build_dir, configs.run_name, f"{problem_id}", f"{sample_id}")
+
+    try: 
+        eval_result = eval_kernel_against_ref(
+            original_model_src=ref_arch_src,
+            custom_model_src=kernel_src,
+            measure_performance=configs.measure_performance,
+            verbose=configs.verbose,    
+            num_correct_trials=configs.num_correct_trials,
+            num_perf_trials=configs.num_perf_trials,
+            build_dir=build_dir,
+            device=device,
+        )
+        return eval_result
+    except Exception as e:
+        print(
+            f"[WARNING] Last level catch on {sample_id}: Some issue evaluating for kernel: {e} "
+        )
+        if "CUDA error" in str(e):
+            # NOTE: count this as compilation failure as it is not runnable code
+            metadata = {
+                "cuda_error": f"CUDA Error: {str(e)}",
+                "hardware": torch.cuda.get_device_name(device=device),
+                "device": device,
+            }  # for debugging
+            eval_result = KernelExecResult(
+                compiled=False, correctness=False, metadata=metadata
+            )
+            return eval_result
+        return None
     
 def cuda_single_eval_wrapper(curr_work: WorkArgs, configs: dict, run_dir: str):
     """
@@ -280,6 +299,46 @@ def batch_eval(
                 pbar.update(len(curr_work_batch))
 
 
+def check_if_eval_exists_local(problem_id: int, sample_id: int, eval_file_path: str) -> bool:
+    """
+    Check if evaluation result already exists in eval results file
+    """
+    if os.path.exists(eval_file_path):
+        with open(eval_file_path, 'r') as f:
+            eval_results = json.load(f)
+        return str(problem_id) in eval_results
+    return False
+
+def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: KernelExecResult, eval_file_path: str):
+    """
+    Add evaluation result to eval results file
+    TODO: migrate database support
+    """
+    # Load existing results if file exists
+    if os.path.exists(eval_file_path):
+        with open(eval_file_path, 'r') as f:
+            eval_results = json.load(f)
+    else:
+        eval_results = {}
+    
+    # Add new result
+    eval_results[str(problem_id)] = {
+        # assume 1 sample for now, will think about how to do this better for more samples
+        'sample_id': sample_id,
+        'compiled': eval_result.compiled,
+        'correctness': eval_result.correctness,
+        'metadata': check_metadata_serializable(eval_result.metadata),
+        'runtime': eval_result.runtime,
+        'runtime_stats': eval_result.runtime_stats,
+    }
+    
+    # Write updated results back to file
+    if not os.path.exists(eval_file_path):
+        os.makedirs(os.path.dirname(eval_file_path), exist_ok=True)
+        
+    with open(eval_file_path, "w") as f:
+        json.dump(eval_results, f)
+
 
 
 @pydra.main(base=EvalConfig)
@@ -312,12 +371,21 @@ def main(config: EvalConfig):
     print(f"Evaluating 1 sample each for level {config.level} problems: {problem_id_range}")
 
     run_dir = os.path.join(config.runs_dir, config.run_name)
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
+
+    # set GPU arch to configure what target to build for
+    set_gpu_arch(config.gpu_arch)
 
     # To Debug
     # device = torch.device("cuda:1")
     example_work = WorkArgs(problem_id=1, sample_id=0, device=torch.device("cuda:1"))
-    evaluate_single_sample(example_work, config, curr_level_dataset, run_dir)
+    example_eval_result = evaluate_single_sample(example_work, config, curr_level_dataset, run_dir)
+    print(example_eval_result)
+    # import pdb; pdb.set_trace()
+    if not check_if_eval_exists_local(1, 0, eval_file_path):
+        add_to_eval_results_file(1, 0, example_eval_result, eval_file_path)
+
     # evaluate_single_sample(WorkArgs(problem_id=15, sample_id=0, run_name=RUN_NAME, dataset=dataset, device=device, num_correct_trials=5))
 
 
