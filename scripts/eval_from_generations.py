@@ -74,7 +74,7 @@ class EvalConfig(Config):
         # Eval settings
         self.num_correct_trials = 5
         self.num_perf_trials = 100
-        self.timeout = 200
+        self.timeout = 180
         self.measure_performance = True
 
         
@@ -90,8 +90,6 @@ class EvalConfig(Config):
 class WorkArgs:
     problem_id: int
     sample_id: int
-    # run_name: str
-    # dataset: list[str]
     device: torch.device
 
 
@@ -207,20 +205,20 @@ def cuda_single_eval_wrapper(curr_work: WorkArgs, configs: dict, dataset, run_di
         return result
 
 def batch_eval(
-    total_work: list[tuple[int, int, int]],
-    run_name: str,
-    dataset: list[str],
-    configs: dict,
+    total_work: list[tuple[int, int]],
+    # run_name: str,
+    # dataset: list[str],
+    # configs: dict,
+    config: EvalConfig,
+    curr_level_dataset,
+    run_dir: str,
+    eval_file_path: str,
 ):
     """
-    Batch evaluation across multiple GPUs
+    Batch evaluation across multiple GPUs, do batch_size of work one on each GPU all at once
     """
-    if mp.get_start_method(allow_none=True) is None:
-        mp.set_start_method("spawn")
-
     # construct a list of work args
-    num_gpu_devices = configs.get("num_gpu_devices", torch.cuda.device_count())
-    batch_size = num_gpu_devices
+    batch_size = config.num_gpu_devices
 
     with tqdm(total=len(total_work), desc="Processing batches") as pbar:
 
@@ -228,25 +226,24 @@ def batch_eval(
             curr_work_batch = total_work[:batch_size]
             total_work = total_work[batch_size:]  # pop the first batch_size elements
             print(
-                f"[Curr Batch] {len(curr_work_batch)} tasks over {num_gpu_devices} GPUs; [Total Work left] {len(total_work)}"
+                f"[Curr Batch] {len(curr_work_batch)} tasks over {config.num_gpu_devices} GPUs; [Total Work left] {len(total_work)}"
             )
+            assert len(curr_work_batch) <= batch_size, f"Current batch size {len(curr_work_batch)} is greater than the number of GPUs {batch_size}"
 
-            assert len(curr_work_batch) <= num_gpu_devices
-
-            with mp.Pool(num_gpu_devices) as pool:
+            with mp.Pool(batch_size) as pool:
 
                 work_args = [
                     (
                         WorkArgs(
                             problem_id=p_id,
                             sample_id=s_idx,
-                            run_name=run_name,
-                            dataset=dataset,
                             device=torch.device(f"cuda:{i%batch_size}"),
                         ),
-                        configs,
+                        config,
+                        curr_level_dataset,
+                        run_dir,
                     )
-                    for i, (p_id, s_idx, k_id) in enumerate(curr_work_batch)
+                    for i, (p_id, s_idx) in enumerate(curr_work_batch)
                 ]
 
                 start_time = time.time()
@@ -260,23 +257,23 @@ def batch_eval(
                 # Collect results with individual timeouts
                 results = []
                 for i, async_result in enumerate(async_results):
-                    problem_id, sample_id, kernel_id = curr_work_batch[i]
+                    problem_id, sample_id = curr_work_batch[i]
 
                     try:
                         result = async_result.get(
-                            timeout=configs["timeout"]
-                        )  # 5 minutes timeout per evaluation
-                        results.append((problem_id, sample_id, kernel_id, result))
+                            timeout=config.timeout
+                        )
+                        results.append((problem_id, sample_id, result))
                     except mp.TimeoutError:
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
-                        results.append((problem_id, sample_id, kernel_id, None))
+                        results.append((problem_id, sample_id, None))
                     except Exception as e:
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
                         )
-                        results.append((problem_id, sample_id, kernel_id, None))
+                        results.append((problem_id, sample_id, None))
 
                         # results.append(None)
                 # results = pool.starmap(
@@ -285,13 +282,21 @@ def batch_eval(
                 # )
                 end_time = time.time()
 
-                for problem_id, sample_id, kernel_id, result in results:
+                for problem_id, sample_id, result in results:
                     print("-" * 128)
                     print(
-                        f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_id}, Kernel ID: {kernel_id}"
+                        f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_id}"
                     )
                     print(result)
+                    
+                    # add results to eval file
+                    if result is not None:
+                        add_to_eval_results_file(problem_id, sample_id, result, eval_file_path)
+                    
                 print("-" * 128)
+
+                # TODO: add Eval Results to eval file
+
                 print(
                     f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds"
                 )
@@ -388,6 +393,7 @@ def main(config: EvalConfig):
 
     # set GPU arch to configure what target to build for
     set_gpu_arch(config.gpu_arch)
+    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     # To Debug
     # single_eval_example(config, curr_level_dataset, run_dir, eval_file_path)
@@ -401,7 +407,7 @@ def main(config: EvalConfig):
     print(f"Start evaluation on {len(total_work)} unevaluated samples in range: {problem_id_range}")
     
     # Batch Eval on multiple GPUs in parallel
-    # batch_eval(total_work, RUN_NAME, dataset, configs)
+    batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
 
 
 if __name__ == "__main__":
