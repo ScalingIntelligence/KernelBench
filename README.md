@@ -95,3 +95,13 @@ We provide some reference baseline times on NVIDIA L40S in `results/timing` (soo
 
 ## 🪪 License
 MIT. Check `LICENSE.md` for more details.
+
+## Citing
+```bibtex
+@misc{ouyang2024kernelbench,
+      title={KernelBench: Can LLMs Write GPU Kernels?}, 
+      author={Anne Ouyang and Simon Guo and Azalia Mirhoseini},
+      year={2024},
+      url={https://scalingintelligence.stanford.edu/blogs/kernelbench/}, 
+}
+```
