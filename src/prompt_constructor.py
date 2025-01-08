@@ -69,46 +69,72 @@ def prompt_generate_custom_cuda(
     return prompt
 
 
-def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str) -> str:
+def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str, num_shots: int = 1) -> str:
     prompt = PROBLEM_STATEMENT
 
-    example_vectoradd_model = read_file(
-        os.path.join(REPO_TOP_PATH, "src/prompts/model_ex_1.py")
+    # k = 1
+    example_add = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_add.py")
     )
-    example_vectoradd_model_new = read_file(
-        os.path.join(REPO_TOP_PATH, "src/prompts/model_new_ex_1.py")
+    example_add_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_add.py")
     )
-    example_fuse_pseudocode_model = read_file(
-        os.path.join(REPO_TOP_PATH, "src/prompts/model_ex_2.py")
+    example_add_desc = "This given architecture is for a pointwise addition: "
+
+    # k = 2
+    example_fuse_gelu = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_fuse_gelu.py")
     )
-    example_fuse_pseudocode_model_new = read_file(
-        os.path.join(REPO_TOP_PATH, "src/prompts/model_new_ex_2.py")
+    example_fuse_gelu_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_fuse_gelu.py")
     )
+    example_fuse_gelu_desc = "This given architecture is for a fused gelu: "
+
+    # k = 3
+    example_fuse_mnist2 = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_mnist2.py")
+    )
+    example_fuse_mnist2_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_mnist2.py")
+    )
+    exmaple_fuse_mnist2_new = "This given architecture is for a model with fused convolutions and relus: "
+
+    # k = 4
+    example_tiled_matmul = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_tiled_matmul.py")
+    )
+    example_tiled_matmul_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/model_new_ex_tiled_matmul.py")
+    )
+    example_tiled_matmul_new = "This given architecture is for a model with tiled matrix multiplication: "
+
+    prompts = []
+
+    for i, tup in enumerate([
+        (example_add, example_add_new, example_add_desc), 
+        (example_fuse_gelu, example_fuse_gelu_new, example_fuse_gelu_desc),
+        (example_fuse_mnist2, example_fuse_mnist2_new, exmaple_fuse_mnist2_new),
+        (example_tiled_matmul, example_tiled_matmul_new, example_tiled_matmul_new)
+    ]):
+        
+        if i == num_shots:
+            break
+
+        base, kernel, desc = tup
+
+        prompt += f"""
+        You are given the following architecture:\n\n
+        ```
+        {base}
+        ```\n\n
+        The example generated architecture with custom CUDA kernels looks like this: 
+        ```
+        {kernel}
+        ```\n\n
+        """
 
     prompt += f"""
-    Here's an example to show you the syntax of inline embedding custom CUDA operators in torch. This given architecture is a pointwise addition example: \n
-    ```
-    {example_vectoradd_model}
-    ``` \n
-    The example generated architecture with custom CUDA kernels looks like this: 
-    ```
-    {example_vectoradd_model_new}
-    ``` \n
-    """
-
-    prompt += f"""
-    Here's a pseudocode example to show you operator fusion. The given architecture in torch: \n
-    ```
-    {example_fuse_pseudocode_model}
-    ``` \n
-    The example generated architecture with operator fusion looks like this: 
-    ```
-    {example_fuse_pseudocode_model_new}
-    ``` \n
-    """
-
-    prompt += f"""
-    You are given the following architecture: \n
+    You are given the following architecture:\n\n
     ```
     {ref_arch_src}
     ```
