@@ -69,7 +69,7 @@ def prompt_generate_custom_cuda(
     return prompt
 
 
-def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str, num_shots: int = 1) -> str:
+def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str, shots: list) -> str:
     prompt = PROBLEM_STATEMENT
 
     # k = 1
@@ -108,18 +108,22 @@ def prompt_generate_custom_cuda_oneshot_and_template(ref_arch_src: str, num_shot
     )
     example_tiled_matmul_new = "This given architecture is for a model with tiled matrix multiplication: "
 
-    prompts = []
 
-    for i, tup in enumerate([
-        (example_add, example_add_new, example_add_desc), 
-        (example_fuse_gelu, example_fuse_gelu_new, example_fuse_gelu_desc),
-        (example_fuse_mnist2, example_fuse_mnist2_new, exmaple_fuse_mnist2_new),
-        (example_tiled_matmul, example_tiled_matmul_new, example_tiled_matmul_new)
-    ]):
-        
-        if i == num_shots:
-            break
+    examples = []
+    for s in shots:
+        if s not in ["example_add", "example_fuse_gelu", "example_fuse_mnist2", "example_tiled_matmul"]:
+            raise ValueError(f"Invalid shot: {s}")
+        elif s == "example_add":
+            examples.append((example_add, example_add_new, example_add_desc))
+        elif s == "example_fuse_gelu":
+            examples.append((example_fuse_gelu, example_fuse_gelu_new, example_fuse_gelu_desc))
+        elif s == "example_fuse_mnist2":
+            examples.append((example_fuse_mnist2, example_fuse_mnist2_new, exmaple_fuse_mnist2_new))
+        elif s == "example_tiled_matmul":
+            examples.append((example_tiled_matmul, example_tiled_matmul_new, example_tiled_matmul_new))
 
+
+    for i, tup in enumerate(examples):
         base, kernel, desc = tup
 
         prompt += f"""
