@@ -91,7 +91,12 @@ def get_kernelbench_subset(
     return subset, subset_indices
 
 
+################################################################################
 # Representative subsets of KernelBench
+# use this if you want to iterate on methods without the hassle of running the full dataset
+# problem_ids are 1-indexed
+################################################################################
+
 level1_representative_subset = [
     "1_Square_matrix_multiplication_.py",
     "3_Batched_matrix_multiplication.py",
@@ -113,6 +118,8 @@ level1_representative_subset = [
     "87_conv_pointwise_2D.py",
 ]
 
+level1_representative_subset_problem_ids = [1, 3, 6, 18, 23, 26, 33, 36, 40, 42, 48, 54, 57, 65, 77, 82, 86, 87]
+
 level2_representative_subset = [
     "1_Conv2D_ReLU_BiasAdd.py",
     "2_ConvTranspose2d_BiasAdd_Clamp_Scaling_Clamp_Divide.py",
@@ -123,6 +130,8 @@ level2_representative_subset = [
     "33_Gemm_Scale_BatchNorm.py",
     "43_Conv3d_Max_LogSumExp_ReLU.py",
 ]
+
+level2_representative_subset_problem_ids = [1, 2, 8, 18, 23, 28, 33, 43]
 
 level3_representative_subset = [
     "1_MLP.py",
@@ -135,3 +144,5 @@ level3_representative_subset = [
     "38_LTSMBidirectional.py",
     "43_MinGPTCausalAttention.py",
 ]
+
+level3_representative_subset_problem_ids = [1, 5, 8, 11, 20, 33, 38, 43]

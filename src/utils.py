@@ -118,7 +118,9 @@ def query_server(
                 timeout=10000000,
                 max_retries=3,
             )
-            model = "deepseek-coder"  # only set to do this for now
+            model = model_name
+            # model = "deepseek-coder"  # only set to do this for now
+            assert model == "deepseek-chat" or model == "deepseek-coder", "Only support deepseek-chat or deepseek-coder for now"
             if not is_safe_to_send_to_deepseek(prompt):
                 raise RuntimeError("Prompt is too long for DeepSeek")
         case "anthropic":
