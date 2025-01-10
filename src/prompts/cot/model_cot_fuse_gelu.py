@@ -1,6 +1,8 @@
+"""
+Let us think about how to optimize the code step by step.
+"""
 
-# Step 1. Let us break down the pytorch module into step by step instructions.
-
+#  Step 1. Let us break down the pytorch module into step by step instructions.
 class Model(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -29,7 +31,6 @@ class Model(nn.Module):
     
 
 # Step 2. Let us describe how each step could be implemented inside of a CUDA kernel.
-
 """
 First, we need to get a value from x: float x = inp[i]
 
@@ -41,4 +42,3 @@ Fourth, we can compute: float out[i] = 0.5f * x * (1.0f + tanhf(const * inner_te
 """    
 
 # Step 3. Let us put all of the steps together in a single CUDA kernel function.
-
