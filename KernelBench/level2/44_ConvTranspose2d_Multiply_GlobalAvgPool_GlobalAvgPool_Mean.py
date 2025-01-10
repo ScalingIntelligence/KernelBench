@@ -4,7 +4,7 @@ import torch.nn as nn
 class Model(nn.Module):
     """
     Model that performs a transposed convolution, multiplies by a scalar, applies global average pooling, 
-    another global average pooling, and then calculates the mean.
+    another global average pooling
     """
     def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier):
         super(Model, self).__init__()
@@ -16,7 +16,6 @@ class Model(nn.Module):
         x = x * self.multiplier
         x = torch.mean(x, dim=[2, 3], keepdim=True)  # First global average pooling
         x = torch.mean(x, dim=[2, 3], keepdim=True)  # Second global average pooling
-        x = torch.mean(x)
         return x
 
 batch_size = 128
