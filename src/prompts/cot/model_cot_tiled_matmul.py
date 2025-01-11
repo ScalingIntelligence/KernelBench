@@ -36,4 +36,4 @@ class Model(nn.Module):
    - Each thread computes one element of the result matrix and writes it back to global memory.
 """
 
-# Step 3: Let us put all of the steps together in a single CUDA kernel function.
+# Step 3. Let us put all of the steps together into CUDA kernel code.

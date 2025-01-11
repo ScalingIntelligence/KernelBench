@@ -72,5 +72,5 @@ class Model(nn.Module):
    - Take the logarithm of the normalized probabilities.
 """
 
-# Step 3: Let us put all of the steps together in a single CUDA kernel function.
+# Step 3. Let us put all of the steps together into CUDA kernel code.
 

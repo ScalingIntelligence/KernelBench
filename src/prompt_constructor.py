@@ -76,6 +76,16 @@ Optimize the architecture named Model with custom CUDA operators! Name your opti
 """
 
 def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: list) -> str:
+    """
+    Generate a prompt with specified few-shot examples following a template 
+
+    shots: list of few-shot examples to include in the prompt
+    Avaliable few shot options to start with: 
+    - ex_add: pointwise addition
+    - ex_fuse_gelu: fused gelu
+    - ex_fuse_mnist2: fused convolutions and relus
+    - ex_tiled_matmul: tiled matrix multiplication
+    """
     prompt = PROBLEM_STATEMENT_CLEANED
 
     # k = 1
@@ -155,6 +165,107 @@ Here is an example architecture:\n\n
 """
     prompt += PROBLEM_INSTRUCTION_CLEANED
     return prompt
+
+def prompt_generate_ex_with_CoT_template(ref_arch_src: str, cot_example: str) -> str:
+    """
+    Generate a prompt with a CoT example following a template 
+    Avaliable CoT examples: 
+    - ex_fuse_gelu: fused gelu
+    - ex_fuse_mnist2: fused convolutions and relus
+    - ex_tiled_matmul: tiled matrix multiplication
+    """
+
+    # I updated this to allow CoT. Also explicilty state think step by step.
+    PROBLEM_INSTRUCTION_COT = """
+Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Do not output testing code. 
+In the end, make sure the final code block contains code for output architecture ModelNew with cuda code.\n
+Let's think step by step.\n
+""" 
+
+    prompt = PROBLEM_STATEMENT_CLEANED
+    
+    assert cot_example in ["ex_fuse_gelu", "ex_fuse_mnist2", "ex_tiled_matmul"]
+
+    # k = 2
+    example_fuse_gelu = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_fuse_gelu.py")
+    )
+    example_fuse_gelu_cot = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/cot/model_cot_fuse_gelu.py")
+    )
+    example_fuse_gelu_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_fuse_gelu.py")
+    )
+    example_fuse_gelu_desc = "This given architecture is for a fused gelu: "
+
+    # k = 3
+    example_fuse_mnist2 = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_mnist2.py")
+    )
+    example_fuse_mnist2_cot = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/cot/model_cot_mnist2.py")
+    )
+    example_fuse_mnist2_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_mnist2.py")
+    )
+    exmaple_fuse_mnist2_desc = "This given architecture is for a model with fused convolutions and relus: "
+
+    # k = 4
+    example_tiled_matmul = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_tiled_matmul.py")
+    )
+    example_tiled_matmul_cot = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/cot/model_cot_tiled_matmul.py")
+    )
+    example_tiled_matmul_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_tiled_matmul.py")
+    )
+    example_tiled_matmul_desc = "This given architecture is for a model with tiled matrix multiplication: "
+    
+    match cot_example:
+        case "ex_fuse_gelu":
+            base = example_fuse_gelu
+            cot = example_fuse_gelu_cot
+            kernel = example_fuse_gelu_new
+            desc = example_fuse_gelu_desc
+        case "ex_fuse_mnist2":
+            base = example_fuse_mnist2
+            cot = example_fuse_mnist2_cot
+            kernel = example_fuse_mnist2_new
+            desc = exmaple_fuse_mnist2_desc
+        case "ex_tiled_matmul":
+            base = example_tiled_matmul
+            cot = example_tiled_matmul_cot
+            kernel = example_tiled_matmul_new
+            desc = example_tiled_matmul_desc
+
+    # construct example with 
+    # NOTE: we only do one example with CoT for now
+    # 1. ref_src problem -> 2. Instruction -> 3. CoT -> 4. Solution
+    prompt += f"""
+Here is an example architecture:\n\n
+```
+{base}
+```\n
+{PROBLEM_INSTRUCTION_COT} \n
+{cot} \n
+```
+{kernel}
+```\n\n
+"""
+
+# show task to solve
+    prompt += f"""
+Task:\n\n
+Here is an example architecture:\n\n
+```
+{ref_arch_src}
+```\n
+"""
+    prompt += PROBLEM_INSTRUCTION_COT
+
+    return prompt
+
 
 
 def prompt_generate_custom_cuda_from_file_one_example(ref_arch_src, example_ind=1):

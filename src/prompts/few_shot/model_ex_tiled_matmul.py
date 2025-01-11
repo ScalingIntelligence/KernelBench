@@ -22,4 +22,3 @@ def get_init_inputs():
     # randomly generate tensors required for initialization based on the model architecture
     return []
 
-
