@@ -344,6 +344,7 @@ SERVER_PRESETS = {
     },
     "archon": {
         "archon_config_path": "archon_configs/gpt-4-turbo.json",
+        "model_name": "individual_gpt-4-turbo",
     },
 }
 

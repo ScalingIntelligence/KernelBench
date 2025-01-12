@@ -12,7 +12,9 @@
             "args": [
                 "dataset_src=huggingface",
                 "level=2",
-                "problem_id=40"
+                "problem_id=40",
+                "server_type=archon",
+                "model_name=individual_gpt-4-turbo"
             ],
             "console": "integratedTerminal"
         },
