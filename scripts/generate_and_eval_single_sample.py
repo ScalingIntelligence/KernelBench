@@ -42,7 +42,7 @@ class EvalConfig(Config):
         self.gpu_arch = ["Ada"]
 
         # Archon config
-        self.archon_config_path = "archon_configs/gpt-4-turbo.json"
+        self.archon_config_path = None
 
         # Inference config
         self.server_type = "deepseek"

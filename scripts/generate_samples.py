@@ -43,6 +43,9 @@ class GenerationConfig(Config):
         self.num_workers = 1
         self.api_query_interval = 0.0
 
+        # Archon
+        self.archon_config_path = None
+
         # Inference config
         self.server_type = "deepseek"
         self.model_name = "deepseek-coder"
