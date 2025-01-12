@@ -16,6 +16,9 @@ Generate and evaluate a single sample
 Easiest way to get started, to test a single problem for experimentation or debugging
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 torch.set_printoptions(precision=4, threshold=10)
@@ -41,13 +44,15 @@ class EvalConfig(Config):
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
 
+        # Archon config
+        self.archon_config_path = "archon_configs/gpt-4-turbo.json"
 
         # Inference config
-        self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
+        self.server_type = "archon"
+        self.model_name = "gpt-4-turbo"
         self.max_tokens = 4096
         self.temperature = 0.0
-        
+
         # Logging
         self.logdir = os.path.join(REPO_TOP_DIR, "results/eval_logs")
         self.verbose = False
@@ -123,7 +128,8 @@ def main(config: EvalConfig):
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
-                                                        verbose=config.verbose, 
+                                                        verbose=config.verbose,
+                                                        archon_config_path=config.archon_config_path,
                                                         time_generation=True)
     
 
