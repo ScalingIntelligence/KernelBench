@@ -190,6 +190,7 @@ def main(config: GenerationConfig):
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
+                                                        archon_config_path=config.archon_config_path,
                                                         verbose=config.verbose)
 
     # Launch workers

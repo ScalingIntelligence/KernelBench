@@ -147,6 +147,8 @@ def query_server(
             client = OpenAI(api_key=OPENAI_KEY)
             model = model_name
         case "archon":
+            assert archon_config_path is not None, "Archon config path is required"
+            assert os.path.exists(archon_config_path), f"Archon config path {archon_config_path} does not exist"
             client = Archon(json.load(open(archon_config_path)))
             model = model_name
         case _:

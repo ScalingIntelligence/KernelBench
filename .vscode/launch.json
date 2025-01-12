@@ -25,7 +25,7 @@
             "request": "launch",
             "program": "scripts/generate_samples.py",
             "args": [
-                "run_name=test_hf_level_1",
+                "run_name=test_hf_archon_level_1",
                 "dataset_src=huggingface",
                 "level=1",
                 "num_workers=50",
@@ -42,7 +42,7 @@
             "program": "scripts/eval_from_generations.py",
             "args": [
                 "level=1",
-                "run_name=test_hf_level_1",
+                "run_name=test_hf_archon_level_1",
                 "dataset_src=local",
                 "num_gpu_devices=8",
                 "timeout=300"
