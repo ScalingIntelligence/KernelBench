@@ -271,7 +271,7 @@ def query_server(
                 {"role": "user", "content": prompt},
             ],
         )
-        outputs = [choice.text for choice in response.choices]
+        outputs = response
     # for all other kinds of servers, use standard API
     else:
         if type(prompt) == str:
