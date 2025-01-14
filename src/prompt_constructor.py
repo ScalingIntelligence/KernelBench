@@ -83,7 +83,7 @@ def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: l
     Avaliable few shot options to start with: 
     - ex_add: pointwise addition
     - ex_fuse_gelu: fused gelu
-    - ex_fuse_mnist2: fused convolutions and relus
+    - ex_mnist2: fused convolutions and relus
     - ex_tiled_matmul: tiled matrix multiplication
     """
     prompt = PROBLEM_STATEMENT_CLEANED
@@ -107,13 +107,13 @@ def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: l
     example_fuse_gelu_desc = "This given architecture is for a fused gelu: "
 
     # k = 3
-    example_fuse_mnist2 = read_file(
+    example_mnist2 = read_file(
         os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_mnist2.py")
     )
-    example_fuse_mnist2_new = read_file(
+    example_mnist2_new = read_file(
         os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_mnist2.py")
     )
-    exmaple_fuse_mnist2_desc = "This given architecture is for a model with fused convolutions and relus: "
+    exmaple_mnist2_desc = "This given architecture is for a model with fused convolutions and relus: "
 
     # k = 4
     example_tiled_matmul = read_file(
@@ -127,14 +127,14 @@ def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: l
 
     examples = []
     for s in shots:
-        if s not in ["ex_add", "ex_fuse_gelu", "ex_fuse_mnist2", "ex_tiled_matmul"]:
+        if s not in ["ex_add", "ex_fuse_gelu", "ex_mnist2", "ex_tiled_matmul"]:
             raise ValueError(f"Invalid shot: {s}")
         elif s == "ex_add":
             examples.append((example_add, example_add_new, example_add_desc))
         elif s == "ex_fuse_gelu":
             examples.append((example_fuse_gelu, example_fuse_gelu_new, example_fuse_gelu_desc))
-        elif s == "ex_fuse_mnist2":
-            examples.append((example_fuse_mnist2, example_fuse_mnist2_new, exmaple_fuse_mnist2_desc))
+        elif s == "ex_mnist2":
+            examples.append((example_mnist2, example_mnist2_new, exmaple_mnist2_desc))
         elif s == "ex_tiled_matmul":
             examples.append((example_tiled_matmul, example_tiled_matmul_new, example_tiled_matmul_desc))
 
@@ -171,7 +171,7 @@ def prompt_generate_ex_with_CoT_template(ref_arch_src: str, cot_example: str) ->
     Generate a prompt with a CoT example following a template 
     Avaliable CoT examples: 
     - ex_fuse_gelu: fused gelu
-    - ex_fuse_mnist2: fused convolutions and relus
+    - ex_mnist2: fused convolutions and relus
     - ex_tiled_matmul: tiled matrix multiplication
     """
 
@@ -184,7 +184,7 @@ Let's think step by step.\n
 
     prompt = PROBLEM_STATEMENT_CLEANED
     
-    assert cot_example in ["ex_fuse_gelu", "ex_fuse_mnist2", "ex_tiled_matmul"]
+    assert cot_example in ["ex_fuse_gelu", "ex_mnist2", "ex_tiled_matmul"]
 
     # k = 2
     example_fuse_gelu = read_file(
@@ -199,16 +199,16 @@ Let's think step by step.\n
     example_fuse_gelu_desc = "This given architecture is for a fused gelu: "
 
     # k = 3
-    example_fuse_mnist2 = read_file(
+    example_mnist2 = read_file(
         os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_mnist2.py")
     )
-    example_fuse_mnist2_cot = read_file(
+    example_mnist2_cot = read_file(
         os.path.join(REPO_TOP_PATH, "src/prompts/cot/model_cot_mnist2.py")
     )
-    example_fuse_mnist2_new = read_file(
+    example_mnist2_new = read_file(
         os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_mnist2.py")
     )
-    exmaple_fuse_mnist2_desc = "This given architecture is for a model with fused convolutions and relus: "
+    exmaple_mnist2_desc = "This given architecture is for a model with fused convolutions and relus: "
 
     # k = 4
     example_tiled_matmul = read_file(
@@ -228,16 +228,18 @@ Let's think step by step.\n
             cot = example_fuse_gelu_cot
             kernel = example_fuse_gelu_new
             desc = example_fuse_gelu_desc
-        case "ex_fuse_mnist2":
-            base = example_fuse_mnist2
-            cot = example_fuse_mnist2_cot
-            kernel = example_fuse_mnist2_new
-            desc = exmaple_fuse_mnist2_desc
+        case "ex_mnist2":
+            base = example_mnist2
+            cot = example_mnist2_cot
+            kernel = example_mnist2_new
+            desc = exmaple_mnist2_desc
         case "ex_tiled_matmul":
             base = example_tiled_matmul
             cot = example_tiled_matmul_cot
             kernel = example_tiled_matmul_new
             desc = example_tiled_matmul_desc
+        case _:
+            raise ValueError(f"Invalid CoT example: {cot_example} not found in CoT examples")
 
     # construct example with 
     # NOTE: we only do one example with CoT for now
