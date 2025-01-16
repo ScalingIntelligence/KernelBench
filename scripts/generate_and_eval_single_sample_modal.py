@@ -23,6 +23,8 @@ REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 torch.set_printoptions(precision=4, threshold=10)
 
+gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
+
 class EvalConfig(Config):
     def __init__(self):
         
@@ -39,11 +41,11 @@ class EvalConfig(Config):
 
         # Evaluation
         # local (requires a GPU), modal (cloud GPU) coming soon
-        self.eval_mode = "local"
+        self.eval_mode = "modal"
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
         self.gpu = "L40S"
-        self.gpu_arch = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
+        self.gpu_arch = ['Ada']
 
 
         # Inference config
@@ -128,12 +130,6 @@ def main(config: EvalConfig):
     if config.dataset_src == "huggingface":
         dataset = load_dataset(config.dataset_name)
         curr_level_dataset = dataset[f"level_{config.level}"]
-    '''
-    elif config.dataset_src == "local":
-        curr_level_dataset = construct_kernelbench_dataset(config.level)
-    '''
-    if config.gpu_arch:
-        set_gpu_arch(config.gpu_arch[config.gpu])  # otherwise build for all architectures
 
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)
@@ -195,8 +191,7 @@ def main(config: EvalConfig):
             f.write(custom_cuda)
 
     with app.run():
-        kernel_exec_result = EvalFunc.with_options(gpu=config.gpu)().eval_single_sample_modal.remote(ref_arch_src, custom_cuda, config.verbose, config.gpu_arch[config.gpu]) if config.eval_mode == "modal" \
-                        else EvalFunc().eval_single_sample_modal.local(ref_arch_src, custom_cuda, config.verbose)
+        kernel_exec_result = EvalFunc.with_options(gpu=config.gpu)().eval_single_sample_modal.remote(ref_arch_src, custom_cuda, config.verbose, gpu_arch_mapping[config.gpu])
         
         print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")
         

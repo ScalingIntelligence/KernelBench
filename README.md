@@ -54,7 +54,7 @@ pip install -e .
 To call LLM API providers, set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
 
 Running and profiling kernels require a GPU. 
-If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, specify `eval_mode=modal` when running.
+If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
 
 ## 🚀 Usage
 ### Run on a single problem 
