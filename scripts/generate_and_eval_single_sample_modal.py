@@ -3,13 +3,16 @@ from pydra import REQUIRED, Config
 import os, sys
 import torch
 import json
+import modal
 
 from datasets import load_dataset
 
-from src.dataset import construct_kernelbench_dataset
+#from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
+
+app = modal.App("eval_single_sample")
 
 """
 Generate and evaluate a single sample
@@ -39,7 +42,8 @@ class EvalConfig(Config):
         self.eval_mode = "local"
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
-        self.gpu_arch = ["Ada"]
+        self.gpu = "L40S"
+        self.gpu_arch = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
 
 
         # Inference config
@@ -66,24 +70,70 @@ class EvalConfig(Config):
     def __repr__(self):
         return f"EvalConfig({self.to_dict()})"
 
+cuda_version = "12.4.0"  # should be no greater than host CUDA version
+flavor = "devel"  #  includes full CUDA toolkit
+operating_sys = "ubuntu22.04"
+tag = f"{cuda_version}-{flavor}-{operating_sys}"
+
+image = (
+    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+    .apt_install("git",
+                "gcc-10",
+                "g++-10",
+                "clang" # note i skip a step 
+                )
+    .pip_install(  # required to build flash-attn
+        "anthropic",
+        "numpy",
+        "openai",
+        "packaging",
+        "pydra_config",
+        "torch==2.5.0",
+        "tqdm",
+        "datasets",
+        "transformers",
+        "google-generativeai",
+        "together",
+        "pytest",
+        "ninja",
+        "utils",
+    )
+)
+
+@app.cls(image=image)
+class EvalFunc:
+
+    @modal.method()
+    def eval_single_sample_modal(self, ref_arch_src, custom_cuda, verbose, gpu_arch):
+        # 3. Evaluate Kernel
+        # NOTE: no need to wrap around process here as only a single sample
+        # see batch eval for examples of process isolation
+        from src.eval import eval_kernel_against_ref
+        from src.utils import set_gpu_arch
+        set_gpu_arch(gpu_arch)
+        return eval_kernel_against_ref(
+            ref_arch_src, custom_cuda, verbose=verbose, measure_performance=True, num_correct_trials=5, num_perf_trials=100
+        )
 
 @pydra.main(base=EvalConfig)
 def main(config: EvalConfig):
+    
     """
     Keep it simple: Generate and evaluate a single sample
     """
     print(f"Starting Eval with config: {config}")
 
     # Configurations
-
+    
     if config.dataset_src == "huggingface":
         dataset = load_dataset(config.dataset_name)
         curr_level_dataset = dataset[f"level_{config.level}"]
+    '''
     elif config.dataset_src == "local":
         curr_level_dataset = construct_kernelbench_dataset(config.level)
-
+    '''
     if config.gpu_arch:
-        set_gpu_arch(config.gpu_arch)  # otherwise build for all architectures
+        set_gpu_arch(config.gpu_arch[config.gpu])  # otherwise build for all architectures
 
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)
@@ -144,20 +194,16 @@ def main(config: EvalConfig):
         with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py"), "w") as f:
             f.write(custom_cuda)
 
-    # 3. Evaluate Kernel
-    # NOTE: no need to wrap around process here as only a single sample
-    # see batch eval for examples of process isolation
-    kernel_exec_result = eval_kernel_against_ref(
-        ref_arch_src, custom_cuda, verbose=config.verbose, measure_performance=True, num_correct_trials=5, num_perf_trials=100
-    )
-    
-    print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")
-
-    if config.log:
-        with open(os.path.join(config.logdir, f"eval_result_level_{config.level}_problem_{config.problem_id}.txt"), "a") as f:
-            f.write(f"Problem Name: {problem_name}\n")
-            f.write(str(kernel_exec_result))
-
+    with app.run():
+        kernel_exec_result = EvalFunc.with_options(gpu=config.gpu)().eval_single_sample_modal.remote(ref_arch_src, custom_cuda, config.verbose, config.gpu_arch[config.gpu]) if config.eval_mode == "modal" \
+                        else EvalFunc().eval_single_sample_modal.local(ref_arch_src, custom_cuda, config.verbose)
+        
+        print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")
+        
+        if config.log:
+            with open(os.path.join(config.logdir, f"eval_result_level_{config.level}_problem_{config.problem_id}.txt"), "a") as f:
+                f.write(f"Problem Name: {problem_name}\n")
+                f.write(str(kernel_exec_result))
 
 if __name__ == "__main__":
     main()
