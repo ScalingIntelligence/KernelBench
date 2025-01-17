@@ -5,13 +5,14 @@ Helpers for Evaluations
 import requests
 import torch
 import torch.nn as nn
-import os
+import os, subprocess
 from pydantic import BaseModel
 import numpy as np
 import random
 import json
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
+import sys
 
 from . import utils
 
@@ -168,8 +169,7 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
 
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
-
-def build_compile_cache(
+def build_compile_cache_legacy(
     custom_model_src: str,
     verbose: bool = False,
     build_dir: os.PathLike = None,
@@ -192,10 +192,52 @@ def build_compile_cache(
 
     try:
         os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
+        # sys.stdout.flush()
 
         # Capture stdout during compilation
         with redirect_stdout(stdout_buffer), redirect_stderr(stdout_buffer):
             load_custom_model(custom_model_src, context, build_dir)
+            # sys.stdout.flush()
+
+        if verbose:
+            print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
+    except Exception as e:
+        print(f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        return False, stdout_buffer.getvalue(), str(e)
+    
+    return True, stdout_buffer.getvalue(), None
+
+
+
+def build_compile_cache(
+    custom_model_src: str,
+    verbose: bool = False,
+    build_dir: os.PathLike = None,
+) -> tuple[bool, str, str]:
+    """
+    Try to build the compiled cuda code for sample and store in the cache directory
+    Should be able to run on CPUs to do this massively in parallel
+
+    Don't limit ninja to set default number of workers, let it use all the cpu cores possible
+    # try do this with a subprocess
+    NOTE: currently stdout_buffer does not capture all the compiler warning and failure messages
+    Returns:
+        tuple[bool, str]: whether compilation is successful, stdout content as string
+    """
+    context = {}
+    stdout_buffer = StringIO()
+
+    if verbose:
+        print("[Compilation] Pre-compile custom cuda binaries")
+
+    try:
+        os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
+        # sys.stdout.flush()
+
+        # Capture stdout during compilation
+        with redirect_stdout(stdout_buffer), redirect_stderr(stdout_buffer):
+            load_custom_model(custom_model_src, context, build_dir)
+            # sys.stdout.flush()
 
         if verbose:
             print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
@@ -204,6 +246,49 @@ def build_compile_cache(
         return False, stdout_buffer.getvalue(), str(e)
 
     return True, stdout_buffer.getvalue(), None
+
+
+def build_compile_cache_with_capturing(
+    custom_model_src: str,
+    verbose: bool = False,
+    build_dir: os.PathLike = None
+) -> tuple[int, str, str]:
+    """
+    Write a temporary python file to compile the custom model on CPU
+    Captures the return code, stdout, and stderr
+    This works for capturing, build_compile_cache does not
+    """
+    if build_dir:
+        # Add import at the start of the source code
+        custom_model_src = (
+            "import os\n" f"os.environ['TORCH_EXTENSIONS_DIR'] = '{build_dir}'\n"
+        ) + custom_model_src
+
+    kernel_hash = hash(custom_model_src)
+    # tmp is a temp python file we write to for compilation
+    tmp = os.path.join(build_dir, f"tmp_{kernel_hash}.py")
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(custom_model_src)
+
+    # Execute the temporary Python file and capture output
+    process = subprocess.Popen(['python', tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    returncode = process.returncode
+
+    # Clean up temporary file
+    os.remove(tmp)
+
+
+    if verbose:
+        print("[CPU Precompile] return code: ", returncode)
+        print("[CPU Precompile] stdout: \n", stdout.decode('utf-8'))
+        print("[CPU Precompile] stderr: \n", stderr.decode('utf-8')) 
+
+    return returncode, stdout.decode('utf-8'), stderr.decode('utf-8')
+
+
 
 
 def eval_kernel_against_ref(
