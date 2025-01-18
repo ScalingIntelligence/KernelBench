@@ -28,7 +28,7 @@ class Model(nn.Module):
         #  Third, apply the GELU formula
         out = 0.5 * x * (1 + torch.tanh(const * inner_term))
         return out
-    
+
 
 # Step 2. Let us describe how each step could be implemented inside of a CUDA kernel.
 """
@@ -41,4 +41,4 @@ Third, we can compute: float inner_term = x + 0.044715f * (x*x*x)
 Fourth, we can compute: float out[i] = 0.5f * x * (1.0f + tanhf(const * inner_term))
 """    
 
-# Step 3. Let us put all of the steps together in a single CUDA kernel function.
+# Step 3. Let us put all of the steps together into CUDA kernel code.
