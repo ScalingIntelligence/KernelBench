@@ -25,13 +25,13 @@
             "request": "launch",
             "program": "scripts/generate_samples.py",
             "args": [
-                "run_name=test_hf_archon_level_1",
+                "run_name=simple_fuse_level_1",
                 "dataset_src=huggingface",
                 "level=1",
                 "num_workers=50",
                 "server_type=archon",
-                "model_name=individual_gpt-4-turbo",
-                "archon_config_path=archon_configs/gpt-4-turbo.json"
+                "model_name=gpt_4o_simple_fuse",
+                "archon_config_path=archon_configs/gpt-4o-simple-fuse.json"
             ],
             "console": "integratedTerminal"
         },
@@ -42,7 +42,7 @@
             "program": "scripts/eval_from_generations.py",
             "args": [
                 "level=1",
-                "run_name=test_hf_archon_level_1",
+                "run_name=simple_fuse_level_1",
                 "dataset_src=local",
                 "num_gpu_devices=8",
                 "timeout=300"

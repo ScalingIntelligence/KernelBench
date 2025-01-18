@@ -1,0 +1,226 @@
+"""
+Mixed-three-critic
+Generator models:
+gpt-4o,
+claude-3-5-sonnet-latest,
+meta-llama/Llama-3.3-70B-Instruct-Turbo,
+meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo,
+nvidia/Llama-3.1-Nemotron-70B-Instruct-HF,
+Qwen/Qwen2-72B-Instruct,
+Qwen/Qwen2.5-72B-Instruct-Turbo,
+Qwen/QwQ-32B-Preview,
+google/gemma-2-27b-it,
+NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO
+"""
+
+{
+    "name": "mixed-three-critic",
+    "layers": [
+        [
+            {
+                "type": "generator",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "claude-3-5-sonnet",
+                "model_type": "Anthropic_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "Qwen/Qwen2-72B-Instruct",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "Qwen/Qwen2.5-72B-Instruct-Turbo",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "Qwen/QwQ-32B-Preview",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "google/gemma-2-27b-it",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "generator",
+                "model": "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO",
+                "model_type": "Together_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            }
+        ],
+        [
+            {
+                "type": "critic",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            }
+        ],
+        [
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            }
+        ],
+        [
+            {
+                "type": "critic",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            }
+        ],
+        [
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            },
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            }
+        ],
+        [
+            {
+                "type": "critic",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            }
+        ],
+        [
+            {
+                "type": "fuser",
+                "model": "gpt-4o",
+                "model_type": "OpenAI_API",
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "samples": 1
+            }
+        ]
+    ]
+}
