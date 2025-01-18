@@ -156,10 +156,12 @@ def query_server(
 
     if server_type != "google":
         assert client is not None, "Client is not set, cannot proceed to generations"
-
-    print(
-        f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
-    )
+    if server_type == "archon":
+        print(f"Querying Archon model {model} with config {archon_config_path}")
+    else:
+        print(
+            f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
+        )
     # Logic to query the LLM
     if server_type == "anthropic":
         assert type(prompt) == str
