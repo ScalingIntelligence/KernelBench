@@ -94,7 +94,7 @@ def get_kernelbench_subset(
 ################################################################################
 # Representative subsets of KernelBench
 # use this if you want to iterate on methods without the hassle of running the full dataset
-# problem_ids are 1-indexed
+# problem_ids are 1-indexed (logical index)
 ################################################################################
 
 level1_representative_subset = [

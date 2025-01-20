@@ -24,9 +24,9 @@ We construct Kernel Bench to have 4 Levels of categories:
     Optimize whole model architectures from HuggngFace
 
 For this benchmark, we care whether if a solution 
-- compiles: generated torch code was able to load the inline embedded CUDA Kernel and build the kernel
-- is correct: check against reference torch operators n_correctness times on randomized inputs
-- is fast: compare against reference torch operators n_trial times for both eager mode and torch.compile execution
+- **compiles**: generated torch code was able to load the inline embedded CUDA Kernel and build the kernel
+- **is correct**: check against reference torch operators n_correctness times on randomized inputs
+- **is fast**: compare against reference torch operators n_trial times for both eager mode and torch.compile execution
 
 ## 🔍 Directory Structure
 We organize the repo into the following structure:
@@ -39,7 +39,7 @@ KernelBench/
 │   ├── prompts/
 │   ├── ....
 ├── scripts/ # helpful scripts to run the benchmark
-├── results/ # some baseline times
+├── results/ # baseline times across hardware 
 ├── runs/ # where your runs will be stored
 ```
 
@@ -85,10 +85,9 @@ We provide some reference baseline times on NVIDIA L40S in `results/timing` (soo
 
 ## 🛣️ Upcoming Roadmap
 - [ ] More reference baseline times on various GPU platforms
-- [ ] Easy-to-use Cloud GPU Integration (via Modal)
-- [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
-- [ ] Add backward pass
-- [ ] Integrate with toolchains such as NCU
+- [ ] Integrate with more DSLs and collectives, such as Triton and [ThunderKittens](https://,github.com/HazyResearch/ThunderKittens)
+- [ ] Add backward pass problems
+- [ ] Integrate with toolchains such as NVIDIA Nsight Compute (NCU)
 
 
 <!-- Add Citation -->

@@ -433,7 +433,7 @@ def extract_first_code(output_string: str, code_language_types: list[str]) -> st
     return None
 
 
-def extract_last_code(output_string: str, code_language_types: list[str]) -> str:
+def extract_last_code(output_string: str, code_language_types: list[str]) -> str | None:
     """
     Extract last code block from model output, specified by code_language_type
     """
