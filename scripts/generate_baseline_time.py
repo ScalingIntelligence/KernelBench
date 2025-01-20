@@ -35,8 +35,6 @@ https://pytorch.org/docs/stable/torch.compiler.html
 - torch.compile: backend="cudagraphs" (CUDA graphs with AOT Autograd)
 """
 
-TIMING_DIR = "results/timing"
-
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
@@ -44,6 +42,8 @@ REPO_TOP_PATH = os.path.abspath(
     )
 )
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+
+TIMING_DIR = os.path.join(REPO_TOP_PATH, "results", "timing")
 
 
 def fetch_ref_arch_from_dataset(dataset: list[str], 
@@ -198,8 +198,13 @@ if __name__ == "__main__":
     
     # Replace this with whatever hardware you are running on 
     hardware_name = "L40S_matx3"
+
+    input(f"You are about to start recording baseline time for {hardware_name}, press Enter to continue...")
     # Systematic recording of baseline time
-    
+
+    if os.path.exists(os.path.join(TIMING_DIR, hardware_name)):
+        input(f"Directory {hardware_name} already exists, Are you sure you want to overwrite? Enter to continue...")
+
     # 1. Record Torch Eager
     record_baseline_times(use_torch_compile=False, 
                           torch_compile_backend=None,

@@ -1,4 +1,4 @@
-## ⏱️ Baseline Timing Results
+# ⏱️ Baseline Timing Results
 
 
 This folder contains a set of baseline timing results for the KernelBench problems.
@@ -21,7 +21,7 @@ We profile baseline KernelBench problem times on a variety of hardware, across d
 | Provider | GPU Type | Memory | Power | GPU Architecture |
 |----------|----------|---------|--------|--------------|
 | Stanford matx3 | NVIDIA L40S | 48 GB | 300W | Ada |
-| Together.ai | NVIDIA H100 | 80GB | 700W | Hopper |
+| Together.ai | NVIDIA H100 | 80 GB | 700W | Hopper |
 | Modal | NVIDIA L40S | 48 GB | 350W | Ada |
 | Modal | NVIDIA H100 | 85 GB | 700W | Hopper |
 | Modal | NVIDIA A100 | 42 GB | 400W | Ampere |
