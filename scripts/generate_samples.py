@@ -183,6 +183,16 @@ def main(config: GenerationConfig):
                     sample_id=0 # fix to 0 for now
                 )
         )
+    
+    # If server type is archon, load model_name from config
+    if config.server_type == "archon":
+        try:
+            with open(config.archon_config_path) as f:
+                archon_config = json.load(f)
+            config.model_name = archon_config["name"]
+        except Exception as e:
+            print(f"Error loading Archon config: {e}")
+            sys.exit(1)
 
     # Create inference function with config parameters
     # We provide some presets in utils but you can also pass in your own, see query_server for more details
