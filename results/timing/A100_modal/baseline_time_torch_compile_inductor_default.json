@@ -1,0 +1,2258 @@
+{
+    "level1": {
+        "1_Square_matrix_multiplication_.py": {
+            "mean": 1.29,
+            "std": 0.0591,
+            "min": 1.03,
+            "max": 1.35,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "2_Standard_matrix_multiplication_.py": {
+            "mean": 1.28,
+            "std": 0.0415,
+            "min": 1.27,
+            "max": 1.69,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "3_Batched_matrix_multiplication.py": {
+            "mean": 0.38,
+            "std": 0.0466,
+            "min": 0.369,
+            "max": 0.713,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "4_Matrix_vector_multiplication_.py": {
+            "mean": 0.163,
+            "std": 0.00514,
+            "min": 0.158,
+            "max": 0.191,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "5_Matrix_scalar_multiplication.py": {
+            "mean": 0.44,
+            "std": 0.00543,
+            "min": 0.435,
+            "max": 0.468,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "6_Matmul_with_large_K_dimension_.py": {
+            "mean": 1.37,
+            "std": 0.035,
+            "min": 1.36,
+            "max": 1.71,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "7_Matmul_with_small_K_dimension_.py": {
+            "mean": 1.36,
+            "std": 0.019,
+            "min": 1.35,
+            "max": 1.54,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "8_Matmul_with_irregular_shapes_.py": {
+            "mean": 15.5,
+            "std": 0.0191,
+            "min": 15.5,
+            "max": 15.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "9_Tall_skinny_matrix_multiplication_.py": {
+            "mean": 0.885,
+            "std": 0.00693,
+            "min": 0.878,
+            "max": 0.931,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "10_3D_tensor_matrix_multiplication.py": {
+            "mean": 3.22,
+            "std": 0.393,
+            "min": 2.86,
+            "max": 3.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "11_4D_tensor_matrix_multiplication.py": {
+            "mean": 43.9,
+            "std": 0.114,
+            "min": 43.7,
+            "max": 44.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "12_Matmul_with_diagonal_matrices_.py": {
+            "mean": 7.55,
+            "std": 0.422,
+            "min": 7.24,
+            "max": 8.58,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "13_Matmul_for_symmetric_matrices.py": {
+            "mean": 7.6,
+            "std": 0.715,
+            "min": 7.27,
+            "max": 9.37,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "14_Matmul_for_upper_triangular_matrices.py": {
+            "mean": 7.67,
+            "std": 0.72,
+            "min": 7.36,
+            "max": 9.57,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "15_Matmul_for_lower_triangular_matrices.py": {
+            "mean": 7.45,
+            "std": 0.425,
+            "min": 7.28,
+            "max": 9.71,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "16_Matmul_with_transposed_A.py": {
+            "mean": 1.3,
+            "std": 0.0049,
+            "min": 1.3,
+            "max": 1.33,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "17_Matmul_with_transposed_B.py": {
+            "mean": 1.42,
+            "std": 0.039,
+            "min": 1.41,
+            "max": 1.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "18_Matmul_with_transposed_both.py": {
+            "mean": 1.33,
+            "std": 0.0538,
+            "min": 1.25,
+            "max": 1.64,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "19_ReLU.py": {
+            "mean": 0.0889,
+            "std": 0.00482,
+            "min": 0.0829,
+            "max": 0.101,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "20_LeakyReLU.py": {
+            "mean": 0.0865,
+            "std": 0.0265,
+            "min": 0.0778,
+            "max": 0.304,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "21_Sigmoid.py": {
+            "mean": 0.0859,
+            "std": 0.0177,
+            "min": 0.0788,
+            "max": 0.246,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "22_Tanh.py": {
+            "mean": 0.0908,
+            "std": 0.00607,
+            "min": 0.0829,
+            "max": 0.117,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "23_Softmax.py": {
+            "mean": 0.15,
+            "std": 0.0086,
+            "min": 0.141,
+            "max": 0.196,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "24_LogSoftmax.py": {
+            "mean": 0.15,
+            "std": 0.00952,
+            "min": 0.125,
+            "max": 0.187,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "25_Swish.py": {
+            "mean": 0.0841,
+            "std": 0.00531,
+            "min": 0.0788,
+            "max": 0.105,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "26_GELU_.py": {
+            "mean": 0.0914,
+            "std": 0.0237,
+            "min": 0.084,
+            "max": 0.319,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "27_SELU_.py": {
+            "mean": 0.0887,
+            "std": 0.00685,
+            "min": 0.0829,
+            "max": 0.126,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "28_HardSigmoid.py": {
+            "mean": 0.0888,
+            "std": 0.00646,
+            "min": 0.0829,
+            "max": 0.115,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "29_Softplus.py": {
+            "mean": 0.0921,
+            "std": 0.00827,
+            "min": 0.085,
+            "max": 0.134,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "30_Softsign.py": {
+            "mean": 0.0833,
+            "std": 0.00389,
+            "min": 0.0778,
+            "max": 0.0952,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "31_ELU.py": {
+            "mean": 0.0921,
+            "std": 0.0069,
+            "min": 0.085,
+            "max": 0.13,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "32_HardTanh.py": {
+            "mean": 0.0888,
+            "std": 0.00695,
+            "min": 0.0819,
+            "max": 0.125,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "33_BatchNorm.py": {
+            "mean": 0.777,
+            "std": 0.0161,
+            "min": 0.769,
+            "max": 0.929,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "34_InstanceNorm.py": {
+            "mean": 0.661,
+            "std": 0.00505,
+            "min": 0.651,
+            "max": 0.677,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "35_GroupNorm_.py": {
+            "mean": 0.662,
+            "std": 0.00444,
+            "min": 0.655,
+            "max": 0.685,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "36_RMSNorm_.py": {
+            "mean": 0.662,
+            "std": 0.00413,
+            "min": 0.655,
+            "max": 0.68,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "37_FrobeniusNorm_.py": {
+            "mean": 0.675,
+            "std": 0.00425,
+            "min": 0.669,
+            "max": 0.698,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "38_L1Norm_.py": {
+            "mean": 0.123,
+            "std": 0.00823,
+            "min": 0.117,
+            "max": 0.183,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "39_L2Norm_.py": {
+            "mean": 0.122,
+            "std": 0.00678,
+            "min": 0.116,
+            "max": 0.163,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "40_LayerNorm.py": {
+            "mean": 1.05,
+            "std": 0.00304,
+            "min": 1.05,
+            "max": 1.06,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "41_Max_Pooling_1D.py": {
+            "mean": 0.103,
+            "std": 0.00626,
+            "min": 0.0973,
+            "max": 0.141,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "42_Max_Pooling_2D.py": {
+            "mean": 0.113,
+            "std": 0.00435,
+            "min": 0.11,
+            "max": 0.141,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "43_Max_Pooling_3D.py": {
+            "mean": 1.05,
+            "std": 0.00374,
+            "min": 1.05,
+            "max": 1.07,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "44_Average_Pooling_1D.py": {
+            "mean": 0.0959,
+            "std": 0.00836,
+            "min": 0.0901,
+            "max": 0.141,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "45_Average_Pooling_2D.py": {
+            "mean": 0.277,
+            "std": 0.00409,
+            "min": 0.272,
+            "max": 0.294,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "46_Average_Pooling_3D.py": {
+            "mean": 1.2,
+            "std": 0.0331,
+            "min": 1.19,
+            "max": 1.52,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "47_Sum_reduction_over_a_dimension.py": {
+            "mean": 0.109,
+            "std": 0.00577,
+            "min": 0.103,
+            "max": 0.126,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "48_Mean_reduction_over_a_dimension.py": {
+            "mean": 0.109,
+            "std": 0.00614,
+            "min": 0.102,
+            "max": 0.129,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "49_Max_reduction_over_a_dimension.py": {
+            "mean": 0.0982,
+            "std": 0.00437,
+            "min": 0.0942,
+            "max": 0.11,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "50_Product_reduction_over_a_dimension.py": {
+            "mean": 0.102,
+            "std": 0.00728,
+            "min": 0.0963,
+            "max": 0.135,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "51_Argmax_over_a_dimension.py": {
+            "mean": 0.0917,
+            "std": 0.00729,
+            "min": 0.086,
+            "max": 0.128,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "52_Argmin_over_a_dimension.py": {
+            "mean": 0.0916,
+            "std": 0.00639,
+            "min": 0.085,
+            "max": 0.119,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "53_Min_reduction_over_a_dimension.py": {
+            "mean": 0.112,
+            "std": 0.00714,
+            "min": 0.104,
+            "max": 0.15,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "54_conv_standard_3D__square_input__square_kernel.py": {
+            "mean": 5.56,
+            "std": 0.667,
+            "min": 5.04,
+            "max": 6.48,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "55_conv_standard_2D__asymmetric_input__square_kernel.py": {
+            "mean": 0.464,
+            "std": 0.00579,
+            "min": 0.458,
+            "max": 0.492,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "56_conv_standard_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 0.476,
+            "std": 0.00479,
+            "min": 0.471,
+            "max": 0.502,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "57_conv_transposed_2D__square_input__square_kernel.py": {
+            "mean": 0.466,
+            "std": 0.0374,
+            "min": 0.458,
+            "max": 0.836,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "58_conv_transposed_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 8.64,
+            "std": 0.9,
+            "min": 8.17,
+            "max": 10.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "59_conv_standard_3D__asymmetric_input__square_kernel.py": {
+            "mean": 9.21,
+            "std": 0.741,
+            "min": 8.76,
+            "max": 10.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "60_conv_standard_3D__square_input__asymmetric_kernel.py": {
+            "mean": 6.33,
+            "std": 0.605,
+            "min": 5.82,
+            "max": 7.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "61_conv_transposed_3D__square_input__square_kernel.py": {
+            "mean": 1.15,
+            "std": 0.0042,
+            "min": 1.15,
+            "max": 1.18,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "62_conv_standard_2D__square_input__asymmetric_kernel.py": {
+            "mean": 0.85,
+            "std": 0.00676,
+            "min": 0.841,
+            "max": 0.872,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "63_conv_standard_2D__square_input__square_kernel.py": {
+            "mean": 0.797,
+            "std": 0.00558,
+            "min": 0.788,
+            "max": 0.818,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "64_conv_transposed_1D.py": {
+            "mean": 0.125,
+            "std": 0.0119,
+            "min": 0.115,
+            "max": 0.171,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "65_conv_transposed_2D__square_input__asymmetric_kernel.py": {
+            "mean": 0.536,
+            "std": 0.0456,
+            "min": 0.527,
+            "max": 0.989,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "66_conv_standard_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 24.1,
+            "std": 1.24,
+            "min": 23.7,
+            "max": 28.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "67_conv_standard_1D.py": {
+            "mean": 0.128,
+            "std": 0.0387,
+            "min": 0.117,
+            "max": 0.509,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "68_conv_transposed_3D__square_input__asymmetric_kernel.py": {
+            "mean": 18.9,
+            "std": 1.2,
+            "min": 18.3,
+            "max": 22.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "69_conv_transposed_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 0.198,
+            "std": 0.00701,
+            "min": 0.189,
+            "max": 0.23,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "70_conv_transposed_3D__asymmetric_input__square_kernel.py": {
+            "mean": 1.18,
+            "std": 0.078,
+            "min": 0.98,
+            "max": 1.57,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "71_conv_transposed_2D__asymmetric_input__square_kernel.py": {
+            "mean": 0.831,
+            "std": 0.0043,
+            "min": 0.825,
+            "max": 0.848,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "72_conv_transposed_3D_asymmetric_input_asymmetric_kernel___strided_padded_grouped_.py": {
+            "mean": 38.6,
+            "std": 0.918,
+            "min": 38.5,
+            "max": 47.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "73_conv_transposed_3D_asymmetric_input_square_kernel__strided_padded__grouped.py": {
+            "mean": 1.6,
+            "std": 0.0441,
+            "min": 1.59,
+            "max": 2.03,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "74_conv_transposed_1D_dilated.py": {
+            "mean": 0.129,
+            "std": 0.00958,
+            "min": 0.122,
+            "max": 0.178,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "75_conv_transposed_2D_asymmetric_input_asymmetric_kernel_strided__grouped____padded____dilated__.py": {
+            "mean": 5.77,
+            "std": 0.439,
+            "min": 5.55,
+            "max": 6.75,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "76_conv_standard_1D_dilated_strided__.py": {
+            "mean": 0.13,
+            "std": 0.00533,
+            "min": 0.126,
+            "max": 0.153,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "77_conv_transposed_3D_square_input_square_kernel___padded____dilated____strided__.py": {
+            "mean": 2.17,
+            "std": 0.11,
+            "min": 1.96,
+            "max": 2.25,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "78_conv_transposed_2D_asymmetric_input_asymmetric_kernel___padded__.py": {
+            "mean": 0.962,
+            "std": 0.00377,
+            "min": 0.956,
+            "max": 0.976,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "79_conv_transposed_1D_asymmetric_input_square_kernel___padded____strided____dilated__.py": {
+            "mean": 0.126,
+            "std": 0.00666,
+            "min": 0.12,
+            "max": 0.167,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "80_conv_standard_2D_square_input_asymmetric_kernel___dilated____padded__.py": {
+            "mean": 0.858,
+            "std": 0.0312,
+            "min": 0.848,
+            "max": 1.16,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "81_conv_transposed_2D_asymmetric_input_square_kernel___dilated____padded____strided__.py": {
+            "mean": 2.48,
+            "std": 0.107,
+            "min": 2.38,
+            "max": 2.62,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "82_conv_depthwise_2D_square_input_square_kernel.py": {
+            "mean": 1.77,
+            "std": 0.144,
+            "min": 1.45,
+            "max": 1.89,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "83_conv_depthwise_2D_square_input_asymmetric_kernel.py": {
+            "mean": 0.433,
+            "std": 0.00756,
+            "min": 0.423,
+            "max": 0.458,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "84_conv_depthwise_2D_asymmetric_input_square_kernel.py": {
+            "mean": 1.03,
+            "std": 0.0133,
+            "min": 1.0,
+            "max": 1.07,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "85_conv_depthwise_2D_asymmetric_input_asymmetric_kernel.py": {
+            "mean": 1.22,
+            "std": 0.0489,
+            "min": 1.14,
+            "max": 1.65,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "86_conv_depthwise_separable_2D.py": {
+            "mean": 2.37,
+            "std": 0.138,
+            "min": 2.07,
+            "max": 2.62,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "87_conv_pointwise_2D.py": {
+            "mean": 0.689,
+            "std": 0.0174,
+            "min": 0.68,
+            "max": 0.849,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "88_MinGPTNewGelu.py": {
+            "mean": 0.0893,
+            "std": 0.00782,
+            "min": 0.0829,
+            "max": 0.131,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "89_cumsum.py": {
+            "mean": 0.0846,
+            "std": 0.00489,
+            "min": 0.0799,
+            "max": 0.106,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "90_cumprod.py": {
+            "mean": 0.0912,
+            "std": 0.00788,
+            "min": 0.085,
+            "max": 0.152,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "91_cumsum_reverse.py": {
+            "mean": 0.101,
+            "std": 0.00483,
+            "min": 0.0963,
+            "max": 0.117,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "92_cumsum_exclusive.py": {
+            "mean": 0.0885,
+            "std": 0.00468,
+            "min": 0.0829,
+            "max": 0.109,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "93_masked_cumsum.py": {
+            "mean": 0.0934,
+            "std": 0.00596,
+            "min": 0.086,
+            "max": 0.114,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "94_MSELoss.py": {
+            "mean": 0.116,
+            "std": 0.0325,
+            "min": 0.105,
+            "max": 0.424,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "95_CrossEntropyLoss.py": {
+            "mean": 0.117,
+            "std": 0.0228,
+            "min": 0.109,
+            "max": 0.336,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "96_HuberLoss.py": {
+            "mean": 0.105,
+            "std": 0.00539,
+            "min": 0.1,
+            "max": 0.126,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "97_CosineSimilarityLoss.py": {
+            "mean": 0.108,
+            "std": 0.0172,
+            "min": 0.1,
+            "max": 0.27,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "98_KLDivLoss.py": {
+            "mean": 0.11,
+            "std": 0.00637,
+            "min": 0.103,
+            "max": 0.136,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "99_TripletMarginLoss.py": {
+            "mean": 0.107,
+            "std": 0.00446,
+            "min": 0.102,
+            "max": 0.121,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "100_HingeLoss.py": {
+            "mean": 0.0851,
+            "std": 0.00629,
+            "min": 0.0799,
+            "max": 0.125,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        }
+    },
+    "level2": {
+        "1_Conv2D_ReLU_BiasAdd.py": {
+            "mean": 0.187,
+            "std": 0.00817,
+            "min": 0.179,
+            "max": 0.223,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "2_ConvTranspose2d_BiasAdd_Clamp_Scaling_Clamp_Divide.py": {
+            "mean": 0.918,
+            "std": 0.00451,
+            "min": 0.91,
+            "max": 0.94,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "3_ConvTranspose3d_Sum_LayerNorm_AvgPool_GELU.py": {
+            "mean": 22.9,
+            "std": 0.0669,
+            "min": 22.9,
+            "max": 23.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "4_Conv2d_Mish_Mish.py": {
+            "mean": 0.186,
+            "std": 0.00653,
+            "min": 0.178,
+            "max": 0.21,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "5_ConvTranspose2d_Subtract_Tanh.py": {
+            "mean": 0.231,
+            "std": 0.0303,
+            "min": 0.218,
+            "max": 0.516,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "6_Conv3d_Softmax_MaxPool_MaxPool.py": {
+            "mean": 1.36,
+            "std": 0.00378,
+            "min": 1.36,
+            "max": 1.38,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "7_Conv3d_ReLU_LeakyReLU_GELU_Sigmoid_BiasAdd.py": {
+            "mean": 0.846,
+            "std": 0.051,
+            "min": 0.802,
+            "max": 0.927,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "8_Conv3d_Divide_Max_GlobalAvgPool_BiasAdd_Sum.py": {
+            "mean": 1.2,
+            "std": 0.0278,
+            "min": 1.17,
+            "max": 1.25,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "9_Matmul_Subtract_Multiply_ReLU.py": {
+            "mean": 0.127,
+            "std": 0.0108,
+            "min": 0.118,
+            "max": 0.205,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "10_ConvTranspose2d_MaxPool_Hardtanh_Mean_Tanh.py": {
+            "mean": 0.264,
+            "std": 0.00584,
+            "min": 0.257,
+            "max": 0.287,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "11_ConvTranspose2d_BatchNorm_Tanh_MaxPool_GroupNorm.py": {
+            "mean": 0.944,
+            "std": 0.0434,
+            "min": 0.933,
+            "max": 1.37,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "12_Gemm_Multiply_LeakyReLU.py": {
+            "mean": 0.132,
+            "std": 0.0143,
+            "min": 0.121,
+            "max": 0.243,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling.py": {
+            "mean": 2.44,
+            "std": 0.061,
+            "min": 2.41,
+            "max": 2.89,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "14_Gemm_Divide_Sum_Scaling.py": {
+            "mean": 0.119,
+            "std": 0.0125,
+            "min": 0.114,
+            "max": 0.236,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "15_ConvTranspose3d_BatchNorm_Subtract.py": {
+            "mean": 2.51,
+            "std": 0.0152,
+            "min": 2.47,
+            "max": 2.54,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling.py": {
+            "mean": 0.338,
+            "std": 0.0441,
+            "min": 0.325,
+            "max": 0.765,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "17_Conv2d_InstanceNorm_Divide.py": {
+            "mean": 0.201,
+            "std": 0.00785,
+            "min": 0.194,
+            "max": 0.238,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "18_Matmul_Sum_Max_AvgPool_LogSumExp_LogSumExp.py": {
+            "mean": 0.181,
+            "std": 0.374,
+            "min": 0.125,
+            "max": 3.85,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "19_ConvTranspose2d_GELU_GroupNorm.py": {
+            "mean": 0.777,
+            "std": 0.0092,
+            "min": 0.767,
+            "max": 0.846,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "20_ConvTranspose3d_Sum_ResidualAdd_Multiply_ResidualAdd.py": {
+            "mean": 2.71,
+            "std": 0.0738,
+            "min": 2.61,
+            "max": 2.79,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "21_Conv2d_Add_Scale_Sigmoid_GroupNorm.py": {
+            "mean": 0.231,
+            "std": 0.00741,
+            "min": 0.222,
+            "max": 0.252,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "22_Matmul_Scale_ResidualAdd_Clamp_LogSumExp_Mish.py": {
+            "mean": 0.139,
+            "std": 0.00561,
+            "min": 0.132,
+            "max": 0.165,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "23_Conv3d_GroupNorm_Mean.py": {
+            "mean": 0.869,
+            "std": 0.0566,
+            "min": 0.84,
+            "max": 1.01,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "24_Conv3d_Min_Softmax.py": {
+            "mean": 0.774,
+            "std": 0.0319,
+            "min": 0.765,
+            "max": 1.09,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "25_Conv2d_Min_Tanh_Tanh.py": {
+            "mean": 0.202,
+            "std": 0.00827,
+            "min": 0.194,
+            "max": 0.242,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "26_ConvTranspose3d_Add_HardSwish.py": {
+            "mean": 5.78,
+            "std": 0.0856,
+            "min": 5.75,
+            "max": 6.15,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "27_Conv3d_HardSwish_ReLU_Softmax_Mean.py": {
+            "mean": 0.905,
+            "std": 0.00314,
+            "min": 0.9,
+            "max": 0.914,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "28_BMM_InstanceNorm_Sum_ResidualAdd_Multiply.py": {
+            "mean": 0.257,
+            "std": 0.0109,
+            "min": 0.246,
+            "max": 0.303,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "29_Matmul_Mish_Mish.py": {
+            "mean": 0.125,
+            "std": 0.00784,
+            "min": 0.117,
+            "max": 0.161,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "30_Gemm_GroupNorm_Hardtanh.py": {
+            "mean": 0.166,
+            "std": 0.00988,
+            "min": 0.157,
+            "max": 0.212,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "31_Conv2d_Min_Add_Multiply.py": {
+            "mean": 0.205,
+            "std": 0.0336,
+            "min": 0.194,
+            "max": 0.531,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "32_Conv2d_Scaling_Min.py": {
+            "mean": 0.197,
+            "std": 0.0071,
+            "min": 0.188,
+            "max": 0.227,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "33_Gemm_Scale_BatchNorm.py": {
+            "mean": 0.178,
+            "std": 0.0073,
+            "min": 0.168,
+            "max": 0.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "34_ConvTranspose3d_LayerNorm_GELU_Scaling.py": {
+            "mean": 22.2,
+            "std": 0.0347,
+            "min": 22.2,
+            "max": 22.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "35_Conv2d_Subtract_HardSwish_MaxPool_Mish.py": {
+            "mean": 0.218,
+            "std": 0.0192,
+            "min": 0.204,
+            "max": 0.301,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "36_ConvTranspose2d_Min_Sum_GELU_Add.py": {
+            "mean": 0.904,
+            "std": 0.00605,
+            "min": 0.896,
+            "max": 0.921,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "37_Matmul_Swish_Sum_GroupNorm.py": {
+            "mean": 0.147,
+            "std": 0.00794,
+            "min": 0.141,
+            "max": 0.204,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "38_ConvTranspose3d_AvgPool_Clamp_Softmax_Multiply.py": {
+            "mean": 2.41,
+            "std": 0.0118,
+            "min": 2.39,
+            "max": 2.48,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "39_Gemm_Scale_BatchNorm.py": {
+            "mean": 0.176,
+            "std": 0.00844,
+            "min": 0.167,
+            "max": 0.216,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "40_Matmul_Scaling_ResidualAdd.py": {
+            "mean": 0.118,
+            "std": 0.0504,
+            "min": 0.106,
+            "max": 0.615,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "41_Gemm_BatchNorm_GELU_GroupNorm_Mean_ReLU.py": {
+            "mean": 0.202,
+            "std": 0.007,
+            "min": 0.193,
+            "max": 0.227,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "42_ConvTranspose2d_GlobalAvgPool_BiasAdd_LogSumExp_Sum_Multiply.py": {
+            "mean": 0.424,
+            "std": 0.00511,
+            "min": 0.419,
+            "max": 0.449,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "43_Conv3d_Max_LogSumExp_ReLU.py": {
+            "mean": 1.22,
+            "std": 0.00371,
+            "min": 1.22,
+            "max": 1.23,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "44_ConvTranspose2d_Multiply_GlobalAvgPool_GlobalAvgPool_Mean.py": {
+            "mean": 1.09,
+            "std": 0.0441,
+            "min": 1.08,
+            "max": 1.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "45_Gemm_Sigmoid_Sum_LogSumExp.py": {
+            "mean": 0.136,
+            "std": 0.00631,
+            "min": 0.129,
+            "max": 0.16,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "46_Conv2d_Subtract_Tanh_Subtract_AvgPool.py": {
+            "mean": 0.224,
+            "std": 0.00881,
+            "min": 0.213,
+            "max": 0.272,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "47_Conv3d_Mish_Tanh.py": {
+            "mean": 0.219,
+            "std": 0.00651,
+            "min": 0.211,
+            "max": 0.248,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "48_Conv3d_Scaling_Tanh_Multiply_Sigmoid.py": {
+            "mean": 0.898,
+            "std": 0.0419,
+            "min": 0.788,
+            "max": 0.968,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "49_ConvTranspose3d_Softmax_Sigmoid.py": {
+            "mean": 3.27,
+            "std": 0.00867,
+            "min": 3.25,
+            "max": 3.31,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "50_ConvTranspose3d_Scaling_AvgPool_BiasAdd_Scaling.py": {
+            "mean": 20.1,
+            "std": 0.0522,
+            "min": 20.0,
+            "max": 20.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "51_Gemm_Subtract_GlobalAvgPool_LogSumExp_GELU_ResidualAdd.py": {
+            "mean": 0.145,
+            "std": 0.0554,
+            "min": 0.133,
+            "max": 0.694,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "52_Conv2d_Activation_BatchNorm.py": {
+            "mean": 0.299,
+            "std": 0.0623,
+            "min": 0.282,
+            "max": 0.912,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "53_Gemm_Scaling_Hardtanh_GELU.py": {
+            "mean": 0.13,
+            "std": 0.00823,
+            "min": 0.124,
+            "max": 0.191,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "54_Conv2d_Multiply_LeakyReLU_GELU.py": {
+            "mean": 0.189,
+            "std": 0.0411,
+            "min": 0.178,
+            "max": 0.593,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "55_Matmul_MaxPool_Sum_Scale.py": {
+            "mean": 0.136,
+            "std": 0.0172,
+            "min": 0.127,
+            "max": 0.293,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "56_Matmul_Sigmoid_Sum.py": {
+            "mean": 0.13,
+            "std": 0.00708,
+            "min": 0.123,
+            "max": 0.17,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "57_Conv2d_ReLU_HardSwish.py": {
+            "mean": 0.206,
+            "std": 0.00806,
+            "min": 0.197,
+            "max": 0.237,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "58_ConvTranspose3d_LogSumExp_HardSwish_Subtract_Clamp_Max.py": {
+            "mean": 18.7,
+            "std": 0.071,
+            "min": 18.7,
+            "max": 19.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "59_Matmul_Swish_Scaling.py": {
+            "mean": 0.127,
+            "std": 0.00588,
+            "min": 0.12,
+            "max": 0.153,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "60_ConvTranspose3d_Swish_GroupNorm_HardSwish.py": {
+            "mean": 20.3,
+            "std": 0.0164,
+            "min": 20.3,
+            "max": 20.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "61_ConvTranspose3d_ReLU_GroupNorm.py": {
+            "mean": 0.402,
+            "std": 0.00374,
+            "min": 0.397,
+            "max": 0.42,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "62_Matmul_GroupNorm_LeakyReLU_Sum.py": {
+            "mean": 0.15,
+            "std": 0.00588,
+            "min": 0.143,
+            "max": 0.172,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "63_Gemm_ReLU_Divide.py": {
+            "mean": 0.13,
+            "std": 0.01,
+            "min": 0.121,
+            "max": 0.18,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "64_Gemm_LogSumExp_LeakyReLU_LeakyReLU_GELU_GELU.py": {
+            "mean": 0.127,
+            "std": 0.00433,
+            "min": 0.123,
+            "max": 0.141,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "65_Conv2d_AvgPool_Sigmoid_Sum.py": {
+            "mean": 0.23,
+            "std": 0.0485,
+            "min": 0.214,
+            "max": 0.674,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "66_Matmul_Dropout_Mean_Softmax.py": {
+            "mean": 0.17,
+            "std": 0.00817,
+            "min": 0.162,
+            "max": 0.206,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "67_Conv2d_GELU_GlobalAvgPool.py": {
+            "mean": 0.222,
+            "std": 0.0592,
+            "min": 0.201,
+            "max": 0.739,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "68_Matmul_Min_Subtract.py": {
+            "mean": 0.112,
+            "std": 0.00609,
+            "min": 0.104,
+            "max": 0.143,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "69_Conv2d_HardSwish_ReLU.py": {
+            "mean": 0.204,
+            "std": 0.00646,
+            "min": 0.196,
+            "max": 0.226,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "70_Gemm_Sigmoid_Scaling_ResidualAdd.py": {
+            "mean": 0.142,
+            "std": 0.0601,
+            "min": 0.126,
+            "max": 0.555,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "71_Conv2d_Divide_LeakyReLU.py": {
+            "mean": 0.184,
+            "std": 0.00656,
+            "min": 0.176,
+            "max": 0.203,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "72_ConvTranspose3d_BatchNorm_AvgPool_AvgPool.py": {
+            "mean": 43.9,
+            "std": 0.128,
+            "min": 43.8,
+            "max": 44.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "73_Conv2d_BatchNorm_Scaling.py": {
+            "mean": 0.276,
+            "std": 0.0093,
+            "min": 0.265,
+            "max": 0.328,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "74_ConvTranspose3d_LeakyReLU_Multiply_LeakyReLU_Max.py": {
+            "mean": 2.15,
+            "std": 0.124,
+            "min": 2.06,
+            "max": 2.34,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "75_Gemm_GroupNorm_Min_BiasAdd.py": {
+            "mean": 0.184,
+            "std": 0.0083,
+            "min": 0.174,
+            "max": 0.216,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "76_Gemm_Add_ReLU.py": {
+            "mean": 0.131,
+            "std": 0.00721,
+            "min": 0.123,
+            "max": 0.165,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "77_ConvTranspose3d_Scale_BatchNorm_GlobalAvgPool.py": {
+            "mean": 1.14,
+            "std": 0.109,
+            "min": 1.03,
+            "max": 1.26,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "78_ConvTranspose3d_Max_Max_Sum.py": {
+            "mean": 2.89,
+            "std": 0.00834,
+            "min": 2.87,
+            "max": 2.92,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "79_Conv3d_Multiply_InstanceNorm_Clamp_Multiply_Max.py": {
+            "mean": 0.829,
+            "std": 0.00359,
+            "min": 0.824,
+            "max": 0.845,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "80_Gemm_Max_Subtract_GELU.py": {
+            "mean": 0.136,
+            "std": 0.00612,
+            "min": 0.129,
+            "max": 0.162,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "81_Gemm_Swish_Divide_Clamp_Tanh_Clamp.py": {
+            "mean": 0.14,
+            "std": 0.0522,
+            "min": 0.127,
+            "max": 0.545,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "82_Conv2d_Tanh_Scaling_BiasAdd_Max.py": {
+            "mean": 0.221,
+            "std": 0.00792,
+            "min": 0.21,
+            "max": 0.245,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "83_Conv3d_GroupNorm_Min_Clamp_Dropout.py": {
+            "mean": 1.01,
+            "std": 0.0872,
+            "min": 0.926,
+            "max": 1.13,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "84_Gemm_BatchNorm_Scaling_Softmax.py": {
+            "mean": 0.21,
+            "std": 0.0132,
+            "min": 0.195,
+            "max": 0.25,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "85_Conv2d_GroupNorm_Scale_MaxPool_Clamp.py": {
+            "mean": 0.251,
+            "std": 0.0101,
+            "min": 0.24,
+            "max": 0.302,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "86_Matmul_Divide_GELU.py": {
+            "mean": 0.147,
+            "std": 0.0116,
+            "min": 0.136,
+            "max": 0.182,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "87_Conv2d_Subtract_Subtract_Mish.py": {
+            "mean": 0.206,
+            "std": 0.00892,
+            "min": 0.197,
+            "max": 0.248,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "88_Gemm_GroupNorm_Swish_Multiply_Swish.py": {
+            "mean": 0.145,
+            "std": 0.00589,
+            "min": 0.138,
+            "max": 0.166,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "89_ConvTranspose3d_MaxPool_Softmax_Subtract_Swish_Max.py": {
+            "mean": 18.6,
+            "std": 0.0583,
+            "min": 18.5,
+            "max": 18.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "90_Conv3d_LeakyReLU_Sum_Clamp_GELU.py": {
+            "mean": 0.882,
+            "std": 0.0503,
+            "min": 0.781,
+            "max": 0.925,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "91_ConvTranspose2d_Softmax_BiasAdd_Scaling_Sigmoid.py": {
+            "mean": 0.297,
+            "std": 0.00542,
+            "min": 0.292,
+            "max": 0.325,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "92_Conv2d_GroupNorm_Tanh_HardSwish_ResidualAdd_LogSumExp.py": {
+            "mean": 0.237,
+            "std": 0.00964,
+            "min": 0.227,
+            "max": 0.282,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "93_ConvTranspose2d_Add_Min_GELU_Multiply.py": {
+            "mean": 0.361,
+            "std": 0.0638,
+            "min": 0.343,
+            "max": 0.847,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "94_Gemm_BiasAdd_Hardtanh_Mish_GroupNorm.py": {
+            "mean": 0.163,
+            "std": 0.00637,
+            "min": 0.156,
+            "max": 0.188,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "95_Matmul_Add_Swish_Tanh_GELU_Hardtanh.py": {
+            "mean": 0.132,
+            "std": 0.00614,
+            "min": 0.125,
+            "max": 0.156,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "96_ConvTranspose3d_Multiply_Max_GlobalAvgPool_Clamp.py": {
+            "mean": 22.0,
+            "std": 0.816,
+            "min": 21.9,
+            "max": 26.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "97_Matmul_BatchNorm_BiasAdd_Divide_Swish.py": {
+            "mean": 0.172,
+            "std": 0.0398,
+            "min": 0.161,
+            "max": 0.563,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "98_Matmul_AvgPool_GELU_Scale_Max.py": {
+            "mean": 0.145,
+            "std": 0.0467,
+            "min": 0.133,
+            "max": 0.605,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "99_Matmul_GELU_Softmax.py": {
+            "mean": 0.133,
+            "std": 0.0363,
+            "min": 0.122,
+            "max": 0.483,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "100_ConvTranspose3d_Clamp_Min_Divide.py": {
+            "mean": 2.67,
+            "std": 0.225,
+            "min": 2.56,
+            "max": 3.47,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        }
+    },
+    "level3": {
+        "1_MLP.py": {
+            "mean": 0.203,
+            "std": 0.0101,
+            "min": 0.191,
+            "max": 0.245,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "2_ShallowWideMLP.py": {
+            "mean": 0.205,
+            "std": 0.00741,
+            "min": 0.197,
+            "max": 0.233,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "3_DeepNarrowMLP.py": {
+            "mean": 0.378,
+            "std": 0.051,
+            "min": 0.359,
+            "max": 0.872,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "4_LeNet5.py": {
+            "mean": 0.371,
+            "std": 0.0106,
+            "min": 0.357,
+            "max": 0.419,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "5_AlexNet.py": {
+            "mean": 0.994,
+            "std": 0.00387,
+            "min": 0.987,
+            "max": 1.01,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "6_GoogleNetInceptionModule.py": {
+            "mean": 14.1,
+            "std": 0.0257,
+            "min": 14.1,
+            "max": 14.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "7_GoogleNetInceptionV1.py": {
+            "mean": 3.1,
+            "std": 0.023,
+            "min": 3.07,
+            "max": 3.17,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "8_ResNetBasicBlock.py": {
+            "mean": 1.94,
+            "std": 0.0053,
+            "min": 1.93,
+            "max": 1.96,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "9_ResNet18.py": {
+            "mean": 2.52,
+            "std": 0.0315,
+            "min": 2.49,
+            "max": 2.71,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "10_ResNet101.py": {
+            "mean": 11.7,
+            "std": 0.158,
+            "min": 11.5,
+            "max": 12.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "11_VGG16.py": {
+            "mean": 5.36,
+            "std": 0.043,
+            "min": 5.32,
+            "max": 5.77,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "12_VGG19.py": {
+            "mean": 6.27,
+            "std": 0.00976,
+            "min": 6.22,
+            "max": 6.28,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "13_DenseNet121TransitionLayer.py": {
+            "mean": 0.513,
+            "std": 0.00368,
+            "min": 0.507,
+            "max": 0.526,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "14_DenseNet121DenseBlock.py": {
+            "mean": 13.4,
+            "std": 0.0302,
+            "min": 13.3,
+            "max": 13.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "15_DenseNet121.py": {
+            "mean": 11.8,
+            "std": 0.605,
+            "min": 11.5,
+            "max": 15.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "16_DenseNet201.py": {
+            "mean": 28.6,
+            "std": 0.157,
+            "min": 28.4,
+            "max": 29.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "17_SqueezeNetFireModule.py": {
+            "mean": 1.22,
+            "std": 0.0401,
+            "min": 1.21,
+            "max": 1.62,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "18_SqueezeNet.py": {
+            "mean": 1.48,
+            "std": 0.0752,
+            "min": 1.45,
+            "max": 2.21,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "19_MobileNetV1.py": {
+            "mean": 2.84,
+            "std": 0.117,
+            "min": 2.78,
+            "max": 3.96,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "20_MobileNetV2.py": {
+            "mean": 5.49,
+            "std": 0.101,
+            "min": 5.4,
+            "max": 6.16,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "21_EfficientNetMBConv.py": {
+            "mean": 7.82,
+            "std": 0.00466,
+            "min": 7.81,
+            "max": 7.83,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "22_EfficientNetB0.py": {
+            "mean": 4.64,
+            "std": 0.191,
+            "min": 4.58,
+            "max": 6.52,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "23_EfficientNetB1.py": {
+            "mean": 2.76,
+            "std": 0.0349,
+            "min": 2.71,
+            "max": 2.94,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "24_EfficientNetB2.py": {
+            "mean": 2.29,
+            "std": 0.103,
+            "min": 2.21,
+            "max": 3.05,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "25_ShuffleNetUnit.py": {
+            "mean": 13.3,
+            "std": 0.0483,
+            "min": 13.3,
+            "max": 13.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "26_ShuffleNet.py": {
+            "mean": 13.0,
+            "std": 0.16,
+            "min": 12.9,
+            "max": 14.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "27_RegNet.py": {
+            "mean": 2.73,
+            "std": 0.00947,
+            "min": 2.73,
+            "max": 2.81,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "28_VisionTransformer.py": {
+            "mean": 2.59,
+            "std": 0.0318,
+            "min": 2.57,
+            "max": 2.89,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "29_SwinMLP.py": {
+            "mean": 6.02,
+            "std": 0.163,
+            "min": 5.96,
+            "max": 7.38,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "30_SwinTransformerV2.py": {
+            "mean": 8.99,
+            "std": 0.181,
+            "min": 8.9,
+            "max": 10.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "31_VisionAttention.py": {
+            "mean": 21.3,
+            "std": 0.049,
+            "min": 21.2,
+            "max": 21.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "32_ConvolutionalVisionTransformer.py": {
+            "mean": 1.7,
+            "std": 0.0755,
+            "min": 1.65,
+            "max": 2.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "33_VanillaRNN.py": {
+            "mean": 0.224,
+            "std": 0.0135,
+            "min": 0.21,
+            "max": 0.291,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "34_VanillaRNNHidden.py": {
+            "mean": 0.161,
+            "std": 0.00629,
+            "min": 0.154,
+            "max": 0.196,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "35_LTSM.py": {
+            "mean": 27.9,
+            "std": 0.64,
+            "min": 27.1,
+            "max": 30.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "36_LTSMHn.py": {
+            "mean": 28.6,
+            "std": 1.01,
+            "min": 26.4,
+            "max": 30.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "37_LTSMCn.py": {
+            "mean": 33.7,
+            "std": 0.252,
+            "min": 33.2,
+            "max": 34.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "38_LTSMBidirectional.py": {
+            "mean": 53.1,
+            "std": 1.32,
+            "min": 51.5,
+            "max": 55.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "39_GRU.py": {
+            "mean": 27.6,
+            "std": 0.582,
+            "min": 26.0,
+            "max": 28.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "40_GRUHidden.py": {
+            "mean": 33.5,
+            "std": 1.01,
+            "min": 27.8,
+            "max": 34.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "41_GRUBirectional.py": {
+            "mean": 51.3,
+            "std": 0.577,
+            "min": 50.6,
+            "max": 53.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "42_GRUBidirectionalHidden.py": {
+            "mean": 54.8,
+            "std": 0.766,
+            "min": 53.5,
+            "max": 58.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "43_MinGPTCausalAttention.py": {
+            "mean": 25.6,
+            "std": 0.0253,
+            "min": 25.5,
+            "max": 25.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "44_MiniGPTBlock.py": {
+            "mean": 60.5,
+            "std": 0.103,
+            "min": 60.4,
+            "max": 61.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "45_UNetSoftmax.py": {
+            "mean": 10.7,
+            "std": 0.142,
+            "min": 10.7,
+            "max": 11.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "46_NetVladWithGhostClusters.py": {
+            "mean": 0.325,
+            "std": 0.035,
+            "min": 0.307,
+            "max": 0.626,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "47_NetVladNoGhostClusters.py": {
+            "mean": 0.338,
+            "std": 0.0913,
+            "min": 0.312,
+            "max": 1.21,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "48_Mamba2ReturnY.py": {
+            "mean": 0.396,
+            "std": 0.00897,
+            "min": 0.384,
+            "max": 0.43,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "49_Mamba2ReturnFinalState.py": {
+            "mean": 0.227,
+            "std": 0.00734,
+            "min": 0.219,
+            "max": 0.257,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        },
+        "50_ReLUSelfAttention.py": {
+            "mean": 9.01,
+            "std": 0.0452,
+            "min": 8.97,
+            "max": 9.37,
+            "num_trials": 100,
+            "hardware": "NVIDIA A100-SXM4-40GB",
+            "device": "cuda:0"
+        }
+    }
+}
