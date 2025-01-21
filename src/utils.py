@@ -119,8 +119,7 @@ def query_server(
                 max_retries=3,
             )
             model = model_name
-            # model = "deepseek-coder"  # only set to do this for now
-            assert model == "deepseek-chat" or model == "deepseek-coder", "Only support deepseek-chat or deepseek-coder for now"
+            assert model in ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"], "Only support deepseek-chat or deepseek-coder for now"
             if not is_safe_to_send_to_deepseek(prompt):
                 raise RuntimeError("Prompt is too long for DeepSeek")
         case "anthropic":
@@ -189,24 +188,42 @@ def query_server(
         return response.text
 
     elif server_type == "deepseek":
-        response = client.chat.completions.create(
-            model="deepseek-coder",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            stream=False,
-            temperature=temperature,
-            n=num_completions,
-            max_tokens=max_tokens,
-            top_p=top_p,
-        )
+
+        if model in ["deepseek-chat", "deepseek-coder"]:
+            # regular deepseek model 
+            response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                temperature=temperature,
+                n=num_completions,
+                max_tokens=max_tokens,
+                top_p=top_p,
+            )
+        else: # deepseek reasoner
+
+            assert model == "deepseek-reasoner", "Only support deepseek-reasoner for now"
+            response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                n=num_completions,
+                max_tokens=max_tokens,
+                # do not use temperature or top_p
+            )
 
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "openai":
         if (
-            model == "o1-preview-2024-09-12"
+            "o1" in model
         ):  # o1 does not support system prompt and decode config
+            print(f"Using o1 family model {model}")
             response = client.chat.completions.create(
                 model=model,
                 messages=[
