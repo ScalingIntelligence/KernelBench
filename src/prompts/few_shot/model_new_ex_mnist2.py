@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.cpp_extension import load_inline
-import os
 
 # Inline CUDA code for custom max_pool2d kernel
 source = """
