@@ -1,0 +1,2258 @@
+{
+    "level1": {
+        "1_Square_matrix_multiplication_.py": {
+            "mean": 1.23,
+            "std": 0.133,
+            "min": 1.03,
+            "max": 1.35,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "2_Standard_matrix_multiplication_.py": {
+            "mean": 1.32,
+            "std": 0.131,
+            "min": 1.09,
+            "max": 1.45,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "3_Batched_matrix_multiplication.py": {
+            "mean": 0.521,
+            "std": 0.00755,
+            "min": 0.504,
+            "max": 0.537,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "4_Matrix_vector_multiplication_.py": {
+            "mean": 0.533,
+            "std": 0.00308,
+            "min": 0.529,
+            "max": 0.55,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "5_Matrix_scalar_multiplication.py": {
+            "mean": 2.32,
+            "std": 0.0083,
+            "min": 2.3,
+            "max": 2.34,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "6_Matmul_with_large_K_dimension_.py": {
+            "mean": 2.02,
+            "std": 0.345,
+            "min": 1.36,
+            "max": 2.36,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "7_Matmul_with_small_K_dimension_.py": {
+            "mean": 4.33,
+            "std": 0.0359,
+            "min": 4.23,
+            "max": 4.39,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "8_Matmul_with_irregular_shapes_.py": {
+            "mean": 25.5,
+            "std": 0.435,
+            "min": 24.9,
+            "max": 26.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "9_Tall_skinny_matrix_multiplication_.py": {
+            "mean": 4.59,
+            "std": 0.0141,
+            "min": 4.57,
+            "max": 4.66,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "10_3D_tensor_matrix_multiplication.py": {
+            "mean": 4.15,
+            "std": 0.269,
+            "min": 3.13,
+            "max": 4.35,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "11_4D_tensor_matrix_multiplication.py": {
+            "mean": 117.0,
+            "std": 55.1,
+            "min": 96.2,
+            "max": 664.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "12_Matmul_with_diagonal_matrices_.py": {
+            "mean": 9.7,
+            "std": 0.334,
+            "min": 7.56,
+            "max": 10.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "13_Matmul_for_symmetric_matrices.py": {
+            "mean": 11.3,
+            "std": 0.342,
+            "min": 8.76,
+            "max": 11.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "14_Matmul_for_upper_triangular_matrices.py": {
+            "mean": 9.42,
+            "std": 0.374,
+            "min": 7.13,
+            "max": 9.92,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "15_Matmul_for_lower_triangular_matrices.py": {
+            "mean": 9.54,
+            "std": 0.393,
+            "min": 7.22,
+            "max": 10.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "16_Matmul_with_transposed_A.py": {
+            "mean": 1.3,
+            "std": 0.128,
+            "min": 1.08,
+            "max": 1.43,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "17_Matmul_with_transposed_B.py": {
+            "mean": 1.71,
+            "std": 0.277,
+            "min": 1.4,
+            "max": 2.13,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "18_Matmul_with_transposed_both.py": {
+            "mean": 1.31,
+            "std": 0.117,
+            "min": 1.09,
+            "max": 1.43,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "19_ReLU.py": {
+            "mean": 0.028,
+            "std": 0.00503,
+            "min": 0.0237,
+            "max": 0.0535,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "20_LeakyReLU.py": {
+            "mean": 0.0279,
+            "std": 0.00467,
+            "min": 0.0246,
+            "max": 0.0655,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "21_Sigmoid.py": {
+            "mean": 0.0357,
+            "std": 0.0114,
+            "min": 0.0296,
+            "max": 0.0952,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "22_Tanh.py": {
+            "mean": 0.0268,
+            "std": 0.00523,
+            "min": 0.0236,
+            "max": 0.0543,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "23_Softmax.py": {
+            "mean": 0.024,
+            "std": 0.003,
+            "min": 0.0215,
+            "max": 0.0408,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "24_LogSoftmax.py": {
+            "mean": 0.0335,
+            "std": 0.00902,
+            "min": 0.0297,
+            "max": 0.116,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "25_Swish.py": {
+            "mean": 0.0384,
+            "std": 0.00455,
+            "min": 0.0348,
+            "max": 0.0603,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "26_GELU_.py": {
+            "mean": 0.0308,
+            "std": 0.0159,
+            "min": 0.0246,
+            "max": 0.124,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "27_SELU_.py": {
+            "mean": 0.0368,
+            "std": 0.0169,
+            "min": 0.0307,
+            "max": 0.167,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "28_HardSigmoid.py": {
+            "mean": 0.0347,
+            "std": 0.00576,
+            "min": 0.0307,
+            "max": 0.0676,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "29_Softplus.py": {
+            "mean": 0.0278,
+            "std": 0.00508,
+            "min": 0.0236,
+            "max": 0.0553,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "30_Softsign.py": {
+            "mean": 0.0594,
+            "std": 0.00808,
+            "min": 0.0532,
+            "max": 0.0922,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "31_ELU.py": {
+            "mean": 0.0308,
+            "std": 0.00427,
+            "min": 0.0276,
+            "max": 0.0553,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "32_HardTanh.py": {
+            "mean": 0.0336,
+            "std": 0.007,
+            "min": 0.0297,
+            "max": 0.086,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "33_BatchNorm.py": {
+            "mean": 3.52,
+            "std": 0.0196,
+            "min": 3.47,
+            "max": 3.57,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "34_InstanceNorm.py": {
+            "mean": 3.46,
+            "std": 0.0245,
+            "min": 3.42,
+            "max": 3.56,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "35_GroupNorm_.py": {
+            "mean": 3.4,
+            "std": 0.00812,
+            "min": 3.38,
+            "max": 3.43,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "36_RMSNorm_.py": {
+            "mean": 5.8,
+            "std": 0.0123,
+            "min": 5.77,
+            "max": 5.87,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "37_FrobeniusNorm_.py": {
+            "mean": 3.37,
+            "std": 0.0159,
+            "min": 3.34,
+            "max": 3.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "38_L1Norm_.py": {
+            "mean": 0.0588,
+            "std": 0.00804,
+            "min": 0.054,
+            "max": 0.0984,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "39_L2Norm_.py": {
+            "mean": 0.0665,
+            "std": 0.0143,
+            "min": 0.0573,
+            "max": 0.165,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "40_LayerNorm.py": {
+            "mean": 7.97,
+            "std": 0.0193,
+            "min": 7.93,
+            "max": 8.04,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "41_Max_Pooling_1D.py": {
+            "mean": 0.0478,
+            "std": 0.00748,
+            "min": 0.0429,
+            "max": 0.0778,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "42_Max_Pooling_2D.py": {
+            "mean": 0.25,
+            "std": 0.00446,
+            "min": 0.237,
+            "max": 0.267,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "43_Max_Pooling_3D.py": {
+            "mean": 2.64,
+            "std": 0.00385,
+            "min": 2.64,
+            "max": 2.67,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "44_Average_Pooling_1D.py": {
+            "mean": 0.0426,
+            "std": 0.00617,
+            "min": 0.0379,
+            "max": 0.0676,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "45_Average_Pooling_2D.py": {
+            "mean": 1.18,
+            "std": 0.004,
+            "min": 1.18,
+            "max": 1.21,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "46_Average_Pooling_3D.py": {
+            "mean": 2.39,
+            "std": 0.0103,
+            "min": 2.38,
+            "max": 2.42,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "47_Sum_reduction_over_a_dimension.py": {
+            "mean": 0.0344,
+            "std": 0.00616,
+            "min": 0.0306,
+            "max": 0.0644,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "48_Mean_reduction_over_a_dimension.py": {
+            "mean": 0.0342,
+            "std": 0.00558,
+            "min": 0.0297,
+            "max": 0.0573,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "49_Max_reduction_over_a_dimension.py": {
+            "mean": 0.0395,
+            "std": 0.00766,
+            "min": 0.0348,
+            "max": 0.0819,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "50_Product_reduction_over_a_dimension.py": {
+            "mean": 0.0327,
+            "std": 0.00475,
+            "min": 0.0297,
+            "max": 0.0554,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "51_Argmax_over_a_dimension.py": {
+            "mean": 0.0344,
+            "std": 0.00685,
+            "min": 0.0307,
+            "max": 0.0707,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "52_Argmin_over_a_dimension.py": {
+            "mean": 0.0392,
+            "std": 0.00713,
+            "min": 0.0317,
+            "max": 0.0829,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "53_Min_reduction_over_a_dimension.py": {
+            "mean": 0.039,
+            "std": 0.0057,
+            "min": 0.0348,
+            "max": 0.0676,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "54_conv_standard_3D__square_input__square_kernel.py": {
+            "mean": 14.7,
+            "std": 0.364,
+            "min": 12.5,
+            "max": 15.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "55_conv_standard_2D__asymmetric_input__square_kernel.py": {
+            "mean": 0.673,
+            "std": 0.0596,
+            "min": 0.611,
+            "max": 0.791,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "56_conv_standard_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 0.631,
+            "std": 0.00634,
+            "min": 0.62,
+            "max": 0.648,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "57_conv_transposed_2D__square_input__square_kernel.py": {
+            "mean": 1.13,
+            "std": 0.0984,
+            "min": 1.0,
+            "max": 1.26,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "58_conv_transposed_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 9.66,
+            "std": 0.248,
+            "min": 8.38,
+            "max": 10.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "59_conv_standard_3D__asymmetric_input__square_kernel.py": {
+            "mean": 39.9,
+            "std": 0.477,
+            "min": 39.1,
+            "max": 41.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "60_conv_standard_3D__square_input__asymmetric_kernel.py": {
+            "mean": 39.2,
+            "std": 0.519,
+            "min": 38.3,
+            "max": 40.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "61_conv_transposed_3D__square_input__square_kernel.py": {
+            "mean": 8.47,
+            "std": 0.272,
+            "min": 6.52,
+            "max": 8.77,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "62_conv_standard_2D__square_input__asymmetric_kernel.py": {
+            "mean": 1.26,
+            "std": 0.0311,
+            "min": 1.23,
+            "max": 1.38,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "63_conv_standard_2D__square_input__square_kernel.py": {
+            "mean": 1.47,
+            "std": 0.182,
+            "min": 1.2,
+            "max": 1.65,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "64_conv_transposed_1D.py": {
+            "mean": 0.0707,
+            "std": 0.0082,
+            "min": 0.0653,
+            "max": 0.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "65_conv_transposed_2D__square_input__asymmetric_kernel.py": {
+            "mean": 1.45,
+            "std": 0.03,
+            "min": 1.41,
+            "max": 1.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "66_conv_standard_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 174.0,
+            "std": 2.58,
+            "min": 165.0,
+            "max": 180.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "67_conv_standard_1D.py": {
+            "mean": 0.0682,
+            "std": 0.00756,
+            "min": 0.0625,
+            "max": 0.0963,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "68_conv_transposed_3D__square_input__asymmetric_kernel.py": {
+            "mean": 131.0,
+            "std": 0.197,
+            "min": 130.0,
+            "max": 131.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "69_conv_transposed_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 0.103,
+            "std": 0.0151,
+            "min": 0.0891,
+            "max": 0.178,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "70_conv_transposed_3D__asymmetric_input__square_kernel.py": {
+            "mean": 6.78,
+            "std": 0.154,
+            "min": 5.92,
+            "max": 6.84,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "71_conv_transposed_2D__asymmetric_input__square_kernel.py": {
+            "mean": 2.4,
+            "std": 0.168,
+            "min": 2.06,
+            "max": 2.57,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "72_conv_transposed_3D_asymmetric_input_asymmetric_kernel___strided_padded_grouped_.py": {
+            "mean": 85.6,
+            "std": 0.652,
+            "min": 84.3,
+            "max": 86.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "73_conv_transposed_3D_asymmetric_input_square_kernel__strided_padded__grouped.py": {
+            "mean": 6.46,
+            "std": 0.0599,
+            "min": 6.3,
+            "max": 6.83,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "74_conv_transposed_1D_dilated.py": {
+            "mean": 0.137,
+            "std": 0.0153,
+            "min": 0.122,
+            "max": 0.206,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "75_conv_transposed_2D_asymmetric_input_asymmetric_kernel_strided__grouped____padded____dilated__.py": {
+            "mean": 22.7,
+            "std": 0.19,
+            "min": 22.5,
+            "max": 23.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "76_conv_standard_1D_dilated_strided__.py": {
+            "mean": 0.0741,
+            "std": 0.0248,
+            "min": 0.0645,
+            "max": 0.297,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "77_conv_transposed_3D_square_input_square_kernel___padded____dilated____strided__.py": {
+            "mean": 8.95,
+            "std": 0.0507,
+            "min": 8.82,
+            "max": 9.04,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "78_conv_transposed_2D_asymmetric_input_asymmetric_kernel___padded__.py": {
+            "mean": 3.48,
+            "std": 0.242,
+            "min": 2.68,
+            "max": 3.72,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "79_conv_transposed_1D_asymmetric_input_square_kernel___padded____strided____dilated__.py": {
+            "mean": 0.087,
+            "std": 0.00929,
+            "min": 0.0809,
+            "max": 0.123,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "80_conv_standard_2D_square_input_asymmetric_kernel___dilated____padded__.py": {
+            "mean": 1.32,
+            "std": 0.0192,
+            "min": 1.28,
+            "max": 1.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "81_conv_transposed_2D_asymmetric_input_square_kernel___dilated____padded____strided__.py": {
+            "mean": 11.3,
+            "std": 0.0525,
+            "min": 11.2,
+            "max": 11.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "82_conv_depthwise_2D_square_input_square_kernel.py": {
+            "mean": 0.112,
+            "std": 0.00552,
+            "min": 0.108,
+            "max": 0.152,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "83_conv_depthwise_2D_square_input_asymmetric_kernel.py": {
+            "mean": 0.12,
+            "std": 0.00333,
+            "min": 0.117,
+            "max": 0.14,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "84_conv_depthwise_2D_asymmetric_input_square_kernel.py": {
+            "mean": 0.0672,
+            "std": 0.00358,
+            "min": 0.0635,
+            "max": 0.087,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "85_conv_depthwise_2D_asymmetric_input_asymmetric_kernel.py": {
+            "mean": 0.0917,
+            "std": 0.00376,
+            "min": 0.0882,
+            "max": 0.112,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "86_conv_depthwise_separable_2D.py": {
+            "mean": 1.28,
+            "std": 0.00831,
+            "min": 1.26,
+            "max": 1.31,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "87_conv_pointwise_2D.py": {
+            "mean": 1.24,
+            "std": 0.0177,
+            "min": 1.23,
+            "max": 1.35,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "88_MinGPTNewGelu.py": {
+            "mean": 0.449,
+            "std": 0.00426,
+            "min": 0.443,
+            "max": 0.469,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "89_cumsum.py": {
+            "mean": 0.0333,
+            "std": 0.00315,
+            "min": 0.0307,
+            "max": 0.0522,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "90_cumprod.py": {
+            "mean": 0.0333,
+            "std": 0.00371,
+            "min": 0.0306,
+            "max": 0.0522,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "91_cumsum_reverse.py": {
+            "mean": 0.0693,
+            "std": 0.0108,
+            "min": 0.0625,
+            "max": 0.14,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "92_cumsum_exclusive.py": {
+            "mean": 0.0832,
+            "std": 0.00772,
+            "min": 0.0768,
+            "max": 0.116,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "93_masked_cumsum.py": {
+            "mean": 0.0447,
+            "std": 0.00597,
+            "min": 0.041,
+            "max": 0.0686,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "94_MSELoss.py": {
+            "mean": 0.0609,
+            "std": 0.00609,
+            "min": 0.0573,
+            "max": 0.086,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "95_CrossEntropyLoss.py": {
+            "mean": 0.0712,
+            "std": 0.004,
+            "min": 0.0686,
+            "max": 0.0922,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "96_HuberLoss.py": {
+            "mean": 0.0598,
+            "std": 0.00674,
+            "min": 0.0543,
+            "max": 0.0971,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "97_CosineSimilarityLoss.py": {
+            "mean": 0.133,
+            "std": 0.00893,
+            "min": 0.124,
+            "max": 0.157,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "98_KLDivLoss.py": {
+            "mean": 0.0902,
+            "std": 0.0097,
+            "min": 0.0838,
+            "max": 0.156,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "99_TripletMarginLoss.py": {
+            "mean": 0.16,
+            "std": 0.0224,
+            "min": 0.143,
+            "max": 0.324,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "100_HingeLoss.py": {
+            "mean": 0.0693,
+            "std": 0.00756,
+            "min": 0.0635,
+            "max": 0.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        }
+    },
+    "level2": {
+        "1_Conv2D_ReLU_BiasAdd.py": {
+            "mean": 0.159,
+            "std": 0.0238,
+            "min": 0.141,
+            "max": 0.313,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "2_ConvTranspose2d_BiasAdd_Clamp_Scaling_Clamp_Divide.py": {
+            "mean": 1.7,
+            "std": 0.0389,
+            "min": 1.63,
+            "max": 1.87,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "3_ConvTranspose3d_Sum_LayerNorm_AvgPool_GELU.py": {
+            "mean": 237.0,
+            "std": 0.989,
+            "min": 231.0,
+            "max": 239.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "4_Conv2d_Mish_Mish.py": {
+            "mean": 0.141,
+            "std": 0.0151,
+            "min": 0.128,
+            "max": 0.222,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "5_ConvTranspose2d_Subtract_Tanh.py": {
+            "mean": 0.217,
+            "std": 0.00745,
+            "min": 0.209,
+            "max": 0.25,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "6_Conv3d_Softmax_MaxPool_MaxPool.py": {
+            "mean": 4.65,
+            "std": 0.126,
+            "min": 4.33,
+            "max": 4.77,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "7_Conv3d_ReLU_LeakyReLU_GELU_Sigmoid_BiasAdd.py": {
+            "mean": 6.8,
+            "std": 0.0342,
+            "min": 6.76,
+            "max": 7.05,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "8_Conv3d_Divide_Max_GlobalAvgPool_BiasAdd_Sum.py": {
+            "mean": 4.19,
+            "std": 0.0746,
+            "min": 4.0,
+            "max": 4.27,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "9_Matmul_Subtract_Multiply_ReLU.py": {
+            "mean": 0.151,
+            "std": 0.0257,
+            "min": 0.133,
+            "max": 0.337,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "10_ConvTranspose2d_MaxPool_Hardtanh_Mean_Tanh.py": {
+            "mean": 0.61,
+            "std": 0.0304,
+            "min": 0.592,
+            "max": 0.885,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "11_ConvTranspose2d_BatchNorm_Tanh_MaxPool_GroupNorm.py": {
+            "mean": 7.41,
+            "std": 0.0165,
+            "min": 7.37,
+            "max": 7.45,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "12_Gemm_Multiply_LeakyReLU.py": {
+            "mean": 0.0969,
+            "std": 0.00927,
+            "min": 0.0901,
+            "max": 0.132,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling.py": {
+            "mean": 6.5,
+            "std": 0.0244,
+            "min": 6.41,
+            "max": 6.59,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "14_Gemm_Divide_Sum_Scaling.py": {
+            "mean": 0.0969,
+            "std": 0.00925,
+            "min": 0.0901,
+            "max": 0.136,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "15_ConvTranspose3d_BatchNorm_Subtract.py": {
+            "mean": 13.2,
+            "std": 0.086,
+            "min": 13.0,
+            "max": 13.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling.py": {
+            "mean": 1.45,
+            "std": 0.0265,
+            "min": 1.41,
+            "max": 1.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "17_Conv2d_InstanceNorm_Divide.py": {
+            "mean": 0.166,
+            "std": 0.0104,
+            "min": 0.156,
+            "max": 0.203,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "18_Matmul_Sum_Max_AvgPool_LogSumExp_LogSumExp.py": {
+            "mean": 0.354,
+            "std": 0.0279,
+            "min": 0.327,
+            "max": 0.534,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "19_ConvTranspose2d_GELU_GroupNorm.py": {
+            "mean": 6.42,
+            "std": 0.0246,
+            "min": 6.37,
+            "max": 6.48,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "20_ConvTranspose3d_Sum_ResidualAdd_Multiply_ResidualAdd.py": {
+            "mean": 42.5,
+            "std": 0.413,
+            "min": 41.9,
+            "max": 43.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "21_Conv2d_Add_Scale_Sigmoid_GroupNorm.py": {
+            "mean": 0.17,
+            "std": 0.0277,
+            "min": 0.158,
+            "max": 0.427,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "22_Matmul_Scale_ResidualAdd_Clamp_LogSumExp_Mish.py": {
+            "mean": 0.318,
+            "std": 0.0201,
+            "min": 0.293,
+            "max": 0.434,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "23_Conv3d_GroupNorm_Mean.py": {
+            "mean": 4.39,
+            "std": 0.0715,
+            "min": 4.2,
+            "max": 4.52,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "24_Conv3d_Min_Softmax.py": {
+            "mean": 3.29,
+            "std": 0.114,
+            "min": 3.02,
+            "max": 3.38,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "25_Conv2d_Min_Tanh_Tanh.py": {
+            "mean": 0.116,
+            "std": 0.00843,
+            "min": 0.109,
+            "max": 0.143,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "26_ConvTranspose3d_Add_HardSwish.py": {
+            "mean": 62.2,
+            "std": 0.422,
+            "min": 61.3,
+            "max": 62.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "27_Conv3d_HardSwish_ReLU_Softmax_Mean.py": {
+            "mean": 6.03,
+            "std": 0.0414,
+            "min": 5.92,
+            "max": 6.13,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "28_BMM_InstanceNorm_Sum_ResidualAdd_Multiply.py": {
+            "mean": 0.235,
+            "std": 0.0151,
+            "min": 0.216,
+            "max": 0.319,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "29_Matmul_Mish_Mish.py": {
+            "mean": 0.0767,
+            "std": 0.0139,
+            "min": 0.0696,
+            "max": 0.163,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "30_Gemm_GroupNorm_Hardtanh.py": {
+            "mean": 0.135,
+            "std": 0.0203,
+            "min": 0.125,
+            "max": 0.308,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "31_Conv2d_Min_Add_Multiply.py": {
+            "mean": 0.199,
+            "std": 0.0379,
+            "min": 0.178,
+            "max": 0.484,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "32_Conv2d_Scaling_Min.py": {
+            "mean": 0.118,
+            "std": 0.00903,
+            "min": 0.11,
+            "max": 0.15,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "33_Gemm_Scale_BatchNorm.py": {
+            "mean": 0.146,
+            "std": 0.00955,
+            "min": 0.136,
+            "max": 0.173,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "34_ConvTranspose3d_LayerNorm_GELU_Scaling.py": {
+            "mean": 274.0,
+            "std": 1.8,
+            "min": 269.0,
+            "max": 277.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "35_Conv2d_Subtract_HardSwish_MaxPool_Mish.py": {
+            "mean": 0.144,
+            "std": 0.00962,
+            "min": 0.135,
+            "max": 0.173,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "36_ConvTranspose2d_Min_Sum_GELU_Add.py": {
+            "mean": 0.818,
+            "std": 0.0584,
+            "min": 0.752,
+            "max": 0.901,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "37_Matmul_Swish_Sum_GroupNorm.py": {
+            "mean": 0.145,
+            "std": 0.00982,
+            "min": 0.135,
+            "max": 0.172,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "38_ConvTranspose3d_AvgPool_Clamp_Softmax_Multiply.py": {
+            "mean": 6.58,
+            "std": 0.0194,
+            "min": 6.56,
+            "max": 6.72,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "39_Gemm_Scale_BatchNorm.py": {
+            "mean": 0.148,
+            "std": 0.0242,
+            "min": 0.132,
+            "max": 0.304,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "40_Matmul_Scaling_ResidualAdd.py": {
+            "mean": 0.109,
+            "std": 0.01,
+            "min": 0.0992,
+            "max": 0.145,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "41_Gemm_BatchNorm_GELU_GroupNorm_Mean_ReLU.py": {
+            "mean": 0.219,
+            "std": 0.0265,
+            "min": 0.201,
+            "max": 0.376,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "42_ConvTranspose2d_GlobalAvgPool_BiasAdd_LogSumExp_Sum_Multiply.py": {
+            "mean": 0.351,
+            "std": 0.0551,
+            "min": 0.319,
+            "max": 0.854,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "43_Conv3d_Max_LogSumExp_ReLU.py": {
+            "mean": 4.38,
+            "std": 0.175,
+            "min": 4.01,
+            "max": 4.61,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "44_ConvTranspose2d_Multiply_GlobalAvgPool_GlobalAvgPool_Mean.py": {
+            "mean": 1.06,
+            "std": 0.0685,
+            "min": 0.952,
+            "max": 1.15,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "45_Gemm_Sigmoid_Sum_LogSumExp.py": {
+            "mean": 0.156,
+            "std": 0.0101,
+            "min": 0.148,
+            "max": 0.198,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "46_Conv2d_Subtract_Tanh_Subtract_AvgPool.py": {
+            "mean": 0.207,
+            "std": 0.0364,
+            "min": 0.184,
+            "max": 0.538,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "47_Conv3d_Mish_Tanh.py": {
+            "mean": 0.271,
+            "std": 0.00716,
+            "min": 0.263,
+            "max": 0.314,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "48_Conv3d_Scaling_Tanh_Multiply_Sigmoid.py": {
+            "mean": 6.01,
+            "std": 0.0302,
+            "min": 5.92,
+            "max": 6.07,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "49_ConvTranspose3d_Softmax_Sigmoid.py": {
+            "mean": 23.2,
+            "std": 0.137,
+            "min": 22.9,
+            "max": 23.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "50_ConvTranspose3d_Scaling_AvgPool_BiasAdd_Scaling.py": {
+            "mean": 61.6,
+            "std": 0.541,
+            "min": 60.8,
+            "max": 62.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "51_Gemm_Subtract_GlobalAvgPool_LogSumExp_GELU_ResidualAdd.py": {
+            "mean": 0.217,
+            "std": 0.0343,
+            "min": 0.199,
+            "max": 0.522,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "52_Conv2d_Activation_BatchNorm.py": {
+            "mean": 0.197,
+            "std": 0.0275,
+            "min": 0.181,
+            "max": 0.449,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "53_Gemm_Scaling_Hardtanh_GELU.py": {
+            "mean": 0.122,
+            "std": 0.0114,
+            "min": 0.114,
+            "max": 0.171,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "54_Conv2d_Multiply_LeakyReLU_GELU.py": {
+            "mean": 0.128,
+            "std": 0.0106,
+            "min": 0.119,
+            "max": 0.164,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "55_Matmul_MaxPool_Sum_Scale.py": {
+            "mean": 0.131,
+            "std": 0.0214,
+            "min": 0.117,
+            "max": 0.273,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "56_Matmul_Sigmoid_Sum.py": {
+            "mean": 0.0861,
+            "std": 0.0074,
+            "min": 0.0799,
+            "max": 0.112,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "57_Conv2d_ReLU_HardSwish.py": {
+            "mean": 0.141,
+            "std": 0.0114,
+            "min": 0.131,
+            "max": 0.178,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "58_ConvTranspose3d_LogSumExp_HardSwish_Subtract_Clamp_Max.py": {
+            "mean": 95.9,
+            "std": 0.289,
+            "min": 95.2,
+            "max": 96.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "59_Matmul_Swish_Scaling.py": {
+            "mean": 0.0974,
+            "std": 0.00822,
+            "min": 0.0911,
+            "max": 0.123,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "60_ConvTranspose3d_Swish_GroupNorm_HardSwish.py": {
+            "mean": 89.0,
+            "std": 0.197,
+            "min": 88.7,
+            "max": 89.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "61_ConvTranspose3d_ReLU_GroupNorm.py": {
+            "mean": 1.07,
+            "std": 0.0936,
+            "min": 0.984,
+            "max": 1.84,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "62_Matmul_GroupNorm_LeakyReLU_Sum.py": {
+            "mean": 0.2,
+            "std": 0.033,
+            "min": 0.181,
+            "max": 0.498,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "63_Gemm_ReLU_Divide.py": {
+            "mean": 0.0879,
+            "std": 0.00799,
+            "min": 0.0809,
+            "max": 0.133,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "64_Gemm_LogSumExp_LeakyReLU_LeakyReLU_GELU_GELU.py": {
+            "mean": 0.172,
+            "std": 0.0109,
+            "min": 0.162,
+            "max": 0.207,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "65_Conv2d_AvgPool_Sigmoid_Sum.py": {
+            "mean": 0.197,
+            "std": 0.0155,
+            "min": 0.179,
+            "max": 0.271,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "66_Matmul_Dropout_Mean_Softmax.py": {
+            "mean": 0.117,
+            "std": 0.00902,
+            "min": 0.108,
+            "max": 0.148,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "67_Conv2d_GELU_GlobalAvgPool.py": {
+            "mean": 0.127,
+            "std": 0.025,
+            "min": 0.117,
+            "max": 0.358,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "68_Matmul_Min_Subtract.py": {
+            "mean": 0.0805,
+            "std": 0.00629,
+            "min": 0.0758,
+            "max": 0.108,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "69_Conv2d_HardSwish_ReLU.py": {
+            "mean": 0.104,
+            "std": 0.0125,
+            "min": 0.0963,
+            "max": 0.168,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "70_Gemm_Sigmoid_Scaling_ResidualAdd.py": {
+            "mean": 0.138,
+            "std": 0.0203,
+            "min": 0.123,
+            "max": 0.278,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "71_Conv2d_Divide_LeakyReLU.py": {
+            "mean": 0.165,
+            "std": 0.0239,
+            "min": 0.147,
+            "max": 0.307,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "72_ConvTranspose3d_BatchNorm_AvgPool_AvgPool.py": {
+            "mean": 136.0,
+            "std": 0.965,
+            "min": 135.0,
+            "max": 138.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "73_Conv2d_BatchNorm_Scaling.py": {
+            "mean": 0.164,
+            "std": 0.0117,
+            "min": 0.155,
+            "max": 0.205,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "74_ConvTranspose3d_LeakyReLU_Multiply_LeakyReLU_Max.py": {
+            "mean": 15.2,
+            "std": 0.0678,
+            "min": 15.1,
+            "max": 15.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "75_Gemm_GroupNorm_Min_BiasAdd.py": {
+            "mean": 0.231,
+            "std": 0.0329,
+            "min": 0.199,
+            "max": 0.445,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "76_Gemm_Add_ReLU.py": {
+            "mean": 0.124,
+            "std": 0.0422,
+            "min": 0.103,
+            "max": 0.461,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "77_ConvTranspose3d_Scale_BatchNorm_GlobalAvgPool.py": {
+            "mean": 5.43,
+            "std": 0.154,
+            "min": 4.82,
+            "max": 5.63,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "78_ConvTranspose3d_Max_Max_Sum.py": {
+            "mean": 6.75,
+            "std": 0.0375,
+            "min": 6.62,
+            "max": 6.87,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "79_Conv3d_Multiply_InstanceNorm_Clamp_Multiply_Max.py": {
+            "mean": 7.15,
+            "std": 0.0441,
+            "min": 7.04,
+            "max": 7.43,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "80_Gemm_Max_Subtract_GELU.py": {
+            "mean": 0.11,
+            "std": 0.00791,
+            "min": 0.102,
+            "max": 0.138,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "81_Gemm_Swish_Divide_Clamp_Tanh_Clamp.py": {
+            "mean": 0.119,
+            "std": 0.00888,
+            "min": 0.112,
+            "max": 0.152,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "82_Conv2d_Tanh_Scaling_BiasAdd_Max.py": {
+            "mean": 0.149,
+            "std": 0.0157,
+            "min": 0.135,
+            "max": 0.225,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "83_Conv3d_GroupNorm_Min_Clamp_Dropout.py": {
+            "mean": 6.7,
+            "std": 0.0521,
+            "min": 6.58,
+            "max": 6.93,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "84_Gemm_BatchNorm_Scaling_Softmax.py": {
+            "mean": 0.157,
+            "std": 0.0107,
+            "min": 0.148,
+            "max": 0.208,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "85_Conv2d_GroupNorm_Scale_MaxPool_Clamp.py": {
+            "mean": 0.188,
+            "std": 0.0116,
+            "min": 0.177,
+            "max": 0.227,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "86_Matmul_Divide_GELU.py": {
+            "mean": 0.0881,
+            "std": 0.00864,
+            "min": 0.0818,
+            "max": 0.124,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "87_Conv2d_Subtract_Subtract_Mish.py": {
+            "mean": 0.178,
+            "std": 0.0228,
+            "min": 0.159,
+            "max": 0.353,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "88_Gemm_GroupNorm_Swish_Multiply_Swish.py": {
+            "mean": 0.147,
+            "std": 0.0088,
+            "min": 0.139,
+            "max": 0.172,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "89_ConvTranspose3d_MaxPool_Softmax_Subtract_Swish_Max.py": {
+            "mean": 57.7,
+            "std": 0.0992,
+            "min": 57.6,
+            "max": 58.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "90_Conv3d_LeakyReLU_Sum_Clamp_GELU.py": {
+            "mean": 5.92,
+            "std": 0.0219,
+            "min": 5.88,
+            "max": 6.05,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "91_ConvTranspose2d_Softmax_BiasAdd_Scaling_Sigmoid.py": {
+            "mean": 1.6,
+            "std": 0.0202,
+            "min": 1.57,
+            "max": 1.76,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "92_Conv2d_GroupNorm_Tanh_HardSwish_ResidualAdd_LogSumExp.py": {
+            "mean": 0.484,
+            "std": 0.0711,
+            "min": 0.388,
+            "max": 0.909,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "93_ConvTranspose2d_Add_Min_GELU_Multiply.py": {
+            "mean": 1.69,
+            "std": 0.0473,
+            "min": 1.61,
+            "max": 1.88,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "94_Gemm_BiasAdd_Hardtanh_Mish_GroupNorm.py": {
+            "mean": 0.166,
+            "std": 0.0229,
+            "min": 0.154,
+            "max": 0.366,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "95_Matmul_Add_Swish_Tanh_GELU_Hardtanh.py": {
+            "mean": 0.134,
+            "std": 0.0102,
+            "min": 0.125,
+            "max": 0.16,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "96_ConvTranspose3d_Multiply_Max_GlobalAvgPool_Clamp.py": {
+            "mean": 63.2,
+            "std": 0.431,
+            "min": 62.4,
+            "max": 64.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "97_Matmul_BatchNorm_BiasAdd_Divide_Swish.py": {
+            "mean": 0.178,
+            "std": 0.0101,
+            "min": 0.169,
+            "max": 0.205,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "98_Matmul_AvgPool_GELU_Scale_Max.py": {
+            "mean": 0.194,
+            "std": 0.0194,
+            "min": 0.177,
+            "max": 0.283,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "99_Matmul_GELU_Softmax.py": {
+            "mean": 0.111,
+            "std": 0.0179,
+            "min": 0.0993,
+            "max": 0.253,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "100_ConvTranspose3d_Clamp_Min_Divide.py": {
+            "mean": 8.08,
+            "std": 0.0275,
+            "min": 7.95,
+            "max": 8.13,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        }
+    },
+    "level3": {
+        "1_MLP.py": {
+            "mean": 0.15,
+            "std": 0.0114,
+            "min": 0.14,
+            "max": 0.185,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "2_ShallowWideMLP.py": {
+            "mean": 0.135,
+            "std": 0.0122,
+            "min": 0.125,
+            "max": 0.174,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "3_DeepNarrowMLP.py": {
+            "mean": 0.33,
+            "std": 0.0161,
+            "min": 0.309,
+            "max": 0.379,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "4_LeNet5.py": {
+            "mean": 0.326,
+            "std": 0.0137,
+            "min": 0.309,
+            "max": 0.359,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "5_AlexNet.py": {
+            "mean": 2.5,
+            "std": 0.0802,
+            "min": 2.32,
+            "max": 2.57,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "6_GoogleNetInceptionModule.py": {
+            "mean": 63.1,
+            "std": 0.239,
+            "min": 62.6,
+            "max": 63.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "7_GoogleNetInceptionV1.py": {
+            "mean": 5.23,
+            "std": 0.0925,
+            "min": 5.11,
+            "max": 5.58,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "8_ResNetBasicBlock.py": {
+            "mean": 12.8,
+            "std": 0.208,
+            "min": 12.4,
+            "max": 13.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "9_ResNet18.py": {
+            "mean": 2.74,
+            "std": 0.034,
+            "min": 2.68,
+            "max": 2.88,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "10_ResNet101.py": {
+            "mean": 16.4,
+            "std": 0.282,
+            "min": 15.0,
+            "max": 17.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "11_VGG16.py": {
+            "mean": 24.2,
+            "std": 0.362,
+            "min": 22.8,
+            "max": 25.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "12_VGG19.py": {
+            "mean": 27.8,
+            "std": 0.378,
+            "min": 27.1,
+            "max": 28.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "13_DenseNet121TransitionLayer.py": {
+            "mean": 2.89,
+            "std": 0.023,
+            "min": 2.87,
+            "max": 3.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "14_DenseNet121DenseBlock.py": {
+            "mean": 65.5,
+            "std": 0.181,
+            "min": 65.2,
+            "max": 66.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "15_DenseNet121.py": {
+            "mean": 16.3,
+            "std": 1.12,
+            "min": 15.1,
+            "max": 23.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "16_DenseNet201.py": {
+            "mean": 20.4,
+            "std": 0.465,
+            "min": 19.8,
+            "max": 21.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "17_SqueezeNetFireModule.py": {
+            "mean": 7.97,
+            "std": 0.023,
+            "min": 7.9,
+            "max": 8.03,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "18_SqueezeNet.py": {
+            "mean": 2.07,
+            "std": 0.0987,
+            "min": 1.97,
+            "max": 2.79,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "19_MobileNetV1.py": {
+            "mean": 2.93,
+            "std": 0.0874,
+            "min": 2.87,
+            "max": 3.74,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "20_MobileNetV2.py": {
+            "mean": 5.88,
+            "std": 0.142,
+            "min": 5.78,
+            "max": 6.93,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "21_EfficientNetMBConv.py": {
+            "mean": 52.4,
+            "std": 0.0773,
+            "min": 52.2,
+            "max": 52.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "22_EfficientNetB0.py": {
+            "mean": 4.81,
+            "std": 0.0932,
+            "min": 4.73,
+            "max": 5.68,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "23_EfficientNetB1.py": {
+            "mean": 3.35,
+            "std": 0.0907,
+            "min": 3.13,
+            "max": 3.87,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "24_EfficientNetB2.py": {
+            "mean": 2.77,
+            "std": 0.419,
+            "min": 2.54,
+            "max": 6.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "25_ShuffleNetUnit.py": {
+            "mean": 75.0,
+            "std": 0.0899,
+            "min": 74.8,
+            "max": 75.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "26_ShuffleNet.py": {
+            "mean": 48.3,
+            "std": 0.364,
+            "min": 47.7,
+            "max": 49.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "27_RegNet.py": {
+            "mean": 16.1,
+            "std": 0.169,
+            "min": 15.7,
+            "max": 16.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "28_VisionTransformer.py": {
+            "mean": 3.24,
+            "std": 0.166,
+            "min": 2.76,
+            "max": 3.36,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "29_SwinMLP.py": {
+            "mean": 14.7,
+            "std": 0.494,
+            "min": 11.6,
+            "max": 15.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "30_SwinTransformerV2.py": {
+            "mean": 24.3,
+            "std": 1.57,
+            "min": 22.8,
+            "max": 34.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "31_VisionAttention.py": {
+            "mean": 231.0,
+            "std": 45.7,
+            "min": 215.0,
+            "max": 685.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "32_ConvolutionalVisionTransformer.py": {
+            "mean": 4.03,
+            "std": 0.141,
+            "min": 3.79,
+            "max": 4.59,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "33_VanillaRNN.py": {
+            "mean": 0.246,
+            "std": 0.427,
+            "min": 0.176,
+            "max": 4.47,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "34_VanillaRNNHidden.py": {
+            "mean": 0.136,
+            "std": 0.0107,
+            "min": 0.128,
+            "max": 0.183,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "35_LTSM.py": {
+            "mean": 18.5,
+            "std": 0.0752,
+            "min": 18.3,
+            "max": 18.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "36_LTSMHn.py": {
+            "mean": 18.3,
+            "std": 0.0623,
+            "min": 18.2,
+            "max": 18.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "37_LTSMCn.py": {
+            "mean": 32.0,
+            "std": 0.291,
+            "min": 31.3,
+            "max": 33.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "38_LTSMBidirectional.py": {
+            "mean": 38.8,
+            "std": 0.0694,
+            "min": 38.6,
+            "max": 39.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "39_GRU.py": {
+            "mean": 20.2,
+            "std": 0.106,
+            "min": 20.1,
+            "max": 20.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "40_GRUHidden.py": {
+            "mean": 19.9,
+            "std": 0.137,
+            "min": 19.8,
+            "max": 20.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "41_GRUBirectional.py": {
+            "mean": 49.5,
+            "std": 0.291,
+            "min": 49.1,
+            "max": 50.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "42_GRUBidirectionalHidden.py": {
+            "mean": 51.9,
+            "std": 0.352,
+            "min": 51.3,
+            "max": 53.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "43_MinGPTCausalAttention.py": {
+            "mean": 85.4,
+            "std": 1.09,
+            "min": 83.1,
+            "max": 88.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "44_MiniGPTBlock.py": {
+            "mean": 207.0,
+            "std": 1.81,
+            "min": 203.0,
+            "max": 212.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "45_UNetSoftmax.py": {
+            "mean": 32.8,
+            "std": 0.406,
+            "min": 31.5,
+            "max": 33.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "46_NetVladWithGhostClusters.py": {
+            "mean": 0.55,
+            "std": 0.0277,
+            "min": 0.515,
+            "max": 0.741,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "47_NetVladNoGhostClusters.py": {
+            "mean": 0.592,
+            "std": 0.0219,
+            "min": 0.558,
+            "max": 0.708,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "48_Mamba2ReturnY.py": {
+            "mean": 0.892,
+            "std": 0.0559,
+            "min": 0.852,
+            "max": 1.42,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "49_Mamba2ReturnFinalState.py": {
+            "mean": 0.832,
+            "std": 0.0778,
+            "min": 0.781,
+            "max": 1.37,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        },
+        "50_ReLUSelfAttention.py": {
+            "mean": 41.7,
+            "std": 0.236,
+            "min": 41.4,
+            "max": 42.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA L4",
+            "device": "cuda:0"
+        }
+    }
+}

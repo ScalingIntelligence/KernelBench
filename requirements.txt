@@ -4,7 +4,7 @@ numpy
 openai
 packaging
 pydra_config
-torch
+torch==2.5.0
 tqdm
 datasets
 transformers

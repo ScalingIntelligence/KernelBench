@@ -1,0 +1,2250 @@
+{
+    "level1": {
+        "1_Square_matrix_multiplication_.py": {
+            "mean": 4.68,
+            "std": 1.13,
+            "min": 3.68,
+            "max": 6.16,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "2_Standard_matrix_multiplication_.py": {
+            "mean": 4.48,
+            "std": 1.05,
+            "min": 3.63,
+            "max": 6.11,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "3_Batched_matrix_multiplication.py": {
+            "mean": 1.66,
+            "std": 0.0252,
+            "min": 1.63,
+            "max": 1.77,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "4_Matrix_vector_multiplication_.py": {
+            "mean": 0.59,
+            "std": 0.00729,
+            "min": 0.582,
+            "max": 0.633,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "5_Matrix_scalar_multiplication.py": {
+            "mean": 2.22,
+            "std": 0.0288,
+            "min": 2.18,
+            "max": 2.26,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "6_Matmul_with_large_K_dimension_.py": {
+            "mean": 4.54,
+            "std": 0.932,
+            "min": 3.68,
+            "max": 6.28,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "7_Matmul_with_small_K_dimension_.py": {
+            "mean": 6.71,
+            "std": 1.14,
+            "min": 5.86,
+            "max": 8.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "8_Matmul_with_irregular_shapes_.py": {
+            "mean": 75.5,
+            "std": 3.0,
+            "min": 71.3,
+            "max": 93.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "9_Tall_skinny_matrix_multiplication_.py": {
+            "mean": 5.83,
+            "std": 0.487,
+            "min": 5.4,
+            "max": 6.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "10_3D_tensor_matrix_multiplication.py": {
+            "mean": 12.1,
+            "std": 1.74,
+            "min": 10.9,
+            "max": 18.3,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "11_4D_tensor_matrix_multiplication.py": {
+            "mean": 181.0,
+            "std": 1.92,
+            "min": 177.0,
+            "max": 190.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "12_Matmul_with_diagonal_matrices_.py": {
+            "mean": 27.3,
+            "std": 1.42,
+            "min": 25.2,
+            "max": 37.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "13_Matmul_for_symmetric_matrices.py": {
+            "mean": 30.6,
+            "std": 1.36,
+            "min": 28.8,
+            "max": 36.2,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "14_Matmul_for_upper_triangular_matrices.py": {
+            "mean": 27.0,
+            "std": 0.714,
+            "min": 25.8,
+            "max": 30.2,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "15_Matmul_for_lower_triangular_matrices.py": {
+            "mean": 27.4,
+            "std": 0.83,
+            "min": 26.0,
+            "max": 30.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "16_Matmul_with_transposed_A.py": {
+            "mean": 4.26,
+            "std": 0.862,
+            "min": 3.63,
+            "max": 6.13,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "17_Matmul_with_transposed_B.py": {
+            "mean": 4.84,
+            "std": 0.744,
+            "min": 4.3,
+            "max": 6.67,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "18_Matmul_with_transposed_both.py": {
+            "mean": 4.72,
+            "std": 1.17,
+            "min": 3.69,
+            "max": 6.28,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "19_ReLU.py": {
+            "mean": 0.0971,
+            "std": 0.0134,
+            "min": 0.0869,
+            "max": 0.207,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "20_LeakyReLU.py": {
+            "mean": 0.116,
+            "std": 0.0145,
+            "min": 0.0975,
+            "max": 0.175,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "21_Sigmoid.py": {
+            "mean": 0.119,
+            "std": 0.0233,
+            "min": 0.102,
+            "max": 0.297,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "22_Tanh.py": {
+            "mean": 0.117,
+            "std": 0.0203,
+            "min": 0.0962,
+            "max": 0.251,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "23_Softmax.py": {
+            "mean": 0.167,
+            "std": 0.0108,
+            "min": 0.155,
+            "max": 0.223,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "24_LogSoftmax.py": {
+            "mean": 0.209,
+            "std": 0.0226,
+            "min": 0.179,
+            "max": 0.271,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "25_Swish.py": {
+            "mean": 0.117,
+            "std": 0.0117,
+            "min": 0.105,
+            "max": 0.165,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "26_GELU_.py": {
+            "mean": 0.116,
+            "std": 0.0206,
+            "min": 0.0952,
+            "max": 0.23,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "27_SELU_.py": {
+            "mean": 0.119,
+            "std": 0.017,
+            "min": 0.1,
+            "max": 0.202,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "28_HardSigmoid.py": {
+            "mean": 0.0912,
+            "std": 0.00781,
+            "min": 0.0835,
+            "max": 0.123,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "29_Softplus.py": {
+            "mean": 0.0916,
+            "std": 0.00821,
+            "min": 0.0841,
+            "max": 0.141,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "30_Softsign.py": {
+            "mean": 0.109,
+            "std": 0.0194,
+            "min": 0.0927,
+            "max": 0.258,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "31_ELU.py": {
+            "mean": 0.0923,
+            "std": 0.00752,
+            "min": 0.0858,
+            "max": 0.128,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "32_HardTanh.py": {
+            "mean": 0.0977,
+            "std": 0.00874,
+            "min": 0.0895,
+            "max": 0.125,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "33_BatchNorm.py": {
+            "mean": 3.3,
+            "std": 0.0293,
+            "min": 3.25,
+            "max": 3.35,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "34_InstanceNorm.py": {
+            "mean": 3.38,
+            "std": 0.025,
+            "min": 3.34,
+            "max": 3.44,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "35_GroupNorm_.py": {
+            "mean": 3.28,
+            "std": 0.0189,
+            "min": 3.25,
+            "max": 3.34,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "36_RMSNorm_.py": {
+            "mean": 3.34,
+            "std": 0.00743,
+            "min": 3.32,
+            "max": 3.36,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "37_FrobeniusNorm_.py": {
+            "mean": 3.24,
+            "std": 0.0364,
+            "min": 3.2,
+            "max": 3.49,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "38_L1Norm_.py": {
+            "mean": 0.159,
+            "std": 0.0162,
+            "min": 0.133,
+            "max": 0.204,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "39_L2Norm_.py": {
+            "mean": 0.135,
+            "std": 0.00738,
+            "min": 0.125,
+            "max": 0.162,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "40_LayerNorm.py": {
+            "mean": 5.24,
+            "std": 0.0412,
+            "min": 5.14,
+            "max": 5.49,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "41_Max_Pooling_1D.py": {
+            "mean": 0.135,
+            "std": 0.0131,
+            "min": 0.121,
+            "max": 0.18,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "42_Max_Pooling_2D.py": {
+            "mean": 0.38,
+            "std": 0.00577,
+            "min": 0.373,
+            "max": 0.413,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "43_Max_Pooling_3D.py": {
+            "mean": 4.42,
+            "std": 0.754,
+            "min": 3.61,
+            "max": 6.01,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "44_Average_Pooling_1D.py": {
+            "mean": 0.116,
+            "std": 0.0565,
+            "min": 0.0946,
+            "max": 0.514,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "45_Average_Pooling_2D.py": {
+            "mean": 1.29,
+            "std": 0.19,
+            "min": 1.26,
+            "max": 3.18,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "46_Average_Pooling_3D.py": {
+            "mean": 4.14,
+            "std": 0.969,
+            "min": 3.36,
+            "max": 5.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "47_Sum_reduction_over_a_dimension.py": {
+            "mean": 0.0949,
+            "std": 0.00822,
+            "min": 0.0879,
+            "max": 0.125,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "48_Mean_reduction_over_a_dimension.py": {
+            "mean": 0.0921,
+            "std": 0.00825,
+            "min": 0.0831,
+            "max": 0.135,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "49_Max_reduction_over_a_dimension.py": {
+            "mean": 0.113,
+            "std": 0.0132,
+            "min": 0.0983,
+            "max": 0.158,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "50_Product_reduction_over_a_dimension.py": {
+            "mean": 0.0907,
+            "std": 0.00625,
+            "min": 0.0855,
+            "max": 0.12,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "51_Argmax_over_a_dimension.py": {
+            "mean": 0.0911,
+            "std": 0.00791,
+            "min": 0.0829,
+            "max": 0.12,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "52_Argmin_over_a_dimension.py": {
+            "mean": 0.0875,
+            "std": 0.0068,
+            "min": 0.0825,
+            "max": 0.122,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "53_Min_reduction_over_a_dimension.py": {
+            "mean": 0.0923,
+            "std": 0.00577,
+            "min": 0.0872,
+            "max": 0.121,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "54_conv_standard_3D__square_input__square_kernel.py": {
+            "mean": 71.6,
+            "std": 0.544,
+            "min": 71.2,
+            "max": 76.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "55_conv_standard_2D__asymmetric_input__square_kernel.py": {
+            "mean": 3.59,
+            "std": 0.497,
+            "min": 2.78,
+            "max": 4.25,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "56_conv_standard_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 4.31,
+            "std": 0.71,
+            "min": 3.56,
+            "max": 5.72,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "57_conv_transposed_2D__square_input__square_kernel.py": {
+            "mean": 5.01,
+            "std": 0.569,
+            "min": 4.57,
+            "max": 6.06,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "58_conv_transposed_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 43.8,
+            "std": 2.06,
+            "min": 42.0,
+            "max": 58.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "59_conv_standard_3D__asymmetric_input__square_kernel.py": {
+            "mean": 84.8,
+            "std": 0.0693,
+            "min": 84.3,
+            "max": 84.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "60_conv_standard_3D__square_input__asymmetric_kernel.py": {
+            "mean": 84.7,
+            "std": 0.197,
+            "min": 84.3,
+            "max": 85.4,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "61_conv_transposed_3D__square_input__square_kernel.py": {
+            "mean": 5.71,
+            "std": 0.441,
+            "min": 5.41,
+            "max": 6.84,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "62_conv_standard_2D__square_input__asymmetric_kernel.py": {
+            "mean": 7.68,
+            "std": 1.47,
+            "min": 6.88,
+            "max": 11.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "63_conv_standard_2D__square_input__square_kernel.py": {
+            "mean": 6.01,
+            "std": 0.954,
+            "min": 5.43,
+            "max": 8.13,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "64_conv_transposed_1D.py": {
+            "mean": 0.18,
+            "std": 0.0189,
+            "min": 0.158,
+            "max": 0.231,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "65_conv_transposed_2D__square_input__asymmetric_kernel.py": {
+            "mean": 6.25,
+            "std": 0.668,
+            "min": 5.79,
+            "max": 7.85,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "66_conv_standard_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 338.0,
+            "std": 1.49,
+            "min": 333.0,
+            "max": 342.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "67_conv_standard_1D.py": {
+            "mean": 0.136,
+            "std": 0.0123,
+            "min": 0.127,
+            "max": 0.217,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "68_conv_transposed_3D__square_input__asymmetric_kernel.py": {
+            "mean": 163.0,
+            "std": 0.815,
+            "min": 161.0,
+            "max": 165.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "69_conv_transposed_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 0.692,
+            "std": 0.00697,
+            "min": 0.681,
+            "max": 0.713,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "70_conv_transposed_3D__asymmetric_input__square_kernel.py": {
+            "mean": 9.82,
+            "std": 1.95,
+            "min": 9.02,
+            "max": 16.3,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "71_conv_transposed_2D__asymmetric_input__square_kernel.py": {
+            "mean": 9.82,
+            "std": 0.91,
+            "min": 9.36,
+            "max": 12.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "72_conv_transposed_3D_asymmetric_input_asymmetric_kernel___strided_padded_grouped_.py": {
+            "mean": 120.0,
+            "std": 0.962,
+            "min": 118.0,
+            "max": 125.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "73_conv_transposed_3D_asymmetric_input_square_kernel__strided_padded__grouped.py": {
+            "mean": 28.3,
+            "std": 3.23,
+            "min": 27.1,
+            "max": 48.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "74_conv_transposed_1D_dilated.py": {
+            "mean": 0.187,
+            "std": 0.0148,
+            "min": 0.17,
+            "max": 0.267,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "75_conv_transposed_2D_asymmetric_input_asymmetric_kernel_strided__grouped____padded____dilated__.py": {
+            "mean": 34.0,
+            "std": 2.93,
+            "min": 33.0,
+            "max": 62.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "76_conv_standard_1D_dilated_strided__.py": {
+            "mean": 0.18,
+            "std": 0.0187,
+            "min": 0.154,
+            "max": 0.25,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "77_conv_transposed_3D_square_input_square_kernel___padded____dilated____strided__.py": {
+            "mean": 32.0,
+            "std": 2.91,
+            "min": 30.9,
+            "max": 60.2,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "78_conv_transposed_2D_asymmetric_input_asymmetric_kernel___padded__.py": {
+            "mean": 12.4,
+            "std": 1.51,
+            "min": 11.5,
+            "max": 18.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "79_conv_transposed_1D_asymmetric_input_square_kernel___padded____strided____dilated__.py": {
+            "mean": 0.17,
+            "std": 0.00555,
+            "min": 0.164,
+            "max": 0.2,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "80_conv_standard_2D_square_input_asymmetric_kernel___dilated____padded__.py": {
+            "mean": 9.16,
+            "std": 2.18,
+            "min": 8.24,
+            "max": 15.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "81_conv_transposed_2D_asymmetric_input_square_kernel___dilated____padded____strided__.py": {
+            "mean": 26.9,
+            "std": 0.882,
+            "min": 26.6,
+            "max": 30.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "82_conv_depthwise_2D_square_input_square_kernel.py": {
+            "mean": 0.509,
+            "std": 0.0109,
+            "min": 0.492,
+            "max": 0.553,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "83_conv_depthwise_2D_square_input_asymmetric_kernel.py": {
+            "mean": 1.81,
+            "std": 0.253,
+            "min": 1.48,
+            "max": 2.05,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "84_conv_depthwise_2D_asymmetric_input_square_kernel.py": {
+            "mean": 0.28,
+            "std": 0.00619,
+            "min": 0.272,
+            "max": 0.303,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "85_conv_depthwise_2D_asymmetric_input_asymmetric_kernel.py": {
+            "mean": 0.49,
+            "std": 0.00654,
+            "min": 0.483,
+            "max": 0.521,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "86_conv_depthwise_separable_2D.py": {
+            "mean": 4.72,
+            "std": 0.167,
+            "min": 4.53,
+            "max": 4.96,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "87_conv_pointwise_2D.py": {
+            "mean": 4.32,
+            "std": 0.161,
+            "min": 4.17,
+            "max": 4.61,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "88_MinGPTNewGelu.py": {
+            "mean": 0.194,
+            "std": 0.00718,
+            "min": 0.187,
+            "max": 0.218,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "89_cumsum.py": {
+            "mean": 0.0945,
+            "std": 0.0138,
+            "min": 0.0841,
+            "max": 0.192,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "90_cumprod.py": {
+            "mean": 0.0934,
+            "std": 0.00727,
+            "min": 0.0845,
+            "max": 0.139,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "91_cumsum_reverse.py": {
+            "mean": 0.118,
+            "std": 0.00946,
+            "min": 0.108,
+            "max": 0.167,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "92_cumsum_exclusive.py": {
+            "mean": 0.106,
+            "std": 0.00913,
+            "min": 0.0983,
+            "max": 0.169,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "93_masked_cumsum.py": {
+            "mean": 0.118,
+            "std": 0.0135,
+            "min": 0.102,
+            "max": 0.181,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "94_MSELoss.py": {
+            "mean": 0.118,
+            "std": 0.00837,
+            "min": 0.11,
+            "max": 0.16,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "95_CrossEntropyLoss.py": {
+            "mean": 0.156,
+            "std": 0.014,
+            "min": 0.137,
+            "max": 0.197,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "96_HuberLoss.py": {
+            "mean": 0.141,
+            "std": 0.0213,
+            "min": 0.121,
+            "max": 0.267,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "97_CosineSimilarityLoss.py": {
+            "mean": 0.128,
+            "std": 0.016,
+            "min": 0.117,
+            "max": 0.264,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "98_KLDivLoss.py": {
+            "mean": 0.118,
+            "std": 0.0146,
+            "min": 0.106,
+            "max": 0.246,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "99_TripletMarginLoss.py": {
+            "mean": 0.131,
+            "std": 0.0151,
+            "min": 0.121,
+            "max": 0.205,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "100_HingeLoss.py": {
+            "mean": 0.0997,
+            "std": 0.0112,
+            "min": 0.091,
+            "max": 0.16,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        }
+    },
+    "level2": {
+        "1_Conv2D_ReLU_BiasAdd.py": {
+            "mean": 0.348,
+            "std": 0.0162,
+            "min": 0.326,
+            "max": 0.403,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "2_ConvTranspose2d_BiasAdd_Clamp_Scaling_Clamp_Divide.py": {
+            "mean": 1.75,
+            "std": 0.05,
+            "min": 1.72,
+            "max": 2.23,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "3_ConvTranspose3d_Sum_LayerNorm_AvgPool_GELU.py": {
+            "mean": 274.0,
+            "std": 1.39,
+            "min": 266.0,
+            "max": 278.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "4_Conv2d_Mish_Mish.py": {
+            "mean": 0.532,
+            "std": 0.014,
+            "min": 0.508,
+            "max": 0.586,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "5_ConvTranspose2d_Subtract_Tanh.py": {
+            "mean": 0.973,
+            "std": 0.0773,
+            "min": 0.836,
+            "max": 1.04,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "6_Conv3d_Softmax_MaxPool_MaxPool.py": {
+            "mean": 8.39,
+            "std": 0.353,
+            "min": 6.65,
+            "max": 8.96,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "7_Conv3d_ReLU_LeakyReLU_GELU_Sigmoid_BiasAdd.py": {
+            "mean": 5.16,
+            "std": 0.799,
+            "min": 4.82,
+            "max": 8.84,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "8_Conv3d_Divide_Max_GlobalAvgPool_BiasAdd_Sum.py": {
+            "mean": 6.64,
+            "std": 0.13,
+            "min": 6.25,
+            "max": 6.98,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "9_Matmul_Subtract_Multiply_ReLU.py": {
+            "mean": 0.191,
+            "std": 0.0143,
+            "min": 0.172,
+            "max": 0.239,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "10_ConvTranspose2d_MaxPool_Hardtanh_Mean_Tanh.py": {
+            "mean": 4.14,
+            "std": 0.0703,
+            "min": 3.9,
+            "max": 4.46,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "11_ConvTranspose2d_BatchNorm_Tanh_MaxPool_GroupNorm.py": {
+            "mean": 20.4,
+            "std": 0.31,
+            "min": 19.8,
+            "max": 21.3,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "12_Gemm_Multiply_LeakyReLU.py": {
+            "mean": 0.166,
+            "std": 0.00823,
+            "min": 0.158,
+            "max": 0.199,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling.py": {
+            "mean": 7.64,
+            "std": 0.0516,
+            "min": 7.51,
+            "max": 7.79,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "14_Gemm_Divide_Sum_Scaling.py": {
+            "mean": 0.191,
+            "std": 0.0155,
+            "min": 0.171,
+            "max": 0.249,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "15_ConvTranspose3d_BatchNorm_Subtract.py": {
+            "mean": 21.0,
+            "std": 0.73,
+            "min": 20.3,
+            "max": 23.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling.py": {
+            "mean": 4.3,
+            "std": 0.0558,
+            "min": 4.16,
+            "max": 4.44,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "17_Conv2d_InstanceNorm_Divide.py": {
+            "mean": 0.341,
+            "std": 0.0538,
+            "min": 0.312,
+            "max": 0.512,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "18_Matmul_Sum_Max_AvgPool_LogSumExp_LogSumExp.py": {
+            "mean": 0.152,
+            "std": 0.0368,
+            "min": 0.137,
+            "max": 0.499,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "19_ConvTranspose2d_GELU_GroupNorm.py": {
+            "mean": 27.6,
+            "std": 0.164,
+            "min": 27.2,
+            "max": 27.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "20_ConvTranspose3d_Sum_ResidualAdd_Multiply_ResidualAdd.py": {
+            "mean": 30.3,
+            "std": 0.335,
+            "min": 29.9,
+            "max": 31.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "21_Conv2d_Add_Scale_Sigmoid_GroupNorm.py": {
+            "mean": 0.355,
+            "std": 0.0411,
+            "min": 0.334,
+            "max": 0.584,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "22_Matmul_Scale_ResidualAdd_Clamp_LogSumExp_Mish.py": {
+            "mean": 0.214,
+            "std": 0.0163,
+            "min": 0.198,
+            "max": 0.262,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "23_Conv3d_GroupNorm_Mean.py": {
+            "mean": 6.3,
+            "std": 1.79,
+            "min": 5.34,
+            "max": 10.3,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "24_Conv3d_Min_Softmax.py": {
+            "mean": 5.25,
+            "std": 0.384,
+            "min": 3.69,
+            "max": 5.71,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "25_Conv2d_Min_Tanh_Tanh.py": {
+            "mean": 0.365,
+            "std": 0.0678,
+            "min": 0.301,
+            "max": 0.547,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "26_ConvTranspose3d_Add_HardSwish.py": {
+            "mean": 65.5,
+            "std": 0.765,
+            "min": 64.3,
+            "max": 69.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "27_Conv3d_HardSwish_ReLU_Softmax_Mean.py": {
+            "mean": 5.35,
+            "std": 0.224,
+            "min": 4.39,
+            "max": 5.69,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "28_BMM_InstanceNorm_Sum_ResidualAdd_Multiply.py": {
+            "mean": 0.311,
+            "std": 0.0201,
+            "min": 0.291,
+            "max": 0.44,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "29_Matmul_Mish_Mish.py": {
+            "mean": 0.147,
+            "std": 0.0124,
+            "min": 0.135,
+            "max": 0.193,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "30_Gemm_GroupNorm_Hardtanh.py": {
+            "mean": 0.24,
+            "std": 0.00621,
+            "min": 0.235,
+            "max": 0.267,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "31_Conv2d_Min_Add_Multiply.py": {
+            "mean": 0.342,
+            "std": 0.0656,
+            "min": 0.311,
+            "max": 0.711,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "32_Conv2d_Scaling_Min.py": {
+            "mean": 0.408,
+            "std": 0.00689,
+            "min": 0.397,
+            "max": 0.438,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "33_Gemm_Scale_BatchNorm.py": {
+            "mean": 0.221,
+            "std": 0.0137,
+            "min": 0.205,
+            "max": 0.286,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "34_ConvTranspose3d_LayerNorm_GELU_Scaling.py": null,
+        "35_Conv2d_Subtract_HardSwish_MaxPool_Mish.py": {
+            "mean": 0.502,
+            "std": 0.00887,
+            "min": 0.491,
+            "max": 0.535,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "36_ConvTranspose2d_Min_Sum_GELU_Add.py": {
+            "mean": 1.62,
+            "std": 0.0403,
+            "min": 1.55,
+            "max": 1.87,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "37_Matmul_Swish_Sum_GroupNorm.py": {
+            "mean": 0.179,
+            "std": 0.00807,
+            "min": 0.17,
+            "max": 0.223,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "38_ConvTranspose3d_AvgPool_Clamp_Softmax_Multiply.py": {
+            "mean": 8.14,
+            "std": 0.225,
+            "min": 7.42,
+            "max": 8.61,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "39_Gemm_Scale_BatchNorm.py": {
+            "mean": 0.21,
+            "std": 0.0495,
+            "min": 0.194,
+            "max": 0.69,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "40_Matmul_Scaling_ResidualAdd.py": {
+            "mean": 0.141,
+            "std": 0.0153,
+            "min": 0.13,
+            "max": 0.238,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "41_Gemm_BatchNorm_GELU_GroupNorm_Mean_ReLU.py": {
+            "mean": 0.256,
+            "std": 0.00873,
+            "min": 0.246,
+            "max": 0.291,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "42_ConvTranspose2d_GlobalAvgPool_BiasAdd_LogSumExp_Sum_Multiply.py": {
+            "mean": 0.798,
+            "std": 0.228,
+            "min": 0.647,
+            "max": 1.28,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "43_Conv3d_Max_LogSumExp_ReLU.py": {
+            "mean": 7.41,
+            "std": 0.211,
+            "min": 6.38,
+            "max": 7.63,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "44_ConvTranspose2d_Multiply_GlobalAvgPool_GlobalAvgPool_Mean.py": {
+            "mean": 2.91,
+            "std": 0.382,
+            "min": 1.69,
+            "max": 4.37,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "45_Gemm_Sigmoid_Sum_LogSumExp.py": {
+            "mean": 0.226,
+            "std": 0.0217,
+            "min": 0.202,
+            "max": 0.307,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "46_Conv2d_Subtract_Tanh_Subtract_AvgPool.py": {
+            "mean": 0.494,
+            "std": 0.0079,
+            "min": 0.486,
+            "max": 0.53,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "47_Conv3d_Mish_Tanh.py": {
+            "mean": 1.22,
+            "std": 0.015,
+            "min": 1.21,
+            "max": 1.31,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "48_Conv3d_Scaling_Tanh_Multiply_Sigmoid.py": {
+            "mean": 5.36,
+            "std": 0.97,
+            "min": 4.88,
+            "max": 8.82,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "49_ConvTranspose3d_Softmax_Sigmoid.py": {
+            "mean": 34.3,
+            "std": 0.444,
+            "min": 33.3,
+            "max": 35.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "50_ConvTranspose3d_Scaling_AvgPool_BiasAdd_Scaling.py": {
+            "mean": 70.8,
+            "std": 0.451,
+            "min": 69.8,
+            "max": 72.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "51_Gemm_Subtract_GlobalAvgPool_LogSumExp_GELU_ResidualAdd.py": {
+            "mean": 0.191,
+            "std": 0.0126,
+            "min": 0.178,
+            "max": 0.226,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "52_Conv2d_Activation_BatchNorm.py": {
+            "mean": 0.567,
+            "std": 0.00847,
+            "min": 0.557,
+            "max": 0.585,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "53_Gemm_Scaling_Hardtanh_GELU.py": {
+            "mean": 0.166,
+            "std": 0.0142,
+            "min": 0.158,
+            "max": 0.259,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "54_Conv2d_Multiply_LeakyReLU_GELU.py": {
+            "mean": 0.439,
+            "std": 0.00687,
+            "min": 0.432,
+            "max": 0.483,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "55_Matmul_MaxPool_Sum_Scale.py": {
+            "mean": 0.147,
+            "std": 0.00833,
+            "min": 0.139,
+            "max": 0.189,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "56_Matmul_Sigmoid_Sum.py": {
+            "mean": 0.143,
+            "std": 0.00829,
+            "min": 0.133,
+            "max": 0.182,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "57_Conv2d_ReLU_HardSwish.py": {
+            "mean": 0.45,
+            "std": 0.00961,
+            "min": 0.438,
+            "max": 0.478,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "58_ConvTranspose3d_LogSumExp_HardSwish_Subtract_Clamp_Max.py": {
+            "mean": 65.9,
+            "std": 1.02,
+            "min": 64.2,
+            "max": 68.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "59_Matmul_Swish_Scaling.py": {
+            "mean": 0.169,
+            "std": 0.0102,
+            "min": 0.16,
+            "max": 0.214,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "60_ConvTranspose3d_Swish_GroupNorm_HardSwish.py": {
+            "mean": 63.0,
+            "std": 0.939,
+            "min": 60.9,
+            "max": 64.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "61_ConvTranspose3d_ReLU_GroupNorm.py": {
+            "mean": 5.54,
+            "std": 0.883,
+            "min": 5.14,
+            "max": 9.34,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "62_Matmul_GroupNorm_LeakyReLU_Sum.py": {
+            "mean": 0.188,
+            "std": 0.0122,
+            "min": 0.178,
+            "max": 0.287,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "63_Gemm_ReLU_Divide.py": {
+            "mean": 0.189,
+            "std": 0.0144,
+            "min": 0.173,
+            "max": 0.24,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "64_Gemm_LogSumExp_LeakyReLU_LeakyReLU_GELU_GELU.py": {
+            "mean": 0.23,
+            "std": 0.026,
+            "min": 0.221,
+            "max": 0.483,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "65_Conv2d_AvgPool_Sigmoid_Sum.py": {
+            "mean": 0.468,
+            "std": 0.00643,
+            "min": 0.459,
+            "max": 0.496,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "66_Matmul_Dropout_Mean_Softmax.py": {
+            "mean": 0.252,
+            "std": 0.017,
+            "min": 0.225,
+            "max": 0.306,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "67_Conv2d_GELU_GlobalAvgPool.py": {
+            "mean": 0.473,
+            "std": 0.0132,
+            "min": 0.457,
+            "max": 0.508,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "68_Matmul_Min_Subtract.py": {
+            "mean": 0.151,
+            "std": 0.0136,
+            "min": 0.139,
+            "max": 0.23,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "69_Conv2d_HardSwish_ReLU.py": {
+            "mean": 0.484,
+            "std": 0.0237,
+            "min": 0.375,
+            "max": 0.537,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "70_Gemm_Sigmoid_Scaling_ResidualAdd.py": {
+            "mean": 0.16,
+            "std": 0.00682,
+            "min": 0.154,
+            "max": 0.193,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "71_Conv2d_Divide_LeakyReLU.py": {
+            "mean": 0.449,
+            "std": 0.0346,
+            "min": 0.433,
+            "max": 0.776,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "72_ConvTranspose3d_BatchNorm_AvgPool_AvgPool.py": {
+            "mean": 152.0,
+            "std": 0.407,
+            "min": 151.0,
+            "max": 153.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "73_Conv2d_BatchNorm_Scaling.py": {
+            "mean": 0.34,
+            "std": 0.00601,
+            "min": 0.334,
+            "max": 0.374,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "74_ConvTranspose3d_LeakyReLU_Multiply_LeakyReLU_Max.py": {
+            "mean": 16.2,
+            "std": 1.49,
+            "min": 15.7,
+            "max": 27.4,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "75_Gemm_GroupNorm_Min_BiasAdd.py": {
+            "mean": 0.224,
+            "std": 0.0119,
+            "min": 0.209,
+            "max": 0.253,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "76_Gemm_Add_ReLU.py": {
+            "mean": 0.194,
+            "std": 0.0175,
+            "min": 0.178,
+            "max": 0.258,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "77_ConvTranspose3d_Scale_BatchNorm_GlobalAvgPool.py": {
+            "mean": 10.6,
+            "std": 1.08,
+            "min": 9.82,
+            "max": 17.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "78_ConvTranspose3d_Max_Max_Sum.py": {
+            "mean": 10.3,
+            "std": 0.189,
+            "min": 10.0,
+            "max": 10.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "79_Conv3d_Multiply_InstanceNorm_Clamp_Multiply_Max.py": {
+            "mean": 5.49,
+            "std": 0.121,
+            "min": 5.12,
+            "max": 5.65,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "80_Gemm_Max_Subtract_GELU.py": {
+            "mean": 0.217,
+            "std": 0.00659,
+            "min": 0.21,
+            "max": 0.239,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "81_Gemm_Swish_Divide_Clamp_Tanh_Clamp.py": {
+            "mean": 0.179,
+            "std": 0.0166,
+            "min": 0.163,
+            "max": 0.227,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "82_Conv2d_Tanh_Scaling_BiasAdd_Max.py": {
+            "mean": 0.509,
+            "std": 0.0386,
+            "min": 0.485,
+            "max": 0.86,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "83_Conv3d_GroupNorm_Min_Clamp_Dropout.py": {
+            "mean": 6.25,
+            "std": 0.947,
+            "min": 5.75,
+            "max": 9.78,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "84_Gemm_BatchNorm_Scaling_Softmax.py": {
+            "mean": 0.288,
+            "std": 0.0119,
+            "min": 0.275,
+            "max": 0.338,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "85_Conv2d_GroupNorm_Scale_MaxPool_Clamp.py": {
+            "mean": 0.62,
+            "std": 0.0116,
+            "min": 0.608,
+            "max": 0.696,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "86_Matmul_Divide_GELU.py": {
+            "mean": 0.18,
+            "std": 0.00775,
+            "min": 0.173,
+            "max": 0.223,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "87_Conv2d_Subtract_Subtract_Mish.py": {
+            "mean": 0.45,
+            "std": 0.0508,
+            "min": 0.434,
+            "max": 0.948,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "88_Gemm_GroupNorm_Swish_Multiply_Swish.py": {
+            "mean": 0.232,
+            "std": 0.0195,
+            "min": 0.205,
+            "max": 0.287,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "89_ConvTranspose3d_MaxPool_Softmax_Subtract_Swish_Max.py": {
+            "mean": 63.9,
+            "std": 0.494,
+            "min": 63.1,
+            "max": 66.3,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "90_Conv3d_LeakyReLU_Sum_Clamp_GELU.py": {
+            "mean": 5.6,
+            "std": 0.832,
+            "min": 5.31,
+            "max": 8.68,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "91_ConvTranspose2d_Softmax_BiasAdd_Scaling_Sigmoid.py": {
+            "mean": 4.29,
+            "std": 0.0423,
+            "min": 4.14,
+            "max": 4.39,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "92_Conv2d_GroupNorm_Tanh_HardSwish_ResidualAdd_LogSumExp.py": {
+            "mean": 0.5,
+            "std": 0.113,
+            "min": 0.332,
+            "max": 0.954,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "93_ConvTranspose2d_Add_Min_GELU_Multiply.py": {
+            "mean": 3.67,
+            "std": 0.608,
+            "min": 3.13,
+            "max": 4.47,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "94_Gemm_BiasAdd_Hardtanh_Mish_GroupNorm.py": {
+            "mean": 0.188,
+            "std": 0.00782,
+            "min": 0.176,
+            "max": 0.223,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "95_Matmul_Add_Swish_Tanh_GELU_Hardtanh.py": {
+            "mean": 0.161,
+            "std": 0.00536,
+            "min": 0.154,
+            "max": 0.187,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "96_ConvTranspose3d_Multiply_Max_GlobalAvgPool_Clamp.py": {
+            "mean": 79.5,
+            "std": 0.416,
+            "min": 78.8,
+            "max": 80.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "97_Matmul_BatchNorm_BiasAdd_Divide_Swish.py": {
+            "mean": 0.256,
+            "std": 0.00761,
+            "min": 0.25,
+            "max": 0.318,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "98_Matmul_AvgPool_GELU_Scale_Max.py": {
+            "mean": 0.18,
+            "std": 0.0695,
+            "min": 0.15,
+            "max": 0.756,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "99_Matmul_GELU_Softmax.py": {
+            "mean": 0.145,
+            "std": 0.0121,
+            "min": 0.135,
+            "max": 0.211,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "100_ConvTranspose3d_Clamp_Min_Divide.py": {
+            "mean": 9.21,
+            "std": 1.78,
+            "min": 8.58,
+            "max": 16.3,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        }
+    },
+    "level3": {
+        "1_MLP.py": {
+            "mean": 0.223,
+            "std": 0.00721,
+            "min": 0.215,
+            "max": 0.25,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "2_ShallowWideMLP.py": {
+            "mean": 0.233,
+            "std": 0.00836,
+            "min": 0.221,
+            "max": 0.273,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "3_DeepNarrowMLP.py": {
+            "mean": 0.425,
+            "std": 0.0139,
+            "min": 0.406,
+            "max": 0.461,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "4_LeNet5.py": {
+            "mean": 0.501,
+            "std": 0.0278,
+            "min": 0.452,
+            "max": 0.588,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "5_AlexNet.py": {
+            "mean": 7.3,
+            "std": 0.18,
+            "min": 6.15,
+            "max": 7.68,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "6_GoogleNetInceptionModule.py": {
+            "mean": 204.0,
+            "std": 2.51,
+            "min": 190.0,
+            "max": 215.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "7_GoogleNetInceptionV1.py": {
+            "mean": 10.3,
+            "std": 0.249,
+            "min": 9.38,
+            "max": 10.9,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "8_ResNetBasicBlock.py": {
+            "mean": 15.1,
+            "std": 0.11,
+            "min": 14.9,
+            "max": 15.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "9_ResNet18.py": {
+            "mean": 3.32,
+            "std": 0.0659,
+            "min": 3.2,
+            "max": 3.82,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "10_ResNet101.py": {
+            "mean": 47.2,
+            "std": 0.688,
+            "min": 45.5,
+            "max": 50.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "11_VGG16.py": {
+            "mean": 63.7,
+            "std": 0.896,
+            "min": 62.5,
+            "max": 70.3,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "12_VGG19.py": {
+            "mean": 77.4,
+            "std": 0.647,
+            "min": 75.9,
+            "max": 81.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "13_DenseNet121TransitionLayer.py": {
+            "mean": 2.56,
+            "std": 0.00995,
+            "min": 2.55,
+            "max": 2.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "14_DenseNet121DenseBlock.py": {
+            "mean": 140.0,
+            "std": 0.298,
+            "min": 139.0,
+            "max": 141.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "15_DenseNet121.py": {
+            "mean": 32.7,
+            "std": 0.371,
+            "min": 32.0,
+            "max": 33.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "16_DenseNet201.py": {
+            "mean": 59.6,
+            "std": 0.44,
+            "min": 58.7,
+            "max": 60.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "17_SqueezeNetFireModule.py": {
+            "mean": 17.2,
+            "std": 0.185,
+            "min": 16.7,
+            "max": 17.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "18_SqueezeNet.py": {
+            "mean": 1.83,
+            "std": 0.0184,
+            "min": 1.78,
+            "max": 1.89,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "19_MobileNetV1.py": {
+            "mean": 6.82,
+            "std": 0.125,
+            "min": 6.16,
+            "max": 6.98,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "20_MobileNetV2.py": {
+            "mean": 7.56,
+            "std": 0.0978,
+            "min": 7.37,
+            "max": 7.74,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "21_EfficientNetMBConv.py": {
+            "mean": 62.8,
+            "std": 0.707,
+            "min": 61.7,
+            "max": 64.4,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "22_EfficientNetB0.py": {
+            "mean": 7.28,
+            "std": 0.0984,
+            "min": 7.09,
+            "max": 7.55,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "23_EfficientNetB1.py": {
+            "mean": 5.52,
+            "std": 0.0575,
+            "min": 5.41,
+            "max": 5.66,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "24_EfficientNetB2.py": {
+            "mean": 2.79,
+            "std": 0.221,
+            "min": 2.53,
+            "max": 4.71,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "25_ShuffleNetUnit.py": {
+            "mean": 114.0,
+            "std": 1.62,
+            "min": 110.0,
+            "max": 122.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "26_ShuffleNet.py": {
+            "mean": 72.7,
+            "std": 0.911,
+            "min": 71.0,
+            "max": 75.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "27_RegNet.py": {
+            "mean": 28.0,
+            "std": 0.585,
+            "min": 27.3,
+            "max": 30.4,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "28_VisionTransformer.py": {
+            "mean": 6.69,
+            "std": 0.259,
+            "min": 5.67,
+            "max": 7.42,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "29_SwinMLP.py": {
+            "mean": 36.2,
+            "std": 0.459,
+            "min": 35.4,
+            "max": 37.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "30_SwinTransformerV2.py": {
+            "mean": 35.3,
+            "std": 0.613,
+            "min": 34.2,
+            "max": 37.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "31_VisionAttention.py": {
+            "mean": 130.0,
+            "std": 0.794,
+            "min": 128.0,
+            "max": 133.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "32_ConvolutionalVisionTransformer.py": {
+            "mean": 1.93,
+            "std": 0.0192,
+            "min": 1.88,
+            "max": 2.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "33_VanillaRNN.py": {
+            "mean": 0.204,
+            "std": 0.00913,
+            "min": 0.193,
+            "max": 0.238,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "34_VanillaRNNHidden.py": {
+            "mean": 0.17,
+            "std": 0.00947,
+            "min": 0.16,
+            "max": 0.209,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "35_LTSM.py": {
+            "mean": 32.4,
+            "std": 3.62,
+            "min": 30.9,
+            "max": 66.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "36_LTSMHn.py": {
+            "mean": 36.0,
+            "std": 2.1,
+            "min": 34.5,
+            "max": 47.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "37_LTSMCn.py": {
+            "mean": 33.9,
+            "std": 1.98,
+            "min": 32.2,
+            "max": 51.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "38_LTSMBidirectional.py": {
+            "mean": 71.5,
+            "std": 1.49,
+            "min": 68.9,
+            "max": 84.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "39_GRU.py": {
+            "mean": 26.2,
+            "std": 1.16,
+            "min": 25.4,
+            "max": 35.6,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "40_GRUHidden.py": {
+            "mean": 33.6,
+            "std": 0.621,
+            "min": 33.2,
+            "max": 36.8,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "41_GRUBirectional.py": {
+            "mean": 54.8,
+            "std": 0.588,
+            "min": 53.8,
+            "max": 56.1,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "42_GRUBidirectionalHidden.py": {
+            "mean": 54.3,
+            "std": 1.17,
+            "min": 52.2,
+            "max": 56.7,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "43_MinGPTCausalAttention.py": {
+            "mean": 118.0,
+            "std": 1.7,
+            "min": 113.0,
+            "max": 121.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "44_MiniGPTBlock.py": {
+            "mean": 293.0,
+            "std": 7.03,
+            "min": 274.0,
+            "max": 306.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "45_UNetSoftmax.py": {
+            "mean": 95.6,
+            "std": 0.991,
+            "min": 93.7,
+            "max": 101.0,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "46_NetVladWithGhostClusters.py": {
+            "mean": 0.38,
+            "std": 0.0107,
+            "min": 0.36,
+            "max": 0.428,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "47_NetVladNoGhostClusters.py": {
+            "mean": 0.365,
+            "std": 0.00614,
+            "min": 0.356,
+            "max": 0.385,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "48_Mamba2ReturnY.py": {
+            "mean": 0.609,
+            "std": 0.0234,
+            "min": 0.563,
+            "max": 0.683,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "49_Mamba2ReturnFinalState.py": {
+            "mean": 0.286,
+            "std": 0.0294,
+            "min": 0.271,
+            "max": 0.565,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        },
+        "50_ReLUSelfAttention.py": {
+            "mean": 36.3,
+            "std": 0.709,
+            "min": 35.2,
+            "max": 38.5,
+            "num_trials": 100,
+            "hardware": "Tesla T4",
+            "device": "cuda:0"
+        }
+    }
+}
