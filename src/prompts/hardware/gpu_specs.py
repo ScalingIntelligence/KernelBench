@@ -6,6 +6,7 @@ A List of GPU Specs to include in the prompt
 
 GPU_SPEC_INFO = {
     "L40S": {
+        "GPU Architecture": "Ada",
         "GPU Memory": "48GB GDDR6 with ECC",
         "Memory Bandwidth": "864 GB/s",
         "RT Core Performance TFLOPS": "212",
@@ -22,6 +23,7 @@ GPU_SPEC_INFO = {
         "Maximum shared memory per thread block": "99 KB",
     },
     "H100": {
+        "GPU Architecture": "Hopper",
         "GPU Memory": "80GB",
         "Memory Bandwidth": "3.35 TB/s",
         "FP64 TFLOPS": "34",
@@ -39,6 +41,7 @@ GPU_SPEC_INFO = {
         "Maximum shared memory per thread block": "227 KB",
     },
     "A100": {
+        "GPU Architecture": "Ampere",
         "GPU Memory": "40GB",
         "Memory Bandwidth": "1935 GB/s",
         "FP64 TFLOPS": "9.7",
@@ -55,6 +58,7 @@ GPU_SPEC_INFO = {
         "Maximum shared memory per thread block": "163 KB",
     },
     "A100-80GB": {
+        "GPU Architecture": "Ampere",
         "GPU Memory": "80GB",
         "Memory Bandwidth": "1935 GB/s",
         "FP64 TFLOPS": "9.7",
@@ -71,6 +75,7 @@ GPU_SPEC_INFO = {
         "Maximum shared memory per thread block": "163 KB",
     },
     "L4": {
+        "GPU Architecture": "Ada",
         "GPU Memory": "24GB",
         "Memory Bandwidth": "300 GB/s",
         "FP32 TFLOPS": "30.3",
@@ -85,6 +90,7 @@ GPU_SPEC_INFO = {
         "Maximum shared memory per thread block": "99 KB",
     }, 
     "T4": {
+        "GPU Architecture": "Turing",
         "GPU Memory": "16 GB GDDR6",
         "Memory Bandwidth": "300 GB/s",
         "Single-Precision TFLOPS": "8.1",
@@ -97,6 +103,7 @@ GPU_SPEC_INFO = {
         "Shared memory capacity per SM": "64 KB",
     },
     "A10G": {
+        "GPU Architecture": "Ampere",
         "GPU Memory": "24GB GDDR6",
         "Memory Bandwidth": "600 GB/s",
         "FP32 TFLOPS": "31.2",
@@ -113,6 +120,7 @@ GPU_SPEC_INFO = {
     }
 }
 
+# Basic GPU concept definitions
 GPU_DEFINITIONS = {
     "Thread": "A thread is a single execution unit that can run a single instruction at a time.",
     "Thread Block": "A thread block is a group of threads that can cooperate with each other.",
@@ -125,12 +133,16 @@ GPU_DEFINITIONS = {
 }
 
 
-# NOTE: Do we need this?
+
 GPU_BEST_PRACTICES = [
-    "Find ways to parallelize sequential code",
-    "Minimize data transfers between the host and the device",
-    "Adjust kernel launch configuration to maximize device utilization",
-    "Ensure that global memory accesses are coalesced",
-    "Minimize redundant accesses to global memory whenever possible",
-    "Avoid long sequences of diverged execution by threads within the same warp",
+    # From https://docs.nvidia.com/cuda/ada-tuning-guide/index.html
+    # CUDA Best Practices Section
+    "Find ways to parallelize sequential code.",
+    "Minimize data transfers between the host and the device.",
+    "Adjust kernel launch configuration to maximize device utilization.",
+    "Ensure that global memory accesses are coalesced.",
+    "Minimize redundant accesses to global memory whenever possible.",
+    "Avoid long sequences of diverged execution by threads within the same warp.",
+    # we added this to reference the specific GPU architecture
+    "Use specialized instructions based on the specific GPU architecture",
 ]

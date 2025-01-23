@@ -387,9 +387,10 @@ def prompt_generate_prompt_with_hardware_info(ref_arch_src: str,
     # Get the required variables from the local namespace
     GPU_SPEC_INFO = local_dict.get('GPU_SPEC_INFO')
     GPU_DEFINITIONS = local_dict.get('GPU_DEFINITIONS')
+    GPU_BEST_PRACTICES = local_dict.get('GPU_BEST_PRACTICES')
     
-    if not GPU_SPEC_INFO or not GPU_DEFINITIONS:
-        raise ValueError("GPU_SPEC_INFO or GPU_DEFINITIONS not found in gpu_spec_info_src")
+    if not GPU_SPEC_INFO or not GPU_DEFINITIONS or not GPU_BEST_PRACTICES:
+        raise ValueError("GPU_SPEC_INFO or GPU_DEFINITIONS or GPU_BEST_PRACTICES not found in gpu_spec_info_src")
 
     prompt = PROBLEM_STATEMENT
 
@@ -407,17 +408,26 @@ def prompt_generate_prompt_with_hardware_info(ref_arch_src: str,
     
     curr_gpu_spec_info = GPU_SPEC_INFO[gpu_name]
 
+    gpu_architecture = curr_gpu_spec_info.get("GPU Architecture")
     prompt += f"""
     Here is some information about the underlying hardware that you should keep in mind. \n\n
-The GPU that will run the kernel is NVIDIA {gpu_name}.\n\n"""
+The GPU that will run the kernel is NVIDIA {gpu_name}, {gpu_architecture} architecture.\n\n"""
     
     for key, value in curr_gpu_spec_info.items():
+        if key == "GPU Architecture":
+            continue
         prompt += f"""- We have {value} of {key}.\n"""
+    
     
     prompt += f"""\n\n
 Here are some concepts about the GPU architecture that could be helpful: \n\n"""
     for key, value in GPU_DEFINITIONS.items():
         prompt += f"""- {key}: {value}\n"""
+
+    prompt += f"""\n\n
+Here are some best practices for writing CUDA kernels on GPU: \n\n"""
+    for best_practice in GPU_BEST_PRACTICES:
+        prompt += f"""- {best_practice}\n"""
 
 
     prompt += f"""
@@ -426,6 +436,7 @@ Here are some concepts about the GPU architecture that could be helpful: \n\n"""
     {ref_arch_src}
     ```
     """
+    
 
     prompt += PROBLEM_INSTRUCTION
     return prompt
