@@ -81,13 +81,12 @@ python3 scripts/eval_from_generations.py level=1 run_name="test_hf_level_1" data
 ```
 
 You can check out `scripts/greedy_analysis.py` to analyze the eval results.
-We provide some reference baseline times on NVIDIA L40S in `results/timing` (soon also on H100).
+We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`.
 
 ## 🛣️ Upcoming Roadmap
-- [ ] More reference baseline times on various GPU platforms
-- [ ] Integrate with more DSLs and collectives, such as Triton and [ThunderKittens](https://,github.com/HazyResearch/ThunderKittens)
-- [ ] Add backward pass problems
-- [ ] Integrate with toolchains such as NVIDIA Nsight Compute (NCU)
+- [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
+- [ ] Add backward pass
+- [ ] Integrate with toolchains such as NCU
 
 
 <!-- Add Citation -->

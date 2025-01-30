@@ -1,6 +1,7 @@
 import os
 from .utils import read_file
 
+
 """
 Construct Prompt
 
@@ -334,6 +335,119 @@ def prompt_generate_custom_cuda_from_prompt_template(ref_arch_src: str) -> str:
     return prompt_generate_custom_cuda(arch, example_arch, example_new_arch)
 
 
+def prompt_generate_prompt_with_hardware_info_from_template(ref_arch_src: str, gpu_name: str) -> str:
+    """
+    Similar to prompt_generate_custom_cuda_from_prompt_template, 
+    but with hardware information for the given GPU
+    """
+
+    arch = ref_arch_src
+    # These are strictly defined for now
+
+    # path to prompt template, show an example of Model (torch specifications) and ModelNew (torch + custom CUDA kernels)
+    example_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_ex_add.py"
+    )
+    example_new_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_new_ex_add.py"
+    )
+
+    gpu_spec_file_path = os.path.join(REPO_TOP_PATH, f"src/prompts/hardware/gpu_specs.py")
+
+    example_arch = read_file(example_arch_path)
+    example_new_arch = read_file(example_new_arch_path)
+    gpu_spec_info = read_file(gpu_spec_file_path)
+
+    return prompt_generate_prompt_with_hardware_info(
+                                        ref_arch_src=arch, 
+                                        gpu_name=gpu_name, 
+                                        example_arch_src=example_arch, 
+                                        example_new_arch_src=example_new_arch, 
+                                        gpu_spec_info_src=gpu_spec_info
+                                        )
+    
+
+
+def prompt_generate_prompt_with_hardware_info(ref_arch_src: str, 
+                                              gpu_name: str, 
+                                              example_arch_src: str, 
+                                              example_new_arch_src: str, 
+                                              gpu_spec_info_src: str) -> str:
+    """
+    Generate a prompt with hardware information for the given GPU
+    gpu_spec_info_src: str of the gpu spec src file
+    """
+
+    # Create a dictionary to store the local namespace
+    local_dict = {}
+    
+    # Execute the GPU spec file in the local namespace
+    exec(gpu_spec_info_src, {}, local_dict)
+    
+    # Get the required variables from the local namespace
+    GPU_SPEC_INFO = local_dict.get('GPU_SPEC_INFO')
+    GPU_DEFINITIONS = local_dict.get('GPU_DEFINITIONS')
+    GPU_BEST_PRACTICES = local_dict.get('GPU_BEST_PRACTICES')
+    
+    if not GPU_SPEC_INFO or not GPU_DEFINITIONS or not GPU_BEST_PRACTICES:
+        raise ValueError("GPU_SPEC_INFO or GPU_DEFINITIONS or GPU_BEST_PRACTICES not found in gpu_spec_info_src")
+
+    prompt = PROBLEM_STATEMENT
+
+    if example_arch_src != "" and example_new_arch_src != "":
+        prompt += f"""
+        Here's an example to show you the syntax of inline embedding custom CUDA operators in torch: The example given architecture is: \n
+        ``` \n
+        {example_arch_src}
+        ``` \n
+        The example new arch with custom CUDA kernels looks like this: 
+        ```
+        {example_new_arch_src}
+        ``` \n
+        """
+    
+    curr_gpu_spec_info = GPU_SPEC_INFO[gpu_name]
+
+    gpu_architecture = curr_gpu_spec_info.get("GPU Architecture")
+    prompt += f"""
+    Here is some information about the underlying hardware that you should keep in mind. \n\n
+The GPU that will run the kernel is NVIDIA {gpu_name}, {gpu_architecture} architecture.\n\n"""
+    
+    for key, value in curr_gpu_spec_info.items():
+        if key == "GPU Architecture":
+            continue
+        prompt += f"""- We have {value} of {key}.\n"""
+    
+    
+    prompt += f"""\n\n
+Here are some concepts about the GPU architecture that could be helpful: \n\n"""
+    for key, value in GPU_DEFINITIONS.items():
+        prompt += f"""- {key}: {value}\n"""
+
+    prompt += f"""\n\n
+Here are some best practices for writing CUDA kernels on GPU: \n\n"""
+    for best_practice in GPU_BEST_PRACTICES:
+        prompt += f"""- {best_practice}\n"""
+
+
+    prompt += f"""
+    You are given the following architecture: \n
+    ```
+    {ref_arch_src}
+    ```
+    """
+    
+
+    prompt += PROBLEM_INSTRUCTION
+    return prompt
+
+
+    return Nonoe
+
+
+
+
+
 def prompt_fix_compile(ref_arch_src, custom_cuda, metadata):
     prompt = PROBLEM_STATEMENT
     prompt += f"""
@@ -349,6 +463,7 @@ def prompt_fix_compile(ref_arch_src, custom_cuda, metadata):
     ```
     {metadata}
     ```
+    
     Please fix the compilation error in the new model code. Please output the corrected code in codeblocks.
     """
     return prompt
@@ -372,3 +487,20 @@ def prompt_fix_correctness(ref_arch_src, custom_cuda, metadata):
     Please consider how your custom CUDA kernels are implemented, how it is different from the reference implementation, and fix the correctness error in the new model code. Please output the corrected code in codeblocks.
     """
     return prompt
+
+def main():
+    gpu_name = "L40S"
+
+
+    ref_arch_src = read_file(os.path.join(KERNEL_BENCH_PATH, f"level1/19_ReLU.py"))
+    assert len(ref_arch_src) > 0, "ref_arch_src is empty"
+    prompt = prompt_generate_prompt_with_hardware_info_from_template(ref_arch_src, gpu_name)
+    print(prompt)
+    # Write prompt to temp file
+    temp_file_path = os.path.join(REPO_TOP_PATH, "scratch", "prompt_draft.txt")
+    os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
+    with open(temp_file_path, "w") as f:
+        f.write(prompt)
+
+if __name__ == "__main__":
+    main()
