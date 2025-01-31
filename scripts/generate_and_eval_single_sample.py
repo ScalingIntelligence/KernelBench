@@ -41,13 +41,15 @@ class EvalConfig(Config):
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
 
+        # Archon config
+        self.archon_config_path = None
 
         # Inference config
         self.server_type = "deepseek"
         self.model_name = "deepseek-coder"
         self.max_tokens = 4096
         self.temperature = 0.0
-        
+
         # Logging
         self.logdir = os.path.join(REPO_TOP_DIR, "results/eval_logs")
         self.verbose = False
@@ -123,7 +125,8 @@ def main(config: EvalConfig):
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
-                                                        verbose=config.verbose, 
+                                                        verbose=config.verbose,
+                                                        archon_config_path=config.archon_config_path,
                                                         time_generation=True)
     
 

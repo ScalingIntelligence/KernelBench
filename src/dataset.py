@@ -3,11 +3,9 @@
 ################################################################################
 
 import os
-import sys
 import random
 import re
 import hashlib
-import utils
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(

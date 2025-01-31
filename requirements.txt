@@ -12,3 +12,4 @@ google-generativeai
 together
 pytest
 ninja
+archon-ai
