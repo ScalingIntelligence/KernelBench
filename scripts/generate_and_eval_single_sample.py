@@ -8,7 +8,7 @@ from datasets import load_dataset
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from src.prompt_constructor import prompt_generate_custom_kernel_from_prompt_template
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 """
@@ -57,6 +57,8 @@ class EvalConfig(Config):
         self.log_generated_kernel = False
         self.log_eval_result = False
 
+        self.framework = "cuda" # cuda or triton
+
     def verbose_logging(self):
         self.log = True
         self.log_prompt = True
@@ -94,6 +96,7 @@ def main(config: EvalConfig):
     print(f"Start Generation + Evaluation for Level {config.level} Problem {config.problem_id}")
 
     assert config.problem_id <= num_problems, f"Problem ID {config.problem_id} out of range for Level {config.level}"
+    assert config.framework in ["cuda", "triton"], "Framework must be either cuda or triton"
 
 
     # 1. Fetch Problem
@@ -128,27 +131,27 @@ def main(config: EvalConfig):
     
 
 
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    custom_kernel_prompt = prompt_generate_custom_kernel_from_prompt_template(ref_arch_src, framework=config.framework)
     if config.log_prompt:
         with open(os.path.join(config.logdir, f"prompt_level_{config.level}_problem_{config.problem_id}.txt"), "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_kernel_prompt)
 
     # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    custom_kernel = inference_server(custom_kernel_prompt)
+    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
+    assert custom_kernel is not None, "Custom CUDA code generation failed"
     
     # this should be optional
     if config.log:
         with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py"), "w") as f:
-            f.write(custom_cuda)
+            f.write(custom_kernel)
 
     # 3. Evaluate Kernel
     # NOTE: no need to wrap around process here as only a single sample
     # see batch eval for examples of process isolation
     kernel_exec_result = eval_kernel_against_ref(
-        ref_arch_src, custom_cuda, verbose=config.verbose, measure_performance=True, num_correct_trials=5, num_perf_trials=100
+        ref_arch_src, custom_kernel, verbose=config.verbose, measure_performance=True, num_correct_trials=5, num_perf_trials=100
     )
     
     print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")

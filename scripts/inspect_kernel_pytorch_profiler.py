@@ -69,7 +69,7 @@ def get_torch_profiler_info(ref_arch_src: str,
         for x in init_inputs
     ]
     
-    ModelNew = load_custom_model(kernel_src, context, build_dir)
+    ModelNew, tempfile_path = load_custom_model(kernel_src, context, build_dir)
     # construct the new model with init inputs
     model = ModelNew(*init_inputs)
     assert hasattr(model, "forward")
@@ -97,7 +97,9 @@ def get_torch_profiler_info(ref_arch_src: str,
 
         profiler_output = prof.key_averages().table(sort_by='cuda_time_total', 
                                                     row_limit=table_row_limit)
-        
+    
+    # delete the tempfile
+    os.remove(tempfile_path)
     return profiler_output
     
 def __main__():

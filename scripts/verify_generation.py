@@ -1,7 +1,7 @@
 import sys, os
 import src.utils as utils
 import time
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from src.prompt_constructor import prompt_generate_custom_kernel_from_prompt_template
 
 """
 For testing infernece and quickly iterate on prompts 
@@ -25,27 +25,27 @@ def inference_with_prompt(arch_path, inference_server: callable = None, log_to_l
         with open("./scratch/model.py", "w") as f:
             f.write(arch)
 
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(arch)
+    custom_kernel_prompt = prompt_generate_custom_kernel_from_prompt_template(arch)
 
     if log_to_local:    
         with open(f"./scratch/prompt.py", "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_kernel_prompt)
 
     # query LLM
-    custom_cuda = inference_server(custom_cuda_prompt)
+    custom_kernel = inference_server(custom_kernel_prompt)
 
-    custom_cuda = utils.extract_first_code(custom_cuda, ["python", "cpp"])
+    custom_kernel = utils.extract_first_code(custom_kernel, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
+    assert custom_kernel is not None, "Custom CUDA code generation failed"
     print(
         "[Verification] Torch module with Custom CUDA code **GENERATED** successfully"
     )
 
     if log_to_local:
         with open(f"./scratch/model_new.py", "w") as f:
-            f.write(custom_cuda)
+            f.write(custom_kernel)
 
-    return custom_cuda
+    return custom_kernel
 
 
 def sanity_check_inference(inference_server: callable):

@@ -10,7 +10,7 @@ from datasets import load_dataset
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from src.prompt_constructor import prompt_generate_custom_kernel_from_prompt_template
 from src.utils import extract_first_code, set_gpu_arch, read_file, create_inference_server_from_presets, maybe_multithread
 
 """
@@ -61,6 +61,7 @@ class GenerationConfig(Config):
         # self.num_samples = 0 # for sampling multiple samples per problem
 
         self.log_prompt = False
+        self.framework = "cuda" # cuda or triton
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -93,21 +94,22 @@ def generate_sample_single(work: WorkArgs, config: GenerationConfig, dataset, in
     # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
     problem_number = int(problem_name.split("_")[0])
     assert problem_number == work.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    assert config.framework in ["cuda", "triton"], "Framework must be either cuda or triton"
     
     
 
     # Construct Prompt   
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    custom_kernel_prompt = prompt_generate_custom_kernel_from_prompt_template(ref_arch_src, framework=config.framework)
     if config.log_prompt:
         prompt_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt")
         with open(prompt_path, "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_kernel_prompt)
 
     # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    custom_kernel = inference_server(custom_kernel_prompt)
+    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
+    assert custom_kernel is not None, "Custom CUDA code generation failed"
 
     if config.verbose:
         print(f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}")
@@ -115,7 +117,7 @@ def generate_sample_single(work: WorkArgs, config: GenerationConfig, dataset, in
     # Store to local file
     kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py")
     with open(kernel_path, "w") as f:
-        f.write(custom_cuda)
+        f.write(custom_kernel)
     
     return True
     
