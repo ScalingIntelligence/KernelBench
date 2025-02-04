@@ -65,6 +65,9 @@ It is easier to get started with a single problem. This will fetch the problem, 
 
 python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" level=2 problem_id=40
 
+# to generate and evaluate triton kernels, use the following
+python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" level=2 problem_id=40 framework="triton"
+
 # dataset_src could be "local" or "huggingface"
 # add .verbose_logging for more visbility
 ```
@@ -72,8 +75,8 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 ### Run on all problems 
 
 ```
-# 1. Generate responses and store kernels locally to runs/{run_name} directory
-python3 scripts/generate_samples.py run_name="test_hf_level_1" dataset_src="huggingface" level="1" num_workers=50 server_type="deepseek" model_name="deepseek-coder" temperature=0
+# 1. Generate responses and store kernels locally to runs/{run_name} directory (swap framework="cuda" for "triton" to generate triton kernels)
+python3 scripts/generate_samples.py run_name="test_hf_level_1" dataset_src="huggingface" level="1" num_workers=50 server_type="deepseek" model_name="deepseek-coder" temperature=0 framework="cuda"
 
 # 2. Evaluate on all generated kernels in runs/{run_name} directory
 python3 scripts/eval_from_generations.py level=1 run_name="test_hf_level_1" dataset_src="local" level="1" num_gpu_devices=8 timeout=300
