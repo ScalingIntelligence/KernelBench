@@ -61,6 +61,8 @@ class GenerationConfig(Config):
         # self.num_samples = 0 # for sampling multiple samples per problem
 
         self.log_prompt = False
+
+        # todo: make this an enum
         self.framework = "cuda" # cuda or triton
 
     def greedy(self):

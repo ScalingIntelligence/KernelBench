@@ -57,6 +57,7 @@ class EvalConfig(Config):
         self.log_generated_kernel = False
         self.log_eval_result = False
 
+        # todo: make this an enum
         self.framework = "cuda" # cuda or triton
 
     def verbose_logging(self):
