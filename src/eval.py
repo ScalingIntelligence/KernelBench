@@ -37,7 +37,7 @@ def import_ModelNew_from_code(code_string):
     The name of the tempfile is returned so we can delete it later.
     """
     # Create a temporary named file with a .py extension
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=True) as tmp_file:
         # Write the code string into the file
         tmp_file.write(code_string)
         # Capture the path to the file
