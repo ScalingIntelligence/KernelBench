@@ -16,7 +16,7 @@ import sys
 import importlib
 import tempfile
 from . import utils
-
+from typing import Optional
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
@@ -37,11 +37,12 @@ def import_ModelNew_from_code(code_string):
     The name of the tempfile is returned so we can delete it later.
     """
     # Create a temporary named file with a .py extension
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=True) as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
         # Write the code string into the file
         tmp_file.write(code_string)
         # Capture the path to the file
         tempfile_path = tmp_file.name
+        temp_file = tmp_file
 
     # Create a module specification pointing to our temp file
     spec = importlib.util.spec_from_file_location("temp_module", tempfile_path)
@@ -54,7 +55,7 @@ def import_ModelNew_from_code(code_string):
     ModelNew = temp_module.ModelNew
 
     # Return the object (class, function, etc.) that was defined in the code
-    return ModelNew, tempfile_path
+    return ModelNew, temp_file
 
 
 def fetch_kernel_from_database(
@@ -147,7 +148,7 @@ def load_original_model_and_inputs(
 
 def load_custom_model(
     model_custom_src: str, context: dict, build_directory: str = None
-) -> tuple[nn.Module, str]:
+) -> tuple[nn.Module, tempfile._TemporaryFileWrapper]:
     """
     Load class from custom NN.module pytorch code
     this is the code output by LLM with calls to custom cuda kernels
@@ -179,7 +180,11 @@ def _cleanup_cuda_extensions():
         shutil.rmtree(torch_extensions_path)
 
 
-def graceful_eval_cleanup(curr_context: dict, device: torch.device, tempfile_path: str = None):
+def graceful_eval_cleanup(
+    curr_context: dict,
+    device: torch.device,
+    temp_file: Optional[tempfile._TemporaryFileWrapper] = None,
+):
     """
     Clean up env, gpu cache, and compiled CUDA extensions after evaluation
     """  # delete ran-specific function definitions before next eval run
@@ -197,13 +202,17 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device, tempfile_pat
 
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
-    if tempfile_path:
-        os.remove(tempfile_path)
+    if temp_file:
+        try:
+            temp_file.close()
+        finally:
+            if os.path.exists(temp_file.name):
+                os.remove(temp_file.name)
 
 def build_compile_cache_legacy(
     custom_model_src: str,
     verbose: bool = False,
-    build_dir: os.PathLike = None,
+    build_dir: Optional[os.PathLike] = None,
 ) -> tuple[bool, str, str]:
     """
     Try to build the compiled cuda code for sample and store in the cache directory
@@ -243,7 +252,7 @@ def build_compile_cache_legacy(
 def build_compile_cache(
     custom_model_src: str,
     verbose: bool = False,
-    build_dir: os.PathLike = None,
+    build_dir: Optional[os.PathLike] = None,
 ) -> tuple[bool, str, str]:
     """
     Try to build the compiled cuda code for sample and store in the cache directory
@@ -381,10 +390,11 @@ def eval_kernel_against_ref(
     metadata["device"] = str(device)  # for debugging
 
     # this is where compilation happens
+    temp_file = None  # in case load_custom_model fails
     try:
         os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
         # add hash for later to distinguish between multi-turn kernels
-        ModelNew, tempfile_path = load_custom_model(custom_model_src, context, build_dir)
+        ModelNew, temp_file = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:
         print(
@@ -398,11 +408,11 @@ def eval_kernel_against_ref(
             print(
                 f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
             )
-            graceful_eval_cleanup(context, device, tempfile_path)
+            graceful_eval_cleanup(context, device, temp_file)
             return None
         else:
             metadata["compilation_error"] = e
-            graceful_eval_cleanup(context, device, tempfile_path)
+            graceful_eval_cleanup(context, device, temp_file)
             return KernelExecResult(
                 compiled=False, metadata=metadata
             )  # skip further steps
@@ -421,7 +431,7 @@ def eval_kernel_against_ref(
             f"Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
         )
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
-        graceful_eval_cleanup(context, device, tempfile_path)
+        graceful_eval_cleanup(context, device, temp_file)
         metadata["runtime_error"] = e
         return KernelExecResult(
             compiled=True, correctness=False, metadata=metadata
@@ -485,7 +495,7 @@ def eval_kernel_against_ref(
                 print(f"[Eval] Error in Measuring Performance: {e}")
             kernel_exec_result.metadata["error_during_performance"] = e
 
-    graceful_eval_cleanup(context, device, tempfile_path)
+    graceful_eval_cleanup(context, device, temp_file)
     return kernel_exec_result
 
 

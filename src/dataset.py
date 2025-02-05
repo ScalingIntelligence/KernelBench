@@ -2,12 +2,13 @@
 # Helpers for Dataset
 ################################################################################
 
+import hashlib
 import os
-import sys
 import random
 import re
-import hashlib
-import utils
+import sys
+
+import src.utils
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -118,7 +119,26 @@ level1_representative_subset = [
     "87_conv_pointwise_2D.py",
 ]
 
-level1_representative_subset_problem_ids = [1, 3, 6, 18, 23, 26, 33, 36, 40, 42, 48, 54, 57, 65, 77, 82, 86, 87]
+level1_representative_subset_problem_ids = [
+    1,
+    3,
+    6,
+    18,
+    23,
+    26,
+    33,
+    36,
+    40,
+    42,
+    48,
+    54,
+    57,
+    65,
+    77,
+    82,
+    86,
+    87,
+]
 
 level2_representative_subset = [
     "1_Conv2D_ReLU_BiasAdd.py",

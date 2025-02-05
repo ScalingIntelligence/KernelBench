@@ -4,18 +4,19 @@ import json, os
 Analyze the greedy eval results for a run of a particular level
 """
 from src.dataset import construct_kernelbench_dataset
+
 run_name = "test_hf_level_1"  # Replace this with your run name
-level = 1 # change if needed
+level = 1  # change if needed
 
 dataset = construct_kernelbench_dataset(level)
 
 
 # load json
-eval_file_path = f'runs/{run_name}/eval_results.json'
+eval_file_path = f"runs/{run_name}/eval_results.json"
 assert os.path.exists(eval_file_path), f"Eval file does not exist at {eval_file_path}"
 
 
-with open(eval_file_path, 'r') as f:
+with open(eval_file_path, "r") as f:
     eval_results = json.load(f)
 
 
@@ -42,4 +43,4 @@ print(f"Functionally correct: {correct_count}")
 
 print(f"\nSuccess rates:")
 print(f"Compilation rate: {compiled_count/total_count*100:.1f}%")
-print(f"Correctness rate: {correct_count/total_count*100:.1f}%") 
+print(f"Correctness rate: {correct_count/total_count*100:.1f}%")
