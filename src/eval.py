@@ -35,6 +35,8 @@ def import_ModelNew_from_code(code_string):
     so we need to do a bit of garbage collection ourselves (callers responsibility) and delete the tempfile 
     when the model is deleted / before the program exits
     The name of the tempfile is returned so we can delete it later.
+
+    pastebin.com/pDfxXZMG is the minimal reproducible example of the issue.
     """
     # Create a temporary named file with a .py extension
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
