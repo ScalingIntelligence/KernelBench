@@ -40,6 +40,7 @@ GPU_SPEC_INFO = {
         "Shared memory capacity per SM": "228 KB",
         "Maximum shared memory per thread block": "227 KB",
     },
+    # this is 40GB (Standard)
     "A100": {
         "GPU Architecture": "Ampere",
         "GPU Memory": "40GB",
@@ -124,6 +125,7 @@ GPU_SPEC_INFO = {
 GPU_DEFINITIONS = {
     "Thread": "A thread is a single execution unit that can run a single instruction at a time.",
     "Thread Block": "A thread block is a group of threads that can cooperate with each other.",
+    "Warp": "A warp is a group of threads that are scheduled together and execute in parallel.",
     "Shared Memory": "Shared memory is a memory space that can be accessed by all threads in a thread block.",
     "Register": "A register is a small memory space that can be accessed by a single thread.",
     "Memory Hierarchy": "Memory hierarchy is a pyramid of memory types with different speeds and sizes.",
