@@ -1,11 +1,9 @@
 # KernelBench - Can LLMs Write GPU Kernels?
-[blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) | [arXiv](https://arxiv.org/html/2502.10517v1)
+[blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [HuggingFace Dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) | [arXiv](https://arxiv.org/html/2502.10517v1)
 
 A benchmark for evaluating LLMs' ability to generate GPU kernels
 
-![KernelBenchMascot](./assets/figures/KernelBenchMascot.png)
-
-<!-- TODO: Add blog post -->
+<img src="./assets/figures/KernelBenchMascot.png" width="200">
 
 See [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) and [arXiv paper](https://arxiv.org/html/2502.10517v1) for more details.
 
@@ -84,22 +82,32 @@ You can check out `scripts/greedy_analysis.py` to analyze the eval results.
 We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`.
 
 ## 🛣️ Upcoming Roadmap
+- [ ] Triton Variant (Ongoing)
+- [ ] Push button flow on Modal / Cloud Provider
 - [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
 - [ ] Add backward pass
 - [ ] Integrate with toolchains such as NCU
 
 
-<!-- Add Citation -->
+## 🔍 Known Usage
+- [NVIDIA](https://developer.nvidia.com/blog/automating-gpu-kernel-generation-with-deepseek-r1-and-inference-time-scaling/) - Automating GPU Kernel Generation with DeepSeek-R1 and Inference Time Scaling
+- [METR](https://metr.org/blog/2025-02-14-measuring-automated-kernel-engineering/) - Measuring Automated Kernel Engineering
+
+If you are using KernelBench, we love to hear more about it!
 
 ## 🪪 License
 MIT. Check `LICENSE.md` for more details.
 
-## Citing
+
+## Citation
 ```bibtex
-@misc{ouyang2024kernelbench,
-      title={KernelBench: Can LLMs Write GPU Kernels?}, 
-      author={Anne Ouyang and Simon Guo and Azalia Mirhoseini},
-      year={2024},
-      url={https://scalingintelligence.stanford.edu/blogs/kernelbench/}, 
+@misc{ouyang2025kernelbenchllmswriteefficient,
+      title={KernelBench: Can LLMs Write Efficient GPU Kernels?}, 
+      author={Anne Ouyang and Simon Guo and Simran Arora and Alex L. Zhang and William Hu and Christopher Ré and Azalia Mirhoseini},
+      year={2025},
+      eprint={2502.10517},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2502.10517}, 
 }
 ```
