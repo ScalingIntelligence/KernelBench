@@ -9,5 +9,4 @@ results/*
 runs/*
 cache/*
 !results/timing/
-
-
+.env

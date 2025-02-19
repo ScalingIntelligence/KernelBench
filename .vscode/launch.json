@@ -1,0 +1,52 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Single Sample",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/generate_and_eval_single_sample.py",
+            "args": [
+                "dataset_src=huggingface",
+                "level=2",
+                "problem_id=40",
+                "server_type=deepseek",
+                "model_name=deepseek-coder",
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Generate Samples",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/generate_samples.py",
+            "args": [
+                "run_name=test_hf_level_1",
+                "dataset_src=huggingface",
+                "level=1",
+                "num_workers=50",
+                "server_type=deepseek",
+                "model_name=deepseek-coder",
+                "temperature=0"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Evaluate Generations",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/eval_from_generations.py",
+            "args": [
+                "level=1",
+                "run_name=test_hf_level_1",
+                "dataset_src=local",
+                "num_gpu_devices=8",
+                "timeout=300"
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}
