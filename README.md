@@ -28,7 +28,9 @@ To evaluate model-generated kernels, we need to check if they:
 - **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
 - **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
 
-Check out `src/eval.py` for more details.
+Check out `src/eval.py` for details on how we implement correctness check and timing. 
+
+We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a model-generated kernel. 
 
 #### Overall Benchmark Metric
 
@@ -45,8 +47,6 @@ You can increase speedup threshold `p` to make the task more challenging.
 
 We provide a script `scripts/greedy_analysis.py` to compute the overall benchmark performance. 
 <!-- TODO: update to provide fast_p -->
-<!-- We provide (TODO) run and check -->
-<!-- Run and Check Script -->
 
 ## 🔍 Directory Structure
 We organize the repo into the following structure:

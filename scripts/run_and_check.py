@@ -2,8 +2,9 @@ import shutil
 import torch
 import pydra
 from pydra import REQUIRED, Config
-from dataclasses import dataclass
 import os
+from datasets import load_dataset
+
 
 from src import eval as kernel_eval
 from src import utils as kernel_utils
@@ -23,12 +24,14 @@ The Reference could be either
 1. a local file: specify the path to the file
 2. a kernelbench problem: specify level and problem id
 
+====================================================
 Usage:
 1. PyTorch reference is a local file
 python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/model_ex_add.py kernel_src_path=src/prompts/model_new_ex_add.py
 
 2. PyTorch refernece is a kernelbench problem
-python3 scripts/run_and_check.py ref_origin=kernelbench level=2 problem_id=40 kernel_src_path=src/prompts/model_new_ex_add.py
+python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel>
+====================================================
 
 """
 
@@ -43,6 +46,7 @@ class ScriptConfig(Config):
         # ref_origin is local, specify local file path
         self.ref_arch_src_path = ""
         # ref_origin is kernelbench, specify level and problem id
+        self.dataset_name = "ScalingIntelligence/KernelBench"
         self.level = ""
         self.problem_id = ""
         # Solution src definition
@@ -131,17 +135,35 @@ def main(config: ScriptConfig):
         assert config.ref_arch_src_path != "", "ref_arch_src_path is required"
         ref_arch_src = read_file(config.ref_arch_src_path)
     elif config.ref_origin == "kernelbench":
-        raise NotImplementedError("Kernelbench problem not implemented yet")
-        ref_arch_src = kernel_utils.get_kernelbench_problem(config.level, config.problem_id)
+        assert config.dataset_name != "", "dataset_name is required"
+        assert config.level != "", "level is required"
+        assert config.problem_id != "", "problem_id is required"
+
+        # for now use the HuggingFace dataset
+        dataset = load_dataset(config.dataset_name)
+        curr_level_dataset = dataset[f"level_{config.level}"]
+
+        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
+        ref_arch_src = curr_problem_row["code"][0]
+        problem_name = curr_problem_row["name"][0]
+
+        problem_number = int(problem_name.split("_")[0])
+        assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+
+        print(f"Fetched problem {config.problem_id} from KernelBench level {config.level}: {problem_name}")
+
+
     else:
         raise ValueError("Invalid ref_origin")
     
+    print(ref_arch_src)
     kernel_src = read_file(config.kernel_src_path)
-    print(kernel_src)
+
     # Start Evaluation
     device = torch.device("cuda:0") # default device
     kernel_utils.set_gpu_arch(config.gpu_arch)
 
+    print("[INFO] Evaluating kernel against reference code")
     # Evaluate kernel against reference code
     kernel_eval_result = evaluate_single_sample_src(
         ref_arch_src=ref_arch_src,
@@ -152,6 +174,7 @@ def main(config: ScriptConfig):
     kernel_exec_time = kernel_eval_result.runtime
 
     # Measure baseline time
+    print("[INFO] Measuring reference program time")
     # Default using PyTorch Eager here
     # but you can switch to torch.compile by setting use_torch_compile=True and related backend / options
     ref_time_result = measure_program_time(ref_arch_name="Reference Program", 
