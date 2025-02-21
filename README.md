@@ -22,14 +22,32 @@ We construct Kernel Bench to have 4 Levels of categories:
     Optimize whole model architectures from HuggingFace
 
 ## ⚖️ Evaluation
+#### Methodology
 To evaluate model-generated kernels, we need to check if they:
 - **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
 - **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
 
+Check out `src/eval.py` for details on how we implement correctness check and timing. 
+
+We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a model-generated kernel. 
+
+#### Overall Benchmark Metric
+
+Since we need to capture **both** correctness and performance, we define a metric `fast_p`: fraction of tasks that are both correct and have a speedup greater than threshold `p`; speedup is computed as the ratio of PyTorch reference wall-clock time to generated kernel time.
+
+Some examples to illustrate this metric that filters based on speedups:
+* `fast_1` is the fraction of tasks that LM-generated kernels are both correct and **faster** than PyTorch baseline
+* `fast_2` is the fraction of tasks that LM-generated kernels are both correct and **at least 2x faster** than PyTorch baseline
+* `fast_0` is the fraction of tasks that LM-generated kernels are **correct**. (same as correctness rate)
+
+You can increase speedup threshold `p` to make the task more challenging.
+
+#### Compute Overall Benchmark Performance
+
+We provide a script `scripts/greedy_analysis.py` to compute the overall benchmark performance. 
 Since we need to capture **both** correctness and performance, we use a metric `fast_p`: fraction of tasks that are both correct and have a speedup greater than threshold `p`; speedup is computed as the ratio of PyTorch reference wall-clock time to generated kernel time.
 
-<!-- We provide (TODO) run and check -->
-<!-- Run and Check Script -->
+<!-- TODO: update to provide fast_p measurement script -->
 
 ## 🔍 Directory Structure
 We organize the repo into the following structure:
