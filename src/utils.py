@@ -20,11 +20,6 @@ from openai import OpenAI
 import google.generativeai as genai
 import anthropic
 
-from archon.completions import Archon
-
-from dotenv import load_dotenv
-load_dotenv()
-
 # from datasets import load_dataset
 import numpy as np
 from contextlib import contextmanager
@@ -99,7 +94,6 @@ def query_server(
     server_type: str = "sglang",
     model_name: str = "default",  # specify model type
     reasoning_effort: str = None, # only for o1 and o3 / more reasoning models in the future
-    archon_config_path: str = None,
 ):
     """
     Query various sort of LLM inference API providers
@@ -159,18 +153,11 @@ def query_server(
         case "openai":
             client = OpenAI(api_key=OPENAI_KEY)
             model = model_name
-        case "archon":
-            assert archon_config_path is not None, "Archon config path is required"
-            assert os.path.exists(archon_config_path), f"Archon config path {archon_config_path} does not exist"
-            client = Archon(json.load(open(archon_config_path)))
-            model = model_name
         case _:
             raise NotImplementedError
 
     if server_type != "google":
         assert client is not None, "Client is not set, cannot proceed to generations"
-    if server_type == "archon":
-        print(f"Querying Archon model {model} with config {archon_config_path}")
     else:
         print(
             f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
@@ -317,14 +304,6 @@ def query_server(
             top_p=top_p,
         )
         outputs = [choice.message.content for choice in response.choices]
-    elif server_type == "archon":
-        response = client.generate(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        outputs = response
     # for all other kinds of servers, use standard API
     else:
         if type(prompt) == str:
@@ -394,10 +373,6 @@ SERVER_PRESETS = {
         "model_name": "Meta-Llama-3.1-405B-Instruct",
         "temperature": 0.1,
         "max_tokens": 8192,
-    },
-    "archon": {
-        "archon_config_path": "archon_configs/gpt-4-turbo.json",
-        "model_name": "individual_gpt-4-turbo",
     },
 }
 

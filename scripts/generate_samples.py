@@ -43,9 +43,6 @@ class GenerationConfig(Config):
         self.num_workers = 1
         self.api_query_interval = 0.0
 
-        # Archon
-        self.archon_config_path = None
-
         # Inference config
         self.server_type = "deepseek"
         self.model_name = "deepseek-coder"
@@ -184,15 +181,6 @@ def main(config: GenerationConfig):
                 )
         )
     
-    # If server type is archon, load model_name from config
-    if config.server_type == "archon":
-        try:
-            with open(config.archon_config_path) as f:
-                archon_config = json.load(f)
-            config.model_name = archon_config["name"]
-        except Exception as e:
-            print(f"Error loading Archon config: {e}")
-            sys.exit(1)
 
     # Create inference function with config parameters
     # We provide some presets in utils but you can also pass in your own, see query_server for more details
@@ -200,7 +188,6 @@ def main(config: GenerationConfig):
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
-                                                        archon_config_path=config.archon_config_path,
                                                         verbose=config.verbose)
 
     # Launch workers
