@@ -84,8 +84,9 @@ def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: l
     Avaliable few shot options to start with: 
     - ex_add: pointwise addition
     - ex_fuse_gelu: fused gelu
-    - ex_mnist2: fused convolutions and relus
+    - ex_mnist2: fused convolutions and relus (DEPRECATED)
     - ex_tiled_matmul: tiled matrix multiplication
+    - ex_flash_attn: simple flash attention
     """
     prompt = PROBLEM_STATEMENT_CLEANED
 
@@ -107,7 +108,7 @@ def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: l
     )
     example_fuse_gelu_desc = "This given architecture is for a fused gelu: "
 
-    # k = 3
+    # k = 3 (DEPRECATED)
     example_mnist2 = read_file(
         os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_mnist2.py")
     )
@@ -125,20 +126,31 @@ def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: l
     )
     example_tiled_matmul_desc = "This given architecture is for a model with tiled matrix multiplication: "
 
+    # k = 5
+    example_flash_attn = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_ex_flash_attn.py")
+    )
+    example_flash_attn_new = read_file(
+        os.path.join(REPO_TOP_PATH, "src/prompts/few_shot/model_new_ex_flash_attn.py")
+    )
+    example_flash_attn_desc = "This given architecture is for a model with simple io-aware implementation of attention, also known as flash attention: "
 
     examples = []
     for s in shots:
-        if s not in ["ex_add", "ex_fuse_gelu", "ex_mnist2", "ex_tiled_matmul"]:
+        if s not in ["ex_add", "ex_fuse_gelu", "ex_mnist2", "ex_tiled_matmul", "ex_flash_attn"]:
             raise ValueError(f"Invalid shot: {s}")
         elif s == "ex_add":
             examples.append((example_add, example_add_new, example_add_desc))
         elif s == "ex_fuse_gelu":
             examples.append((example_fuse_gelu, example_fuse_gelu_new, example_fuse_gelu_desc))
-        elif s == "ex_mnist2":
+        elif s == "ex_mnist2": # DEPRECATED
+            raise ValueError("ex_mnist2 is deprecated")
             examples.append((example_mnist2, example_mnist2_new, exmaple_mnist2_desc))
         elif s == "ex_tiled_matmul":
             examples.append((example_tiled_matmul, example_tiled_matmul_new, example_tiled_matmul_desc))
-
+        elif s == "ex_flash_attn":
+            examples.append((example_flash_attn, example_flash_attn_new, example_flash_attn_desc))
+    
 
     for i, tup in enumerate(examples):
         base, kernel, desc = tup
@@ -391,6 +403,8 @@ def prompt_generate_prompt_with_hardware_info(ref_arch_src: str,
     
     if not GPU_SPEC_INFO or not GPU_DEFINITIONS or not GPU_BEST_PRACTICES:
         raise ValueError("GPU_SPEC_INFO or GPU_DEFINITIONS or GPU_BEST_PRACTICES not found in gpu_spec_info_src")
+
+    assert gpu_name in GPU_SPEC_INFO, f"GPU name {gpu_name} not found in GPU_SPEC_INFO"
 
     prompt = PROBLEM_STATEMENT
 
