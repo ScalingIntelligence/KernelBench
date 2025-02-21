@@ -156,7 +156,6 @@ def main(config: ScriptConfig):
     else:
         raise ValueError("Invalid ref_origin")
     
-    print(ref_arch_src)
     kernel_src = read_file(config.kernel_src_path)
 
     # Start Evaluation
@@ -176,23 +175,34 @@ def main(config: ScriptConfig):
     # Measure baseline time
     print("[INFO] Measuring reference program time")
     # Default using PyTorch Eager here
-    # but you can switch to torch.compile by setting use_torch_compile=True and related backend / options
-    ref_time_result = measure_program_time(ref_arch_name="Reference Program", 
+    ref_time_eager_result = measure_program_time(ref_arch_name="Reference Program", 
                                                 ref_arch_src=ref_arch_src, 
                                                 num_trials=config.num_perf_trials,
                                                 use_torch_compile=False,
                                                 device=device)
-    ref_exec_time = ref_time_result.get("mean", None)
+    ref_exec_eager_time = ref_time_eager_result.get("mean", None)
+
+    # Measure Torch Compile time
+    ref_time_compile_result = measure_program_time(ref_arch_name="Reference Program", 
+                                                ref_arch_src=ref_arch_src, 
+                                                num_trials=config.num_perf_trials,
+                                                use_torch_compile=True,
+                                                torch_compile_backend="inductor",
+                                                torch_compile_options="default",
+                                                device=device)
+    ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 
     print("="*40)
     print(f"[Eval] Kernel eval result: {kernel_eval_result}")
     print("-"*40)
-    print(f"[Timing] PyTorch Reference exec time: {ref_exec_time} ms")
+    print(f"[Timing] PyTorch Reference Eager exec time: {ref_exec_eager_time} ms")
+    print(f"[Timing] PyTorch Reference torch.compile time: {ref_exec_compile_time} ms")
     print(f"[Timing] Custom Kernel exec time: {kernel_exec_time} ms")
-    print("-"*40)
+    print("-"*40)   
     
     if kernel_eval_result.correctness:
-        print(f"[Speedup] Speedup: {ref_exec_time / kernel_exec_time:.2f}x")
+        print(f"[Speedup] Speedup over eager: {ref_exec_eager_time / kernel_exec_time:.2f}x")
+        print(f"[Speedup] Speedup over torch.compile: {ref_exec_compile_time / kernel_exec_time:.2f}x")
     else:
         print("[Speedup] Speedup Not Available as Kernel did not pass correctness")
 
