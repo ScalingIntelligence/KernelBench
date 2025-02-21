@@ -41,7 +41,7 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
-
+FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
 
 
 ########################################################
@@ -60,6 +60,9 @@ TOO_LONG_FOR_DEEPSEEK = 115_000
 
 def is_safe_to_send_to_deepseek(prompt):
     tokenizer = load_deepseek_tokenizer()
+    # print(f"Prompt: {len(prompt)}")
+    # print(f"Prompt length: {len(tokenizer(prompt, verbose=False)['input_ids'])}")
+    
     if type(prompt) == str:
         return (
             len(tokenizer(prompt, verbose=False)["input_ids"]) < TOO_LONG_FOR_DEEPSEEK
@@ -90,6 +93,7 @@ def query_server(
     server_address: str = "localhost",
     server_type: str = "sglang",
     model_name: str = "default",  # specify model type
+    reasoning_effort: str = None, # only for o1 and o3 / more reasoning models in the future
 ):
     """
     Query various sort of LLM inference API providers
@@ -100,6 +104,7 @@ def query_server(
     - Sambanova
     - Anthropic
     - Gemini / Google AI Studio
+    - Fireworks (OpenAI compatbility)
     - SGLang (Local Server)
     """
     # Select model and client based on arguments
@@ -121,6 +126,15 @@ def query_server(
             assert model in ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"], "Only support deepseek-chat or deepseek-coder for now"
             if not is_safe_to_send_to_deepseek(prompt):
                 raise RuntimeError("Prompt is too long for DeepSeek")
+        case "fireworks":
+            client = OpenAI(
+                api_key=FIREWORKS_API_KEY,
+                base_url="https://api.fireworks.ai/inference/v1",
+                timeout=10000000,
+                max_retries=3,
+            )
+            model = model_name
+
         case "anthropic":
             client = anthropic.Anthropic(
                 api_key=ANTHROPIC_KEY,
@@ -187,7 +201,7 @@ def query_server(
         return response.text
 
     elif server_type == "deepseek":
-
+        
         if model in ["deepseek-chat", "deepseek-coder"]:
             # regular deepseek model 
             response = client.chat.completions.create(
@@ -202,6 +216,7 @@ def query_server(
                 max_tokens=max_tokens,
                 top_p=top_p,
             )
+
         else: # deepseek reasoner
 
             assert model == "deepseek-reasoner", "Only support deepseek-reasoner for now"
@@ -216,18 +231,18 @@ def query_server(
                 max_tokens=max_tokens,
                 # do not use temperature or top_p
             )
-
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "openai":
         if (
-            "o1" in model
-        ):  # o1 does not support system prompt and decode config
-            print(f"Using o1 family model {model}")
+            "o1" in model or "o3" in model
+        ):  # o-series reasoning models does not support system prompt and decode config
+            print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
             response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "user", "content": prompt},
                 ],
+                reasoning_effort=reasoning_effort,
             )
         else:
             response = client.chat.completions.create(
@@ -254,6 +269,23 @@ def query_server(
             ],
             top_p=top_p,
             top_k=top_k,
+            # repetition_penalty=1,
+            stop=["<|eot_id|>", "<|eom_id|>"],
+            # truncate=32256,
+            stream=False,
+        )
+        outputs = [choice.message.content for choice in response.choices]
+    elif server_type == "fireworks":
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            # top_p=top_p,
+            # top_k=top_k,
             # repetition_penalty=1,
             stop=["<|eot_id|>", "<|eom_id|>"],
             # truncate=32256,
