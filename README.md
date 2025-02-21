@@ -12,19 +12,24 @@ We structure the problem for LLM to transpile operators described in PyTorch to 
 ![KernelBenchMascot](./assets/figures/KernelBenchWorkFlow.png)
 
 We construct Kernel Bench to have 4 Levels of categories:
-- Level 1: Single-kernel operators (100 Problems)
+- **Level 1 🧱**:  Single-kernel operators (100 Problems)
     The foundational building blocks of neural nets (Convolutions, Matrix multiplies, Layer normalization)
-- Level 2: Simple fusion patterns (100 Problems)
+- **Level 2 🔗**:  Simple fusion patterns (100 Problems)
     A fused kernel would be faster than separated kernels (Conv + Bias + ReLU, Matmul + Scale + Sigmoid)
-- Level 3: Full model architectures (50 Problems)
-    Optimize entire model architectures end-to-end (MobileNet, VGG, MiniGPT, Mamba)
-- Level 4: Level Hugging Face
-    Optimize whole model architectures from HuggngFace
+- **Level 3 ⚛️**:  Full model architectures (50 Problems)
+    Optimize entire model architectures end-to-end (MobileNet, VGG, MiniGPT, Mamba) 
+- **Level 4 🤗**:  Level Hugging Face 
+    Optimize whole model architectures from HuggingFace
 
-For this benchmark, we care whether if a solution 
-- **compiles**: generated torch code was able to load the inline embedded CUDA Kernel and build the kernel
-- **is correct**: check against reference torch operators n_correctness times on randomized inputs
-- **is fast**: compare against reference torch operators n_trial times for both eager mode and torch.compile execution
+## ⚖️ Evaluation
+To evaluate model-generated kernels, we need to check if they:
+- **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
+- **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
+
+Since we need to capture **both** correctness and performance, we use a metric `fast_p`: fraction of tasks that are both correct and have a speedup greater than threshold `p`; speedup is computed as the ratio of PyTorch reference wall-clock time to generated kernel time.
+
+<!-- We provide (TODO) run and check -->
+<!-- Run and Check Script -->
 
 ## 🔍 Directory Structure
 We organize the repo into the following structure:
@@ -83,7 +88,8 @@ We provide some reference baseline times a variety of NVIDIA GPUs across generat
 
 ## 🛣️ Upcoming Roadmap
 - [ ] Triton Variant (Ongoing)
-- [ ] Push button flow on Modal / Cloud Provider
+- [ ] Easy to use CoLab Notebook Example
+- [ ] Push button flow on Modal / Cloud Provider 
 - [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
 - [ ] Add backward pass
 - [ ] Integrate with toolchains such as NCU
@@ -92,6 +98,7 @@ We provide some reference baseline times a variety of NVIDIA GPUs across generat
 ## 🔍 Known Usage
 - [NVIDIA](https://developer.nvidia.com/blog/automating-gpu-kernel-generation-with-deepseek-r1-and-inference-time-scaling/) - Automating GPU Kernel Generation with DeepSeek-R1 and Inference Time Scaling
 - [METR](https://metr.org/blog/2025-02-14-measuring-automated-kernel-engineering/) - Measuring Automated Kernel Engineering
+- [Sakana AI](https://sakana.ai/ai-cuda-engineer/) - AI Cuda Engineer
 
 If you are using KernelBench, we love to hear more about it!
 
