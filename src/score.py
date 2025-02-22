@@ -25,12 +25,6 @@ def geometric_mean_speed_ratio_correct_and_faster_only(is_correct: np.ndarray, b
 
     return prod ** (1 / n_correct_and_faster) if n_correct_and_faster > 0 else 0
 
-def fastp_range(is_correct: np.ndarray, baseline_speed: np.ndarray, actual_speed: np.ndarray, n: int, p_range: list) -> float:
-    fast_p_scores = dict()
-    for p in p_range:
-        fast_p_scores[p] = float(fastp(is_correct, baseline_speed, actual_speed, n, p))
-    return fast_p_scores
-
 def fastp(is_correct: np.ndarray, baseline_speed: np.ndarray, actual_speed: np.ndarray, n: int, p: float) -> float:
     """
     Rate of samples within a threshold p
