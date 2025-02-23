@@ -83,7 +83,7 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     # Calculate the metrics
     gmsr_correct = geometric_mean_speed_ratio_correct_only(is_correct, baseline_speed, actual_speed, n)
 
-    p_values = [0.0, 0.5, 1.0, 1.5, 2.0]
+    p_values = [0.0, 0.5, 0.8, 1.0, 1.5, 2.0]
     results = [[p, fastp(is_correct, baseline_speed, actual_speed, n, p)] for p in p_values]
 
 
@@ -92,8 +92,8 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     print(f"Geometric mean of speedup for correct samples: {gmsr_correct:.4f}")
 
     # Print table
-    print("\nFastp Results:")
-    print(tabulate(results, headers=["P Value", "Fastp Score"], tablefmt="grid"))
+    print("\nFast_p Results:")
+    print(tabulate(results, headers=["Speedup Threshold (p)", "Fast_p Score"], tablefmt="grid"))
 
 run_name = "trial_greedy_deepseek_r1_level1_A100_modal_v0" # Replace this with your run name
 level = 1 # Replace this with your level
