@@ -1,5 +1,19 @@
 import json, os
 from tabulate import tabulate
+import pydra
+from pydra import REQUIRED, Config
+
+class EvalConfig(Config):
+    def __init__(self):
+
+        self.run_name = REQUIRED # name of the run to evaluate
+        self.hardware = REQUIRED # hardware to evaluate
+        self.baseline = REQUIRED # baseline to compare against
+        self.level = REQUIRED # level to evaluate
+
+
+    def __repr__(self):
+        return f"EvalConfig({self.to_dict()})"
 
 def patch(eval_results, dataset):
     """
@@ -95,9 +109,10 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     print("\nFast_p Results:")
     print(tabulate(results, headers=["Speedup Threshold (p)", "Fast_p Score"], tablefmt="grid"))
 
-run_name = "trial_greedy_deepseek_r1_level1_A100_modal_v0" # Replace this with your run name
-level = 1 # Replace this with your level
-hardware = "A100_modal" # Replace this with your hardware
-baseline = "baseline_time_torch" # Replace this with your baseline
 
-analyze_greedy_eval(run_name, hardware, baseline, level)
+@pydra.main(base=EvalConfig)
+def main(config: EvalConfig):
+    analyze_greedy_eval(config.run_name, config.hardware, config.baseline, config.level)
+
+if __name__ == "__main__":
+    main()
