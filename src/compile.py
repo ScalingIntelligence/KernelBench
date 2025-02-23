@@ -5,11 +5,20 @@ import time
 from tqdm import tqdm
 
 import shutil
-from src.eval import build_compile_cache, fetch_kernel_from_database, KernelExecResult
+from src.eval import build_compile_cache
 from src import utils as utils
 import torch
 import os
 import multiprocessing as mp
+
+"""
+Compile and Cache
+
+This module contains the logic for compiling and caching the kernels
+on CPU in parallel so you can speedup the evaluation process
+
+The cache build directory must match the ones you use during evaluation phase
+""" 
 
 @dataclass
 class WorkArgs:
@@ -64,13 +73,14 @@ def remove_cache_dir(config, problem_id, sample_id):
 
 def batch_compile(total_work: list[tuple[int, int]], config: dict):
     """
-    Batch compile cache across CPUs
+    Batch compile cache across CPUs, assume config has num_cpu_workers
     """
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method('spawn')
 
+    assert "num_cpu_workers" in config, "num_cpu_workers must be specified in config for batch compile"
     try:
-        with mp.Pool(config["num_cpus"]) as pool:
+        with mp.Pool(config["num_cpu_workers"]) as pool:
             # Create work args for each task
             work_args = [
                 (WorkArgs(problem_id=p_id, sample_id=s_idx, device=None), config)

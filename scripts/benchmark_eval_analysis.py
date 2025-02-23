@@ -2,18 +2,36 @@ import json, os
 from tabulate import tabulate
 import pydra
 from pydra import REQUIRED, Config
+from src.dataset import construct_kernelbench_dataset
 
-class EvalConfig(Config):
+"""
+Benchmark Eval Analysis
+
+This script shows how to conduct analysis for model performance on KernelBench
+
+Given generations and eval results, this script will compute the following:
+- Success rate (compiled and correctness)
+- Geometric mean of speedup for correct samples
+- Fast_p score for different speedup thresholds (we recommend and use this metric)
+
+Usage:
+```
+python3 scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline>
+```
+hardware + baseline should correspond to the results/timing/hardware/baseline.json file   
+
+""" 
+
+class AnalysisConfig(Config):
     def __init__(self):
-
         self.run_name = REQUIRED # name of the run to evaluate
-        self.hardware = REQUIRED # hardware to evaluate
-        self.baseline = REQUIRED # baseline to compare against
         self.level = REQUIRED # level to evaluate
 
+        self.hardware = REQUIRED # hardware to evaluate
+        self.baseline = REQUIRED # baseline to compare against
 
     def __repr__(self):
-        return f"EvalConfig({self.to_dict()})"
+        return f"AnalysisConfig({self.to_dict()})"
 
 def patch(eval_results, dataset):
     """
@@ -35,7 +53,6 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     """
     Analyze the greedy eval results for a run of a particular level
     """
-    from src.dataset import construct_kernelbench_dataset
 
     dataset = construct_kernelbench_dataset(level)
 
@@ -97,6 +114,7 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     # Calculate the metrics
     gmsr_correct = geometric_mean_speed_ratio_correct_only(is_correct, baseline_speed, actual_speed, n)
 
+    # list of speedup thresholds p
     p_values = [0.0, 0.5, 0.8, 1.0, 1.5, 2.0]
     results = [[p, fastp(is_correct, baseline_speed, actual_speed, n, p)] for p in p_values]
 
@@ -110,8 +128,8 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     print(tabulate(results, headers=["Speedup Threshold (p)", "Fast_p Score"], tablefmt="grid"))
 
 
-@pydra.main(base=EvalConfig)
-def main(config: EvalConfig):
+@pydra.main(base=AnalysisConfig)
+def main(config: AnalysisConfig):
     analyze_greedy_eval(config.run_name, config.hardware, config.baseline, config.level)
 
 if __name__ == "__main__":

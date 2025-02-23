@@ -16,16 +16,19 @@ from datasets import load_dataset
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import build_compile_cache, eval_kernel_against_ref, KernelExecResult, check_metadata_serializable_all_types
-from src.utils import extract_first_code, set_gpu_arch, read_file, create_inference_server_from_presets, maybe_multithread
+from src.utils import set_gpu_arch, read_file
 
 """
-Batch Eval from Existing Generations
+Batch Evaluation from Existing Generations
+
+This expects you have generated the kernels and stored them in the runs/{run_name} directory
+This eval script will evaluate the kernels against the reference architecture, and store the results in the runs/{run_name}/eval_results.json file
 
 Usually with eval, we check
-- correctness: 5 randomized input trials
-- performance: 100 randomized input trials
+- correctness (n_correct): 5 randomized input trials
+- performance (n_trials): 100 randomized input trials
 
-You can increase the number of trials
+You can increase the number of trials for correctness and performance
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,30 +46,22 @@ class EvalConfig(Config):
         # name of dataset name on Hugging Face
         self.dataset_name = "ScalingIntelligence/KernelBench"
 
-        self.build_cache = False # build cache for evaluation
-        self.num_cpus = 1
-
         # Problem Specification
         self.level = REQUIRED
 
         # subset of problems to evaluate
-        self.subset = (None, None) # (problem_id, problem_name), these are the logical index
+        self.subset = (None, None) # (start_id, end_id), these are the logical index
 
-        # Evaluation
-        # local (requires a GPU), modal (cloud GPU) coming soon
+        # Evaluation Mode: local (requires GPU), see modal (cloud GPU) in the modal file
         self.eval_mode = "local"
 
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
 
-
         # Logging
         # Top Directory to Store Runs
         self.runs_dir = os.path.join(REPO_TOP_DIR, "runs")
-
-        # Directory to build kernels for evaluation
-        self.kernel_eval_build_dir = os.path.join(REPO_TOP_DIR, "cache")
 
         self.verbose = False
 
@@ -75,11 +70,18 @@ class EvalConfig(Config):
         self.num_perf_trials = 100
         self.timeout = 180 # in seconds
         self.measure_performance = True
-
         
+        # Eval Flow setting
+        # To speedup evaluation, you can start building the kernel on CPU on disk as cache
+        self.build_cache = False
+        self.num_cpu_workers = 20 # number of parallel process to to parallelize the build on CPUs
+        
+        # Directory to build kernels for evaluation
+        self.kernel_eval_build_dir = os.path.join(REPO_TOP_DIR, "cache")
+
         # number of GPUs to do batch evaluation
         self.num_gpu_devices = 1
-
+        
 
     def __repr__(self):
         return f"EvalConfig({self.to_dict()})"
@@ -115,8 +117,6 @@ def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -
     assert problem_number == problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({problem_id})"
     
     return ref_arch_src
-
-
 
 
 def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> str | None:
