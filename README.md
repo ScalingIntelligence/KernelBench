@@ -94,15 +94,22 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 
 ```
 # 1. Generate responses and store kernels locally to runs/{run_name} directory
-python3 scripts/generate_samples.py run_name="test_hf_level_1" dataset_src="huggingface" level="1" num_workers=50 server_type="deepseek" model_name="deepseek-coder" temperature=0
+python3 scripts/generate_samples.py run_name=test_hf_level_1 dataset_src=huggingface level=1 num_workers=50 server_type=deepseek model_name=deepseek-chat temperature=0
 
 # 2. Evaluate on all generated kernels in runs/{run_name} directory
-python3 scripts/eval_from_generations.py level=1 run_name="test_hf_level_1" dataset_src="local" level="1" num_gpu_devices=8 timeout=300
+python3 scripts/eval_from_generations.py run_name=test_hf_level_1 dataset_src=local level=1 num_gpu_devices=8 timeout=300
+
+# If you like to speedup evaluation, you can use parallelize compilation on CPUs before getting to evluation on GPUs
+# add build_cache=True and num_cpu_workers=<num_cpu_workers> to the command
+```
+### Analyze the eval results to compute Benchmark Performance
+We provide `scripts/benchmark_eval_analysis.py` to analyze the eval results to compute success rate, timing metric, and overall benchmark performance  `fast_p`. 
 
 ```
-
-You can check out `scripts/greedy_analysis.py` to analyze the eval results.
-We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`.
+python3 scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=1 hardware=L40S_matx3 baseline=baseline_time_torch
+```
+If you are using a different hardware, you can generate the baseline time with `scripts/generate_baseline_time.py` script.
+We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
 
 ## 🛣️ Upcoming Roadmap
 - [ ] Triton Variant (Ongoing)
