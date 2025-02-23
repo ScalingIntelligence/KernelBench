@@ -6,7 +6,7 @@ from pydra import REQUIRED, Config
 
 import json
 from tqdm import tqdm
-from src import eval, utils
+from src import eval, utils, compile
 import torch
 import os
 import multiprocessing as mp
@@ -24,8 +24,6 @@ Batch Eval from Existing Generations
 Usually with eval, we check
 - correctness: 5 randomized input trials
 - performance: 100 randomized input trials
-
-TODO: add CPU Cache building (already exist, need to migrate)
 
 You can increase the number of trials
 """
@@ -45,6 +43,8 @@ class EvalConfig(Config):
         # name of dataset name on Hugging Face
         self.dataset_name = "ScalingIntelligence/KernelBench"
 
+        self.build_cache = False # build cache for evaluation
+        self.num_cpus = 1
 
         # Problem Specification
         self.level = REQUIRED
@@ -67,7 +67,6 @@ class EvalConfig(Config):
 
         # Directory to build kernels for evaluation
         self.kernel_eval_build_dir = os.path.join(REPO_TOP_DIR, "cache")
-        # TODO: migrate CPU build cache code to speed up eval
 
         self.verbose = False
 
@@ -374,7 +373,6 @@ def single_eval_example(config: EvalConfig, curr_level_dataset: list[str], run_d
         add_to_eval_results_file(1, 0, example_eval_result, eval_file_path)
 
 
-
 @pydra.main(base=EvalConfig)
 def main(config: EvalConfig):
     """
@@ -426,7 +424,8 @@ def main(config: EvalConfig):
 
     print(f"Start evaluation on {len(total_work)} unevaluated samples in range: {problem_id_range}")
     # Build Cache on CPU as that is faster
-
+    if config.build_cache:
+        compile.batch_compile(total_work, config.to_dict())
 
     # Batch Eval on multiple GPUs in parallel
     batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
