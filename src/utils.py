@@ -93,6 +93,10 @@ def query_server(
     server_address: str = "localhost",
     server_type: str = "sglang",
     model_name: str = "default",  # specify model type
+
+    # for reasoning models
+    is_reasoning_model: bool = False, # indiactor of using reasoning models
+    budget_tokens: int = 0, # for claude thinking
     reasoning_effort: str = None, # only for o1 and o3 / more reasoning models in the future
 ):
     """
@@ -166,18 +170,33 @@ def query_server(
     if server_type == "anthropic":
         assert type(prompt) == str
 
-        response = client.messages.create(
-            model=model,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": prompt},
-            ],
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            max_tokens=max_tokens,
-        )
-        outputs = [choice.text for choice in response.content]
+        if is_reasoning_model:
+            # Use beta endpoint with thinking enabled for reasoning models
+            response = client.beta.messages.create(
+                model=model,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
+                # Claude thinking requires budget_tokens for thinking (reasoning)
+                thinking={"type": "enabled", "budget_tokens": budget_tokens},
+                betas=["output-128k-2025-02-19"],
+            )
+        else:
+            # Use standard endpoint for normal models
+            response = client.messages.create(
+                model=model,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                max_tokens=max_tokens,
+            )
+        outputs = [choice.text for choice in response.content if not hasattr(choice, 'thinking') or not choice.thinking]
 
     elif server_type == "google":
         # assert model_name == "gemini-1.5-flash-002", "Only test this for now"
@@ -218,7 +237,7 @@ def query_server(
             )
 
         else: # deepseek reasoner
-
+            assert is_reasoning_model, "Only support deepseek-reasoner for now"
             assert model == "deepseek-reasoner", "Only support deepseek-reasoner for now"
             response = client.chat.completions.create(
                     model=model,
@@ -233,9 +252,9 @@ def query_server(
             )
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "openai":
-        if (
-            "o1" in model or "o3" in model
-        ):  # o-series reasoning models does not support system prompt and decode config
+        if is_reasoning_model:
+            assert "o1" in model or "o3" in model, "Only support o1 and o3 for now"
+            print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
             print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
             response = client.chat.completions.create(
                 model=model,
