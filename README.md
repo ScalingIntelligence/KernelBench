@@ -86,6 +86,9 @@ It is easier to get started with a single problem. This will fetch the problem, 
 
 python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" level=2 problem_id=40
 
+# to generate and evaluate triton kernels, use the following
+python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" level=2 problem_id=40
+
 # dataset_src could be "local" or "huggingface"
 # add .verbose_logging for more visbility
 ```
@@ -111,8 +114,13 @@ python3 scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=1 hard
 If you are using a different hardware, you can generate the baseline time with `scripts/generate_baseline_time.py` script.
 We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
 
+### Framework Support
+KernelBench is created to target PyTorch -> PyTorch + custom inline-compiled CUDA kernels.
+Now we are also extending support for Triton: PyTorch -> PyTorch + custom jit-compiled Triton kernels; please set `framework="triton"` (default "cuda") in your command.
+
+Future stable support coming for [ThunderKittens](https://github.com/HazyResearch/ThunderKittens).
+
 ## 🛣️ Upcoming Roadmap
-- [ ] Triton Variant (Ongoing)
 - [ ] Easy to use CoLab Notebook Example
 - [ ] Push button flow on Modal / Cloud Provider 
 - [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
