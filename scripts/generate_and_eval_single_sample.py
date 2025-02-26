@@ -43,7 +43,7 @@ class EvalConfig(Config):
 
         # Inference config
         self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
+        self.model_name = "deepseek-chat"
         self.max_tokens = 4096
         self.temperature = 0.0
 
@@ -135,6 +135,9 @@ def main(config: EvalConfig):
     if config.log_prompt:
         with open(os.path.join(config.logdir, f"prompt_level_{config.level}_problem_{config.problem_id}.txt"), "w") as f:
             f.write(custom_kernel_prompt)
+
+    # DEBUG
+    # return 
 
     # Query server with constructed prompt
     custom_kernel = inference_server(custom_kernel_prompt)

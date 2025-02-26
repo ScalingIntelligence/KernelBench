@@ -353,7 +353,7 @@ def prompt_generate_custom_kernel_from_prompt_template(ref_arch_src: str, framew
 
     assert framework in ["cuda", "triton"], "Framework must be either cuda or triton"
 
-    arch = ref_arch_src
+    arch = ref_arch_src # PyTorch Reference Program
     # These are strictly defined for now
 
     # path to prompt template, show an example of Model (torch specifications) and ModelNew (torch + custom CUDA kernels)
@@ -383,7 +383,7 @@ def prompt_generate_custom_kernel_from_prompt_template(ref_arch_src: str, framew
     example_arch = read_file(example_arch_path)
     example_new_arch = read_file(example_new_arch_path)
 
-    return prompt_generate_custom_kernel(arch, example_arch, example_new_arch)
+    return prompt_generate_custom_kernel(arc_src=arch, example_arch_src=example_arch, example_new_arch_src=example_new_arch, framework=framework)
 
 
 def prompt_generate_prompt_with_hardware_info_from_template(ref_arch_src: str, gpu_name: str) -> str:
