@@ -81,7 +81,7 @@ def measure_program_time(
         torch_compile_options: str="default",
         device: torch.device="cuda:0",
         verbose: bool = False,
-):
+) -> dict:
     """
     Measure the time of a KernelBench reference architecture
     """

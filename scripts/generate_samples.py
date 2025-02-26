@@ -184,6 +184,7 @@ def main(config: GenerationConfig):
                     sample_id=0 # fix to 0 for now
                 )
         )
+    
 
     # Create inference function with config parameters
     # We provide some presets in utils but you can also pass in your own, see query_server for more details

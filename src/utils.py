@@ -20,7 +20,6 @@ from openai import OpenAI
 import google.generativeai as genai
 import anthropic
 
-
 # from datasets import load_dataset
 import numpy as np
 from contextlib import contextmanager
@@ -42,7 +41,7 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
-
+FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
 
 
 ########################################################
@@ -61,6 +60,9 @@ TOO_LONG_FOR_DEEPSEEK = 115_000
 
 def is_safe_to_send_to_deepseek(prompt):
     tokenizer = load_deepseek_tokenizer()
+    # print(f"Prompt: {len(prompt)}")
+    # print(f"Prompt length: {len(tokenizer(prompt, verbose=False)['input_ids'])}")
+    
     if type(prompt) == str:
         return (
             len(tokenizer(prompt, verbose=False)["input_ids"]) < TOO_LONG_FOR_DEEPSEEK
@@ -91,6 +93,11 @@ def query_server(
     server_address: str = "localhost",
     server_type: str = "sglang",
     model_name: str = "default",  # specify model type
+
+    # for reasoning models
+    is_reasoning_model: bool = False, # indiactor of using reasoning models
+    budget_tokens: int = 0, # for claude thinking
+    reasoning_effort: str = None, # only for o1 and o3 / more reasoning models in the future
 ):
     """
     Query various sort of LLM inference API providers
@@ -101,6 +108,7 @@ def query_server(
     - Sambanova
     - Anthropic
     - Gemini / Google AI Studio
+    - Fireworks (OpenAI compatbility)
     - SGLang (Local Server)
     """
     # Select model and client based on arguments
@@ -122,6 +130,15 @@ def query_server(
             assert model in ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"], "Only support deepseek-chat or deepseek-coder for now"
             if not is_safe_to_send_to_deepseek(prompt):
                 raise RuntimeError("Prompt is too long for DeepSeek")
+        case "fireworks":
+            client = OpenAI(
+                api_key=FIREWORKS_API_KEY,
+                base_url="https://api.fireworks.ai/inference/v1",
+                timeout=10000000,
+                max_retries=3,
+            )
+            model = model_name
+
         case "anthropic":
             client = anthropic.Anthropic(
                 api_key=ANTHROPIC_KEY,
@@ -145,26 +162,41 @@ def query_server(
 
     if server_type != "google":
         assert client is not None, "Client is not set, cannot proceed to generations"
-
-    print(
-        f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
-    )
+    else:
+        print(
+            f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
+        )
     # Logic to query the LLM
     if server_type == "anthropic":
         assert type(prompt) == str
 
-        response = client.messages.create(
-            model=model,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": prompt},
-            ],
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            max_tokens=max_tokens,
-        )
-        outputs = [choice.text for choice in response.content]
+        if is_reasoning_model:
+            # Use beta endpoint with thinking enabled for reasoning models
+            response = client.beta.messages.create(
+                model=model,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
+                # Claude thinking requires budget_tokens for thinking (reasoning)
+                thinking={"type": "enabled", "budget_tokens": budget_tokens},
+                betas=["output-128k-2025-02-19"],
+            )
+        else:
+            # Use standard endpoint for normal models
+            response = client.messages.create(
+                model=model,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                max_tokens=max_tokens,
+            )
+        outputs = [choice.text for choice in response.content if not hasattr(choice, 'thinking') or not choice.thinking]
 
     elif server_type == "google":
         # assert model_name == "gemini-1.5-flash-002", "Only test this for now"
@@ -188,7 +220,7 @@ def query_server(
         return response.text
 
     elif server_type == "deepseek":
-
+        
         if model in ["deepseek-chat", "deepseek-coder"]:
             # regular deepseek model 
             response = client.chat.completions.create(
@@ -203,8 +235,9 @@ def query_server(
                 max_tokens=max_tokens,
                 top_p=top_p,
             )
-        else: # deepseek reasoner
 
+        else: # deepseek reasoner
+            assert is_reasoning_model, "Only support deepseek-reasoner for now"
             assert model == "deepseek-reasoner", "Only support deepseek-reasoner for now"
             response = client.chat.completions.create(
                     model=model,
@@ -217,18 +250,18 @@ def query_server(
                 max_tokens=max_tokens,
                 # do not use temperature or top_p
             )
-
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "openai":
-        if (
-            "o1" in model
-        ):  # o1 does not support system prompt and decode config
-            print(f"Using o1 family model {model}")
+        if is_reasoning_model:
+            assert "o1" in model or "o3" in model, "Only support o1 and o3 for now"
+            print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
+            print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
             response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "user", "content": prompt},
                 ],
+                reasoning_effort=reasoning_effort,
             )
         else:
             response = client.chat.completions.create(
@@ -255,6 +288,23 @@ def query_server(
             ],
             top_p=top_p,
             top_k=top_k,
+            # repetition_penalty=1,
+            stop=["<|eot_id|>", "<|eom_id|>"],
+            # truncate=32256,
+            stream=False,
+        )
+        outputs = [choice.message.content for choice in response.choices]
+    elif server_type == "fireworks":
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            # top_p=top_p,
+            # top_k=top_k,
             # repetition_penalty=1,
             stop=["<|eot_id|>", "<|eom_id|>"],
             # truncate=32256,
