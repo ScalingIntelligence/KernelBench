@@ -13,3 +13,4 @@ together
 pytest
 ninja
 archon-ai
+einops
