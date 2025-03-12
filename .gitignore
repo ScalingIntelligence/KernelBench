@@ -10,3 +10,4 @@ runs/*
 cache/*
 !results/timing/
 .env
+.kbenv
