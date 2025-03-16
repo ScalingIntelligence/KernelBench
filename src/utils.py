@@ -113,7 +113,8 @@ def query_server(
     """
     # Select model and client based on arguments
     match server_type:
-        case "sglang":
+        case "sglang" | "local_openai":
+            print(f"Querying local server at {server_address}:{server_port}")
             url = f"http://{server_address}:{server_port}"
             client = OpenAI(
                 api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
@@ -273,10 +274,27 @@ def query_server(
                 stream=False,
                 temperature=temperature,
                 n=num_completions,
-                max_tokens=max_tokens,
+                # openai updated max_tokens to max_completion_tokens
+                max_completion_tokens=max_tokens,
                 top_p=top_p,
             )
         outputs = [choice.message.content for choice in response.choices]
+    
+    elif server_type == "local_openai":
+        print(f"Using local openai API compatible server at {server_address}:{server_port} with temperature {temperature} max tokens {max_tokens} top p {top_p}")
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+                ],
+            temperature=temperature,
+            n=num_completions,
+            max_tokens=max_tokens,
+            top_p=top_p,
+        )
+        outputs = [choice.message.content for choice in response.choices]
+    
     elif server_type == "together":
         response = client.chat.completions.create(
             model=model,
@@ -326,7 +344,7 @@ def query_server(
     # for all other kinds of servers, use standard API
     else:
         if type(prompt) == str:
-            response = client.completions.create(
+            response = client.chat.completions.create(
                 model=model,
                 prompt=prompt,
                 temperature=temperature,
@@ -372,6 +390,12 @@ SERVER_PRESETS = {
         "max_tokens": 4096,
     },
     "sglang": {  # this is for running locally, mostly for Llama
+        "temperature": 0.8, # human eval pass@N temperature
+        "server_port": 10210,
+        "server_address": "matx2.stanford.edu",
+        "max_tokens": 8192,
+    },
+    "local_openai": {  # this is for running locally, mostly for Llama
         "temperature": 0.8, # human eval pass@N temperature
         "server_port": 10210,
         "server_address": "matx2.stanford.edu",

@@ -11,7 +11,7 @@ from datasets import load_dataset
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_kernel_from_prompt_template
-from src.utils import extract_first_code, set_gpu_arch, read_file, create_inference_server_from_presets, maybe_multithread
+from src.utils import extract_first_code, extract_last_code, set_gpu_arch, read_file, create_inference_server_from_presets, maybe_multithread
 
 """
 Batch Generate Samples for Particular Level
@@ -46,8 +46,16 @@ class GenerationConfig(Config):
         # Inference config
         self.server_type = "deepseek"
         self.model_name = "deepseek-coder"
+        self.server_port = 30000
+        self.server_address = "localhost"
+
+        # ex. non-reasoning model 
+        self.is_reasoning_model = False
         self.max_tokens = 4096
         self.temperature = 0.0
+
+        # ex. reasoning model
+        # self.is_reasoning_model = True
         
         # Logging
         # Top Directory to Store Runs
@@ -109,7 +117,8 @@ def generate_sample_single(work: WorkArgs, config: GenerationConfig, dataset, in
 
     # Query server with constructed prompt
     custom_kernel = inference_server(custom_kernel_prompt)
-    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
+    # custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
+    custom_kernel = extract_last_code(custom_kernel, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
     assert custom_kernel is not None, "Custom CUDA code generation failed"
 
@@ -192,7 +201,10 @@ def main(config: GenerationConfig):
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
-                                                        verbose=config.verbose)
+                                                        verbose=config.verbose,
+                                                        is_reasoning_model=config.is_reasoning_model,
+                                                        server_port=config.server_port,
+                                                        server_address=config.server_address)
 
     # Launch workers
     generation_results = maybe_multithread(generate_sample_launcher, 

@@ -43,6 +43,11 @@ class EvalConfig(Config):
 
         # Inference config
         self.server_type = "deepseek"
+
+        # for local
+        self.server_port = 30000
+        self.server_address = "localhost"
+
         self.model_name = "deepseek-chat"
         self.max_tokens = 4096
         self.temperature = 0.0
@@ -127,7 +132,9 @@ def main(config: EvalConfig):
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
                                                         verbose=config.verbose,
-                                                        time_generation=True)
+                                                        time_generation=True,
+                                                        server_port=config.server_port,
+                                                        server_address=config.server_address)
     
 
 
