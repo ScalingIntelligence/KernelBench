@@ -7,7 +7,6 @@ import traceback
 import importlib.util
 import time
 
-import weave
 import torch
 import modal
 import numpy as np
@@ -28,8 +27,7 @@ except ImportError as e:
     kernel_eval = None
     kernel_utils = None
     
-# Create Modal app
-app = modal.App("kernel-benchmark-server") # Still here
+
 
 # GPU architecture mapping
 gpu_arch_mapping = {
@@ -41,8 +39,11 @@ gpu_arch_mapping = {
     "A10G": ["Ampere"]
 }
 
+GPU = "L40S"
+SCALEDOWN_WINDOW = 300
+
 # Configure Modal image
-cuda_version = "12.8.0"
+cuda_version = "12.4.0"
 flavor = "devel"
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -51,18 +52,20 @@ image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
     .pip_install(
-        "fastapi==0.115.0",
-        "uvicorn==0.27.1",
-        "python-multipart==0.0.9",
-        "pydantic==2.6.1",
-        "aiofiles==23.2.1",  # For serving static files
-        "weave"
+        "fastapi",
+        "uvicorn",
+        "python-multipart",
+        "pydantic",
+        "aiofiles",  # For serving static files
     )
     .pip_install_from_requirements("requirements.txt")
     # Add source directories
     .add_local_python_source("scripts", "src")
     .add_local_dir("static", "/root/static")
 )
+
+# Create Modal app
+app = modal.App("kernel-benchmark-server", image=image) # Still here
 
 # Define response models
 class KernelExecResult(BaseModel):
@@ -82,12 +85,9 @@ class BenchmarkResult(BaseModel):
     total_benchmark_time_ms: Optional[float] = None
     error: Optional[str] = None
 
-@app.cls(image=image, gpu="L40S", scaledown_window=300, secrets=[modal.Secret.from_name("wandb-api-key")])
+@app.cls(gpu=GPU, scaledown_window=SCALEDOWN_WINDOW, secrets=[modal.Secret.from_name("wandb-api-key")])
 class BenchmarkService:
-    def __init__(self):
-        pass
-        
-    @weave.op()
+
     def evaluate_single_sample_src(self, ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device) -> KernelExecResult:
         """Evaluate a single sample source code against a reference source code"""
         # Check if kernel_eval was imported successfully
@@ -156,7 +156,6 @@ class BenchmarkService:
                 metadata={"unexpected_error": str(e)}
             )
         
-    @weave.op()
     def measure_program_time(self, ref_arch_name, ref_arch_src, num_trials, 
                             use_torch_compile=False, torch_compile_backend=None, 
                             torch_compile_options=None, gpu_arch=None):
@@ -274,14 +273,12 @@ class BenchmarkService:
         
     @modal.method()
     def run_benchmark(self, ref_arch_src: str, kernel_src: str, 
-                      gpu_type: str = "L40S", 
                       num_correct_trials: int = 5, 
                       num_perf_trials: int = 100,
                       verbose: bool = False):
         """Run a complete benchmark of kernel vs reference implementation"""
-        print(f"[DEBUG] Starting benchmark on GPU: {gpu_type}")
+        print(f"[DEBUG] Starting benchmark on GPU: {GPU}")
         
-        import time
         start_time = time.time()
         
         # Check if kernel_utils was imported successfully
@@ -294,10 +291,10 @@ class BenchmarkService:
              
         try:
             # Get GPU architecture
-            gpu_arch = gpu_arch_mapping.get(gpu_type, ["Ada"])
+            gpu_arch = gpu_arch_mapping.get(GPU, ["Ada"])
             print(f"[DEBUG] Using GPU architecture: {gpu_arch}")
             
-            # Removed from src import utils as kernel_utils
+            # Set GPU architecture
             kernel_utils.set_gpu_arch(gpu_arch)
             
             # Default device 
@@ -472,18 +469,12 @@ class BenchmarkService:
         async def benchmark_endpoint(
             ref_file: UploadFile = File(...),
             kernel_file: UploadFile = File(...),
-            gpu_type: str = Form("L40S"),
             num_correct_trials: int = Form(5),
             num_perf_trials: int = Form(100),
             verbose: bool = Form(False)
         ):
-            weave.init("gpu-server-modal")
             try:
-                print(f"[DEBUG] Received benchmark request with GPU: {gpu_type}, trials: {num_correct_trials}/{num_perf_trials}")
-                
-                # Validate GPU type
-                if gpu_type not in gpu_arch_mapping:
-                    raise HTTPException(status_code=400, detail=f"Invalid GPU type. Must be one of: {list(gpu_arch_mapping.keys())}")
+                print(f"[DEBUG] Received benchmark request for GPU: {GPU}, trials: {num_correct_trials}/{num_perf_trials}")
                 
                 # Read file contents
                 try:
@@ -498,13 +489,12 @@ class BenchmarkService:
                     print(f"[ERROR] Failed to read uploaded files: {str(e)}")
                     raise HTTPException(status_code=400, detail=f"Failed to read uploaded files: {str(e)}")
                 
-                # Run the benchmark with the specified GPU type
+                # Run the benchmark
                 try:
                     print(f"[DEBUG] Calling run_benchmark method")
                     result = self.run_benchmark.remote(
                         ref_arch_src=ref_arch_src,
                         kernel_src=kernel_src,
-                        gpu_type=gpu_type,
                         num_correct_trials=num_correct_trials,
                         num_perf_trials=num_perf_trials,
                         verbose=verbose
@@ -519,14 +509,12 @@ class BenchmarkService:
                 print(f"[ERROR] Unexpected error in benchmark endpoint: {str(e)}")
                 print(f"[ERROR] Traceback: {traceback.format_exc()}")
                 raise HTTPException(status_code=500, detail=f"Benchmark failed: {str(e)}")
-            finally:
-                weave.finish()
         
         @web_app.get("/status")
         async def status():
             return {
                 "status": "online",
-                "gpu_types": list(gpu_arch_mapping.keys())
+                "gpu_type": GPU
             }
         
         @web_app.get("/test_imports")
