@@ -1,0 +1,19 @@
+anthropic
+modal
+numpy
+openai
+packaging
+pydra_config
+torch
+--find-links https://download.pytorch.org/whl/nightly/cu128
+torchvision 
+torchaudio
+tqdm
+datasets
+transformers
+google-generativeai
+together
+pytest
+ninja
+archon-ai
+einops
