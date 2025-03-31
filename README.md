@@ -72,6 +72,19 @@ pip install -r requirements.txt
 pip install -e . 
 ```
 
+### Alternative setup using `uv`
+You can also use `uv` as a faster alternative to conda and pip:
+
+```
+# Install a Python environment using uv
+uv python install 3.10
+
+# Create a virtual environment and install dependencies
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+```
+
 To call LLM API providers, set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
 
 Running and profiling kernels require a GPU. 
