@@ -24,10 +24,11 @@ dependencies = [
 ]
 
 
-[tool.setuptools]
-packages = ["src", "scripts"]
+   [tool.setuptools]
+   package-dir = {"" = "src"}
+   packages = ["kernelbench"]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "weave>=0.51.39",
 ]

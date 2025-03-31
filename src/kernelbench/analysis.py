@@ -1,12 +1,9 @@
 ################################################################################
 # Helpers for Analysis
 ################################################################################
-import numpy as np
-
-from functools import cache
-from transformers import AutoTokenizer
-import utils
 import re
+import numpy as np
+from transformers import AutoTokenizer
 
 
 def pass_at_k(n, c, k):

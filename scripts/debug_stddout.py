@@ -1,10 +1,5 @@
-# from src.eval import build_compile_cache_with_capturing
-import subprocess
-import os
-import ninja
-
-from src.utils import set_gpu_arch
-from src.eval import build_compile_cache_with_capturing
+from kernelbench.utils import set_gpu_arch
+from kernelbench.eval import build_compile_cache_with_capturing
 
 ################################################################################
 # Test for checking if we can capture nvcc errors

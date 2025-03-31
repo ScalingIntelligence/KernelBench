@@ -1,16 +1,14 @@
+import os
 import shutil
+
 import torch
 import pydra
 from pydra import REQUIRED, Config
-import os
 from datasets import load_dataset
 
-
-from src import eval as kernel_eval
-from src import utils as kernel_utils
+from kernelbench.eval import eval_kernel_against_ref, KernelExecResult
+from kernelbench.utils import read_file, set_gpu_arch
 from scripts.generate_baseline_time import measure_program_time
-
-from src.utils import read_file
 
 """
 Run a pair of KernelBench format (problem, solution) to check if solution is correct and compute speedup
@@ -72,7 +70,7 @@ class ScriptConfig(Config):
     def __repr__(self):
         return f"ScriptConfig({self.to_dict()})"
 
-def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device) -> kernel_eval.KernelExecResult:
+def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device) -> KernelExecResult:
     """
     Evaluate a single sample source code against a reference source code
     """
@@ -89,7 +87,7 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
     verbose = configs["verbose"]
     measure_performance = configs["measure_performance"]
     try:
-        eval_result = kernel_eval.eval_kernel_against_ref(
+        eval_result = eval_kernel_against_ref(
         original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=measure_performance,
@@ -108,7 +106,7 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
                         "hardware": torch.cuda.get_device_name(device=device),
                         "device": str(device)
                         }
-            eval_result = kernel_eval.KernelExecResult(compiled=False, correctness=False, 
+            eval_result = KernelExecResult(compiled=False, correctness=False, 
                                                 metadata=metadata)
             return eval_result
         else:
@@ -116,7 +114,7 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
                         "hardware": torch.cuda.get_device_name(device=device),
                         "device": str(device)
                         }
-            eval_result = kernel_eval.KernelExecResult(compiled=False, correctness=False, 
+            eval_result = KernelExecResult(compiled=False, correctness=False, 
                                                 metadata=metadata)
             return eval_result
 
@@ -160,7 +158,7 @@ def main(config: ScriptConfig):
 
     # Start Evaluation
     device = torch.device("cuda:0") # default device
-    kernel_utils.set_gpu_arch(config.gpu_arch)
+    set_gpu_arch(config.gpu_arch)
 
     print("[INFO] Evaluating kernel against reference code")
     # Evaluate kernel against reference code

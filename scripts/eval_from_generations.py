@@ -6,7 +6,6 @@ from pydra import REQUIRED, Config
 
 import json
 from tqdm import tqdm
-from src import eval, utils, compile
 import torch
 import os
 import multiprocessing as mp
@@ -14,9 +13,15 @@ import multiprocessing as mp
 
 from datasets import load_dataset
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import build_compile_cache, eval_kernel_against_ref, KernelExecResult, check_metadata_serializable_all_types
-from src.utils import set_gpu_arch, read_file
+from kernelbench.compile import batch_compile
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import (
+    build_compile_cache, 
+    eval_kernel_against_ref, 
+    KernelExecResult, 
+    check_metadata_serializable_all_types
+)
+from kernelbench.utils import set_gpu_arch, read_file
 
 """
 Batch Evaluation from Existing Generations
@@ -425,7 +430,7 @@ def main(config: EvalConfig):
     print(f"Start evaluation on {len(total_work)} unevaluated samples in range: {problem_id_range}")
     # Build Cache on CPU as that is faster
     if config.build_cache:
-        compile.batch_compile(total_work, config.to_dict())
+        batch_compile(total_work, config.to_dict())
 
     # Batch Eval on multiple GPUs in parallel
     batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)

@@ -1,15 +1,22 @@
-import torch
-import pydra
-from pydra import REQUIRED, Config
 import os
 import shutil
+import importlib.util
+import sys
+import os
+import tempfile
+
 import modal
+import pydra
+import torch
 import numpy as np
 
-from src import eval as kernel_eval
-from src.utils import read_file
+from pydra import REQUIRED, Config
 
-def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device) -> kernel_eval.KernelExecResult:
+
+from kernelbench.eval import eval_kernel_against_ref, KernelExecResult
+from kernelbench.utils import read_file, set_gpu_arch
+
+def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device) -> KernelExecResult:
     """Evaluate a single sample source code against a reference source code"""
     kernel_hash = str(hash(kernel_src))
     build_dir = os.path.join(configs["build_dir_prefix"], "test_build", kernel_hash)
@@ -19,7 +26,7 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
         shutil.rmtree(build_dir, ignore_errors=True)
     
     try:
-        eval_result = kernel_eval.eval_kernel_against_ref(
+        eval_result = eval_kernel_against_ref(
             original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=configs["measure_performance"],
@@ -42,7 +49,7 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
                         "hardware": torch.cuda.get_device_name(device=device),
                         "device": str(device)
                         }
-        return kernel_eval.KernelExecResult(compiled=False, correctness=False, metadata=metadata)
+        return KernelExecResult(compiled=False, correctness=False, metadata=metadata)
 
 """
 Run a pair of (reference, solution) to check if solution is correct and compute speedup using Modal
@@ -118,17 +125,10 @@ class EvalFunc:
                             use_torch_compile=False, torch_compile_backend=None, 
                             torch_compile_options=None, gpu_arch=None):
         """Measure the execution time of a reference program"""
-        import torch
-        import numpy as np
-        import importlib.util
-        import sys
-        import os
-        import tempfile
-        from src import utils as kernel_utils
         
         # Setup
         if gpu_arch:
-            kernel_utils.set_gpu_arch(gpu_arch)
+            set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         
         # Create temporary module
@@ -250,7 +250,7 @@ def main(config: ScriptConfig):
         )
         
         # Convert dict back to KernelExecResult object
-        kernel_eval_result = kernel_eval.KernelExecResult(
+        kernel_eval_result = KernelExecResult(
             compiled=kernel_eval_result_dict["compiled"],
             correctness=kernel_eval_result_dict["correctness"],
             runtime=kernel_eval_result_dict["runtime"],

@@ -1,17 +1,18 @@
-import fastapi
-import uvicorn
-import tempfile
 import os
 import shutil
+import tempfile
+from typing import Optional, Dict, Any, List
+
+import fastapi
+import uvicorn
+import torch
 from fastapi import UploadFile, File, HTTPException, status
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
 
 # Import the relevant modules directly
 from scripts.run_and_check import evaluate_single_sample_src
 from scripts.generate_baseline_time import measure_program_time
-from src.utils import read_file, set_gpu_arch
-import torch
+from kernelbench.utils import read_file, set_gpu_arch
 
 # Define the response model
 class BenchmarkResult(BaseModel):

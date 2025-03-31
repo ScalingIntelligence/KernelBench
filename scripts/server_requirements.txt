@@ -1,13 +1,8 @@
-anthropic
 modal
 numpy
-openai
-packaging
 pydra_config
-torch
+torch==2.5.0
 triton
-torchvision 
-torchaudio
 tqdm
 datasets
 transformers

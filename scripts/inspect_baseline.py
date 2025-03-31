@@ -1,19 +1,15 @@
-import torch
-import logging
 import os
-import sys
+import logging
+
 import numpy as np
-from src.eval import (
+import torch
+
+from kernelbench.eval import (
     load_original_model_and_inputs,
-    time_execution_with_cuda_event,
-    get_timing_stats,
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.dataset import construct_problem_dataset_from_problem_dir
-import os, sys
-import logging
-import json
+from kernelbench.dataset import construct_problem_dataset_from_problem_dir
 
 device = torch.device("cuda:0")
 

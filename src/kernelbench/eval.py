@@ -2,19 +2,19 @@
 Helpers for Evaluations
 """
 
-import requests
-import torch
-import torch.nn as nn
-import os, subprocess
-from pydantic import BaseModel
-import numpy as np
-import random
-import json
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
-import sys
+import json
+import numpy as np
+import os
+import requests
+import subprocess
+import torch
+import torch.nn as nn
+from pydantic import BaseModel
 
-from . import utils
+from kernelbench.utils import read_file
+from kernelbench.dataset import construct_problem_dataset_from_problem_dir
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -55,7 +55,7 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
     if not os.path.exists(problem_path):
         raise FileNotFoundError(f"Problem file at {problem_path} does not exist.")
 
-    ref_arch = utils.read_file(problem_path)
+    ref_arch = read_file(problem_path)
     if not with_name:
         return ref_arch
     else:
@@ -64,7 +64,7 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
 
 def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
     PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 

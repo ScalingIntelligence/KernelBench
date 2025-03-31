@@ -27,6 +27,7 @@ gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4
 
 class EvalConfig(Config):
     def __init__(self):
+        self.weave_project = "generate_and_eval_single_sample_modal"
         
         self.dataset_src = REQUIRED # either huggingface or local
 
@@ -49,8 +50,8 @@ class EvalConfig(Config):
 
 
         # Inference config
-        self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
+        self.server_type = "anthropic"
+        self.model_name = "claude-3-5-sonnet-20241022"
         self.max_tokens = 4096
         self.temperature = 0.0
         
@@ -123,6 +124,9 @@ def main(config: EvalConfig):
     """
     Keep it simple: Generate and evaluate a single sample
     """
+
+    import weave
+    weave.init(config.weave_project)
     print(f"Starting Eval with config: {config}")
 
     # Configurations

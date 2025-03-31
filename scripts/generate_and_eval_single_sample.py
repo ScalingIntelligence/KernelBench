@@ -6,10 +6,11 @@ import json
 
 from datasets import load_dataset
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import eval_kernel_against_ref
+from kernelbench.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from kernelbench.utils import extract_first_code, set_gpu_arch, read_file
+from kernelbench.frameworks import create_inference_server_from_presets
 
 """
 Generate and evaluate a single sample

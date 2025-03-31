@@ -6,14 +6,13 @@ It ensures that the test is well-formed and there are no sources of non-determin
 Usage: python test_bench.py
 """
 
-import importlib
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import random
-import numpy as np
 import os
+import importlib
+import random
 import importlib.util
+
+import torch
+import numpy as np
 
 """
 Test all the reference architectures compiles 

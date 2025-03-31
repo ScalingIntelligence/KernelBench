@@ -1,7 +1,8 @@
 import sys, os
-import src.utils as utils
 import time
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+
+import kernelbench.utils as utils
+from kernelbench.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
 
 """
 For testing infernece and quickly iterate on prompts 

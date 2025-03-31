@@ -1,15 +1,14 @@
-from dataclasses import dataclass
-import random
+import multiprocessing as mp
+import os
+import shutil
 import time
+from dataclasses import dataclass
 
+import torch
 from tqdm import tqdm
 
-import shutil
-from src.eval import build_compile_cache
-from src import utils as utils
-import torch
-import os
-import multiprocessing as mp
+from kernelbench.utils import set_gpu_arch
+from kernelbench.eval import build_compile_cache
 
 """
 Compile and Cache
@@ -32,7 +31,7 @@ def compile_single_sample(work_args: WorkArgs, config: dict) -> tuple[bool, str]
     sample_id = work_args.sample_id
     verbose = config["verbose"]
     
-    utils.set_gpu_arch(config["gpu_arch"])
+    set_gpu_arch(config["gpu_arch"])
 
     build_dir = os.path.join(config["kernel_eval_build_dir"], config["run_name"], str(problem_id), str(sample_id))
 

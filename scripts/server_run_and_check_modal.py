@@ -16,17 +16,9 @@ from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-# Import project-specific modules
-# Assuming 'src' is in the Python path
-try:
-    from src import eval as kernel_eval
-    from src import utils as kernel_utils
-except ImportError as e:
-    print(f"[ERROR] Failed to import project modules at startup: {e}")
-    # Decide how to handle this - exit, log, or proceed cautiously
-    kernel_eval = None
-    kernel_utils = None
-    
+
+from kernelbench.eval import eval_kernel_against_ref, KernelExecResult
+from kernelbench.utils import set_gpu_arch
 
 
 # GPU architecture mapping
@@ -90,15 +82,7 @@ class BenchmarkService:
 
     def evaluate_single_sample_src(self, ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device) -> KernelExecResult:
         """Evaluate a single sample source code against a reference source code"""
-        # Check if kernel_eval was imported successfully
-        if kernel_eval is None:
-            print("[ERROR] src.eval module not available.")
-            return KernelExecResult(
-                compiled=False,
-                correctness=False,
-                metadata={"import_error": "Failed to import src.eval at startup"}
-            )
-            
+        
         try:
             print(f"[DEBUG] Python paths: {sys.path}")
             
@@ -110,7 +94,7 @@ class BenchmarkService:
                 shutil.rmtree(build_dir, ignore_errors=True)
             
             try:
-                eval_result = kernel_eval.eval_kernel_against_ref(
+                eval_result = eval_kernel_against_ref(
                     original_model_src=ref_arch_src,
                     custom_model_src=kernel_src,
                     measure_performance=configs["measure_performance"],
@@ -160,20 +144,9 @@ class BenchmarkService:
                             use_torch_compile=False, torch_compile_backend=None, 
                             torch_compile_options=None, gpu_arch=None):
         """Measure the execution time of a reference program"""
-        # Removed imports: torch, numpy, importlib.util, sys, os, tempfile, src.utils
-        
-        # Check if kernel_utils was imported successfully
-        if kernel_utils is None:
-            print("[ERROR] src.utils module not available.")
-            # Return an error structure or raise an exception
-            return {
-                "error": "src.utils module not available",
-                "mean": None, "std": None, "min": None, "max": None, "median": None
-            }
-            
         # Setup
         if gpu_arch:
-            kernel_utils.set_gpu_arch(gpu_arch)
+            set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         
         # Create temporary module
@@ -280,14 +253,6 @@ class BenchmarkService:
         print(f"[DEBUG] Starting benchmark on GPU: {GPU}")
         
         start_time = time.time()
-        
-        # Check if kernel_utils was imported successfully
-        if kernel_utils is None:
-             print("[ERROR] src.utils module not available.")
-             return BenchmarkResult(
-                 kernel_result=KernelExecResult(compiled=False, correctness=False),
-                 error="src.utils module not available"
-             )
              
         try:
             # Get GPU architecture
@@ -295,7 +260,7 @@ class BenchmarkService:
             print(f"[DEBUG] Using GPU architecture: {gpu_arch}")
             
             # Set GPU architecture
-            kernel_utils.set_gpu_arch(gpu_arch)
+            set_gpu_arch(gpu_arch)
             
             # Default device 
             device = torch.device("cuda:0")
@@ -541,18 +506,10 @@ class BenchmarkService:
             except Exception as e:
                  result["imports"]["torch"] = {"error": f"Error checking torch: {str(e)}"}
 
-            # Verify src.eval import
-            if kernel_eval is not None:
-                 result["imports"]["src.eval"] = {"success": True}
-            else:
-                 result["imports"]["src.eval"] = {"error": "src.eval module failed to load at startup"}
-                 
-            # Verify src.utils import
-            if kernel_utils is not None:
-                 result["imports"]["src.utils"] = {"success": True}
-            else:
-                 result["imports"]["src.utils"] = {"error": "src.utils module failed to load at startup"}
-
+ 
+            result["imports"]["src.eval"] = {"success": True}
+            result["imports"]["src.utils"] = {"success": True}
+            
             # Check for file existence
             result["files"] = {
                 "static_local": os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")),

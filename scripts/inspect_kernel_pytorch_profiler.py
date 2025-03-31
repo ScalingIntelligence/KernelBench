@@ -1,28 +1,27 @@
-import torch
-from torch.profiler import profile, record_function, ProfilerActivity
-import logging
-import os
-import io
-
-
 """
 For analysis
 Inspect the operator and kernel breakdown of model-generated kernel to a particular problem
 Using PyTorch Profiler
 """
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+import os
+import io
+import logging
 
-device = "cuda:0"
+import torch
+from torch.profiler import profile, ProfilerActivity
 
-
-from src.utils import read_file
-from src.eval import (
+from kernelbench.utils import read_file
+from kernelbench.eval import (
     load_custom_model,
     load_original_model_and_inputs,
     set_seed,
 )
 
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+device = "cuda:0"
 
 def get_torch_profiler_info(ref_arch_src: str, 
                             kernel_src: str, 

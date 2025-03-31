@@ -1,10 +1,3 @@
-import torch
-from torch.profiler import profile, record_function, ProfilerActivity
-import logging
-import os
-import io
-
-
 """
 [WIP] For debugging and analysis
 Inspect torch compile generated triton code
@@ -12,19 +5,25 @@ as well as generate flamegraph for a particular problem when executed with Torch
 using PyTorch Profiler
 """
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+import os
+import io
+import logging
 
-device = "cuda:0"
+import torch
+from torch.profiler import profile, record_function, ProfilerActivity
 
-
-from src.utils import read_file
-from src.eval import (
-    load_custom_model,
+from kernelbench.utils import read_file
+from kernelbench.eval import (
     load_original_model_and_inputs,
     time_execution_with_cuda_event,
     get_timing_stats,
     set_seed,
 )
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+device = "cuda:0"
+
 
 def fetch_ref_arch_from_dataset(dataset: list[str], 
                                 problem_id: int) -> tuple[str, str, str]:

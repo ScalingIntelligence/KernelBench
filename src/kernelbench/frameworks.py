@@ -5,17 +5,9 @@
 # See how we added Archon support as an example
 ########################
 
-import multiprocessing
-import subprocess
-import re
-import random
-import tempfile
-from pathlib import Path
-import re
-import math
 import os
 import json
-from tqdm import tqdm
+import time
 
 # API clients
 from archon.completions import Archon
@@ -25,17 +17,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # from datasets import load_dataset
-import numpy as np
-from contextlib import contextmanager
-from collections import defaultdict
-import time
-import shutil
-import concurrent
-from functools import cache
-from transformers import AutoTokenizer
-import hashlib
-
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Define API key access
 TOGETHER_KEY = os.environ.get("TOGETHER_API_KEY")

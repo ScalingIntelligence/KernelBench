@@ -1,6 +1,6 @@
 import os
 import weave
-from .utils import read_file
+from kernelbench.utils import read_file
 
 
 """

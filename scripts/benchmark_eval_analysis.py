@@ -2,7 +2,7 @@ import json, os
 from tabulate import tabulate
 import pydra
 from pydra import REQUIRED, Config
-from src.dataset import construct_kernelbench_dataset
+from kernelbench.dataset import construct_kernelbench_dataset
 
 """
 Benchmark Eval Analysis
