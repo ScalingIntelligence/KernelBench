@@ -63,7 +63,7 @@ def is_safe_to_send_to_deepseek(prompt):
     # print(f"Prompt: {len(prompt)}")
     # print(f"Prompt length: {len(tokenizer(prompt, verbose=False)['input_ids'])}")
     
-    if type(prompt) == str:
+    if isinstance(prompt, str):
         return (
             len(tokenizer(prompt, verbose=False)["input_ids"]) < TOO_LONG_FOR_DEEPSEEK
         )
@@ -168,7 +168,7 @@ def query_server(
         )
     # Logic to query the LLM
     if server_type == "anthropic":
-        assert type(prompt) == str
+        assert isinstance(prompt, str), f"The prompt must be a string for Anthropic, but it was a {type(prompt)}"
 
         if is_reasoning_model:
             # Use beta endpoint with thinking enabled for reasoning models
@@ -325,7 +325,7 @@ def query_server(
         outputs = [choice.message.content for choice in response.choices]
     # for all other kinds of servers, use standard API
     else:
-        if type(prompt) == str:
+        if isinstance(prompt, str):
             response = client.completions.create(
                 model=model,
                 prompt=prompt,
