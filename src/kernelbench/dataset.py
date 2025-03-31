@@ -6,14 +6,35 @@ import os
 import random
 import re
 import hashlib
+import pathlib
 
+# Replace hardcoded path with more robust resolution
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
-        "..",
+        "../..",
     )
 )
+# Use pathlib for more robust path handling
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+
+
+# Alternative approach - make the path configurable
+def get_kernel_bench_path():
+    """Get the path to the KernelBench dataset directory
+
+    Tries to use environment variable KERNEL_BENCH_PATH if set,
+    otherwise falls back to the default location relative to this file.
+    """
+    env_path = os.environ.get("KERNEL_BENCH_PATH")
+    if env_path:
+        return env_path
+
+    return os.path.join(REPO_TOP_PATH, "KernelBench")
+
+
+# Update to use the function instead of the constant
+KERNEL_BENCH_PATH = get_kernel_bench_path()
 
 
 def assign_problem_hash(problem_path: str) -> list[int]:

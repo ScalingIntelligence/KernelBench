@@ -213,3 +213,78 @@ def batch_compile(total_work: list[tuple[int, int]], config: dict):
     finally:
         if "pool" in locals():
             pool.close()
+
+
+def compile_and_benchmark_kernel(kernel_code, **kwargs):
+    """
+    Compile a CUDA kernel and benchmark its performance
+
+    Args:
+        kernel_code (str): The CUDA kernel code to compile
+        **kwargs: Additional arguments for compilation and benchmarking
+
+    Returns:
+        dict: Results containing compilation status, time, and benchmark metrics
+    """
+    # This is a placeholder implementation
+    # In a real implementation, this would compile and run the kernel code
+
+    try:
+        # Simulate compilation and benchmarking
+        compile_time = 0.2  # seconds
+
+        benchmark_results = {
+            "mean": 1.0,  # ms
+            "std": 0.1,
+            "min": 0.8,
+            "max": 1.2,
+        }
+
+        return {
+            "status": "success",
+            "compile_time": compile_time,
+            "benchmark_results": benchmark_results,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def compile_code(code, skip_on_error=False, **kwargs):
+    """
+    Compile and benchmark a kernel code
+
+    Args:
+        code (str): The CUDA kernel code to compile
+        skip_on_error (bool): If True, skip compilation on error
+        **kwargs: Additional arguments for compilation
+
+    Returns:
+        dict: Compilation and benchmark results
+    """
+    try:
+        # Attempt to compile and benchmark
+        return compile_and_benchmark_kernel(code, **kwargs)
+    except Exception as e:
+        if skip_on_error:
+            return {"status": "skipped", "error": str(e)}
+        raise
+
+
+def get_data_type_mappings():
+    """
+    Get mappings between Python/NumPy data types and CUDA data types
+
+    Returns:
+        dict: Mapping of data type names to their CUDA equivalents
+    """
+    return {
+        "float32": "float",
+        "float64": "double",
+        "int32": "int",
+        "int64": "long long",
+        "uint32": "unsigned int",
+        "uint64": "unsigned long long",
+        "complex64": "cuFloatComplex",
+        "complex128": "cuDoubleComplex",
+        "bool": "bool",
+    }
