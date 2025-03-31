@@ -2,14 +2,19 @@ import sys, os
 import time
 
 import kernelbench.utils as utils
-from kernelbench.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from kernelbench.prompt_constructor import (
+    prompt_generate_custom_cuda_from_prompt_template,
+)
 
 """
-For testing infernece and quickly iterate on prompts 
+For testing infernece and quickly iterate on prompts
 Uses functions in prompt_constructor
 """
 
-def inference_with_prompt(arch_path, inference_server: callable = None, log_to_local: bool = False) -> str:
+
+def inference_with_prompt(
+    arch_path, inference_server: callable = None, log_to_local: bool = False
+) -> str:
     """
     Returns the generated custom CUDA code (kernel to evaluate)
 
@@ -28,7 +33,7 @@ def inference_with_prompt(arch_path, inference_server: callable = None, log_to_l
 
     custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(arch)
 
-    if log_to_local:    
+    if log_to_local:
         with open(f"./scratch/prompt.py", "w") as f:
             f.write(custom_cuda_prompt)
 
@@ -57,18 +62,19 @@ def sanity_check_inference(inference_server: callable):
     lm_response = inference_server("What does CUDA stand for?")
     end_time = time.time()
     print(f"[Timing] Inference took {end_time - start_time:.2f} seconds")
-    print(lm_response) 
+    print(lm_response)
     return lm_response
 
 
 if __name__ == "__main__":
 
-    inference_server = utils.create_inference_server_from_presets(server_type="together",
-                                                        model_name="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
-                                                        greedy_sample=True,
-                                                        verbose=True, 
-                                                        time_generation=True)
-    
+    inference_server = utils.create_inference_server_from_presets(
+        server_type="together",
+        model_name="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        greedy_sample=True,
+        verbose=True,
+        time_generation=True,
+    )
 
     # sanity_check_inference(inference_server)
 
@@ -79,6 +85,6 @@ if __name__ == "__main__":
         # most basic problem
         arch_path = "./KernelBench/level1/1_Square_matrix_multiplication_.py"
         # representative of long problem, might require longer max tokens to not get cut of
-        # arch_path = "./KernelBench/level3/45_UNetSoftmax.py" 
-    
+        # arch_path = "./KernelBench/level3/45_UNetSoftmax.py"
+
     inference_with_prompt(arch_path, inference_server, log_to_local=True)

@@ -23,13 +23,16 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 device = "cuda:0"
 
-def get_torch_profiler_info(ref_arch_src: str, 
-                            kernel_src: str, 
-                            build_dir: str, 
-                            device: torch.device, 
-                            num_trials: int = 100,
-                            table_row_limit: int = 10,
-                            seed_num: int = 42)->str:
+
+def get_torch_profiler_info(
+    ref_arch_src: str,
+    kernel_src: str,
+    build_dir: str,
+    device: torch.device,
+    num_trials: int = 100,
+    table_row_limit: int = 10,
+    seed_num: int = 42,
+) -> str:
     """
     Get the profiler info for a particular kernel
     Given a KernelBench solution to a problem, we want to profile the kernel
@@ -44,9 +47,9 @@ def get_torch_profiler_info(ref_arch_src: str,
 
 
     Notes about profiling:
-        - We do not set p.toggle_collection_dynamic explicitly, 
+        - We do not set p.toggle_collection_dynamic explicitly,
         - We only collect CUDA activity (ProfilerActivity.CUDA), as we are only interested in the kernel
-        
+
     """
 
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Torch Profiler"
@@ -60,14 +63,12 @@ def get_torch_profiler_info(ref_arch_src: str,
     inputs = get_inputs()
     init_inputs = get_init_inputs()
     inputs = [
-        x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-        for x in inputs
+        x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs
     ]
     init_inputs = [
-        x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-        for x in init_inputs
+        x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs
     ]
-    
+
     ModelNew = load_custom_model(kernel_src, context, build_dir)
     # construct the new model with init inputs
     model = ModelNew(*init_inputs)
@@ -75,7 +76,6 @@ def get_torch_profiler_info(ref_arch_src: str,
     torch.cuda.synchronize(device=device)
 
     model = model.cuda(device=device)
-
 
     with torch.no_grad():
         profiling_scheduler = torch.profiler.schedule(
@@ -90,20 +90,26 @@ def get_torch_profiler_info(ref_arch_src: str,
             schedule=profiling_scheduler,
         ) as prof:
             for _ in range(num_trials):
-            
+
                 output = model(*inputs)
                 prof.step()
 
-        profiler_output = prof.key_averages().table(sort_by='cuda_time_total', 
-                                                    row_limit=table_row_limit)
-        
+        profiler_output = prof.key_averages().table(
+            sort_by="cuda_time_total", row_limit=table_row_limit
+        )
+
     return profiler_output
-    
+
+
 def __main__():
     # run_profile(dataset, problem_id, num_trials=10)
 
-    ref_arch_src_path = os.path.join(REPO_ROOT, "src/prompts/few_shot/model_ex_mnist2.py")
-    kernel_src_path = os.path.join(REPO_ROOT, "src/prompts/few_shot/model_new_ex_mnist2.py")
+    ref_arch_src_path = os.path.join(
+        REPO_ROOT, "src/prompts/few_shot/model_ex_mnist2.py"
+    )
+    kernel_src_path = os.path.join(
+        REPO_ROOT, "src/prompts/few_shot/model_new_ex_mnist2.py"
+    )
 
     ref_arch_src = read_file(ref_arch_src_path)
     kernel_src = read_file(kernel_src_path)
@@ -115,11 +121,14 @@ def __main__():
         device="cuda:0",
         num_trials=20,
         seed_num=42,
-        table_row_limit=10
+        table_row_limit=10,
     )
-    
+
     print(profile_result)
-    print(f"Profiler result could be parsed as a string of length {len(profile_result)}")
+    print(
+        f"Profiler result could be parsed as a string of length {len(profile_result)}"
+    )
+
 
 if __name__ == "__main__":
     __main__()

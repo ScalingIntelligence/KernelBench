@@ -17,8 +17,8 @@ We construct Kernel Bench to have 4 Levels of categories:
 - **Level 2 🔗**:  Simple fusion patterns (100 Problems)
     A fused kernel would be faster than separated kernels (Conv + Bias + ReLU, Matmul + Scale + Sigmoid)
 - **Level 3 ⚛️**:  Full model architectures (50 Problems)
-    Optimize entire model architectures end-to-end (MobileNet, VGG, MiniGPT, Mamba) 
-- **Level 4 🤗**:  Level Hugging Face 
+    Optimize entire model architectures end-to-end (MobileNet, VGG, MiniGPT, Mamba)
+- **Level 4 🤗**:  Level Hugging Face
     Optimize whole model architectures from HuggingFace
 
 ## ⚖️ Evaluation
@@ -27,9 +27,9 @@ To evaluate model-generated kernels, we need to check if they:
 - **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
 - **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
 
-Check out `src/eval.py` for details on how we implement correctness check and timing. 
+Check out `src/eval.py` for details on how we implement correctness check and timing.
 
-We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a model-generated kernel. 
+We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a model-generated kernel.
 
 #### Overall Benchmark Metric
 
@@ -44,7 +44,7 @@ You can increase speedup threshold `p` to make the task more challenging.
 
 #### Compute Overall Benchmark Performance
 
-We provide a script `scripts/greedy_analysis.py` to compute the overall benchmark performance. 
+We provide a script `scripts/greedy_analysis.py` to compute the overall benchmark performance.
 Since we need to capture **both** correctness and performance, we use a metric `fast_p`: fraction of tasks that are both correct and have a speedup greater than threshold `p`; speedup is computed as the ratio of PyTorch reference wall-clock time to generated kernel time.
 
 <!-- TODO: update to provide fast_p measurement script -->
@@ -56,11 +56,11 @@ KernelBench/
 ├── assets/
 ├── KernelBench/ # Benchmark dataset files
 ├── src/ # KernelBench logic code
-│   ├── unit_tests/  
+│   ├── unit_tests/
 │   ├── prompts/
 │   ├── ....
 ├── scripts/ # helpful scripts to run the benchmark
-├── results/ # baseline times across hardware 
+├── results/ # baseline times across hardware
 ├── runs/ # where your runs will be stored
 ```
 
@@ -69,7 +69,7 @@ KernelBench/
 conda create --name kernel-bench python=3.10
 conda activate kernel-bench
 pip install -r requirements.txt
-pip install -e . 
+pip install -e .
 ```
 
 ### Alternative setup using `uv`
@@ -87,11 +87,11 @@ uv pip install -e .
 
 To call LLM API providers, set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
 
-Running and profiling kernels require a GPU. 
+Running and profiling kernels require a GPU.
 If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
 
 ## 🚀 Usage
-### Run on a single problem 
+### Run on a single problem
 It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample.
 
 ```
@@ -103,7 +103,7 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 # add .verbose_logging for more visbility
 ```
 
-### Run on all problems 
+### Run on all problems
 
 ```
 # 1. Generate responses and store kernels locally to runs/{run_name} directory
@@ -116,7 +116,7 @@ python3 scripts/eval_from_generations.py run_name=test_hf_level_1 dataset_src=lo
 # add build_cache=True and num_cpu_workers=<num_cpu_workers> to the command
 ```
 ### Analyze the eval results to compute Benchmark Performance
-We provide `scripts/benchmark_eval_analysis.py` to analyze the eval results to compute success rate, timing metric, and overall benchmark performance  `fast_p`. 
+We provide `scripts/benchmark_eval_analysis.py` to analyze the eval results to compute success rate, timing metric, and overall benchmark performance  `fast_p`.
 
 ```
 python3 scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=1 hardware=L40S_matx3 baseline=baseline_time_torch
@@ -127,7 +127,7 @@ We provide some reference baseline times a variety of NVIDIA GPUs across generat
 ## 🛣️ Upcoming Roadmap
 - [ ] Triton Variant (Ongoing)
 - [ ] Easy to use CoLab Notebook Example
-- [ ] Push button flow on Modal / Cloud Provider 
+- [ ] Push button flow on Modal / Cloud Provider
 - [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
 - [ ] Add backward pass
 - [ ] Integrate with toolchains such as NCU
@@ -147,12 +147,12 @@ MIT. Check `LICENSE.md` for more details.
 ## Citation
 ```bibtex
 @misc{ouyang2025kernelbenchllmswriteefficient,
-      title={KernelBench: Can LLMs Write Efficient GPU Kernels?}, 
+      title={KernelBench: Can LLMs Write Efficient GPU Kernels?},
       author={Anne Ouyang and Simon Guo and Simran Arora and Alex L. Zhang and William Hu and Christopher Ré and Azalia Mirhoseini},
       year={2025},
       eprint={2502.10517},
       archivePrefix={arXiv},
       primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2502.10517}, 
+      url={https://arxiv.org/abs/2502.10517},
 }
 ```

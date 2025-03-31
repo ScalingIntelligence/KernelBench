@@ -169,6 +169,7 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
 
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
+
 def build_compile_cache_legacy(
     custom_model_src: str,
     verbose: bool = False,
@@ -202,11 +203,12 @@ def build_compile_cache_legacy(
         if verbose:
             print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
     except Exception as e:
-        print(f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        print(
+            f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}"
+        )
         return False, stdout_buffer.getvalue(), str(e)
-    
-    return True, stdout_buffer.getvalue(), None
 
+    return True, stdout_buffer.getvalue(), None
 
 
 def build_compile_cache(
@@ -242,16 +244,16 @@ def build_compile_cache(
         if verbose:
             print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
     except Exception as e:
-        print(f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        print(
+            f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}"
+        )
         return False, stdout_buffer.getvalue(), str(e)
 
     return True, stdout_buffer.getvalue(), None
 
 
 def build_compile_cache_with_capturing(
-    custom_model_src: str,
-    verbose: bool = False,
-    build_dir: os.PathLike = None
+    custom_model_src: str, verbose: bool = False, build_dir: os.PathLike = None
 ) -> tuple[int, str, str]:
     """
     Write a temporary python file to compile the custom model on CPU
@@ -273,22 +275,21 @@ def build_compile_cache_with_capturing(
         f.write(custom_model_src)
 
     # Execute the temporary Python file and capture output
-    process = subprocess.Popen(['python', tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        ["python", tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     stdout, stderr = process.communicate()
     returncode = process.returncode
 
     # Clean up temporary file
     os.remove(tmp)
 
-
     if verbose:
         print("[CPU Precompile] return code: ", returncode)
-        print("[CPU Precompile] stdout: \n", stdout.decode('utf-8'))
-        print("[CPU Precompile] stderr: \n", stderr.decode('utf-8')) 
+        print("[CPU Precompile] stdout: \n", stdout.decode("utf-8"))
+        print("[CPU Precompile] stderr: \n", stderr.decode("utf-8"))
 
-    return returncode, stdout.decode('utf-8'), stderr.decode('utf-8')
-
-
+    return returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
 
 
 def eval_kernel_against_ref(
@@ -300,7 +301,9 @@ def eval_kernel_against_ref(
     verbose: bool = False,
     measure_performance: bool = False,
     build_dir: os.PathLike = None,
-    device: torch.device = torch.cuda.current_device() if torch.cuda.is_available() else None, # have to run on GPU
+    device: torch.device = (
+        torch.cuda.current_device() if torch.cuda.is_available() else None
+    ),  # have to run on GPU
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -678,11 +681,13 @@ def check_metadata_serializable(metadata: dict):
 
     return metadata
 
+
 def check_metadata_serializable_all_types(metadata: dict):
     """
     Ensure metadata is JSON serializable,
     if not, convert non-serializable values to strings recursively
     """
+
     def convert_to_serializable(obj):
         if isinstance(obj, dict):
             return {k: convert_to_serializable(v) for k, v in obj.items()}

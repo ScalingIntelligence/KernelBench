@@ -25,7 +25,7 @@ constexpr int TILE_SIZE = 16;  // Size of each tile for matrix multiplication
 
 /**
  * @brief Tiled matrix multiplication kernel.
- * 
+ *
  * This kernel performs matrix multiplication using shared memory tiles to improve performance.
  *
  * @param out Pointer to the output matrix
@@ -73,7 +73,7 @@ __global__ void tiled_matmul_kernel(float* out, float* M, float* N, int h, int w
 
 /**
  * @brief Wrapper function for tiled matrix multiplication kernel.
- * 
+ *
  * This function checks input tensors, sets up kernel parameters, and launches the CUDA kernel.
  *
  * @param m First input matrix
@@ -112,10 +112,11 @@ tiled_matmul = torch.utils.cpp_extension.load_inline(
     "tiled_matmul",  # Name of the extension
     cpp_sources=cpp_src,  # C++ interface
     cuda_sources=source,  # CUDA source code
-    functions=['tiled_matmul_cuda'],  # Exported functions
-    extra_cuda_cflags=['--ptxas-options=-v'],  # Additional CUDA compilation flags
-    verbose=True              # Enable verbose output during compilation
+    functions=["tiled_matmul_cuda"],  # Exported functions
+    extra_cuda_cflags=["--ptxas-options=-v"],  # Additional CUDA compilation flags
+    verbose=True,  # Enable verbose output during compilation
 )
+
 
 class ModelNew(nn.Module):
     def __init__(self) -> None:

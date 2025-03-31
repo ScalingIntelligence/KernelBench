@@ -20,14 +20,16 @@ def pass_at_k(n, c, k):
 
 
 def get_token_count(text: str, tokenizer: AutoTokenizer) -> int:
-    assert isinstance(text, str), "can only tokenize strings but got {}".format(type(text))
+    assert isinstance(text, str), "can only tokenize strings but got {}".format(
+        type(text)
+    )
     return len(tokenizer.encode(text))
 
 
 def extract_all_cuda_sources(file_content: str) -> list[str]:
     """
     Extract all CUDA sources wrapped in triple quotes.
-    
+
     Returns:
         list[str]: List of all extracted CUDA source code blocks
     """
@@ -43,4 +45,3 @@ def get_cuda_tokens(kernel_src: str, tokenizer: AutoTokenizer) -> int:
     all_cuda_code = extract_all_cuda_sources(kernel_src)
     num_cuda_tokens = sum(get_token_count(code, tokenizer) for code in all_cuda_code)
     return num_cuda_tokens
-

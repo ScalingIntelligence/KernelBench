@@ -1,0 +1,26 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+    -   id: trailing-whitespace
+        exclude: ^(KernelBench/|results/.*\.json$)
+    -   id: end-of-file-fixer
+        exclude: ^(KernelBench/|results/.*\.json$)
+    -   id: check-yaml
+    -   id: check-toml
+    -   id: check-added-large-files
+
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.2
+    hooks:
+    -   id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        exclude: ^(KernelBench/|src/kernelbench/prompts/model_ex_2\.py|src/kernelbench/prompts/model_new_ex_2\.py|results/.*\.json$)
+    -   id: ruff-format
+        exclude: ^(KernelBench/|src/kernelbench/prompts/model_ex_2\.py|src/kernelbench/prompts/model_new_ex_2\.py|results/.*\.json$)
+
+-   repo: https://github.com/psf/black
+    rev: 24.2.0
+    hooks:
+    -   id: black
+        exclude: ^(KernelBench/|src/kernelbench/prompts/model_ex_2\.py|src/kernelbench/prompts/model_new_ex_2\.py|results/.*\.json$)

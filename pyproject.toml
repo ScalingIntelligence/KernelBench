@@ -31,4 +31,49 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "weave>=0.51.39",
+    "black>=24.2.0",
+    "ruff>=0.2.2",
+    "pre-commit>=3.5.0",
+    "pytest>=8.3.5",
 ]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | KernelBench
+  | results
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+select = ["E", "F", "I", "W", "B", "C4", "N"]
+ignore = []
+exclude = [
+    ".git",
+    ".venv",
+    "dist",
+    "build",
+    "KernelBench",
+    "results",
+]
+
+[tool.ruff.isort]
+known-first-party = ["kernelbench"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

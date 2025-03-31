@@ -1,6 +1,7 @@
-import pytest # noqa    
- 
+import pytest  # noqa
+
 from src.utils import extract_first_code, extract_code_blocks, extract_last_code
+
 
 def check_code_assertions(code: str, expected_code: str):
     """
@@ -9,7 +10,9 @@ def check_code_assertions(code: str, expected_code: str):
     if code is None:
         assert expected_code == ""
     else:
-        assert code.replace("\n", "").replace(" ", "") == expected_code.replace("\n", "").replace(" ", "")
+        assert code.replace("\n", "").replace(" ", "") == expected_code.replace(
+            "\n", ""
+        ).replace(" ", "")
 
 
 def test_extract_last_code():
@@ -21,8 +24,7 @@ def test_extract_last_code():
     ```
     and it says more stuff afterwards"""
     code = extract_last_code(example_output, ["python", "cpp"])
-    check_code_assertions(code, "def hello():\n    print(\"Hello\")")
-
+    check_code_assertions(code, 'def hello():\n    print("Hello")')
 
     example_output = """The LLM wrote some code here
     ```cpp
@@ -31,15 +33,14 @@ def test_extract_last_code():
     }
     ```
 
-    and some other code block 
+    and some other code block
     ```python
     def hello():
         print("Hello")
-    ``` 
+    ```
     and it says more stuff afterwards"""
     code = extract_last_code(example_output, ["python", "cpp"])
-    check_code_assertions(code, "def hello():\n    print(\"Hello\")")
-
+    check_code_assertions(code, 'def hello():\n    print("Hello")')
 
 
 def test_extract_first_code():
@@ -50,20 +51,19 @@ def test_extract_first_code():
         print("Hello")
     ```
     and it says more stuff afterwards"""
-    
+
     code = extract_first_code(example_output, ["python", "cpp"])
-    check_code_assertions(code, "def hello():\n    print(\"Hello\")")
+    check_code_assertions(code, 'def hello():\n    print("Hello")')
 
     # Test with no code block
     text = "Some code here"
-    code = extract_first_code(text, ["python", "cpp"]) 
+    code = extract_first_code(text, ["python", "cpp"])
     check_code_assertions(code, "")
 
     # Test with empty code block
     text = "```python\n```"
     code = extract_first_code(text, ["python", "cpp"])
     check_code_assertions(code, "")
-
 
     # Test with multiple code blocks
     text = """```python
@@ -77,11 +77,12 @@ def test_extract_first_code():
     }
     ```
     """
-    # NOTE: is this a problem 
+    # NOTE: is this a problem
     code = extract_first_code(text, ["python", "cpp"])
-    check_code_assertions(code, "def hello():\n    print(\"Hello\")")
-# Test python hash
+    check_code_assertions(code, 'def hello():\n    print("Hello")')
 
+
+# Test python hash
 
 
 def test_extract_code_blocks():
@@ -91,7 +92,7 @@ def test_extract_code_blocks():
     ```
     """
     code = extract_code_blocks(text, ["python", "rust"])
-    check_code_assertions(code, "def hello():\n    print(\"Hello\")")
+    check_code_assertions(code, 'def hello():\n    print("Hello")')
 
     text = """```python
     def hello():
@@ -104,7 +105,8 @@ def test_extract_code_blocks():
     }
     ```
     """
-    # NOTE: is this a problem 
+    # NOTE: is this a problem
     code = extract_code_blocks(text, ["python", "cpp"])
-    check_code_assertions(code, "def hello():\n    print(\"Hello\") \n int main() { \n return 0; \n }")
-
+    check_code_assertions(
+        code, 'def hello():\n    print("Hello") \n int main() { \n return 0; \n }'
+    )

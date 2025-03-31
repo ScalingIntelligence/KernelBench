@@ -8,7 +8,7 @@ class Model(nn.Module):
         super().__init__()
 
     def forward(self, a, b):
-        return a@b
+        return a @ b
 
 
 def get_inputs():
@@ -21,4 +21,3 @@ def get_inputs():
 def get_init_inputs():
     # randomly generate tensors required for initialization based on the model architecture
     return []
-

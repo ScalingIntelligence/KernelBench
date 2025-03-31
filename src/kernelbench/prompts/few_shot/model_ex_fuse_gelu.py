@@ -8,7 +8,7 @@ class Model(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        return F.gelu(x, approximate='tanh')
+        return F.gelu(x, approximate="tanh")
 
 
 def get_inputs():
@@ -20,5 +20,3 @@ def get_inputs():
 def get_init_inputs():
     # randomly generate tensors required for initialization based on the model architecture
     return []
-
-

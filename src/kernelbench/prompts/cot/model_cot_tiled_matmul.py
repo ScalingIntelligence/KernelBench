@@ -2,6 +2,7 @@
 Let us think about how to optimize the code step by step.
 """
 
+
 # Step 1: Let us break down the PyTorch module into step-by-step instructions.
 class Model(nn.Module):
     def __init__(self) -> None:
@@ -13,7 +14,7 @@ class Model(nn.Module):
 
         1. The input tensors `a` and `b` must have compatible shapes for matrix multiplication.
         2. Each element of the resulting tensor is computed as the dot product of a row of `a` and a column of `b`.
-        
+
         Args:
             a (torch.Tensor): A tensor of shape (m, n).
             b (torch.Tensor): A tensor of shape (n, p).
@@ -23,7 +24,8 @@ class Model(nn.Module):
         """
         return a @ b
 
-#Step 2: Let us describe how each step could be implemented inside of a CUDA kernel.
+
+# Step 2: Let us describe how each step could be implemented inside of a CUDA kernel.
 """
 1. Load the input tensor elements into shared memory:
    - Each thread block loads a tile of `a` and `b` into shared memory to reduce global memory accesses.

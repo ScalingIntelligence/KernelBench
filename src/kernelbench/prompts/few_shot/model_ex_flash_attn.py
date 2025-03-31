@@ -8,19 +8,22 @@ class Model(nn.Module):
     """
     Model that performs an attention operation
     """
+
     def __init__(self) -> None:
         super().__init__()
 
     def forward(self, Q, K, V):
-        att = (Q @ K.transpose(-2, -1) * (1.0 / math.sqrt(K.size(-1))))
+        att = Q @ K.transpose(-2, -1) * (1.0 / math.sqrt(K.size(-1)))
         att = F.softmax(att, dim=-1)
         y = att @ V
         return y
+
 
 batch_size = 32
 n_head = 12
 seq_len = 64
 head_embd = 32
+
 
 def get_inputs():
     # randomly generate input tensors based on the model architecture

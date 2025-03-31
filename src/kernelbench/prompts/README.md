@@ -1,5 +1,5 @@
 
-This folder includes PyTorch modules paired with CUDA kernels, which are used as in-context examples in KernelBench. 
+This folder includes PyTorch modules paired with CUDA kernels, which are used as in-context examples in KernelBench.
 
 
 

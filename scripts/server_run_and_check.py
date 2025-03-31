@@ -14,6 +14,7 @@ from scripts.run_and_check import evaluate_single_sample_src
 from scripts.generate_baseline_time import measure_program_time
 from kernelbench.utils import read_file, set_gpu_arch
 
+
 # Define the response model
 class BenchmarkResult(BaseModel):
     compiled: bool
@@ -26,7 +27,9 @@ class BenchmarkResult(BaseModel):
     metadata: Dict[str, Any]
     error: Optional[str] = None
 
+
 app = fastapi.FastAPI()
+
 
 @app.post("/benchmark", response_model=BenchmarkResult)
 async def run_benchmark(
@@ -35,11 +38,15 @@ async def run_benchmark(
     gpu_arch: List[str] = ["Ada"],
     num_correct_trials: int = 5,
     num_perf_trials: int = 100,
-    verbose: bool = False
+    verbose: bool = False,
 ):
     # Create temporary files for the uploaded code
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode="wb") as ref_tmp, \
-         tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode="wb") as kernel_tmp:
+    with (
+        tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode="wb") as ref_tmp,
+        tempfile.NamedTemporaryFile(
+            delete=False, suffix=".py", mode="wb"
+        ) as kernel_tmp,
+    ):
         try:
             # Save uploaded file contents to temporary files
             shutil.copyfileobj(ref_file.file, ref_tmp)
@@ -56,13 +63,13 @@ async def run_benchmark(
         # Read the contents of the files
         ref_arch_src = read_file(ref_path)
         kernel_src = read_file(kernel_path)
-        
+
         # Set up GPU architecture
         set_gpu_arch(gpu_arch)
-        
+
         # Default device
         device = torch.device("cuda:0")
-        
+
         # Prepare configs
         configs = {
             "num_correct_trials": num_correct_trials,
@@ -70,51 +77,55 @@ async def run_benchmark(
             "verbose": verbose,
             "measure_performance": True,
             "build_dir_prefix": "server_builds",
-            "clear_cache": False
+            "clear_cache": False,
         }
-        
+
         # Evaluate kernel against reference
         kernel_eval_result = evaluate_single_sample_src(
             ref_arch_src=ref_arch_src,
             kernel_src=kernel_src,
             configs=configs,
-            device=device
+            device=device,
         )
-        
+
         # Measure reference times
         ref_time_eager_result = measure_program_time(
-            ref_arch_name="Reference Program", 
-            ref_arch_src=ref_arch_src, 
+            ref_arch_name="Reference Program",
+            ref_arch_src=ref_arch_src,
             num_trials=num_perf_trials,
             use_torch_compile=False,
-            device=device
+            device=device,
         )
-        
+
         ref_time_compile_result = measure_program_time(
-            ref_arch_name="Reference Program", 
-            ref_arch_src=ref_arch_src, 
+            ref_arch_name="Reference Program",
+            ref_arch_src=ref_arch_src,
             num_trials=num_perf_trials,
             use_torch_compile=True,
             torch_compile_backend="inductor",
             torch_compile_options="default",
-            device=device
+            device=device,
         )
-        
+
         # Extract values
         kernel_exec_time = kernel_eval_result.runtime
         ref_exec_eager_time = ref_time_eager_result.get("mean", None)
         ref_exec_compile_time = ref_time_compile_result.get("mean", None)
-        
+
         # Calculate speedups
         speedup_vs_eager = None
         speedup_vs_compile = None
-        
+
         if kernel_eval_result.correctness and kernel_exec_time and ref_exec_eager_time:
             speedup_vs_eager = ref_exec_eager_time / kernel_exec_time
-            
-        if kernel_eval_result.correctness and kernel_exec_time and ref_exec_compile_time:
+
+        if (
+            kernel_eval_result.correctness
+            and kernel_exec_time
+            and ref_exec_compile_time
+        ):
             speedup_vs_compile = ref_exec_compile_time / kernel_exec_time
-            
+
         # Prepare output summary
         raw_output = f"""
 ==============================
@@ -131,10 +142,12 @@ async def run_benchmark(
 [Speedup] Speedup over torch.compile: {speedup_vs_compile:.2f}x
 """
         else:
-            raw_output += "[Speedup] Speedup Not Available as Kernel did not pass correctness"
-        
+            raw_output += (
+                "[Speedup] Speedup Not Available as Kernel did not pass correctness"
+            )
+
         raw_output += "=============================="
-            
+
         # Prepare the response
         response = BenchmarkResult(
             compiled=kernel_eval_result.compiled,
@@ -145,22 +158,22 @@ async def run_benchmark(
             speedup_vs_eager=speedup_vs_eager,
             speedup_vs_compile=speedup_vs_compile,
             metadata=kernel_eval_result.metadata or {},
-
         )
-        print(raw_output)        
+        print(raw_output)
         return response
 
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred during benchmarking: {str(e)}"
+            detail=f"An error occurred during benchmarking: {str(e)}",
         )
     finally:
         # Clean up temporary files
-        if 'ref_path' in locals() and os.path.exists(ref_path):
+        if "ref_path" in locals() and os.path.exists(ref_path):
             os.remove(ref_path)
-        if 'kernel_path' in locals() and os.path.exists(kernel_path):
+        if "kernel_path" in locals() and os.path.exists(kernel_path):
             os.remove(kernel_path)
 
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -28,9 +28,7 @@ torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b) {
 }
 """
 
-cpp_src = (
-    "torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b);"
-)
+cpp_src = "torch::Tensor elementwise_add_cuda(torch::Tensor a, torch::Tensor b);"
 
 # Compile the inline CUDA code for element-wise addition
 elementwise_add = load_inline(

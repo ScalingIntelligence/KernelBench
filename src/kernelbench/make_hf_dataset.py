@@ -13,7 +13,7 @@ import os
 #     \"\"\"
 #     def __init__(self):
 #         super(Model, self).__init__()
-    
+
 #     def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
 #         \"\"\"
 #         Performs the matrix multiplication.
@@ -53,7 +53,7 @@ import os
 #     def __init__(self, in_channels, out_channels, kernel_size, bias_shape):
 #         super(Model, self).__init__()
 #         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
-#         self.bias = nn.Parameter(torch.randn(bias_shape)) 
+#         self.bias = nn.Parameter(torch.randn(bias_shape))
 
 #     def forward(self, x):
 #         x = self.conv(x)
@@ -92,19 +92,19 @@ import os
 #         :param output_size: The number of output features
 #         \"\"\"
 #         super(Model, self).__init__()
-        
+
 #         layers = []
 #         current_input_size = input_size
-        
+
 #         for layer_size in layer_sizes:
 #             layers.append(nn.Linear(current_input_size, layer_size))
 #             layers.append(nn.ReLU())
 #             current_input_size = layer_size
-        
+
 #         layers.append(nn.Linear(current_input_size, output_size))
-        
+
 #         self.network = nn.Sequential(*layers)
-    
+
 #     def forward(self, x):
 #         \"\"\"
 #         :param x: The input tensor, shape (batch_size, input_size)
@@ -132,14 +132,17 @@ import os
 #     dataset_example_1,
 #     dataset_example_2,
 #     dataset_example_3
-#]
+# ]
 
 dataset_list = []
+
 
 def make_dataset_examples(dir_path, level):
     global dataset_list
     # list all files in the directory
-    file_list = [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
+    file_list = [
+        f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))
+    ]
     file_list = sorted(file_list)
     # count = 0
     for f in file_list:
@@ -150,18 +153,14 @@ def make_dataset_examples(dir_path, level):
             code = open(file_path, "r").read()
             name = f.split(".")[0]
             problem_id = int(name.split("_")[0])
-            json_object = {
-                "code": "",
-                "level": 0,
-                "name": "",
-                "problem_id": 0
-            }
+            json_object = {"code": "", "level": 0, "name": "", "problem_id": 0}
             json_object["code"] = code
             json_object["level"] = level
             json_object["name"] = name
             json_object["problem_id"] = problem_id
             dataset_list.append(json_object)
             # count += 1
+
 
 make_dataset_examples("../KernelBench/level1", 1)
 make_dataset_examples("../KernelBench/level2", 2)
@@ -179,11 +178,13 @@ hf_level_2 = Dataset.from_list(level_2)
 hf_level_3 = Dataset.from_list(level_3)
 hf_level_4 = Dataset.from_list(level_4)
 
-dataset_dict = DatasetDict({
-    "level_1": hf_level_1,
-    "level_2": hf_level_2,
-    "level_3": hf_level_3,
-    "level_4": hf_level_4
-})
+dataset_dict = DatasetDict(
+    {
+        "level_1": hf_level_1,
+        "level_2": hf_level_2,
+        "level_3": hf_level_3,
+        "level_4": hf_level_4,
+    }
+)
 
 dataset_dict.push_to_hub("ScalingIntelligence/KernelBench")

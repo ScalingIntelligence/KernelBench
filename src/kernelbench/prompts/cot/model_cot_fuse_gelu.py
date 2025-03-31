@@ -2,6 +2,7 @@
 Let us think about how to optimize the code step by step.
 """
 
+
 #  Step 1. Let us break down the pytorch module into step by step instructions.
 class Model(nn.Module):
     def __init__(self) -> None:
@@ -18,7 +19,7 @@ class Model(nn.Module):
         Returns:
             torch.Tensor: Output tensor after applying GELU activation
         """
-        
+
         # First, alculate the constant term (2/pi)^0.5
         const = (2 / torch.pi) ** 0.5
 
@@ -39,6 +40,6 @@ Second, we can compute: float const = sqrtf(2.0f/3.141592653589793f)
 Third, we can compute: float inner_term = x + 0.044715f * (x*x*x)
 
 Fourth, we can compute: float out[i] = 0.5f * x * (1.0f + tanhf(const * inner_term))
-"""    
+"""
 
 # Step 3. Let us put all of the steps together into CUDA kernel code.

@@ -46,33 +46,36 @@ torch::Tensor max_pool2d_cuda(torch::Tensor input, int kernel_size, int stride) 
     dim3 num_blocks((output_width + block_size.x - 1) / block_size.x, (output_height + block_size.y - 1) / block_size.y, channels);
 
     max_pool2d_kernel<<<num_blocks, block_size>>>(
-        input.data_ptr<float>(), 
-        output.data_ptr<float>(), 
-        channels, 
-        input_height, 
-        input_width, 
-        kernel_size, 
-        kernel_size, 
-        stride, 
-        output_height, 
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        channels,
+        input_height,
+        input_width,
+        kernel_size,
+        kernel_size,
+        stride,
+        output_height,
         output_width
     );
 
     return output;
 }
 """
-cpp_src = "torch::Tensor max_pool2d_cuda(torch::Tensor input, int kernel_size, int stride);"
+cpp_src = (
+    "torch::Tensor max_pool2d_cuda(torch::Tensor input, int kernel_size, int stride);"
+)
 
 # Compile the inline CUDA code
 custom_max_pool = load_inline(
-    name='custom_max_pool',
+    name="custom_max_pool",
     cpp_sources=cpp_src,
     cuda_sources=source,
-    functions=['max_pool2d_cuda'],
+    functions=["max_pool2d_cuda"],
     verbose=True,
     extra_cflags=[""],
     extra_ldflags=[""],
 )
+
 
 # Custom MNIST model using inlined max_pool2d_cuda
 class ModelNew(nn.Module):

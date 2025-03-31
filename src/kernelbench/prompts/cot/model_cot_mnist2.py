@@ -2,14 +2,15 @@
 Let us think about how to optimize the code step by step.
 """
 
+
 # Step 1: Let us break down the PyTorch module into step-by-step instructions.
 class Model(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)  # First convolutional layer
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5) # Second convolutional layer
-        self.fc1 = nn.Linear(320, 50)                # First fully connected layer
-        self.fc2 = nn.Linear(50, 10)                 # Second fully connected layer
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)  # Second convolutional layer
+        self.fc1 = nn.Linear(320, 50)  # First fully connected layer
+        self.fc2 = nn.Linear(50, 10)  # Second fully connected layer
 
     def forward(self, x):
         """
@@ -31,10 +32,11 @@ class Model(nn.Module):
         """
         x = F.relu(F.max_pool2d(self.conv1(x), 2))  # Steps 1-3
         x = F.relu(F.max_pool2d(self.conv2(x), 2))  # Steps 4-6
-        x = x.view(-1, 320)                        # Step 7
-        x = F.relu(self.fc1(x))                    # Steps 8-9
-        x = self.fc2(x)                            # Step 10
-        return F.log_softmax(x, dim=1)             # Step 11
+        x = x.view(-1, 320)  # Step 7
+        x = F.relu(self.fc1(x))  # Steps 8-9
+        x = self.fc2(x)  # Step 10
+        return F.log_softmax(x, dim=1)  # Step 11
+
 
 # Step 2: Let us describe how each step could be implemented inside of a CUDA kernel.
 """
@@ -73,4 +75,3 @@ class Model(nn.Module):
 """
 
 # Step 3. Let us put all of the steps together into CUDA kernel code.
-

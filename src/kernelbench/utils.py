@@ -11,6 +11,7 @@ import time
 
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 
+
 def set_gpu_arch(arch_list: list[str]):
     """
     Set env variable for torch cuda arch list to build kernels for specified architectures
@@ -18,8 +19,10 @@ def set_gpu_arch(arch_list: list[str]):
     valid_archs = ["Maxwell", "Pascal", "Volta", "Turing", "Ampere", "Hopper", "Ada"]
     for arch in arch_list:
         if arch not in valid_archs:
-            raise ValueError(f"Invalid architecture: {arch}. Must be one of {valid_archs}")
-    
+            raise ValueError(
+                f"Invalid architecture: {arch}. Must be one of {valid_archs}"
+            )
+
     os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
 
 
@@ -27,7 +30,7 @@ def read_file(file_path: str) -> str:
     if not os.path.exists(file_path):
         print(f"File {file_path} does not exist")
         return ""
-    
+
     try:
         with open(file_path, "r") as file:
             return file.read()
@@ -93,7 +96,7 @@ def extract_last_code(output_string: str, code_language_types: list[str]) -> str
 
     # Find all matches of code blocks
     code_matches = re.finditer(r"```(.*?)```", trimmed, re.DOTALL)
-    
+
     # Get the last match by converting to list and taking the last element
     matches_list = list(code_matches)
     if matches_list:
@@ -103,17 +106,18 @@ def extract_last_code(output_string: str, code_language_types: list[str]) -> str
         # Remove language type headers
         for code_type in code_language_types:
             if code.startswith(code_type):
-                code = code[len(code_type):].strip()
+                code = code[len(code_type) :].strip()
 
         return code
-    
+
     return None
 
+
 def extract_code_blocks(text, code_language_types: list[str]) -> str:
-    '''
+    """
     Extract all code blocks from text, combine them to return as a single string
-    '''
-    pattern = r'```.*?\n(.*?)```'
+    """
+    pattern = r"```.*?\n(.*?)```"
     matches = re.findall(pattern, text, re.DOTALL)
 
     # Combine all code blocks and remove language type headers
@@ -123,16 +127,20 @@ def extract_code_blocks(text, code_language_types: list[str]) -> str:
         # Remove any language type headers
         for lang_type in code_language_types:
             if code.startswith(lang_type):
-                code = code[len(lang_type):].strip()
+                code = code[len(lang_type) :].strip()
         combined_code.append(code)
-    
+
     return " \n ".join(combined_code) if combined_code else ""
+
 
 ################################################################################
 # Scale up experiments in parallel
 ################################################################################
 
-def maybe_multithread(func, instances, num_workers, time_interval=0.0, *shared_args, **shared_kwargs):
+
+def maybe_multithread(
+    func, instances, num_workers, time_interval=0.0, *shared_args, **shared_kwargs
+):
     """
     Multithreaded execution of func, with optional time interval between queries
     Ideal for querying LLM APIs, does not provide process isolation
@@ -146,16 +154,9 @@ def maybe_multithread(func, instances, num_workers, time_interval=0.0, *shared_a
                 futures = []
                 for instance in instances:
                     futures.append(
-                        executor.submit(
-                            func,
-                            instance,
-                            *shared_args,
-                            **shared_kwargs
-                        )
+                        executor.submit(func, instance, *shared_args, **shared_kwargs)
                     )
                     time.sleep(time_interval)  # sleep between submitting each task
-
-
 
                 # Wait for each future to complete
                 for future in as_completed(futures):
@@ -170,7 +171,8 @@ def maybe_multithread(func, instances, num_workers, time_interval=0.0, *shared_a
     else:
         for instance in tqdm(instances):
             output = func(instance, *shared_args, **shared_kwargs)
-            if output is not None: output_data.append(output)
+            if output is not None:
+                output_data.append(output)
 
     return output_data
 

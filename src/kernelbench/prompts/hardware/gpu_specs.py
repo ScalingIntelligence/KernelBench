@@ -3,7 +3,6 @@ A List of GPU Specs to include in the prompt
 
 """
 
-
 GPU_SPEC_INFO = {
     "L40S": {
         "GPU Architecture": "Ada",
@@ -89,7 +88,7 @@ GPU_SPEC_INFO = {
         "Maximum number of thread blocks per SM": "24",
         "Shared memory capacity per SM": "100 KB",
         "Maximum shared memory per thread block": "99 KB",
-    }, 
+    },
     "T4": {
         "GPU Architecture": "Turing",
         "GPU Memory": "16 GB GDDR6",
@@ -118,7 +117,7 @@ GPU_SPEC_INFO = {
         "Maximum number of thread blocks per SM": "32",
         "Shared memory capacity per SM": "164 KB",
         "Maximum shared memory per thread block": "163 KB",
-    }
+    },
 }
 
 # Basic GPU concept definitions
@@ -133,7 +132,6 @@ GPU_DEFINITIONS = {
     "Cache": "Cache is a small memory space that stores frequently accessed data.",
     "HBM": "HBM is a high-bandwidth memory technology that uses 3D-stacked DRAM.",
 }
-
 
 
 GPU_BEST_PRACTICES = [
