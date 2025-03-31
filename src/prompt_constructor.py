@@ -1,4 +1,5 @@
 import os
+import weave
 from .utils import read_file
 
 
@@ -42,7 +43,7 @@ PROBLEM_INSTRUCTION = """
 Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
 """
 
-
+@weave.op
 def prompt_generate_custom_cuda(
     arc_src: str, example_arch_src: str, example_new_arch_src: str
 ) -> str:
@@ -76,6 +77,7 @@ PROBLEM_INSTRUCTION_CLEANED = """
 Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
 """
 
+@weave.op
 def prompt_generate_custom_cuda_fewshot_and_template(ref_arch_src: str, shots: list) -> str:
     """
     Generate a prompt with specified few-shot examples following a template 
@@ -179,6 +181,7 @@ Here is an example architecture:\n\n
     prompt += PROBLEM_INSTRUCTION_CLEANED
     return prompt
 
+@weave.op
 def prompt_generate_ex_with_CoT_template(ref_arch_src: str, cot_example: str) -> str:
     """
     Generate a prompt with a CoT example following a template 
@@ -379,7 +382,7 @@ def prompt_generate_prompt_with_hardware_info_from_template(ref_arch_src: str, g
                                         )
     
 
-
+@weave.op
 def prompt_generate_prompt_with_hardware_info(ref_arch_src: str, 
                                               gpu_name: str, 
                                               example_arch_src: str, 
@@ -406,53 +409,72 @@ def prompt_generate_prompt_with_hardware_info(ref_arch_src: str,
 
     assert gpu_name in GPU_SPEC_INFO, f"GPU name {gpu_name} not found in GPU_SPEC_INFO"
 
-    prompt = PROBLEM_STATEMENT
-
-    if example_arch_src != "" and example_new_arch_src != "":
-        prompt += f"""
-        Here's an example to show you the syntax of inline embedding custom CUDA operators in torch: The example given architecture is: \n
-        ``` \n
-        {example_arch_src}
-        ``` \n
-        The example new arch with custom CUDA kernels looks like this: 
-        ```
-        {example_new_arch_src}
-        ``` \n
-        """
-    
+    # Get GPU-specific information
     curr_gpu_spec_info = GPU_SPEC_INFO[gpu_name]
-
     gpu_architecture = curr_gpu_spec_info.get("GPU Architecture")
-    prompt += f"""
-    Here is some information about the underlying hardware that you should keep in mind. \n\n
-The GPU that will run the kernel is NVIDIA {gpu_name}, {gpu_architecture} architecture.\n\n"""
     
+    # Create the title and objective section
+    objective_section = """# CUDA Kernel Optimization Task
+
+## Objective
+Your task is to optimize PyTorch models by replacing standard PyTorch operators with custom CUDA kernels. You should:
+- Choose which operators to replace with custom implementations
+- Consider operator fusion opportunities (e.g., combining matmul+relu)
+- Explore algorithmic optimizations (e.g., online softmax)
+- Rename your optimized implementation as "ModelNew"
+"""
+
+    # Create hardware specifications section
+    hardware_section = f"\n## Hardware Specifications (NVIDIA {gpu_name}, {gpu_architecture} architecture)\n"
+    hardware_specs = []
     for key, value in curr_gpu_spec_info.items():
         if key == "GPU Architecture":
             continue
-        prompt += f"""- We have {value} of {key}.\n"""
+        hardware_specs.append(f"- {value} of {key}")
+    hardware_section += "\n".join(hardware_specs)
     
-    
-    prompt += f"""\n\n
-Here are some concepts about the GPU architecture that could be helpful: \n\n"""
+    # Create GPU concepts section
+    concepts_section = "\n\n## Key GPU Programming Concepts"
+    concepts = []
     for key, value in GPU_DEFINITIONS.items():
-        prompt += f"""- {key}: {value}\n"""
-
-    prompt += f"""\n\n
-Here are some best practices for writing CUDA kernels on GPU: \n\n"""
-    for best_practice in GPU_BEST_PRACTICES:
-        prompt += f"""- {best_practice}\n"""
-
-
-    prompt += f"""
-    You are given the following architecture: \n
-    ```
-    {ref_arch_src}
-    ```
-    """
+        concepts.append(f"- {key}: {value}")
+    concepts_section += "\n" + "\n".join(concepts)
     
+    # Create best practices section
+    practices_section = "\n\n## Best Practices"
+    practices = []
+    for best_practice in GPU_BEST_PRACTICES:
+        practices.append(f"- {best_practice}")
+    practices_section += "\n" + "\n".join(practices)
+    
+    # Create examples section if provided
+    examples_section = ""
+    if example_arch_src and example_new_arch_src:
+        examples_section = f"""
+## Example: Original Model
+```python
+{example_arch_src}
+```
 
-    prompt += PROBLEM_INSTRUCTION
+## Example: Optimized Model with Custom CUDA
+```python
+{example_new_arch_src}
+```
+"""
+    
+    # Create task section
+    task_section = f"""
+## Your Task: Optimize This Model
+```python
+{ref_arch_src}
+```
+
+Implement an optimized version called "ModelNew" with custom CUDA operators.
+"""
+    
+    # Combine all sections into the final prompt
+    prompt = objective_section + hardware_section + concepts_section + practices_section + examples_section + task_section
+    
     return prompt
 
 
@@ -502,6 +524,7 @@ def prompt_fix_correctness(ref_arch_src, custom_cuda, metadata):
     """
     return prompt
 
+@weave.op
 def main():
     gpu_name = "L40S"
 
@@ -517,4 +540,5 @@ def main():
         f.write(prompt)
 
 if __name__ == "__main__":
+    weave.init("prompt_constructor")
     main()
