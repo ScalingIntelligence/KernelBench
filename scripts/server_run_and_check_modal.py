@@ -58,7 +58,7 @@ image = (
         "pydantic",
         "aiofiles",  # For serving static files
     )
-    .pip_install_from_requirements("requirements.txt")
+    .pip_install_from_requirements("server_requirements.txt")
     # Add source directories
     .add_local_python_source("scripts", "src")
     .add_local_dir("static", "/root/static")

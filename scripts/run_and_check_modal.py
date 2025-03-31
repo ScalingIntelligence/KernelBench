@@ -82,7 +82,7 @@ tag = f"{cuda_version}-{flavor}-{operating_sys}"
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
-    .pip_install_from_requirements("requirements.txt")
+    .pip_install_from_requirements("server_requirements.txt")
     .add_local_python_source("_remote_module_non_scriptable", "scripts", "src")
 )
 

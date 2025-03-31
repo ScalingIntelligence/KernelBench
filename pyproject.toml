@@ -1,0 +1,33 @@
+[project]
+name = "kernelbench"
+version = "0.1.0"
+description = "Benchmarking Cuda/Triton Kernels made easy"
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "anthropic>=0.34.2",
+    "archon-ai>=0.1.4",
+    "datasets>=3.5.0",
+    "einops>=0.8.1",
+    "google-generativeai>=0.8.4",
+    "modal>=0.73.136",
+    "ninja>=1.11.1.4",
+    "numpy>=2.2.4",
+    "openai>=1.69.0",
+    "packaging>=24.2",
+    "pydra-config>=0.0.14",
+    "pytest>=8.3.5",
+    "together>=1.5.4",
+    "torch==2.5.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.50.3",
+]
+
+
+[tool.setuptools]
+packages = ["src", "scripts"]
+
+[dependency-groups]
+dev = [
+    "weave>=0.51.39",
+]
