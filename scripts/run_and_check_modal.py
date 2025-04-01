@@ -13,64 +13,8 @@ import numpy as np
 from pydra import REQUIRED, Config
 
 
-from kernelbench.eval import KernelExecResult, eval_kernel_against_ref
+from kernelbench.eval import evaluate_single_sample_src
 from kernelbench.utils import read_file, set_gpu_arch
-
-
-# from run_and_check.py
-def evaluate_single_sample_src(
-    ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device
-) -> KernelExecResult:
-    """
-    Evaluate a single sample source code against a reference source code
-    """
-
-    kernel_hash = str(hash(kernel_src))
-    build_dir = os.path.join(configs["build_dir_prefix"], "test_build", kernel_hash)
-
-    if configs["clear_cache"]:  # fresh kernel build
-        print(f"[INFO] Clearing cache for build directory: {build_dir}")
-        shutil.rmtree(build_dir, ignore_errors=True)
-
-    num_correct_trials = configs["num_correct_trials"]
-    num_perf_trials = configs["num_perf_trials"]
-    verbose = configs["verbose"]
-    measure_performance = configs["measure_performance"]
-    try:
-        eval_result = eval_kernel_against_ref(
-            original_model_src=ref_arch_src,
-            custom_model_src=kernel_src,
-            measure_performance=measure_performance,
-            verbose=verbose,
-            num_correct_trials=num_correct_trials,
-            num_perf_trials=num_perf_trials,
-            build_dir=build_dir,
-            device=device,
-        )
-        return eval_result
-    except Exception as e:
-        print(f"[WARNING] Last level catch: Some issue evaluating for kernel: {e} ")
-        if "CUDA error" in str(e):
-            # NOTE: count this as compilation failure as it is not runnable code
-            metadata = {
-                "cuda_error": f"CUDA Error: {str(e)}",
-                "hardware": torch.cuda.get_device_name(device=device),
-                "device": str(device),
-            }
-            eval_result = KernelExecResult(
-                compiled=False, correctness=False, metadata=metadata
-            )
-            return eval_result
-        else:
-            metadata = {
-                "other_error": f"error: {str(e)}",
-                "hardware": torch.cuda.get_device_name(device=device),
-                "device": str(device),
-            }
-            eval_result = KernelExecResult(
-                compiled=False, correctness=False, metadata=metadata
-            )
-            return eval_result
 
 
 """
@@ -144,17 +88,11 @@ class EvalFunc:
             device=device,
         )
 
-        return {
-            "compiled": eval_result.compiled,
-            "correctness": eval_result.correctness,
-            "runtime": eval_result.runtime,
-            "metadata": eval_result.metadata,
-        }
+        return eval_result
 
     @modal.method()
     def measure_program_time(
         self,
-        ref_arch_name,
         ref_arch_src,
         num_trials,
         use_torch_compile=False,
@@ -302,7 +240,7 @@ def main(config: ScriptConfig):
     with app.run():
         # Evaluate kernel against reference code
         print("[INFO] Evaluating kernel against reference code")
-        kernel_eval_result_dict = EvalFunc.with_options(
+        kernel_eval_result = EvalFunc.with_options(
             gpu=config.gpu
         )().evaluate_single_sample_src_modal.remote(
             ref_arch_src=ref_arch_src,
@@ -310,14 +248,8 @@ def main(config: ScriptConfig):
             configs=config.to_dict(),
             gpu_arch=gpu_arch,
         )
+        print(f"Raw result: {kernel_eval_result}, {type(kernel_eval_result)}")
 
-        # Convert dict back to KernelExecResult object
-        kernel_eval_result = KernelExecResult(
-            compiled=kernel_eval_result_dict["compiled"],
-            correctness=kernel_eval_result_dict["correctness"],
-            runtime=kernel_eval_result_dict["runtime"],
-            metadata=kernel_eval_result_dict["metadata"],
-        )
         kernel_exec_time = kernel_eval_result.runtime
 
         # Measure baseline time for PyTorch Eager
@@ -325,7 +257,6 @@ def main(config: ScriptConfig):
         ref_time_eager_result = EvalFunc.with_options(
             gpu=config.gpu
         )().measure_program_time.remote(
-            ref_arch_name="Reference Program",
             ref_arch_src=ref_arch_src,
             num_trials=config.num_perf_trials,
             use_torch_compile=False,
@@ -340,7 +271,6 @@ def main(config: ScriptConfig):
         ref_time_compile_result = EvalFunc.with_options(
             gpu=config.gpu
         )().measure_program_time.remote(
-            ref_arch_name="Reference Program",
             ref_arch_src=ref_arch_src,
             num_trials=config.num_perf_trials,
             use_torch_compile=True,
