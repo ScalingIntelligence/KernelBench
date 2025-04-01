@@ -1,7 +1,7 @@
 import os
 import shutil
 import tempfile
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 import sys
 import traceback
 import importlib.util
@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 
-from kernelbench.eval import eval_kernel_against_ref, KernelExecResult
+from kernelbench.eval import evaluate_single_sample_src, KernelExecResult
 from kernelbench.utils import set_gpu_arch
 
 
@@ -31,7 +31,7 @@ gpu_arch_mapping = {
     "A10G": ["Ampere"],
 }
 
-GPU = "L40S"
+GPU = "H100"
 SCALEDOWN_WINDOW = 300
 
 # Configure Modal image
@@ -50,22 +50,14 @@ image = (
         "pydantic",
         "aiofiles",  # For serving static files
     )
-    .pip_install_from_requirements("server_requirements.txt")
-    # Add source directories
-    .add_local_python_source("scripts", "src")
-    .add_local_dir("static", "/root/static")
+    .pip_install_from_requirements("scripts/server_requirements.txt")
+    .add_local_python_source("kernelbench")
+    .add_local_dir("KernelBench", "/KernelBench")
+    # .add_local_dir("static", "/root/static")
 )
 
 # Create Modal app
-app = modal.App("kernel-benchmark-server", image=image)  # Still here
-
-
-# Define response models
-class KernelExecResult(BaseModel):
-    compiled: bool
-    correctness: bool
-    runtime: Optional[float] = None
-    metadata: Dict[str, Any] = {}
+app = modal.App("kernel-benchmark-server", image=image)
 
 
 class BenchmarkResult(BaseModel):
@@ -86,82 +78,8 @@ class BenchmarkResult(BaseModel):
     secrets=[modal.Secret.from_name("wandb-api-key")],
 )
 class BenchmarkService:
-
-    def evaluate_single_sample_src(
-        self, ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device
-    ) -> KernelExecResult:
-        """Evaluate a single sample source code against a reference source code"""
-
-        try:
-            print(f"[DEBUG] Python paths: {sys.path}")
-
-            kernel_hash = str(hash(kernel_src))
-            build_dir = os.path.join(
-                configs["build_dir_prefix"], "test_build", kernel_hash
-            )
-
-            if configs["clear_cache"]:
-                print(f"[INFO] Clearing cache for build directory: {build_dir}")
-                shutil.rmtree(build_dir, ignore_errors=True)
-
-            try:
-                eval_result = eval_kernel_against_ref(
-                    original_model_src=ref_arch_src,
-                    custom_model_src=kernel_src,
-                    measure_performance=configs["measure_performance"],
-                    verbose=configs["verbose"],
-                    num_correct_trials=configs["num_correct_trials"],
-                    num_perf_trials=configs["num_perf_trials"],
-                    build_dir=build_dir,
-                    device=device,
-                )
-                return KernelExecResult(
-                    compiled=eval_result.compiled,
-                    correctness=eval_result.correctness,
-                    runtime=eval_result.runtime,
-                    metadata=eval_result.metadata or {},
-                )
-            except Exception as e:
-                print(
-                    f"[WARNING] Last level catch: Some issue evaluating for kernel: {e} "
-                )
-                if "CUDA error" in str(e):
-                    metadata = {
-                        "cuda_error": f"CUDA Error: {str(e)}",
-                        "hardware": torch.cuda.get_device_name(device=device),
-                        "device": str(device),
-                    }
-                else:
-                    metadata = {
-                        "other_error": f"error: {str(e)}",
-                        "hardware": torch.cuda.get_device_name(device=device),
-                        "device": str(device),
-                    }
-                return KernelExecResult(
-                    compiled=False, correctness=False, metadata=metadata
-                )
-        except (
-            ImportError
-        ) as e:  # This catch might be less likely now, but keep for safety
-            print(f"[ERROR] Import error during evaluation (unexpected): {str(e)}")
-            print(f"[ERROR] Traceback: {traceback.format_exc()}")
-            return KernelExecResult(
-                compiled=False,
-                correctness=False,
-                metadata={
-                    "import_error": f"Unexpected import error during eval: {str(e)}"
-                },
-            )
-        except Exception as e:
-            print(f"[ERROR] Unexpected error during evaluation: {str(e)}")
-            print(f"[ERROR] Traceback: {traceback.format_exc()}")
-            return KernelExecResult(
-                compiled=False, correctness=False, metadata={"unexpected_error": str(e)}
-            )
-
     def measure_program_time(
         self,
-        ref_arch_name,
         ref_arch_src,
         num_trials,
         use_torch_compile=False,
@@ -341,7 +259,7 @@ class BenchmarkService:
             try:
                 # Time the compilation specifically
                 compile_start_time = time.time()
-                kernel_result = self.evaluate_single_sample_src(
+                kernel_result = evaluate_single_sample_src(
                     ref_arch_src=ref_arch_src,
                     kernel_src=kernel_src,
                     configs=configs,
@@ -359,7 +277,6 @@ class BenchmarkService:
                 # Measure baseline time for PyTorch Eager
                 print(f"[DEBUG] Measuring PyTorch Eager execution time...")
                 ref_time_eager_result = self.measure_program_time(
-                    ref_arch_name="Reference Program",
                     ref_arch_src=ref_arch_src,
                     num_trials=num_perf_trials,
                     use_torch_compile=False,
@@ -373,7 +290,6 @@ class BenchmarkService:
                 # Measure Torch Compile time
                 print(f"[DEBUG] Measuring PyTorch Compiled execution time...")
                 ref_time_compile_result = self.measure_program_time(
-                    ref_arch_name="Reference Program",
                     ref_arch_src=ref_arch_src,
                     num_trials=num_perf_trials,
                     use_torch_compile=True,
