@@ -7,65 +7,10 @@ from io import StringIO
 import json
 import numpy as np
 import os
-import requests
 import subprocess
 import torch
 import torch.nn as nn
 from pydantic import BaseModel
-
-from kernelbench.utils import read_file
-from kernelbench.dataset import construct_problem_dataset_from_problem_dir
-
-REPO_TOP_PATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-    )
-)
-KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
-
-
-def fetch_kernel_from_database(
-    run_name: str, problem_id: int, sample_id: int, server_url: str
-):
-    """
-    Intenral to us with our django database
-    Return a dict with kernel hash, kernel code, problem_id
-    """
-    response = requests.get(
-        f"{server_url}/get_kernel_by_run_problem_sample/{run_name}/{problem_id}/{sample_id}",
-        json={"run_name": run_name, "problem_id": problem_id, "sample_id": sample_id},
-    )
-    assert response.status_code == 200
-    response_json = response.json()
-    assert str(response_json["problem_id"]) == str(problem_id)
-    return response_json
-
-
-def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str:
-    """
-    Fetches the reference architecture in string for a given problem_id
-    """
-    if isinstance(problem_id, str):
-        problem_id = int(problem_id)
-
-    problem_path = problems[problem_id]
-
-    # problem_path = os.path.join(REPO_ROOT_PATH, problem)
-    if not os.path.exists(problem_path):
-        raise FileNotFoundError(f"Problem file at {problem_path} does not exist.")
-
-    ref_arch = read_file(problem_path)
-    if not with_name:
-        return ref_arch
-    else:
-        return (problem_path, ref_arch)
-
-
-def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
-    return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 
 def set_seed(seed: int):

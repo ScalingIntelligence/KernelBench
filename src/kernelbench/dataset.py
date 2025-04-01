@@ -6,7 +6,9 @@ import os
 import random
 import re
 import hashlib
-import pathlib
+import requests
+
+from kernelbench.utils import read_file
 
 # Replace hardcoded path with more robust resolution
 REPO_TOP_PATH = os.path.abspath(
@@ -17,6 +19,49 @@ REPO_TOP_PATH = os.path.abspath(
 )
 # Use pathlib for more robust path handling
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+
+
+def fetch_kernel_from_database(
+    run_name: str, problem_id: int, sample_id: int, server_url: str
+):
+    """
+    Intenral to us with our django database
+    Return a dict with kernel hash, kernel code, problem_id
+    """
+    response = requests.get(
+        f"{server_url}/get_kernel_by_run_problem_sample/{run_name}/{problem_id}/{sample_id}",
+        json={"run_name": run_name, "problem_id": problem_id, "sample_id": sample_id},
+    )
+    assert response.status_code == 200
+    response_json = response.json()
+    assert str(response_json["problem_id"]) == str(problem_id)
+    return response_json
+
+
+def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str:
+    """
+    Fetches the reference architecture in string for a given problem_id
+    """
+    if isinstance(problem_id, str):
+        problem_id = int(problem_id)
+
+    problem_path = problems[problem_id]
+
+    # problem_path = os.path.join(REPO_ROOT_PATH, problem)
+    if not os.path.exists(problem_path):
+        raise FileNotFoundError(f"Problem file at {problem_path} does not exist.")
+
+    ref_arch = read_file(problem_path)
+    if not with_name:
+        return ref_arch
+    else:
+        return (problem_path, ref_arch)
+
+
+def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
+    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
+    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 
 # Alternative approach - make the path configurable

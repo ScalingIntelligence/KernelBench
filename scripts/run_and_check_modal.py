@@ -13,29 +13,37 @@ import numpy as np
 from pydra import REQUIRED, Config
 
 
-from kernelbench.eval import eval_kernel_against_ref, KernelExecResult
+from kernelbench.eval import KernelExecResult, eval_kernel_against_ref
 from kernelbench.utils import read_file, set_gpu_arch
 
 
+# from run_and_check.py
 def evaluate_single_sample_src(
     ref_arch_src: str, kernel_src: str, configs: dict, device: torch.device
 ) -> KernelExecResult:
-    """Evaluate a single sample source code against a reference source code"""
+    """
+    Evaluate a single sample source code against a reference source code
+    """
+
     kernel_hash = str(hash(kernel_src))
     build_dir = os.path.join(configs["build_dir_prefix"], "test_build", kernel_hash)
 
-    if configs["clear_cache"]:
+    if configs["clear_cache"]:  # fresh kernel build
         print(f"[INFO] Clearing cache for build directory: {build_dir}")
         shutil.rmtree(build_dir, ignore_errors=True)
 
+    num_correct_trials = configs["num_correct_trials"]
+    num_perf_trials = configs["num_perf_trials"]
+    verbose = configs["verbose"]
+    measure_performance = configs["measure_performance"]
     try:
         eval_result = eval_kernel_against_ref(
             original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
-            measure_performance=configs["measure_performance"],
-            verbose=configs["verbose"],
-            num_correct_trials=configs["num_correct_trials"],
-            num_perf_trials=configs["num_perf_trials"],
+            measure_performance=measure_performance,
+            verbose=verbose,
+            num_correct_trials=num_correct_trials,
+            num_perf_trials=num_perf_trials,
             build_dir=build_dir,
             device=device,
         )
@@ -43,18 +51,26 @@ def evaluate_single_sample_src(
     except Exception as e:
         print(f"[WARNING] Last level catch: Some issue evaluating for kernel: {e} ")
         if "CUDA error" in str(e):
+            # NOTE: count this as compilation failure as it is not runnable code
             metadata = {
                 "cuda_error": f"CUDA Error: {str(e)}",
                 "hardware": torch.cuda.get_device_name(device=device),
                 "device": str(device),
             }
+            eval_result = KernelExecResult(
+                compiled=False, correctness=False, metadata=metadata
+            )
+            return eval_result
         else:
             metadata = {
                 "other_error": f"error: {str(e)}",
                 "hardware": torch.cuda.get_device_name(device=device),
                 "device": str(device),
             }
-        return KernelExecResult(compiled=False, correctness=False, metadata=metadata)
+            eval_result = KernelExecResult(
+                compiled=False, correctness=False, metadata=metadata
+            )
+            return eval_result
 
 
 """
@@ -104,8 +120,9 @@ tag = f"{cuda_version}-{flavor}-{operating_sys}"
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
-    .pip_install_from_requirements("server_requirements.txt")
-    .add_local_python_source("_remote_module_non_scriptable", "scripts", "src")
+    .pip_install_from_requirements("scripts/server_requirements.txt")
+    .add_local_python_source("kernelbench")
+    .add_local_dir("KernelBench", "/KernelBench")
 )
 
 
@@ -116,15 +133,11 @@ class EvalFunc:
         self, ref_arch_src, kernel_src, configs, gpu_arch
     ):
         """Evaluate a single sample source code against a reference source code"""
-        import torch
-        from src import utils as kernel_utils
-        import sys
 
-        kernel_utils.set_gpu_arch(gpu_arch)
+        set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")
-        current_module = sys.modules[__name__]
 
-        eval_result = current_module.evaluate_single_sample_src(
+        eval_result = evaluate_single_sample_src(
             ref_arch_src=ref_arch_src,
             kernel_src=kernel_src,
             configs=configs,
