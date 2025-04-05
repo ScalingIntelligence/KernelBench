@@ -1,14 +1,17 @@
 import os
 import shutil
+import importlib.util
+import sys
+import tempfile
 
 import torch
+import numpy as np
 import pydra
 from pydra import REQUIRED, Config
 from datasets import load_dataset
 
 from kernelbench.eval import eval_kernel_against_ref, KernelExecResult
 from kernelbench.utils import read_file, set_gpu_arch
-from scripts.generate_baseline_time import measure_program_time
 
 """
 Run a pair of KernelBench format (problem, solution) to check if solution is correct and compute speedup
@@ -126,6 +129,129 @@ def evaluate_single_sample_src(
             return eval_result
 
 
+def measure_program_time(
+    ref_arch_name: str,  # Added for consistency, although not used in this version
+    ref_arch_src: str,
+    num_trials: int,
+    device: torch.device,
+    use_torch_compile: bool = False,
+    torch_compile_backend: str | None = None,
+    torch_compile_options: str | None = None,
+) -> dict:
+    """Measure the execution time of a reference program"""
+
+    # Create temporary module
+    temp_dir = tempfile.mkdtemp()
+    ref_module_path = os.path.join(temp_dir, "ref_module.py")
+
+    with open(ref_module_path, "w") as f:
+        f.write(ref_arch_src)
+
+    # Load reference module
+    spec = importlib.util.spec_from_file_location("ref_module", ref_module_path)
+    ref_module = importlib.util.module_from_spec(spec)
+    sys.modules["ref_module"] = ref_module
+    spec.loader.exec_module(ref_module)
+
+    # Create model instance
+    if hasattr(ref_module, "get_init_inputs"):
+        init_inputs = ref_module.get_init_inputs()
+        init_inputs = [
+            (
+                x
+                if (isinstance(x, torch.Tensor) and x.device == device)
+                else (x.to(device) if isinstance(x, torch.Tensor) else x)
+            )
+            for x in init_inputs
+        ]
+        ref_model = ref_module.Model(*init_inputs).to(device)
+    else:
+        ref_model = ref_module.Model().to(device)
+
+    # Apply torch.compile if needed
+    if use_torch_compile:
+        if torch_compile_backend is not None:
+            if torch_compile_options is not None and torch_compile_options != "default":
+                compile_options = (
+                    {"mode": torch_compile_options}
+                    if torch_compile_options in ["max-autotune", "reduce-overhead"]
+                    else {}
+                )
+                ref_model = torch.compile(
+                    ref_model,
+                    backend=torch_compile_backend,
+                    options=compile_options,
+                )
+            else:
+                ref_model = torch.compile(ref_model, backend=torch_compile_backend)
+        else:
+            ref_model = torch.compile(ref_model)
+
+    # Generate inputs
+    if hasattr(ref_module, "get_inputs"):
+        inputs = ref_module.get_inputs()
+        inputs = [
+            (
+                x
+                if (isinstance(x, torch.Tensor) and x.device == device)
+                else (x.to(device) if isinstance(x, torch.Tensor) else x)
+            )
+            for x in inputs
+        ]
+    elif hasattr(ref_module, "INPUT_SHAPE"):
+        input_shape = ref_module.INPUT_SHAPE
+        if isinstance(input_shape, tuple):
+            inputs = (torch.randn(input_shape, device=device),)
+        elif isinstance(input_shape, list):
+            inputs = tuple(torch.randn(shape, device=device) for shape in input_shape)
+        else:
+            raise ValueError(f"Invalid INPUT_SHAPE: {input_shape}")
+    else:
+        # Infer inputs from model
+        if hasattr(ref_model, "forward"):
+            argcount = ref_model.forward.__code__.co_argcount
+            inputs = tuple(
+                torch.randn(1, 128, device=device) for _ in range(argcount - 1)
+            )
+        else:
+            raise ValueError("Could not determine appropriate inputs for the model")
+
+    # Warmup
+    for _ in range(10):
+        ref_model(*inputs)
+
+    # Timing
+    torch.cuda.synchronize(device=device)
+    times = []
+    for _ in range(num_trials):
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
+        ref_model(*inputs)
+        end.record()
+
+        torch.cuda.synchronize(device=device)
+        times.append(start.elapsed_time(end))
+
+    # Clean up
+    try:
+        os.remove(ref_module_path)
+        os.rmdir(temp_dir)
+    except OSError:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Calculate statistics
+    times = np.array(times)
+    return {
+        "mean": float(np.mean(times)),
+        "std": float(np.std(times)),
+        "min": float(np.min(times)),
+        "max": float(np.max(times)),
+        "median": float(np.median(times)),
+    }
+
+
 @pydra.main(base=ScriptConfig)
 def main(config: ScriptConfig):
 
@@ -171,7 +297,7 @@ def main(config: ScriptConfig):
     kernel_src = read_file(config.kernel_src_path)
 
     # Start Evaluation
-    device = torch.device("cuda:0")  # default device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     set_gpu_arch(config.gpu_arch)
 
     print("[INFO] Evaluating kernel against reference code")
