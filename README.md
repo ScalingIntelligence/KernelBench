@@ -1,17 +1,17 @@
-# KernelBench - Can LLMs Write GPU Kernels?
-[blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [HuggingFace Dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) | [arXiv](https://arxiv.org/html/2502.10517v1)
+# KernelBench: Can LLMs Write Efficient GPU Kernels? [ICML '25]
+[arXiv](https://arxiv.org/html/2502.10517v1) | [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [HuggingFace Dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) | 
 
-A benchmark for evaluating LLMs' ability to generate GPU kernels
+A benchmark for evaluating LLMs' ability to generate efficient GPU kernels
 
 <img src="./assets/figures/KernelBenchMascot.png" width="200">
 
-See [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) and [arXiv paper](https://arxiv.org/html/2502.10517v1) for more details.
+<!-- See [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) and [arXiv paper](https://arxiv.org/html/2502.10517v1) for more details. -->
 
 ## 👋 Task Description
 We structure the problem for LLM to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity it desires to.
 ![KernelBenchMascot](./assets/figures/KernelBenchWorkFlow.png)
 
-We construct Kernel Bench to have 4 Levels of categories:
+We construct KernelBench to have 4 Levels of categories:
 - **Level 1 🧱**:  Single-kernel operators (100 Problems)
     The foundational building blocks of neural nets (Convolutions, Matrix multiplies, Layer normalization)
 - **Level 2 🔗**:  Simple fusion patterns (100 Problems)
@@ -111,19 +111,27 @@ python3 scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=1 hard
 If you are using a different hardware, you can generate the baseline time with `scripts/generate_baseline_time.py` script.
 We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
 
+### Multi-Turn Framework
+We have also releaed the test-time framework [Caesar](https://github.com/simonguozirui/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems. 
+
 ## 🛣️ Upcoming Roadmap
-- [ ] Triton Variant (Ongoing)
+- [ ] Triton Variant (To be merged)
 - [ ] Easy to use CoLab Notebook Example
 - [ ] Push button flow on Modal / Cloud Provider 
 - [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
 - [ ] Add backward pass
 - [ ] Integrate with toolchains such as NCU
+See Issues for the ongoing roadmap and directions.
+
 
 
 ## 🔍 Known Usage
 - [NVIDIA](https://developer.nvidia.com/blog/automating-gpu-kernel-generation-with-deepseek-r1-and-inference-time-scaling/) - Automating GPU Kernel Generation with DeepSeek-R1 and Inference Time Scaling
 - [METR](https://metr.org/blog/2025-02-14-measuring-automated-kernel-engineering/) - Measuring Automated Kernel Engineering
 - [Sakana AI](https://sakana.ai/ai-cuda-engineer/) - AI Cuda Engineer
+- [Project Popcorn](https://www.youtube.com/watch?v=mdDVkBeFy9A) - Triton Support for KernelBench, Data Scaling + SFT'd Kernel LLM
+- [Kevin](https://cognition.ai/blog/kevin-32b) - Kevin-32B: Multi-Turn RL for Writing CUDA Kernels
+- [Simple Test-Time Search](https://scalingintelligence.stanford.edu/blogs/fastkernels/) - by @anneouyang
 
 If you are using KernelBench, we love to hear more about it!
 
