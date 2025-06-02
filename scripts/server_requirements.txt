@@ -1,0 +1,14 @@
+modal
+numpy
+pydra_config
+torch==2.5.0
+triton
+tqdm
+datasets
+transformers
+google-generativeai
+together
+pytest
+ninja
+archon-ai
+einops
