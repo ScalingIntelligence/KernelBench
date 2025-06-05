@@ -255,7 +255,6 @@ def query_server(
         if is_reasoning_model:
             assert "o1" in model or "o3" in model, "Only support o1 and o3 for now"
             print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
-            print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -410,6 +409,14 @@ def create_inference_server_from_presets(server_type: str = None,
 
         if kwargs:
             server_args.update(kwargs)
+        # Special handling for o-series models
+        if server_type == "openai":
+            model_name = server_args.get("model_name", "")
+            if re.search(r"o\d", model_name):
+                # Remove max_tokens param
+                server_args.pop("max_tokens", None)
+                # Set to use the reasoning branch
+                server_args["is_reasoning_model"] = True
         if greedy_sample:
             server_args["temperature"] = 0.0
             server_args["top_p"] = 1.0
