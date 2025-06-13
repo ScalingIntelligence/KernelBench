@@ -19,6 +19,7 @@ from together import Together
 from openai import OpenAI
 import google.generativeai as genai
 import anthropic
+import boto3
 
 # from datasets import load_dataset
 import numpy as np
@@ -42,6 +43,9 @@ SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
 FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.environ.get("AWS_REGION")
 
 
 ########################################################
@@ -156,6 +160,9 @@ def query_server(
             
         case "openai":
             client = OpenAI(api_key=OPENAI_KEY)
+            model = model_name
+        case "bedrock":
+            client = boto3.client("bedrock", region_name=AWS_REGION, aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
             model = model_name
         case _:
             raise NotImplementedError
@@ -277,6 +284,19 @@ def query_server(
                 top_p=top_p,
             )
         outputs = [choice.message.content for choice in response.choices]
+    elif server_type == "bedrock":
+        native_request = {
+            "inputText": prompt,
+            "textGenerationConfig": {
+                "temperature": temperature,
+                "maxTokenCount": max_tokens,
+                "topP": top_p,
+            }
+        }
+        request = json.dumps(native_request)
+        response = client.invoke_model(modelId=model, body=request)
+        model_response = json.loads(response.get("body").read())
+        outputs = model_response['results'][0]['outputText']
     elif server_type == "together":
         response = client.chat.completions.create(
             model=model,

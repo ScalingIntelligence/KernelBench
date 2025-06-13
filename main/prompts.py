@@ -55,10 +55,6 @@ def generate_prompt_metr(work: WorkArgs, config: TestTimeScalingConfig, ref_arch
     return prompt_iterative_refinement(ref_arch_src, sampled_kernel_src, sampled_kernel_eval_result)
 
 
-def generate_prompt_cognition(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, run_dir: str) -> str:
-    pass
-
-
 def generate_prompt_stanford(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, run_dir: str) -> str:
     pass
 
@@ -71,8 +67,6 @@ def generate_prompt(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src:
             return generate_prompt_iterative_refinement(work, config, ref_arch_src, run_dir)
         case "METR":
             return generate_prompt_metr(work, config, ref_arch_src, run_dir)
-        case "Cognition":
-            return generate_prompt_cognition(work, config, ref_arch_src, run_dir)
         case "Stanford":
             return generate_prompt_stanford(work, config, ref_arch_src, run_dir)
         case _:

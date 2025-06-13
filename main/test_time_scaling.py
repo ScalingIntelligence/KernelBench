@@ -20,8 +20,7 @@ Test-time scaling approaches
 1. best-of-N
 2. iterative refinement
 3. METR evolutionary approach
-4. Cognition beam search
-5. Stanford: NL idea gen + branching
+4. Stanford: NL idea gen + branching
 """
 
 
@@ -137,15 +136,6 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
         batch_eval(workload, config, dataset, run_dir, eval_file_path)
 
 
-def cognition(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
-    pass
-    """
-    Cognition approach
-    """
-    num_iterations = config.num_iterations
-
-    pass
-
 def stanford(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
 
     """
@@ -217,8 +207,6 @@ def main(config: TestTimeScalingConfig):
             iterative_refinement(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
         case "METR":
             metr(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
-        case "Cognition":
-            cognition(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
         case "Stanford":
             stanford(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
         case _:
