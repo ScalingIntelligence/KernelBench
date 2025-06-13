@@ -1,0 +1,175 @@
+import pydra
+import os
+import torch
+import multiprocessing as mp
+from datasets import load_dataset
+
+from src.dataset import construct_kernelbench_dataset
+from src.utils import set_gpu_arch, create_inference_server_from_presets
+
+from configs import TestTimeScalingConfig, WorkArgs
+from utils import check_if_kernel_exists, check_if_eval_exists_local
+from generation_utils import batch_generate
+from evaluation_utils import batch_eval
+
+"""
+Test-time scaling approaches
+1. best-of-N
+2. iterative refinement
+3. METR evolutionary approach
+4. Cognition beam search
+5. Stanford: NL idea gen + branching
+"""
+
+
+def best_of_n(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+    """
+    Best-of-N approach
+    Generate num_samples for each problem independently
+    """
+    # Define workloads
+    generation_workload = []
+    evaluation_workload = []
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+
+    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+        for sample_id in range(config.num_samples):
+            if not check_if_kernel_exists(run_dir, config.level, problem_id, sample_id):
+                generation_workload.append(
+                    WorkArgs(
+                        problem_id=int(problem_id),
+                        sample_id=sample_id
+                    )
+            )
+            if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
+                evaluation_workload.append(
+                    WorkArgs(
+                        problem_id=int(problem_id),
+                        sample_id=sample_id,
+                    )
+                )
+    
+    # Generate samples
+    generation_results = batch_generate(generation_workload, config, dataset, inference_server, run_dir)    
+    
+    # Evaluate samples
+    batch_eval(evaluation_workload, config, dataset, run_dir, eval_file_path)
+
+
+def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+    """
+    Iterative refinement approach
+    """
+    num_iterations = config.num_iterations
+    for iteration in range(num_iterations):
+        # Generate samples
+        generation_workload = []
+        for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+            for sample_id in range(config.num_samples):
+                generation_workload.append(
+                    WorkArgs(
+                        problem_id=int(problem_id),
+                        sample_id=sample_id + iteration * config.num_samples
+                    )
+                )
+        
+        # Evaluate samples
+    pass
+
+def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+    """
+    METR approach
+    """
+    pass
+
+def cognition(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+    pass
+    """
+    Cognition approach
+    """
+    num_iterations = config.num_iterations
+
+    pass
+
+def stanford(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+
+    """
+    Stanford approach
+    """
+    num_iterations = config.num_iterations
+
+    pass
+
+
+@pydra.main(base=TestTimeScalingConfig)
+def main(config: TestTimeScalingConfig):
+    """
+    Test-Time Scaling for Particular Level
+    """
+    print(f"Starting Test-Time Scaling with config: {config}")
+
+    # Check if CUDA is available
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
+
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method("spawn")
+
+    # 1. Set up
+    # Set up dataset
+    if config.dataset_src == "huggingface":
+        dataset = load_dataset(config.dataset_name)
+        curr_level_dataset = dataset[f"level_{config.level}"]
+    elif config.dataset_src == "local":
+        curr_level_dataset = construct_kernelbench_dataset(config.level)
+
+    num_problems_in_level = len(curr_level_dataset)
+
+    if config.subset == (None, None):
+        problem_id_range = range(1, num_problems_in_level)
+    else:
+        assert config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level, f"Subset range {config.subset} out of range for Level {config.level}"
+        problem_id_range = range(config.subset[0], config.subset[1])
+
+    print(f"Level {config.level} problems: {problem_id_range}")
+
+    # set up run directory
+    run_dir = os.path.join(config.runs_dir, config.run_name)
+    os.makedirs(run_dir, exist_ok=True)
+    pydra.save_yaml(config.to_dict(), os.path.join(run_dir, "config.yaml"))
+ 
+    assert config.store_type == "local", "supporting local file-system based storage for now" # database integreation coming soon, need to migrate from CUDA Monkeys code
+
+    # set GPU arch to configure what target to build for
+    set_gpu_arch(config.gpu_arch)
+    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
+
+    # Create inference function with config parameters
+    inference_server = create_inference_server_from_presets(server_type=config.server_type,
+                                                        model_name=config.model_name,
+                                                        temperature=config.temperature,
+                                                        max_tokens=config.max_tokens,
+                                                        verbose=config.verbose)
+    
+    # at this point, we have: curr_level_dataset, problem_id_range, inference_server, run_dir
+
+
+    # Run the test-time scaling approach
+    match config.method:
+        case "best-of-N":
+            best_of_n(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+        case "iterative refinement":
+            iterative_refinement(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+        case "METR":
+            metr(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+        case "Cognition":
+            cognition(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+        case "Stanford":
+            stanford(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+        case _:
+            raise ValueError(f"Invalid method: {config.method}")
+ 
+
+if __name__ == "__main__":
+    main()
+

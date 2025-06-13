@@ -60,7 +60,7 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     eval_file_path = f'runs/{run_name}/eval_results.json'
     assert os.path.exists(eval_file_path), f"Eval file does not exist at {eval_file_path}"
 
-    baseline_file_path = f'results/timing/{hardware}/{baseline}.json'
+    baseline_file_path = f'results/timing/{hardware}/baseline_time_{baseline}.json'
     assert os.path.exists(baseline_file_path), f"Baseline file does not exist at {baseline_file_path}"
 
     with open(eval_file_path, 'r') as f:
