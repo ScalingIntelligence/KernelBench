@@ -6,7 +6,7 @@ from tqdm import tqdm
 import multiprocessing as mp
 
 from src.compile import batch_compile, remove_cache_dir
-from src.eval import eval_kernel_against_ref, KernelExecResult, check_metadata_serializable_all_types
+from src.eval import eval_kernel_against_ref, eval_reference_kernel, KernelExecResult, check_metadata_serializable_all_types
 
 from configs import TestTimeScalingConfig
 from utils import WorkArgs, EvaluationWorkArgs, fetch_ref_arch_from_problem_id, fetch_kernel_from_disk, check_if_eval_exists_local
@@ -32,16 +32,23 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScali
     build_dir = os.path.join(configs.kernel_eval_build_dir, configs.run_name, f"{problem_id}", f"{sample_id}")
 
     try: 
-        eval_result = eval_kernel_against_ref(
-            original_model_src=ref_arch_src,
-            custom_model_src=kernel_src,
-            measure_performance=configs.measure_performance,
-            verbose=configs.verbose,    
-            num_correct_trials=configs.num_correct_trials,
-            num_perf_trials=configs.num_perf_trials,
-            build_dir=build_dir,
-            device=device,
-        )
+        if configs.method == "METR" and sample_id == 0:
+            eval_result = eval_reference_kernel(
+                original_model_src=ref_arch_src,
+                verbose=configs.verbose,
+                device=device,
+            )
+        else:
+            eval_result = eval_kernel_against_ref(
+                original_model_src=ref_arch_src,
+                custom_model_src=kernel_src,
+                measure_performance=configs.measure_performance,
+                verbose=configs.verbose,    
+                num_correct_trials=configs.num_correct_trials,
+                num_perf_trials=configs.num_perf_trials,
+                build_dir=build_dir,
+                device=device,
+            )
         return eval_result
     except Exception as e:
         print(
@@ -123,7 +130,7 @@ def batch_eval(
     # construct a list of work args
     batch_size = config.num_gpu_devices
 
-    with tqdm(total=len(total_work), desc="Processing batches") as pbar:
+    with tqdm(total=len(total_work), desc="Evaluation Progress") as pbar:
 
         while len(total_work) > 0:
             curr_work_batch = total_work[:batch_size]

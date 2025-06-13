@@ -9,8 +9,9 @@ class TestTimeScalingConfig(Config):
 
         # Test-Time Scaling Method
         self.method = REQUIRED # "best-of-N", "iterative refinement", "METR", "Cognition", "Stanford"
-        self.num_samples = 10 # used for best-of-N, METR, Cognition, Stanford
-        self.num_iterations = 10 # used for iterative refinement, Cognition, Stanford
+        self.num_parallel = 10 # used for best-of-N, METR, iterative refinement 
+        self.num_samples = 10 # used for METR
+        self.num_iterations = 10 # used for iterative refinement
 
         # Dataset
         self.dataset_src = REQUIRED # either huggingface or local

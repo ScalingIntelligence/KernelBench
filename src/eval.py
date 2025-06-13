@@ -459,6 +459,94 @@ def eval_kernel_against_ref(
     return kernel_exec_result
 
 
+def eval_reference_kernel(
+    original_model_src: str,
+    seed_num: int = 42,
+    num_correct_trials: int = 1,
+    num_perf_trials: int = 10,
+    verbose: bool = False,
+    device: torch.device = torch.cuda.current_device() if torch.cuda.is_available() else None, # have to run on GPU
+) -> KernelExecResult:
+    """
+    Evaluate the reference kernel
+    """
+    assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
+    torch.set_printoptions(
+        precision=4,  # Decimal places
+        threshold=10,  # Total number of elements before truncating
+        edgeitems=3,  # Number of elements at beginning and end of dimensions
+        linewidth=80,  # Maximum width before wrapping
+    )
+
+    # set CUDA device
+    torch.cuda.set_device(device)
+
+    context = {}
+
+    if verbose:
+        print(f"[Eval] Start Evalulation! on device: {device}")
+        print("[Eval] Loading Original Model")
+
+    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
+        original_model_src, context
+    )
+    set_seed(seed_num)  # set seed for reproducible input
+    init_inputs = get_init_inputs()
+    init_inputs = [
+        x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs
+    ]
+
+    with torch.no_grad():
+        set_seed(seed_num)  # set seed for reproducible weights
+        original_model = Model(*init_inputs)
+        assert hasattr(original_model, "forward")
+        if verbose:
+            print("[Eval] Original Model Loaded")
+
+    metadata = {}  # for storing result metadata
+    metadata["hardware"] = torch.cuda.get_device_name(device=device)
+    metadata["device"] = str(device)  # for debugging
+    
+    kernel_exec_result = KernelExecResult(compiled=True, correctness=True, metadata=metadata)
+
+    try:
+        if verbose:
+            print("[Eval] Measuring Performance as Sample is Correct")
+
+        torch.cuda.synchronize(device=device)
+        set_seed(seed_num)
+        inputs = get_inputs()
+        inputs = [
+            x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+            for x in inputs
+        ]
+        model = original_model.cuda(device=device)
+        torch.cuda.synchronize(device=device)
+
+        elapsed_times, profiler_info = time_execution_with_cuda_event(
+            model,
+            *inputs,
+            num_trials=num_perf_trials,
+            verbose=verbose,
+            device=device,
+        )
+        runtime_stats = get_timing_stats(elapsed_times, device=device)
+
+        if verbose:
+            print(f"[Eval] Performance Stats: {runtime_stats}")
+        kernel_exec_result.runtime = runtime_stats["mean"]
+        kernel_exec_result.runtime_stats = runtime_stats
+        kernel_exec_result.metadata["profiler_info"] = profiler_info
+    except Exception as e:
+        if verbose:
+            print(f"[Eval] Error in Measuring Performance: {e}")
+        kernel_exec_result.metadata["error_during_performance"] = e
+
+    graceful_eval_cleanup(context, device)
+    return kernel_exec_result
+
+
+
 def register_and_format_exception(
     exception_type: str,
     exception_msg: Exception | str,
@@ -548,7 +636,7 @@ def time_execution_with_cuda_event(
     if verbose:
         print(f"[Profiling] Profiler Info: \n{profiler_info}")
 
-    return elapsed_times, profiler_info.to_string()
+    return elapsed_times, profiler_info
 
 
 def run_and_check_correctness(

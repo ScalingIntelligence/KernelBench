@@ -547,14 +547,14 @@ def extract_code_blocks(text, code_language_types: list[str]) -> str:
 # Scale up experiments in parallel
 ################################################################################
 
-def maybe_multithread(func, instances, num_workers, time_interval=0.0, *shared_args, **shared_kwargs):
+def maybe_multithread(func, instances, num_workers, pbar_name=None, time_interval=0.0, *shared_args, **shared_kwargs):
     """
     Multithreaded execution of func, with optional time interval between queries
     Ideal for querying LLM APIs, does not provide process isolation
     """
     output_data = []
     if num_workers not in [1, None]:
-        with tqdm(total=len(instances), smoothing=0) as pbar:
+        with tqdm(total=len(instances), smoothing=0, desc=pbar_name) as pbar:
             with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 
                 # Submit tasks one at a time with delay between them

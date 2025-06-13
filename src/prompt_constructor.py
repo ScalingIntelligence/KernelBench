@@ -504,28 +504,27 @@ def prompt_iterative_refinement(ref_arch_src: str, last_kernel_src: str, last_ex
     compilation_error = last_exec_result['metadata']['compilation_error'] if 'compilation_error' in last_exec_result['metadata'] else None
     runtime_error = last_exec_result['metadata']['runtime_error'] if 'runtime_error' in last_exec_result['metadata'] else None
     correctness_issue = last_exec_result['metadata']['correctness_issue'] if 'correctness_issue' in last_exec_result['metadata'] else None
-    eval_result = compilation_error if compilation_error else runtime_error if runtime_error else correctness_issue if correctness_issue else last_exec_result['metadata']['correctness_trials']
+    eval_result = compilation_error if compilation_error else runtime_error if runtime_error else correctness_issue if correctness_issue else "All trials passed" 
 
-    prompt += f"""
-    Here is your latest generation:
-    ```
-    {last_kernel_src}
-    ```
+    prompt += f"""Here is your latest generation:
+```
+{last_kernel_src}
+```
 
-    Your generated architecture ModelNew and kernel was evaluated on GPU and checked against the reference architecture Model.
-    Here is your Evaluation Result:
-    ```
-    {eval_result}
-    ```
-    """
+Your generated architecture ModelNew and kernel was evaluated on GPU and checked against the reference architecture Model.
+Here is your Evaluation Result:
+```
+{eval_result}
+```
+"""
 
     if last_exec_result["correctness"]:
         prompt += f"""
-        Your kernel executed successfully and produced the correct output.
-        Here is your wall clock time: {last_exec_result["runtime"]} milliseconds.
+Your kernel executed successfully and produced the correct output.
+Here is your wall clock time: {last_exec_result["runtime"]} milliseconds.
 
-        {last_exec_result["metadata"]["profiler_info"]}
-        """
+{last_exec_result["metadata"]["profiler_info"]}
+"""
     
     prompt += "Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!"
     return prompt

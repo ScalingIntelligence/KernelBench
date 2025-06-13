@@ -1,10 +1,14 @@
 """
 Prompt Templates for test-time scaling methods
 """
+import os
+import random
+
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template, prompt_iterative_refinement
+from src.utils import read_file
 
 from configs import TestTimeScalingConfig
-from utils import WorkArgs, fetch_kernel_from_disk, fetch_eval_result_from_disk
+from utils import WorkArgs, fetch_kernel_from_disk, fetch_eval_result_from_disk, get_evaluation_results_for_problem
 
 
 def generate_prompt_best_of_n(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, run_dir: str) -> str:
@@ -27,7 +31,28 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config: TestTimeScaling
 
 
 def generate_prompt_metr(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, run_dir: str) -> str:
-    pass
+    if work.sample_id <= config.num_parallel:
+        return prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    
+    # Sample from previously generated kernels based on efficiency
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+    eval_results = get_evaluation_results_for_problem(work.problem_id, eval_file_path)
+
+    ref_kernel_result = eval_results["0"]
+    assert ref_kernel_result["correctness"], "Reference kernel is not correct"
+
+    correct_kernels = [eval_result for eval_result in eval_results.values() if eval_result["correctness"]]
+    
+    # Sample from the correct kernels based on efficiency
+    speedups = [ref_kernel_result["runtime"] / eval_result["runtime"] for eval_result in correct_kernels]
+    sampled_kernel_eval_result = random.choices(correct_kernels, weights=speedups)[0]
+    sampled_kernel_id = int(sampled_kernel_eval_result["sample_id"])
+    if config.verbose:
+        print(f"[METR] Sampled kernel {sampled_kernel_id} with speedup {ref_kernel_result['runtime'] / sampled_kernel_eval_result['runtime']}")
+
+    sampled_kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, sampled_kernel_id)
+
+    return prompt_iterative_refinement(ref_arch_src, sampled_kernel_src, sampled_kernel_eval_result)
 
 
 def generate_prompt_cognition(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, run_dir: str) -> str:

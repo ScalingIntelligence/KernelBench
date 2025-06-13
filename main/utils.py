@@ -38,6 +38,17 @@ def check_if_eval_exists_local(problem_id: int, sample_id: int, eval_file_path: 
     return False
 
 
+def get_evaluation_results_for_problem(problem_id: int, eval_file_path: str) -> list[str]:
+    """
+    Get evaluated kernels from disk
+    """
+    if os.path.exists(eval_file_path):
+        with open(eval_file_path, 'r') as f:
+            eval_results = json.load(f)
+        return eval_results[str(problem_id)]
+    return {}
+
+
 def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -> str | None:
     """
     Fetch reference architecture from problem directory

@@ -37,7 +37,8 @@ def generate_sample_launcher(work: WorkArgs, config: TestTimeScalingConfig, data
     try:
         return generate_sample_single(work, config, dataset, inference_server, run_dir)
     except Exception as e:
-        print(f"Error generating sample {work.problem_id} {work.sample_id}: {e}")
+        print(f"Error generating problem {work.problem_id} sample {work.sample_id}: {e}")
+        
         return None
 
 
@@ -52,6 +53,7 @@ def batch_generate(
     return maybe_multithread(generate_sample_launcher, 
                       total_work, 
                       config.num_workers, 
+                      pbar_name=f"Generation {config.method} Progress",
                       time_interval=config.api_query_interval, 
                       # extra args
                       config=config, 

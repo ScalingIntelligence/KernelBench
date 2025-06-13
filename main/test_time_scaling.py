@@ -11,7 +11,7 @@ from src.dataset import construct_kernelbench_dataset
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
 from configs import TestTimeScalingConfig
-from utils import WorkArgs, check_if_kernel_exists, check_if_eval_exists_local
+from utils import WorkArgs, check_if_kernel_exists, check_if_eval_exists_local, fetch_ref_arch_from_problem_id
 from generation_utils import batch_generate
 from evaluation_utils import batch_eval
 
@@ -34,7 +34,7 @@ def best_of_n(config: TestTimeScalingConfig, dataset, problem_id_range: range, i
     workload = []
 
     for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
-        for sample_id in range(config.num_samples):
+        for sample_id in range(config.num_parallel):
             workload.append(
                 WorkArgs(
                     problem_id=int(problem_id),
@@ -54,31 +54,88 @@ def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_rang
     """
     Iterative refinement approach
     """
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+
     num_iterations = config.num_iterations
     for iteration in range(num_iterations):
+        print(f"[Iterative Refinement] Iteration {iteration + 1} of {num_iterations}")
+        
         # Generate samples
         workload = []
         for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
-            for sample_id in range(config.num_samples):
+            for sample_id in range(config.num_parallel):
                 workload.append(
                     WorkArgs(
                         problem_id=int(problem_id),
-                        sample_id=sample_id + iteration * config.num_samples
+                        sample_id=sample_id + iteration * config.num_parallel
                     )
                 )
 
         generation_results = batch_generate(workload, config, dataset, inference_server, run_dir)
 
         # Evaluate samples
-        eval_file_path = os.path.join(run_dir, f"eval_results.json")
         batch_eval(workload, config, dataset, run_dir, eval_file_path)
 
 
 def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
     """
     METR approach
+    1. Generate 8 samples in parallel
+    2. When a thread is done, sample from currently evaluated kernels based on efficiency
+    3. Generate new attempt based on the sample 
+    4. Repeat until num_samples are generated
     """
-    pass
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+
+    # 0. Add the reference architecture as the first sample
+    print(f"[METR] Adding reference architecture as the first sample")
+    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+        ref_arch_src = fetch_ref_arch_from_problem_id(dataset, problem_id, config.dataset_src)
+        kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{problem_id}_sample_{0}_kernel.py")
+        with open(kernel_path, "w") as f:
+            f.write(ref_arch_src)
+
+    workload = []
+    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+        workload.append(
+            WorkArgs(
+                problem_id=int(problem_id),
+                sample_id=0
+            )
+        )
+    
+    batch_eval(workload, config, dataset, run_dir, eval_file_path) 
+
+    # 1. Generate 8 samples in parallel
+    print(f"[METR] Generating {config.num_parallel} samples in parallel")
+    workload = []
+    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+        for sample_id in range(1, config.num_parallel + 1):
+            workload.append(
+                WorkArgs(
+                    problem_id=int(problem_id),
+                    sample_id=sample_id
+                )
+            )
+    
+    batch_generate(workload, config, dataset, inference_server, run_dir)
+    batch_eval(workload, config, dataset, run_dir, eval_file_path)
+
+    # 2. Continue generating samples until we reach num_samples
+    for sample_id in range(config.num_parallel + 1, config.num_samples + 1):
+        print(f"[METR] Generating sample {sample_id} of {config.num_samples}")
+        workload = []
+        for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+            workload.append(
+                WorkArgs(
+                    problem_id=int(problem_id),
+                    sample_id=sample_id
+                )
+            )
+            
+        batch_generate(workload, config, dataset, inference_server, run_dir)
+        batch_eval(workload, config, dataset, run_dir, eval_file_path)
+
 
 def cognition(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
     pass
