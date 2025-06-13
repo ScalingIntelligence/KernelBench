@@ -456,12 +456,6 @@ Here are some best practices for writing CUDA kernels on GPU: \n\n"""
     return prompt
 
 
-    return Nonoe
-
-
-
-
-
 def prompt_fix_compile(ref_arch_src, custom_cuda, metadata):
     prompt = PROBLEM_STATEMENT
     prompt += f"""
@@ -501,6 +495,41 @@ def prompt_fix_correctness(ref_arch_src, custom_cuda, metadata):
     Please consider how your custom CUDA kernels are implemented, how it is different from the reference implementation, and fix the correctness error in the new model code. Please output the corrected code in codeblocks.
     """
     return prompt
+
+
+def prompt_iterative_refinement(ref_arch_src: str, last_kernel_src: str, last_exec_result: str) -> str:
+    prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+
+
+    compilation_error = last_exec_result['metadata']['compilation_error'] if 'compilation_error' in last_exec_result['metadata'] else None
+    runtime_error = last_exec_result['metadata']['runtime_error'] if 'runtime_error' in last_exec_result['metadata'] else None
+    correctness_issue = last_exec_result['metadata']['correctness_issue'] if 'correctness_issue' in last_exec_result['metadata'] else None
+    eval_result = compilation_error if compilation_error else runtime_error if runtime_error else correctness_issue if correctness_issue else last_exec_result['metadata']['correctness_trials']
+
+    prompt += f"""
+    Here is your latest generation:
+    ```
+    {last_kernel_src}
+    ```
+
+    Your generated architecture ModelNew and kernel was evaluated on GPU and checked against the reference architecture Model.
+    Here is your Evaluation Result:
+    ```
+    {eval_result}
+    ```
+    """
+
+    if last_exec_result["correctness"]:
+        prompt += f"""
+        Your kernel executed successfully and produced the correct output.
+        Here is your wall clock time: {last_exec_result["runtime"]} milliseconds.
+
+        {last_exec_result["metadata"]["profiler_info"]}
+        """
+    
+    prompt += "Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!"
+    return prompt
+
 
 def main():
     gpu_name = "L40S"

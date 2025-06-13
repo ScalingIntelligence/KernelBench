@@ -1,7 +1,7 @@
 """
 Prompt Templates for test-time scaling methods
 """
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template, prompt_iterative_refinement
 
 from configs import TestTimeScalingConfig
 from utils import WorkArgs, fetch_kernel_from_disk, fetch_eval_result_from_disk
@@ -13,12 +13,15 @@ def generate_prompt_best_of_n(work: WorkArgs, config: TestTimeScalingConfig, ref
 
 
 def generate_prompt_iterative_refinement(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, run_dir: str) -> str:
+    if work.sample_id < config.num_samples:
+        return prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    
     # Fetch last generated kernel and execution results
-    last_kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, work.sample_id - 1)
-    last_exec_result = fetch_eval_result_from_disk(run_dir, config.level, work.problem_id, work.sample_id - 1)
+    last_kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, work.sample_id - config.num_samples)
+    last_exec_result = fetch_eval_result_from_disk(run_dir, config.level, work.problem_id, work.sample_id - config.num_samples)
     
     # Construct prompt
-    prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    prompt = prompt_iterative_refinement(ref_arch_src, last_kernel_src, last_exec_result)
     
     return prompt
 

@@ -436,7 +436,7 @@ def eval_kernel_against_ref(
                 model_new = custom_model.cuda(device=device)
                 torch.cuda.synchronize(device=device)
 
-                elapsed_times = time_execution_with_cuda_event(
+                elapsed_times, profiler_info = time_execution_with_cuda_event(
                     model_new,
                     *inputs,
                     num_trials=num_perf_trials,
@@ -449,6 +449,7 @@ def eval_kernel_against_ref(
                     print(f"[Eval] Performance Stats: {runtime_stats}")
                 kernel_exec_result.runtime = runtime_stats["mean"]
                 kernel_exec_result.runtime_stats = runtime_stats
+                kernel_exec_result.metadata["profiler_info"] = profiler_info
         except Exception as e:
             if verbose:
                 print(f"[Eval] Error in Measuring Performance: {e}")
@@ -538,7 +539,16 @@ def time_execution_with_cuda_event(
             print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
         elapsed_times.append(elapsed_time_ms)
 
-    return elapsed_times
+    # Record profiler information
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA], record_shapes=True) as prof:
+        kernel_fn(*args)
+        torch.cuda.synchronize(device=device)
+
+    profiler_info = prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10)
+    if verbose:
+        print(f"[Profiling] Profiler Info: \n{profiler_info}")
+
+    return elapsed_times, profiler_info.to_string()
 
 
 def run_and_check_correctness(

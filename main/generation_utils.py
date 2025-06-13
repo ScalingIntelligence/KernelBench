@@ -3,7 +3,7 @@ import os
 from src.utils import extract_first_code, read_file, maybe_multithread
 
 from configs import TestTimeScalingConfig
-from utils import WorkArgs, fetch_ref_arch_from_problem_id
+from utils import WorkArgs, fetch_ref_arch_from_problem_id, check_if_kernel_exists
 from prompts import generate_prompt
 
 
@@ -48,6 +48,7 @@ def batch_generate(
     inference_server: callable,
     run_dir: str,
 ):
+    total_work = [work for work in total_work if not check_if_kernel_exists(run_dir, config.level, work.problem_id, work.sample_id)]
     return maybe_multithread(generate_sample_launcher, 
                       total_work, 
                       config.num_workers, 

@@ -31,32 +31,23 @@ def best_of_n(config: TestTimeScalingConfig, dataset, problem_id_range: range, i
     Generate num_samples for each problem independently
     """
     # Define workloads
-    generation_workload = []
-    evaluation_workload = []
-    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+    workload = []
 
     for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
         for sample_id in range(config.num_samples):
-            if not check_if_kernel_exists(run_dir, config.level, problem_id, sample_id):
-                generation_workload.append(
-                    WorkArgs(
-                        problem_id=int(problem_id),
-                        sample_id=sample_id
-                    )
-            )
-            if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
-                evaluation_workload.append(
-                    WorkArgs(
-                        problem_id=int(problem_id),
-                        sample_id=sample_id,
-                    )
+            workload.append(
+                WorkArgs(
+                    problem_id=int(problem_id),
+                    sample_id=sample_id
                 )
+            )
     
     # Generate samples
-    generation_results = batch_generate(generation_workload, config, dataset, inference_server, run_dir)    
+    generation_results = batch_generate(workload, config, dataset, inference_server, run_dir)    
     
     # Evaluate samples
-    batch_eval(evaluation_workload, config, dataset, run_dir, eval_file_path)
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+    batch_eval(workload, config, dataset, run_dir, eval_file_path)
 
 
 def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
@@ -66,18 +57,22 @@ def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_rang
     num_iterations = config.num_iterations
     for iteration in range(num_iterations):
         # Generate samples
-        generation_workload = []
+        workload = []
         for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
             for sample_id in range(config.num_samples):
-                generation_workload.append(
+                workload.append(
                     WorkArgs(
                         problem_id=int(problem_id),
                         sample_id=sample_id + iteration * config.num_samples
                     )
                 )
-        
+
+        generation_results = batch_generate(workload, config, dataset, inference_server, run_dir)
+
         # Evaluate samples
-    pass
+        eval_file_path = os.path.join(run_dir, f"eval_results.json")
+        batch_eval(workload, config, dataset, run_dir, eval_file_path)
+
 
 def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
     """

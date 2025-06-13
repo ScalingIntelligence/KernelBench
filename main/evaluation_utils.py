@@ -9,7 +9,7 @@ from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, KernelExecResult, check_metadata_serializable_all_types
 
 from configs import TestTimeScalingConfig
-from utils import WorkArgs, EvaluationWorkArgs, fetch_ref_arch_from_problem_id, fetch_kernel_from_disk
+from utils import WorkArgs, EvaluationWorkArgs, fetch_ref_arch_from_problem_id, fetch_kernel_from_disk, check_if_eval_exists_local
 
 
 def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScalingConfig, dataset, run_dir: str) -> KernelExecResult | None:
@@ -114,10 +114,11 @@ def batch_eval(
     We put in time out for each batch, consider trying again with larger time out if it didn't finish building.
     Cache directory is removed if evaluation times out or fails
     """
+    total_work = [work for work in total_work if not check_if_eval_exists_local(work.problem_id, work.sample_id, eval_file_path)]
 
     # Build Cache on CPU as that is faster
     if config.build_cache_with_cpu:
-        batch_compile([(arg.problem_id, arg.sample_id) for arg in total_work], config.to_dict())
+        compilation_results = batch_compile([(arg.problem_id, arg.sample_id) for arg in total_work], config.to_dict())
 
     # construct a list of work args
     batch_size = config.num_gpu_devices
