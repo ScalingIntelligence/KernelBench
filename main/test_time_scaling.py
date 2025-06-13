@@ -4,11 +4,14 @@ import torch
 import multiprocessing as mp
 from datasets import load_dataset
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.dataset import construct_kernelbench_dataset
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
-from configs import TestTimeScalingConfig, WorkArgs
-from utils import check_if_kernel_exists, check_if_eval_exists_local
+from configs import TestTimeScalingConfig
+from utils import WorkArgs, check_if_kernel_exists, check_if_eval_exists_local
 from generation_utils import batch_generate
 from evaluation_utils import batch_eval
 

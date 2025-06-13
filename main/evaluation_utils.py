@@ -8,8 +8,8 @@ import multiprocessing as mp
 from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, KernelExecResult, check_metadata_serializable_all_types
 
-from configs import TestTimeScalingConfig, WorkArgs, EvaluationWorkArgs
-from utils import fetch_ref_arch_from_problem_id, fetch_kernel_from_disk
+from configs import TestTimeScalingConfig
+from utils import WorkArgs, EvaluationWorkArgs, fetch_ref_arch_from_problem_id, fetch_kernel_from_disk
 
 
 def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScalingConfig, dataset, run_dir: str) -> KernelExecResult | None:
@@ -21,11 +21,10 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScali
         work_args.sample_id,
         work_args.device,
     )
-    # fetch reference architecture from problem directory
+    # Fetch reference architecture from problem directory
     ref_arch_src = fetch_ref_arch_from_problem_id(dataset, problem_id, configs.dataset_src)
 
-    # fetch kernel from disk
-    # Add database support in the future
+    # Fetch kernel from disk
     kernel_src = fetch_kernel_from_disk(run_dir, configs.level, problem_id, sample_id)
 
     assert kernel_src is not None, f"Kernel not found for problem {problem_id} sample {sample_id}"
@@ -117,7 +116,7 @@ def batch_eval(
     """
 
     # Build Cache on CPU as that is faster
-    if config.build_cache:
+    if config.build_cache_with_cpu:
         batch_compile([(arg.problem_id, arg.sample_id) for arg in total_work], config.to_dict())
 
     # construct a list of work args

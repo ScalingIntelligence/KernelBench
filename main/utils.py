@@ -1,8 +1,22 @@
 import os
 import json
+from dataclasses import dataclass
+import torch
 
 from src.utils import read_file
 
+torch.set_printoptions(precision=4, threshold=10)
+
+@dataclass
+class WorkArgs:
+    problem_id: int # logically indexed
+    sample_id: int
+
+@dataclass
+class EvaluationWorkArgs:
+    problem_id: int
+    sample_id: int
+    device: torch.device
 
 
 def check_if_kernel_exists(run_dir: str, level: int, problem_id: int, sample_id: int) -> bool:
@@ -24,7 +38,6 @@ def check_if_eval_exists_local(problem_id: int, sample_id: int, eval_file_path: 
     return False
 
 
-
 def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -> str | None:
     """
     Fetch reference architecture from problem directory
@@ -42,8 +55,7 @@ def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -
         problem_name = os.path.basename(ref_arch_path)
         ref_arch_src = read_file(ref_arch_path)
 
-    # verify
-        # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
+    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
     problem_number = int(problem_name.split("_")[0])
     assert problem_number == problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({problem_id})"
     
@@ -60,3 +72,17 @@ def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id:
         return read_file(kernel_path)
     else:
         return None
+
+
+def fetch_eval_result_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> dict | None:
+    """
+    Fetch evaluation result from disk (stored in runs/{run_name})
+    """
+    eval_path = os.path.join(run_dir, f"eval_results.json")
+    
+    if os.path.exists(eval_path):
+        with open(eval_path, 'r') as f:
+            eval_results = json.load(f)
+        if str(problem_id) in eval_results and str(sample_id) in eval_results[str(problem_id)]:
+            return eval_results[str(problem_id)][str(sample_id)]
+    return None

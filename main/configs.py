@@ -1,30 +1,25 @@
 from pydra import REQUIRED, Config
 import os
-import torch
-
-torch.set_printoptions(precision=4, threshold=10)
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class TestTimeScalingConfig(Config):
     def __init__(self):
+        self.run_name = REQUIRED # name of the run
 
+        # Test-Time Scaling Method
         self.method = REQUIRED # "best-of-N", "iterative refinement", "METR", "Cognition", "Stanford"
         self.num_samples = 10 # used for best-of-N, METR, Cognition, Stanford
         self.num_iterations = 10 # used for iterative refinement, Cognition, Stanford
-        
-        self.dataset_src = REQUIRED # either huggingface or local
 
-        # name of dataset name on Hugging Face
+        # Dataset
+        self.dataset_src = REQUIRED # either huggingface or local
         self.dataset_name = "ScalingIntelligence/KernelBench"
 
         # Problem Specification
-        self.level = REQUIRED
-        
+        self.level = REQUIRED        
         # subset of problems to generate, otherwise generate on all problems in the level
-        self.subset = (None, None) # (problem_id, problem_name), these are the logical index
-
-        self.run_name = REQUIRED # name of the run
+        self.subset = (None, None) # (start_problem_id, end_problem_id), inclusive
 
         # Logging
         # Top Directory to Store Runs
@@ -52,36 +47,25 @@ class TestTimeScalingConfig(Config):
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
 
-        # Eval settings
-        self.num_correct_trials = 5
-        self.num_perf_trials = 100
-        self.timeout = 180 # in seconds
-        self.measure_performance = True
-        
         # Eval Flow setting
         # To speedup evaluation, you can start building the kernel on CPU on disk as cache
-        self.build_cache = False
-        self.num_cpu_workers = 20 # number of parallel process to to parallelize the build on CPUs
+        self.build_cache_with_cpu = True
+        self.num_cpu_workers = 1
         
         # Directory to build kernels for evaluation
         self.kernel_eval_build_dir = os.path.join(REPO_TOP_DIR, "cache")
 
         # number of GPUs to do batch evaluation
         self.num_gpu_devices = 1
+
+        # Eval settings
+        self.num_correct_trials = 5
+        self.num_perf_trials = 100
+        self.timeout = 180 # in seconds
+        self.measure_performance = True
         
+       
 
     def __repr__(self):
         return f"TestTimeScalingConfig({self.to_dict()})"
     
-
-@dataclass
-class WorkArgs:
-    problem_id: int # logically indexed
-    sample_id: int
-
-@dataclass
-class EvaluationWorkArgs:
-    problem_id: int
-    sample_id: int
-    device: torch.device
-

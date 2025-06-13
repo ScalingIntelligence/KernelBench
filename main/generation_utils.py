@@ -1,32 +1,17 @@
 import os
 
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
 from src.utils import extract_first_code, read_file, maybe_multithread
 
-from configs import TestTimeScalingConfig, WorkArgs
+from configs import TestTimeScalingConfig
+from utils import WorkArgs, fetch_ref_arch_from_problem_id
+from prompts import generate_prompt
 
 
 def generate_sample_single(work: WorkArgs, config: TestTimeScalingConfig, dataset, inference_server: callable, run_dir: str) -> bool:
-    # 1. Fetch Problem
-    if config.dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(lambda x: x["problem_id"] == work.problem_id, desc=None)
-
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-    elif config.dataset_src == "local":
-        problem_idx_in_dataset = work.problem_id - 1 # due to dataset list being 0-indexed locally
-        ref_arch_path = dataset[problem_idx_in_dataset]
-
-        problem_name = os.path.basename(ref_arch_path)
-        ref_arch_src = read_file(ref_arch_path)
-
-    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
-    problem_number = int(problem_name.split("_")[0])
-    assert problem_number == work.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"  
+    ref_arch_src = fetch_ref_arch_from_problem_id(dataset, work.problem_id, config.dataset_src)
 
     # Construct Prompt   
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    custom_cuda_prompt = generate_prompt(work, config, ref_arch_src, run_dir)
     if config.log_prompt:
         prompt_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt")
         with open(prompt_path, "w") as f:
@@ -39,7 +24,7 @@ def generate_sample_single(work: WorkArgs, config: TestTimeScalingConfig, datase
     assert custom_cuda is not None, "Custom CUDA code generation failed"
 
     if config.verbose:
-        print(f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}")
+        print(f"Generated sample {work.sample_id} for problem {work.problem_id}")
 
     # Store to local file
     kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py")
