@@ -685,13 +685,28 @@ def run_and_check_correctness(
             set_seed(trial_seed)
             model_new = new_model_instance.cuda(device=device)
 
+            # Run the new model first
+            try:
+                output_new = model_new(*inputs)
+                torch.cuda.synchronize(device=device)
+            except Exception as e:
+                print("[Error] Exception happens during correctness check")
+                print(f"Error in launching kernel for ModelNew: {e}")
+
+                metadata = register_and_format_exception(
+                    "runtime_error", e, metadata, truncate=True
+                )
+                return KernelExecResult(
+                    compiled=True, correctness=False, metadata=metadata
+                )
+
+            # Run the reference model AFTER the new model as per [Kevin](https://cognition.ai/blog/kevin-32b)
             output = model(*inputs)
             torch.cuda.synchronize(device=device)
             # ensure all GPU operations are completed before checking results
 
             try:
-                output_new = model_new(*inputs)
-                torch.cuda.synchronize(device=device)
+                # Check shape mismatch
                 if output.shape != output_new.shape:
                     metadata = register_and_format_exception(
                         "correctness_issue",
@@ -724,15 +739,14 @@ def run_and_check_correctness(
 
             except Exception as e:
                 print("[Error] Exception happens during correctness check")
-                print(f"Error in launching kernel for ModelNew: {e}")
+                print(f"Error in launching kernel for Model: {e}")
 
                 metadata = register_and_format_exception(
                     "runtime_error", e, metadata, truncate=True
                 )
                 return KernelExecResult(
                     compiled=True, correctness=False, metadata=metadata
-                )
-                # break
+                ) 
 
     if verbose:
         print(

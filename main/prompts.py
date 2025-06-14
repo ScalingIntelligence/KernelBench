@@ -5,7 +5,7 @@ import os
 import random
 
 from src.utils import read_file
-from src.eval import ExecutionResult
+from src.eval import KernelExecResult
 
 from configs import TestTimeScalingConfig
 from utils import WorkArgs, fetch_kernel_from_disk, fetch_eval_result_from_disk, get_evaluation_results_for_problem
@@ -83,7 +83,7 @@ def prompt_base(ref_arch_src: str) -> str:
     return prompt_with_one_example(arch, example_arch, example_new_arch)
 
 
-def exec_result_to_exeution_feedback(exec_result: ExecutionResult) -> str:
+def exec_result_to_exeution_feedback(exec_result: KernelExecResult) -> str:
     compilation_error = exec_result['metadata']['compilation_error'] if 'compilation_error' in exec_result['metadata'] else None
     runtime_error = exec_result['metadata']['runtime_error'] if 'runtime_error' in exec_result['metadata'] else None
     correctness_issue = exec_result['metadata']['correctness_issue'] if 'correctness_issue' in exec_result['metadata'] else None
@@ -107,7 +107,7 @@ Here is your wall clock time: {exec_result["runtime"]} milliseconds.
     return evaluation_feedback
 
 
-def prompt_refinement_from_last_kernel(ref_arch_src: str, last_kernel_src: str, last_exec_result: ExecutionResult) -> str:
+def prompt_refinement_from_last_kernel(ref_arch_src: str, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
     prompt = prompt_base(ref_arch_src)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
@@ -124,7 +124,7 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     return prompt
 
 
-def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, ExecutionResult]]) -> str:
+def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]]) -> str:
     prompt = prompt_base(ref_arch_src)
 
     for kernel_src, exec_result in history:
@@ -144,7 +144,7 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     return prompt
 
 
-def prompt_idea_generation(ref_arc_src: str, last_kernel_src: str, last_exec_result: ExecutionResult) -> str:
+def prompt_idea_generation(ref_arc_src: str, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
     prompt = prompt_base(ref_arc_src)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
@@ -160,7 +160,7 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     prompt += "Generate an idea for how to improve the kernel. Please do not output code yet, just the idea."
     return prompt
 
-def prompt_refinement_from_idea(ref_arc_src: str, last_kernel_src: str, last_exec_result: ExecutionResult, idea: str) -> str:
+def prompt_refinement_from_idea(ref_arc_src: str, last_kernel_src: str, last_exec_result: KernelExecResult, idea: str) -> str:
     prompt = prompt_base(ref_arc_src)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
@@ -236,7 +236,7 @@ def generate_prompt_stanford(work: WorkArgs, config: TestTimeScalingConfig, ref_
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
     eval_results = get_evaluation_results_for_problem(work.problem_id, eval_file_path)
     # Get best kernel(s) from last round
-    last_iteration_start_id = (work.sample_id // config.num_parallel) * config.num_parallel
+    last_iteration_start_id = (work.sample_id // config.num_parallel - 1) * config.num_parallel
     last_step_sample_id_range = range(last_iteration_start_id, last_iteration_start_id + config.num_parallel)
     last_step_eval_results = [eval_results[str(sample_id)] for sample_id in last_step_sample_id_range]
     last_step_correct_kernels = [eval_result for eval_result in last_step_eval_results if eval_result["correctness"]]
@@ -247,7 +247,9 @@ def generate_prompt_stanford(work: WorkArgs, config: TestTimeScalingConfig, ref_
         last_step_best_kernels = last_step_best_kernels + random.choices(last_step_incorrect_kernels, k=config.num_best - len(last_step_best_kernels))
 
     last_step_best_kernel = last_step_best_kernels[work.sample_id % config.num_best] # use top config.num_best kernels
-    last_step_best_kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, last_step_best_kernel["sample_id"])
+    last_step_best_kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, int(last_step_best_kernel["sample_id"]))
+    if config.verbose:
+        print(f"[Stanford] Last step best kernel sample_id: {int(last_step_best_kernel['sample_id'])}")
 
     prompt = prompt_idea_generation(ref_arch_src, last_step_best_kernel_src, last_step_best_kernel)
 
