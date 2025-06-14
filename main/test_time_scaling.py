@@ -70,9 +70,7 @@ def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_rang
                     )
                 )
 
-        generation_results = batch_generate(workload, config, dataset, inference_server, run_dir)
-
-        # Evaluate samples
+        batch_generate(workload, config, dataset, inference_server, run_dir)
         batch_eval(workload, config, dataset, run_dir, eval_file_path)
 
 
@@ -137,13 +135,26 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
 
 
 def stanford(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
-
     """
     Stanford approach
     """
-    num_iterations = config.num_iterations
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
-    pass
+    for iteration in range(config.num_iterations):
+        print(f"[Stanford] Iteration {iteration + 1} of {config.num_iterations}")
+        
+        workload = []
+        for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+            for sample_id in range(config.num_parallel):
+                workload.append(
+                    WorkArgs(
+                        problem_id=int(problem_id),
+                        sample_id=sample_id + iteration * config.num_parallel
+                    )
+                )
+        
+        batch_generate(workload, config, dataset, inference_server, run_dir)
+        batch_eval(workload, config, dataset, run_dir, eval_file_path)
 
 
 @pydra.main(base=TestTimeScalingConfig)
