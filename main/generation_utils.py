@@ -1,4 +1,5 @@
 import os
+import traceback
 
 from src.utils import extract_first_code, read_file, maybe_multithread
 
@@ -43,7 +44,7 @@ def generate_sample_launcher(work: WorkArgs, config: TestTimeScalingConfig, data
         return generate_sample_single(work, config, dataset, inference_server, run_dir)
     except Exception as e:
         print(f"Error generating problem {work.problem_id} sample {work.sample_id}: {e}")
-        print(e.traceback) 
+        print(traceback.format_exc()) 
         return None
 
 

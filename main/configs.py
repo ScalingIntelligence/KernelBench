@@ -8,11 +8,12 @@ class TestTimeScalingConfig(Config):
         self.run_name = REQUIRED # name of the run
 
         # Test-Time Scaling Method
-        self.method = REQUIRED # "best-of-N", "iterative refinement", "METR", "Cognition", "Stanford"
+        self.method = REQUIRED # "base", "best-of-N", "iterative refinement", "METR", "Cognition", "Stanford"
         self.num_parallel = 1 # used for best-of-N, METR, iterative refinement, stanford
         self.num_samples = 1 # used for METR
         self.num_iterations = 1 # used for iterative refinement, beam search
         self.num_best = 1 # used for beam search
+        self.prompt = "regular" # "regular" or "cot"
 
         # Dataset
         self.dataset_src = REQUIRED # either huggingface or local
@@ -38,7 +39,7 @@ class TestTimeScalingConfig(Config):
         self.num_workers = 1
         self.api_query_interval = 0.0
 
-        self.server_type = "deepseek"
+        self.server_type = "bedrock"
         self.model_name = "deepseek-coder"
         self.max_tokens = 4096
         self.temperature = 1.0

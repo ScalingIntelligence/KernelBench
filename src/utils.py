@@ -145,8 +145,7 @@ def query_server(
             model = model_name
         case "sambanova":
             client = OpenAI(api_key=SAMBANOVA_API_KEY, base_url="https://api.sambanova.ai/v1")
-            model = model_name
-            
+            model = model_name 
         case "openai":
             client = OpenAI(api_key=OPENAI_KEY)
             model = model_name
@@ -338,7 +337,6 @@ def query_server(
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "huggingface":
         messages = [
-            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ]
         text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)

@@ -4,13 +4,16 @@ import os, sys
 import torch
 import json
 from dataclasses import dataclass
+import traceback
+import dotenv
+dotenv.load_dotenv()
 
 
 from datasets import load_dataset
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template, prompt_generate_ex_with_CoT_template
 from src.utils import extract_first_code, set_gpu_arch, read_file, create_inference_server_from_presets, maybe_multithread
 
 """
@@ -97,7 +100,8 @@ def generate_sample_single(work: WorkArgs, config: GenerationConfig, dataset, in
     
 
     # Construct Prompt   
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    custom_cuda_prompt = prompt_generate_ex_with_CoT_template(ref_arch_src, cot_example="ex_fuse_gelu")
+    # custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
     if config.log_prompt:
         prompt_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt")
         with open(prompt_path, "w") as f:
@@ -125,7 +129,7 @@ def generate_sample_launcher(work: WorkArgs, config: GenerationConfig, dataset, 
         return generate_sample_single(work, config, dataset, inference_server, run_dir)
     except Exception as e:
         print(f"Error generating sample {work.problem_id} {work.sample_id}: {e}")
-        print(e.traceback)
+        print(traceback.format_exc())
         return None
 
 

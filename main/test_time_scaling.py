@@ -23,6 +23,25 @@ Test-time scaling approaches
 4. Stanford: NL idea gen + branching
 """
 
+def base(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+    """
+    Base approach
+    """
+    workload = []
+
+    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
+        workload.append(
+            WorkArgs(
+                problem_id=int(problem_id),
+                sample_id=0
+            )
+        )
+    
+    batch_generate(workload, config, dataset, inference_server, run_dir)    
+    
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+    batch_eval(workload, config, dataset, run_dir, eval_file_path)
+
 
 def best_of_n(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
     """
@@ -212,6 +231,8 @@ def main(config: TestTimeScalingConfig):
 
     # Run the test-time scaling approach
     match config.method:
+        case "base":
+            base(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
         case "best-of-N":
             best_of_n(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
         case "iterative refinement":
