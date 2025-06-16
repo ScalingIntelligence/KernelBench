@@ -1,14 +1,21 @@
+# Runs 
+results/*
+!results/timing/
+runs/*
+cache/*
+error_log.txt
+
+# Deploy
+deploy
+wandb
+
+# Env
+.env
+
+# Misc
 **__pycache__/
 scratch/
 **/scratch/
 *.egg-info/
 **build/
 **dist/
-# **results/
-results/*
-runs/*
-cache/*
-!results/timing/
-.env
-error_log.txt
-deploy

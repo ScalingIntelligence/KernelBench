@@ -1,4 +1,5 @@
 import torch
+import sys
 import numpy as np
 from src.eval import (
     load_original_model_and_inputs,
@@ -197,9 +198,9 @@ if __name__ == "__main__":
     # test_measure_particular_program(2, 28)
     
     # Replace this with whatever hardware you are running on 
-    hardware_name = "RTX_3090_Ti"
+    hardware_name = sys.argv[1]
 
-    input(f"You are about to start recording baseline time for {hardware_name}, press Enter to continue...")
+    # input(f"You are about to start recording baseline time for {hardware_name}, press Enter to continue...")
     # Systematic recording of baseline time
 
     if os.path.exists(os.path.join(TIMING_DIR, hardware_name)):

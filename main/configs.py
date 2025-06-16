@@ -16,7 +16,7 @@ class TestTimeScalingConfig(Config):
         self.prompt = "regular" # "regular" or "cot"
 
         # Dataset
-        self.dataset_src = REQUIRED # either huggingface or local
+        self.dataset_src = "local" # either huggingface or local
         self.dataset_name = "ScalingIntelligence/KernelBench"
 
         # Problem Specification
@@ -39,8 +39,8 @@ class TestTimeScalingConfig(Config):
         self.num_workers = 1
         self.api_query_interval = 0.0
 
-        self.server_type = "huggingface"
-        self.model_name = "Qwen/QwQ-32B"
+        self.server_type = "openai"
+        self.model_name = "gpt-4o-mini"
         self.max_tokens = 4096
         self.temperature = 1.0
         
@@ -67,6 +67,8 @@ class TestTimeScalingConfig(Config):
         self.num_perf_trials = 100
         self.timeout = 180 # in seconds
         self.measure_performance = True
+
+        self.hardware = "RTX_3090_Ti"
         
        
 
