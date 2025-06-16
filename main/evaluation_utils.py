@@ -125,7 +125,7 @@ def batch_eval(
 
     # Build Cache on CPU as that is faster
     if config.build_cache_with_cpu:
-        compilation_results = batch_compile([(arg.problem_id, arg.sample_id) for arg in total_work], config.to_dict())
+        compilation_results = batch_compile([(arg.problem_id, arg.sample_id) for arg in total_work], vars(config))
 
     # construct a list of work args
     batch_size = config.num_gpu_devices

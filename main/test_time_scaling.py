@@ -1,4 +1,4 @@
-import pydra
+import yaml
 import os
 import torch
 import multiprocessing as mp
@@ -11,7 +11,7 @@ load_dotenv()
 from src.dataset import construct_kernelbench_dataset
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
-from configs import TestTimeScalingConfig
+from configs import TestTimeScalingConfig, parse_args
 from utils import WorkArgs, fetch_ref_arch_from_problem_id
 from generation_utils import batch_generate
 from evaluation_utils import batch_eval
@@ -177,15 +177,16 @@ def stanford(config: TestTimeScalingConfig, dataset, problem_id_range: range, in
         batch_eval(workload, config, dataset, run_dir, eval_file_path)
 
 
-@pydra.main(base=TestTimeScalingConfig)
-def main(config: TestTimeScalingConfig):
+def main(config):
     """
     Test-Time Scaling for Particular Level
     """
+    tags = config._tags.split(",")
+    tags.extend([config.run_name, config.method, config.prompt, str(config.level), config.model_name])
     wandb.init(
         project="KernelBench",
         entity="j1mk1m",
-        tags=[config.run_name, config.method, config.prompt, str(config.level), config.model_name]
+        tags=tags
     )
     print(f"Starting Test-Time Scaling with config: {config}")
 
@@ -217,7 +218,10 @@ def main(config: TestTimeScalingConfig):
     # set up run directory
     run_dir = os.path.join(config.runs_dir, config.run_name)
     os.makedirs(run_dir, exist_ok=True)
-    pydra.save_yaml(config.to_dict(), os.path.join(run_dir, "config.yaml"))
+
+    with open(os.path.join(run_dir, "config.yaml"), "w") as f:
+        yaml.dump(config, f)
+    # pydra.save_yaml(config.to_dict(), os.path.join(run_dir, "config.yaml"))
  
     assert config.store_type == "local", "supporting local file-system based storage for now" # database integreation coming soon, need to migrate from CUDA Monkeys code
 
@@ -252,5 +256,6 @@ def main(config: TestTimeScalingConfig):
  
 
 if __name__ == "__main__": 
-    main()
+    args = parse_args()
+    main(args)
 
