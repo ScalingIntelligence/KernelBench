@@ -39,8 +39,8 @@ class TestTimeScalingConfig(Config):
         self.num_workers = 1
         self.api_query_interval = 0.0
 
-        self.server_type = "bedrock"
-        self.model_name = "deepseek-coder"
+        self.server_type = "huggingface"
+        self.model_name = "Qwen/QwQ-32B"
         self.max_tokens = 4096
         self.temperature = 1.0
         

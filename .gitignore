@@ -11,3 +11,4 @@ cache/*
 !results/timing/
 .env
 error_log.txt
+deploy

@@ -3,6 +3,7 @@ import os
 import torch
 import multiprocessing as mp
 from datasets import load_dataset
+import wandb
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -181,6 +182,11 @@ def main(config: TestTimeScalingConfig):
     """
     Test-Time Scaling for Particular Level
     """
+    wandb.init(
+        project="KernelBench",
+        entity="j1mk1m",
+        tags=[config.run_name, config.method, config.prompt, str(config.level), config.model_name]
+    )
     print(f"Starting Test-Time Scaling with config: {config}")
 
     # Check if CUDA is available
@@ -245,6 +251,6 @@ def main(config: TestTimeScalingConfig):
             raise ValueError(f"Invalid method: {config.method}")
  
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     main()
 
