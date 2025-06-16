@@ -23,6 +23,11 @@ PROBLEM_STATEMENT = """You write custom CUDA kernels to replace the pytorch oper
 PROBLEM_INSTRUCTION = """
 Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
 """
+PROBLEM_INSTRUCTION_COT = """
+Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Do not output testing code. 
+In the end, make sure the final code block contains code for output architecture ModelNew with cuda code.\n
+Let's think step by step.\n
+""" 
 
 
 def prompt_with_one_example(
@@ -81,6 +86,101 @@ def prompt_base(ref_arch_src: str) -> str:
     example_new_arch = read_file(example_new_arch_path)
 
     return prompt_with_one_example(arch, example_arch, example_new_arch)
+
+
+def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu") -> str:
+    """
+    Generate a prompt with a CoT example following a template 
+    Avaliable CoT examples: 
+    - ex_fuse_gelu: fused gelu
+    - ex_mnist2: fused convolutions and relus
+    - ex_tiled_matmul: tiled matrix multiplication
+    """
+
+    prompt = PROBLEM_STATEMENT
+    
+    assert cot_example in ["ex_fuse_gelu", "ex_mnist2", "ex_tiled_matmul"]
+
+    # k = 2
+    example_fuse_gelu = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/few_shot/model_ex_fuse_gelu.py")
+    )
+    example_fuse_gelu_cot = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/cot/model_cot_fuse_gelu.py")
+    )
+    example_fuse_gelu_new = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/few_shot/model_new_ex_fuse_gelu.py")
+    )
+    example_fuse_gelu_desc = "This given architecture is for a fused gelu: "
+
+    # k = 3
+    example_mnist2 = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/few_shot/model_ex_mnist2.py")
+    )
+    example_mnist2_cot = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/cot/model_cot_mnist2.py")
+    )
+    example_mnist2_new = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/few_shot/model_new_ex_mnist2.py")
+    )
+    exmaple_mnist2_desc = "This given architecture is for a model with fused convolutions and relus: "
+
+    # k = 4
+    example_tiled_matmul = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/few_shot/model_ex_tiled_matmul.py")
+    )
+    example_tiled_matmul_cot = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/cot/model_cot_tiled_matmul.py")
+    )
+    example_tiled_matmul_new = read_file(
+        os.path.join(REPO_TOP_DIR, "src/prompts/few_shot/model_new_ex_tiled_matmul.py")
+    )
+    example_tiled_matmul_desc = "This given architecture is for a model with tiled matrix multiplication: "
+    
+    match cot_example:
+        case "ex_fuse_gelu":
+            base = example_fuse_gelu
+            cot = example_fuse_gelu_cot
+            kernel = example_fuse_gelu_new
+            desc = example_fuse_gelu_desc
+        case "ex_mnist2":
+            base = example_mnist2
+            cot = example_mnist2_cot
+            kernel = example_mnist2_new
+            desc = exmaple_mnist2_desc
+        case "ex_tiled_matmul":
+            base = example_tiled_matmul
+            cot = example_tiled_matmul_cot
+            kernel = example_tiled_matmul_new
+            desc = example_tiled_matmul_desc
+        case _:
+            raise ValueError(f"Invalid CoT example: {cot_example} not found in CoT examples")
+
+    prompt += f"""
+Here is an example architecture:\n\n
+```
+{base}
+```\n
+{PROBLEM_INSTRUCTION_COT} \n
+{cot} \n
+```
+{kernel}
+```\n\n
+"""
+
+# show task to solve
+    prompt += f"""
+Task:\n\n
+Here is an example architecture:\n\n
+```
+{ref_arch_src}
+```\n
+"""
+    prompt += PROBLEM_INSTRUCTION_COT
+
+    return prompt
+
+
 
 
 def exec_result_to_exeution_feedback(exec_result: KernelExecResult) -> str:

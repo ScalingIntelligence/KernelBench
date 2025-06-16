@@ -125,6 +125,7 @@ def generate_sample_launcher(work: WorkArgs, config: GenerationConfig, dataset, 
         return generate_sample_single(work, config, dataset, inference_server, run_dir)
     except Exception as e:
         print(f"Error generating sample {work.problem_id} {work.sample_id}: {e}")
+        print(e.traceback)
         return None
 
 

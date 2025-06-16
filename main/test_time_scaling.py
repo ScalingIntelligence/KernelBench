@@ -11,7 +11,7 @@ from src.dataset import construct_kernelbench_dataset
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
 from configs import TestTimeScalingConfig
-from utils import WorkArgs, check_if_kernel_exists, check_if_eval_exists_local, fetch_ref_arch_from_problem_id
+from utils import WorkArgs, fetch_ref_arch_from_problem_id
 from generation_utils import batch_generate
 from evaluation_utils import batch_eval
 
@@ -136,7 +136,7 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
 
 def stanford(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
     """
-    Stanford approach
+    Stanford approach: Beam Search variant
     """
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 

@@ -30,7 +30,8 @@ class TestTimeScalingConfig(Config):
         self.verbose = False
         self.store_type = "local" # TODO: add Database Integration
 
-        self.log_prompt = False 
+        self.log_prompt = True
+        self.log_response = True
 
         # GENERATION CONFIGS
         # num of thread pool to call inference server in parallel

@@ -19,7 +19,12 @@ def generate_sample_single(work: WorkArgs, config: TestTimeScalingConfig, datase
 
     # Query server with constructed prompt
     custom_cuda = inference_server(custom_cuda_prompt)
+    if config.log_response:
+        response_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_response.txt")
+        with open(response_path, "w") as f:
+            f.write(custom_cuda)
     custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+
     # check LLM is able to generate custom CUDA code
     assert custom_cuda is not None, "Custom CUDA code generation failed"
 
@@ -38,7 +43,7 @@ def generate_sample_launcher(work: WorkArgs, config: TestTimeScalingConfig, data
         return generate_sample_single(work, config, dataset, inference_server, run_dir)
     except Exception as e:
         print(f"Error generating problem {work.problem_id} sample {work.sample_id}: {e}")
-        
+        print(e.traceback) 
         return None
 
 

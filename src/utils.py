@@ -29,7 +29,7 @@ import time
 import shutil
 import concurrent
 from functools import cache
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import hashlib
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -73,17 +73,6 @@ def is_safe_to_send_to_deepseek(prompt):
         )
     else:
         return len(tokenizer.apply_chat_template(prompt)) < TOO_LONG_FOR_DEEPSEEK
-
-def set_gpu_arch(arch_list: list[str]):
-    """
-    Set env variable for torch cuda arch list to build kernels for specified architectures
-    """
-    valid_archs = ["Maxwell", "Pascal", "Volta", "Turing", "Ampere", "Hopper", "Ada"]
-    for arch in arch_list:
-        if arch not in valid_archs:
-            raise ValueError(f"Invalid architecture: {arch}. Must be one of {valid_archs}")
-    
-    os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
 
 def query_server(
     prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,
@@ -164,6 +153,10 @@ def query_server(
         case "bedrock":
             client = boto3.client("bedrock", region_name=AWS_REGION, aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
             model = model_name
+        case "huggingface":
+            model = model_name
+            client = AutoModelForCausalLM.from_pretrained(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
         case _:
             raise NotImplementedError
 
@@ -343,6 +336,19 @@ def query_server(
             top_p=top_p,
         )
         outputs = [choice.message.content for choice in response.choices]
+    elif server_type == "huggingface":
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        model_inputs = tokenizer(text, return_tensors="pt").to(client.device)
+        generated_ids = client.generate(**model_inputs, max_new_tokens=max_tokens)
+        generated_ids = [
+            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
+
+        outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
     # for all other kinds of servers, use standard API
     else:
         if type(prompt) == str:
@@ -413,6 +419,16 @@ SERVER_PRESETS = {
         "temperature": 0.1,
         "max_tokens": 8192,
     },
+    "bedrock": {
+        "model_name": "amazon.titan-embed-image-v1",
+        "temperature": 0.6,
+        "max_tokens": 4096,
+    },
+    "huggingface": {
+        "model_name": "Qwen/QwQ-32B",
+        "temperature": 0.6,
+        "max_tokens": 4096,
+    }
 }
 
 
@@ -452,11 +468,10 @@ def create_inference_server_from_presets(server_type: str = None,
     
     return _query_llm
 
-"""
-Model output processing
-#  TODO: add unit tests
-"""
 
+################################################################################
+# Other utils
+################################################################################
 
 def read_file(file_path) -> str:
     if not os.path.exists(file_path):
@@ -478,6 +493,22 @@ def print_messages(messages):
         print("-" * 50)
         print("\n\n")
 
+
+def set_gpu_arch(arch_list: list[str]):
+    """
+    Set env variable for torch cuda arch list to build kernels for specified architectures
+    """
+    valid_archs = ["Maxwell", "Pascal", "Volta", "Turing", "Ampere", "Hopper", "Ada"]
+    for arch in arch_list:
+        if arch not in valid_archs:
+            raise ValueError(f"Invalid architecture: {arch}. Must be one of {valid_archs}")
+    
+    os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
+
+
+################################################################################
+# Response Processing
+################################################################################
 
 def extract_python_code(text):
     """
