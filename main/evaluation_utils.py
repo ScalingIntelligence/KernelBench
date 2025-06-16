@@ -204,12 +204,12 @@ def batch_eval(
                     # add all the batch results here to avoid file race condition
                     # add to eval result if valid result
                     if result is not None:
-                        print(f"Adding Eval Result to file for problem {problem_id} sample {sample_id}")
                         add_to_eval_results_file(problem_id, sample_id, result, eval_file_path)
 
-                print("-" * 128)
-                print(
-                    f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds"
+                if config.verbose:
+                    print("-" * 128)
+                    print(
+                        f"[Curr batch] Evaluation took {end_time - start_time:.2f} seconds"
                 )
 
                 pbar.update(len(curr_work_batch))

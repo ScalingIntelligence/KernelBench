@@ -130,5 +130,6 @@ def parse_args():
     args = parser.parse_args()
 
     args.gpu_arch = args.gpu_arch.split(",")
-    args.subset = tuple(map(int, args.subset.strip("()").split(",")))
+    range_str = args.subset.strip("()").split(",")
+    args.subset = (None, None) if range_str[0] == "None" else (int(range_str[0]), int(range_str[1]))
     return args
