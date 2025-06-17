@@ -127,9 +127,11 @@ def compute_metrics_best_of_n(config: TestTimeScalingConfig, hardware: str, eval
         for sid, sample_res in prob_res.items():
             if pid not in best_results:
                 best_results[pid] = sample_res
+            elif not best_results[pid]["compiled"] and sample_res["compiled"]:
+                best_results[pid] = sample_res
             elif not best_results[pid]["correctness"] and sample_res["correctness"]:
                 best_results[pid] = sample_res
-            elif not best_results[pid]["compiled"] and sample_res["compiled"]:
+            elif best_results[pid]["correctness"] and sample_res["correctness"] and sample_res["runtime"] < best_results[pid]["runtime"]:
                 best_results[pid] = sample_res
             
             if sid not in by_sample_results:
@@ -188,9 +190,41 @@ Outputs something like this:
 """
 
 
+dummy_result = {
+    "sample_id": 0, 
+    "compiled": False, 
+    "correctness": False, 
+    "metadata": {},
+    "runtime": -1.0, 
+    "runtime_stats": {}
+}
+
 def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
     assert config["num_parallel"] == 1, "Iterative refinement is only supported for 1 parallel run"
-    return compute_metrics_best_of_n(config, hardware, eval_results)
+    best_by_step = {}
+    best_by_step[0] = {k: v["0"] if "0" in v else dummy_result for k, v in eval_results.items()}
+
+    for step in range(1, config["num_iterations"]):
+        best_by_step[step] = {}
+        for pid, prob_res in eval_results.items():
+            prev_best = best_by_step[step - 1][pid]
+            if str(step) not in prob_res:
+                best_by_step[step][pid] = prev_best
+                continue
+            res = prob_res[str(step)]
+            if not prev_best["correctness"] and res["correctness"]:
+                best_by_step[step][pid] = res
+            elif not prev_best["compiled"] and res["compiled"]:
+                best_by_step[step][pid] = res
+            elif prev_best["correctness"] and res["correctness"] and res["runtime"] < prev_best["runtime"]:
+                best_by_step[step][pid] = res
+            else:
+                best_by_step[step][pid] = prev_best
+            
+    metrics = {}
+    for step, step_results in best_by_step.items():
+        metrics[step] = compute_all_metrics(config, hardware, step_results)
+    return metrics
 
 
 def compute_metrics_metr(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
