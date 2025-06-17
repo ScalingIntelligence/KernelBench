@@ -108,7 +108,7 @@ def parse_args():
 
     # Eval
     parser.add_argument("--eval_mode", type=str, default="local")
-    parser.add_argument("--gpu_arch", type=str, default="Ada")
+    parser.add_argument("--gpu_arch", type=str, default="Ampere")
     parser.add_argument("--num_gpu_devices", type=int, default=1)
 
     parser.add_argument("--build_cache_with_cpu", type=bool, default=True)
@@ -128,6 +128,8 @@ def parse_args():
 
     args = parser.parse_args()
 
+    # Convert to same format as TestTimeScalingConfig.
+    # TODO: this is hack for now, eventually migrate fully to argparse for wandb compatibility
     args.gpu_arch = args.gpu_arch.split(",")
     range_str = args.subset.strip("()").split(",")
     args.subset = (None, None) if range_str[0] == "None" else (int(range_str[0]), int(range_str[1]))

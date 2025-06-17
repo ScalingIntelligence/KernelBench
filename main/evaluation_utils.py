@@ -2,9 +2,12 @@ import os
 import torch
 import json
 import time
+from argparse import Namespace 
 from tqdm import tqdm
 import multiprocessing as mp
+import yaml
 
+from src.dataset import construct_kernelbench_dataset
 from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, eval_reference_kernel, KernelExecResult, check_metadata_serializable_all_types
 
@@ -214,3 +217,16 @@ def batch_eval(
 
                 pbar.update(len(curr_work_batch))
 
+
+if __name__ == "__main__":
+    # Testing
+    work_arg = EvaluationWorkArgs(problem_id=1, sample_id=0, device=torch.device("cuda:0"))
+    run_dir = "runs/base_level1"
+    config_file = os.path.join(run_dir, "config.yaml")
+    with open(config_file, "r") as f:
+        config = yaml.safe_load(f)
+    del config["_tags"]
+    config = Namespace(**config)
+    dataset = construct_kernelbench_dataset(config.level)
+
+    evaluate_single_sample(work_arg, config, dataset, run_dir)
