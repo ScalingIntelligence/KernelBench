@@ -183,13 +183,13 @@ def batch_eval(
                         )
                         results.append((problem_id, sample_id, None))
                     
-                        remove_cache_dir(config, problem_id, sample_id)
+                        remove_cache_dir(vars(config), problem_id, sample_id)
                     except Exception as e:
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
                         )
                         results.append((problem_id, sample_id, None))
-                        remove_cache_dir(config, problem_id, sample_id)
+                        remove_cache_dir(vars(config), problem_id, sample_id)
 
                 end_time = time.time()
 

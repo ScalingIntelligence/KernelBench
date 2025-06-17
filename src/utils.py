@@ -43,8 +43,6 @@ SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
 FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.environ.get("AWS_REGION")
 
 
@@ -150,7 +148,10 @@ def query_server(
             client = OpenAI(api_key=OPENAI_KEY)
             model = model_name
         case "bedrock":
-            client = boto3.client("bedrock", region_name=AWS_REGION, aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+            # client = boto3.client(service_name="bedrock", region_name=AWS_REGION)
+            # response = client.list_foundation_models()
+            # print(response['modelSummaries'])
+            client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
             model = model_name
         case "huggingface":
             model = model_name
@@ -277,18 +278,17 @@ def query_server(
             )
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "bedrock":
-        native_request = {
-            "inputText": prompt,
-            "textGenerationConfig": {
-                "temperature": temperature,
-                "maxTokenCount": max_tokens,
-                "topP": top_p,
-            }
-        }
-        request = json.dumps(native_request)
-        response = client.invoke_model(modelId=model, body=request)
+        assert "deepseek" in model, "Only support deepseek for now"
+        formatted_prompt = f"<|begin_of_sentence|><|User|>{prompt}<|Assistant|><think>\n"
+        body = json.dumps({
+            "prompt": formatted_prompt,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+        })
+        response = client.invoke_model(modelId=model, body=body)
         model_response = json.loads(response.get("body").read())
-        outputs = model_response['results'][0]['outputText']
+        outputs = model_response['choices'][0]['text']
     elif server_type == "together":
         response = client.chat.completions.create(
             model=model,

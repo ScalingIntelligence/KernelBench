@@ -117,12 +117,12 @@ def parse_args():
 
     parser.add_argument("--num_correct_trials", type=int, default=5)
     parser.add_argument("--num_perf_trials", type=int, default=100)
-    parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--timeout", type=int, default=3600)
     parser.add_argument("--measure_performance", type=bool, default=True)
     parser.add_argument("--hardware", type=str, required=True)
 
     # Logging
-    parser.add_argument("--verbose", type=bool, default=False)
+    parser.add_argument("--verbose", type=bool, default=True)
     parser.add_argument("--log_prompt", type=bool, default=True)
     parser.add_argument("--log_response", type=bool, default=True)
     parser.add_argument("--store_type", type=str, default="local")
