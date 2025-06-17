@@ -19,11 +19,12 @@ def generate_sample_single(work: WorkArgs, config: TestTimeScalingConfig, datase
             f.write(custom_cuda_prompt)
 
     # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
+    custom_cuda, reasoning_trace, usage = inference_server(custom_cuda_prompt)
     if config.log_response:
         response_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_response.txt")
+        response = f"REASONING TRACE:\n{reasoning_trace}\n\nANSWER:\n{custom_cuda}\n\nUsage:\n{usage}"
         with open(response_path, "w") as f:
-            f.write(custom_cuda)
+            f.write(response)
     custom_cuda = extract_last_code(custom_cuda, ["python", "cpp"])
 
     # check LLM is able to generate custom CUDA code

@@ -160,6 +160,8 @@ def query_server(
         case _:
             raise NotImplementedError
 
+    reasoning_trace = ""
+    usage = None
     if server_type != "google":
         assert client is not None, "Client is not set, cannot proceed to generations"
     else:
@@ -279,16 +281,33 @@ def query_server(
         outputs = [choice.message.content for choice in response.choices]
     elif server_type == "bedrock":
         assert "deepseek" in model, "Only support deepseek for now"
-        formatted_prompt = f"<|begin_of_sentence|><|User|>{prompt}<|Assistant|><think>\n"
-        body = json.dumps({
-            "prompt": formatted_prompt,
-            "max_tokens": max_tokens,
+        # formatted_prompt = f"<|begin_of_sentence|><|User|>{prompt}<|Assistant|><think>\n"
+        # body = json.dumps({
+        #     "prompt": formatted_prompt,
+        #     "max_tokens": max_tokens,
+        #     "temperature": temperature,
+        #     "top_p": top_p,
+        # })
+        # response = client.invoke_model(modelId=model, body=body)
+        # model_response = json.loads(response.get("body").read())
+        # outputs = model_response['choices'][0]['text']
+
+        # converse mode
+        inference_config = {
             "temperature": temperature,
-            "top_p": top_p,
-        })
-        response = client.invoke_model(modelId=model, body=body)
-        model_response = json.loads(response.get("body").read())
-        outputs = model_response['choices'][0]['text']
+            "topP": top_p,
+            "maxTokens": max_tokens,
+        }
+        system_prompts = [{"text": system_prompt}]
+        messages = [
+            {"role": "user", "content": [{"text": prompt}]},
+        ]
+        response = client.converse(modelId=model, messages=messages, system=system_prompts, inferenceConfig=inference_config)
+        usage = response['usage']
+        output_messages = response['output']['message']['content']
+        outputs = output_messages[0]['text']
+        reasoning_trace = output_messages[1]['reasoningContent']['reasoningText']['text']
+        
     elif server_type == "together":
         response = client.chat.completions.create(
             model=model,
@@ -372,9 +391,9 @@ def query_server(
 
     # output processing
     if len(outputs) == 1:
-        return outputs[0]
+        return outputs[0], reasoning_trace, usage
     else:
-        return outputs
+        return outputs, reasoning_trace, usage
 
 
 # a list of presets for API server configs
