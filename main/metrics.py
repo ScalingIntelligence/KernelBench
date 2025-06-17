@@ -18,17 +18,31 @@ def compute_correctness_metrics(eval_results):
     total = 0
     compiled = 0
     correct = 0
+    runtime_error = 0
+    output_mismatch = 0
+    output_shape_mismatch = 0
+
     for _, res in eval_results.items():
         total += 1
         if res["compiled"]:
             compiled += 1
         if res["correctness"]:
             correct += 1
+        if "runtime_error" in res["metadata"]:
+            runtime_error += 1
+        if "correctness_issue" in res["metadata"]:
+            if res["metadata"]["correctness_issue"] == "Output mismatch":
+                output_mismatch += 1
+            elif "Output shape mismatch" in res["metadata"]["correctness_issue"]:
+                output_shape_mismatch += 1
 
     return {
         "total": total,
         "compiled": compiled,
         "correct": correct,
+        "runtime_error": runtime_error,
+        "output_mismatch": output_mismatch,
+        "output_shape_mismatch": output_shape_mismatch
     }
 
 

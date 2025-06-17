@@ -106,7 +106,7 @@ def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: Kerne
         os.makedirs(os.path.dirname(eval_file_path), exist_ok=True)
         
     with open(eval_file_path, "w") as f:
-        json.dump(eval_results, f)
+        json.dump(eval_results, f, indent=2)
 
 
 def batch_eval(
