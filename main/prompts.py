@@ -53,7 +53,7 @@ def prompt_with_one_example(
     {arc_src}
     ```
     """
-    prompt += PROBLEM_INSTRUCTION
+    prompt += PROBLEM_INSTRUCTION_COT
     return prompt
 
 

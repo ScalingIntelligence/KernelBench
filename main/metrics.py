@@ -116,7 +116,7 @@ def compute_all_metrics(config, hardware, eval_results):
 
 
 def compute_metrics_base(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
-    # eval_results = {k: v["0"] for k, v in eval_results.items()}
+    eval_results = {k: v["0"] for k, v in eval_results.items()}
     return compute_all_metrics(config, hardware, eval_results)
 
 
@@ -204,7 +204,7 @@ def compute_metrics(config: TestTimeScalingConfig, hardware: str, eval_file_path
         eval_results = json.load(f)
 
     print("Checking that results are on the same hardware")
-    # hardware_check(eval_results, hardware)
+    hardware_check(eval_results, hardware)
 
     match config["method"]:
         case "base":
