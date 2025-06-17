@@ -119,7 +119,6 @@ def parse_args():
     parser.add_argument("--num_perf_trials", type=int, default=100)
     parser.add_argument("--timeout", type=int, default=3600)
     parser.add_argument("--measure_performance", type=bool, default=True)
-    parser.add_argument("--hardware", type=str, required=True)
 
     # Logging
     parser.add_argument("--verbose", type=bool, default=True)

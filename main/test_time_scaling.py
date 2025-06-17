@@ -220,8 +220,7 @@ def main(config):
     os.makedirs(run_dir, exist_ok=True)
 
     with open(os.path.join(run_dir, "config.yaml"), "w") as f:
-        yaml.dump(config, f)
-    # pydra.save_yaml(config.to_dict(), os.path.join(run_dir, "config.yaml"))
+        yaml.dump(vars(config), f)
  
     assert config.store_type == "local", "supporting local file-system based storage for now" # database integreation coming soon, need to migrate from CUDA Monkeys code
 

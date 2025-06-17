@@ -41,7 +41,7 @@ def compile_single_sample(work_args: WorkArgs, config: dict) -> tuple[bool, str]
 
     if not os.path.exists(kernel_src_path):
         print(f"[ERROR] Kernel source file not found for Problem ID: {problem_id}, Sample ID: {sample_id}")
-        return False, "Kernel source file not found"
+        return False, "Kernel source file not found", "Kernel source file not found"
 
     with open(kernel_src_path, "r") as f:
         kernel_src = f.read()

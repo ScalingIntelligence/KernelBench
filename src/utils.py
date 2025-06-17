@@ -219,7 +219,7 @@ def query_server(
 
         response = model.generate_content(prompt)
 
-        return response.text
+        return response.text, "", None
 
     elif server_type == "deepseek":
         
@@ -305,8 +305,14 @@ def query_server(
         response = client.converse(modelId=model, messages=messages, system=system_prompts, inferenceConfig=inference_config)
         usage = response['usage']
         output_messages = response['output']['message']['content']
-        outputs = output_messages[0]['text']
-        reasoning_trace = output_messages[1]['reasoningContent']['reasoningText']['text']
+        outputs = None
+        for message in output_messages:
+            if 'text' in message:
+                outputs = message['text']
+            elif 'reasoningContent' in message:
+                reasoning_trace = message['reasoningContent']['reasoningText']['text']
+        if outputs is None:
+            outputs = reasoning_trace
         
     elif server_type == "together":
         response = client.chat.completions.create(

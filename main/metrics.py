@@ -1,4 +1,5 @@
-import pydra
+import yaml
+from argparse import ArgumentParser
 import os
 import json
 import numpy as np
@@ -14,22 +15,20 @@ BASELINES = ["torch", "torch_compile_inductor_default", "torch_compile_inductor_
 
 
 def compute_correctness_metrics(eval_results):
-    total_samples = len(eval_results)
+    total = 0
     compiled = 0
     correct = 0
-
     for _, res in eval_results.items():
-        if res["compiled"] == True:
+        total += 1
+        if res["compiled"]:
             compiled += 1
-        if res["correctness"] == True:
+        if res["correctness"]:
             correct += 1
 
     return {
-        "total_samples": total_samples,
+        "total": total,
         "compiled": compiled,
         "correct": correct,
-        "compilation_rate": compiled/total_samples,
-        "correctness_rate": correct/total_samples,
     }
 
 
@@ -57,17 +56,17 @@ def compute_efficiency_metrics(eval_results, baseline_results):
         "fast_p_results": results
     }
 
-def compute_efficiency_metrics_all_baselines(config: TestTimeScalingConfig, eval_results: dict) -> dict:
+def compute_efficiency_metrics_all_baselines(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
     results = {}
     for baseline in BASELINES:
         try:
-            baseline_file_path = f'results/timing/{config.hardware}/baseline_time_{baseline}.json'
+            baseline_file_path = f'results/timing/{hardware}/baseline_time_{baseline}.json'
             assert os.path.exists(baseline_file_path), f"Baseline file does not exist at {baseline_file_path}"
 
             with open(baseline_file_path, 'r') as f:
                 baseline_results = json.load(f)
 
-            baseline_results = baseline_results[f'level{config.level}']
+            baseline_results = baseline_results[f'level{config["level"]}']
 
             comp_metrics = compute_efficiency_metrics(eval_results, baseline_results)
             results[baseline] = comp_metrics
@@ -77,13 +76,15 @@ def compute_efficiency_metrics_all_baselines(config: TestTimeScalingConfig, eval
 
     return results
 
+# best, average, individual (per sample)
 
-def hardware_check(eval_results: dict, config: TestTimeScalingConfig):
+
+def hardware_check(eval_results: dict, hardware_ref: str):
     hardware = list(list(eval_results.values())[0].values())[0]["metadata"]["hardware"]
     for _, prob_res in eval_results.items():
         for _, sample_res in prob_res.items():
             assert sample_res["metadata"]["hardware"] == hardware, f"Hardware mismatch: {sample_res['metadata']['hardware']} != {hardware}"
-    print(f"Computing metrics for {hardware} with baseline {config.hardware} (Should match)")
+    print(f"Computing metrics for {hardware} with baseline {hardware_ref} (Should match)")
 
 
 def patch(eval_results, dataset):
@@ -103,60 +104,145 @@ def patch(eval_results, dataset):
     return eval_results
 
 
-def compute_metrics_base(config: TestTimeScalingConfig, eval_results: dict) -> dict:
-    eval_results = {k: v["0"] for k, v in eval_results.items()}
+def compute_all_metrics(config, hardware, eval_results):
+    """
+    Expects eval_results to be dict of problem_id -> exec_result
+    """
     correctness_metrics = compute_correctness_metrics(eval_results)
-    dataset = construct_kernelbench_dataset(config.level)
+    dataset = construct_kernelbench_dataset(config["level"])
     eval_results = patch(eval_results, dataset)
-    efficiency_metrics = compute_efficiency_metrics_all_baselines(config, eval_results)
-    return {**correctness_metrics, "speedups": efficiency_metrics}
+    efficiency_metrics = compute_efficiency_metrics_all_baselines(config, hardware, eval_results)
+    return {"correctness": correctness_metrics, "speedups": efficiency_metrics}
 
-def compute_metrics_best_of_n(config: TestTimeScalingConfig, eval_results: dict) -> dict:
+
+def compute_metrics_base(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+    # eval_results = {k: v["0"] for k, v in eval_results.items()}
+    return compute_all_metrics(config, hardware, eval_results)
+
+
+def compute_metrics_best_of_n(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+    best_results = {}
+    by_sample_results = {}
+    for pid, prob_res in eval_results.items():
+        for sid, sample_res in prob_res.items():
+            if pid not in best_results:
+                best_results[pid] = sample_res
+            elif not best_results[pid]["correctness"] and sample_res["correctness"]:
+                best_results[pid] = sample_res
+            elif not best_results[pid]["compiled"] and sample_res["compiled"]:
+                best_results[pid] = sample_res
+            
+            if sid not in by_sample_results:
+                by_sample_results[sid] = {}
+            
+            by_sample_results[sid][pid] = sample_res
+    
+    metrics = {"by_sample": {}}
+    metrics["best"] = compute_all_metrics(config, hardware, best_results)
+    for sid, sample_res in by_sample_results.items():
+        metrics["by_sample"][sid] = compute_all_metrics(config, hardware, by_sample_results[sid])
+    return metrics
+
+"""
+Outputs something like this:
+{
+    "best": {
+        "corrrectness": {
+            "total": 100,
+            "compiled": 100,
+            "correct": 100,
+        },
+        "speedups": {
+            "torch": {
+                "mean_speedup_correct": 1.0,
+                "fast_p_results": {
+                    0.0: 1.0,
+                    0.5: 1.0,
+                    0.8: 1.0,
+                    1.0: 1.0,
+                    1.5: 1.0,
+                    2.0: 1.0,
+                }
+            },
+            ...
+    },
+    "by_sample": {
+        "0": {
+            "correctness": {
+                ...
+            },
+            "speedups": {
+                "torch": {
+                    "mean_speedup_correct": 1.0,
+                    "fast_p_results": {
+                        ...
+                    }
+                },
+                ...
+            }
+        },
+        ...
+    }
+}
+
+"""
+
+
+def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+    assert config["num_parallel"] == 1, "Iterative refinement is only supported for 1 parallel run"
+    return compute_metrics_best_of_n(config, hardware, eval_results)
+
+
+def compute_metrics_metr(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
     pass
 
-def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, eval_results: dict) -> dict:
+def compute_metrics_stanford(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
     pass
 
-def compute_metrics_metr(config: TestTimeScalingConfig, eval_results: dict) -> dict:
-    pass
-
-def compute_metrics_stanford(config: TestTimeScalingConfig, eval_results: dict) -> dict:
-    pass
-
-def compute_metrics(config: TestTimeScalingConfig, eval_file_path: str, run_dir: str) -> dict:
+def compute_metrics(config: TestTimeScalingConfig, hardware: str, eval_file_path: str, run_dir: str) -> dict:
     with open(eval_file_path, 'r') as f:
         eval_results = json.load(f)
 
-    hardware_check(eval_results, config)
+    print("Checking that results are on the same hardware")
+    # hardware_check(eval_results, hardware)
 
-    match config.method:
+    match config["method"]:
         case "base":
-            metrics = compute_metrics_base(config, eval_results)
+            metrics = compute_metrics_base(config, hardware, eval_results)
         case "best-of-N":
-            metrics = compute_metrics_best_of_n(config, eval_results)
+            metrics = compute_metrics_best_of_n(config, hardware, eval_results)
         case "iterative refinement":
-            metrics = compute_metrics_iterative_refinement(config, eval_results)
+            metrics = compute_metrics_iterative_refinement(config, hardware, eval_results)
         case "METR":
-            metrics = compute_metrics_metr(config, eval_results)
+            metrics = compute_metrics_metr(config, hardware, eval_results)
         case "Stanford":
-            metrics = compute_metrics_stanford(config, eval_results)
+            metrics = compute_metrics_stanford(config, hardware, eval_results)
         case _:
-            raise ValueError(f"Invalid method: {config.method}")
+            raise ValueError(f"Invalid method: {config['method']}")
 
+    print("Computed all metrics")
+    print(metrics)
 
     metrics_file = os.path.join(run_dir, "metrics.json")
     with open(metrics_file, "w") as f:
         json.dump(metrics, f, indent=4)
+    print(f"Saved metrics to {metrics_file}")
     
     return metrics
 
 
-@pydra.main(base=TestTimeScalingConfig)
-def main(config: TestTimeScalingConfig):
-    run_dir = os.path.join(config.runs_dir, config.run_name)
-    eval_file_path = os.path.join(run_dir, "eval_results.json")
+def main():
+    argparser = ArgumentParser()
+    argparser.add_argument("--run_dir", type=str, required=True)
+    argparser.add_argument("--hardware", type=str, required=True)
+    args = argparser.parse_args()
 
-    compute_metrics(config, eval_file_path, run_dir)
+    config_path = os.path.join(args.run_dir, "config.yaml")
+    with open(config_path, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    eval_file_path = os.path.join(args.run_dir, "eval_results.json")
+
+    compute_metrics(config, args.hardware, eval_file_path, args.run_dir)
 
 
 if __name__ == "__main__":
