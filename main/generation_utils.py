@@ -1,7 +1,7 @@
 import os
 import traceback
 
-from src.utils import extract_first_code, read_file, maybe_multithread
+from src.utils import extract_first_code, read_file, maybe_multithread, extract_last_code
 
 from configs import TestTimeScalingConfig
 from utils import WorkArgs, fetch_ref_arch_from_problem_id, check_if_kernel_exists
@@ -24,7 +24,7 @@ def generate_sample_single(work: WorkArgs, config: TestTimeScalingConfig, datase
         response_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_response.txt")
         with open(response_path, "w") as f:
             f.write(custom_cuda)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    custom_cuda = extract_last_code(custom_cuda, ["python", "cpp"])
 
     # check LLM is able to generate custom CUDA code
     assert custom_cuda is not None, "Custom CUDA code generation failed"
