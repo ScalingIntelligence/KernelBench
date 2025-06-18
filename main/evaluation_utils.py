@@ -1,5 +1,6 @@
 import os
 import torch
+import wandb
 import json
 import time
 from argparse import Namespace 
@@ -221,6 +222,7 @@ def batch_eval(
 
 if __name__ == "__main__":
     config = parse_args()
+    wandb.init(project="KernelBench", entity="j1mk1m", tags=[config.run_name, config.method, config.prompt, str(config.level), config.model_name])
     # Check if CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
@@ -244,7 +246,7 @@ if __name__ == "__main__":
 
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
-    total_work = [WorkArgs(problem_id=problem_id, sample_id=0) for problem_id in range(1, len(curr_level_dataset) + 1)]
+    total_work = [WorkArgs(problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1, 4)]
 
     batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
 

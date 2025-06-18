@@ -121,7 +121,7 @@ def parse_args():
     parser.add_argument("--measure_performance", type=bool, default=True)
 
     # Logging
-    parser.add_argument("--verbose", type=bool, default=True)
+    parser.add_argument("--verbose", type=bool, default=False)
     parser.add_argument("--log_prompt", type=bool, default=True)
     parser.add_argument("--log_response", type=bool, default=True)
     parser.add_argument("--store_type", type=str, default="local")
@@ -131,6 +131,8 @@ def parse_args():
     # Convert to same format as TestTimeScalingConfig.
     # TODO: this is hack for now, eventually migrate fully to argparse for wandb compatibility
     args.gpu_arch = args.gpu_arch.split(",")
+    if "None" not in args.subset:
+        args.run_name = args.run_name + "_" + args.subset
     range_str = args.subset.strip("()").split(",")
     args.subset = (None, None) if range_str[0] == "None" else (int(range_str[0]), int(range_str[1]))
     return args

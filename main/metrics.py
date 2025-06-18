@@ -87,7 +87,7 @@ def compute_efficiency_metrics_all_baselines(config: TestTimeScalingConfig, hard
             comp_metrics = compute_efficiency_metrics(eval_results, baseline_results)
             results[baseline] = comp_metrics
         except Exception as e:
-            print(f"Error computing efficiency metrics for {baseline}: {e}")
+            # print(f"Error computing efficiency metrics for {baseline}: {e}")
             continue
 
     return results
@@ -162,7 +162,7 @@ def increasing_best_solution_metrics(config: TestTimeScalingConfig, hardware: st
                 best_by_step[step][pid] = res
             elif not prev_best["compiled"] and res["compiled"]:
                 best_by_step[step][pid] = res
-            elif prev_best["correctness"] and res["correctness"] and res["runtime"] < prev_best["runtime"]:
+            elif prev_best["correctness"] and res["correctness"] and "runtime" in res and res["runtime"] < prev_best["runtime"]:
                 best_by_step[step][pid] = res
             else:
                 best_by_step[step][pid] = prev_best
