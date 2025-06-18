@@ -60,13 +60,15 @@ def compute_efficiency_metrics(eval_results, baseline_results):
 
     # Calculate the metrics
     gmsr_correct = geometric_mean_speed_ratio_correct_only(is_correct, baseline_speed, actual_speed, n)
+    gmsr_correct_and_faster = geometric_mean_speed_ratio_correct_and_faster_only(is_correct, baseline_speed, actual_speed, n)
 
     # list of speedup thresholds p
-    p_values = [0.0, 0.5, 0.8, 1.0, 1.5, 2.0]
+    p_values = [0.0, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0]
     results = {p: fastp(is_correct, baseline_speed, actual_speed, n, p) for p in p_values}
 
     return {
         "mean_speedup_correct": gmsr_correct, # geometric mean of speedup for correct samples
+        "mean_speedup_correct_and_faster": gmsr_correct_and_faster, # geometric mean of speedup for correct and faster samples
         "fast_p_results": results
     }
 
@@ -134,76 +136,6 @@ def compute_metrics_base(config: TestTimeScalingConfig, hardware: str, eval_resu
     return compute_all_metrics(config, hardware, eval_results)
 
 
-def compute_metrics_best_of_n(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
-    best_results = {}
-    by_sample_results = {}
-    for pid, prob_res in eval_results.items():
-        for sid, sample_res in prob_res.items():
-            if pid not in best_results:
-                best_results[pid] = sample_res
-            elif not best_results[pid]["compiled"] and sample_res["compiled"]:
-                best_results[pid] = sample_res
-            elif not best_results[pid]["correctness"] and sample_res["correctness"]:
-                best_results[pid] = sample_res
-            elif best_results[pid]["correctness"] and sample_res["correctness"] and sample_res["runtime"] < best_results[pid]["runtime"]:
-                best_results[pid] = sample_res
-            
-            if sid not in by_sample_results:
-                by_sample_results[sid] = {}
-            
-            by_sample_results[sid][pid] = sample_res
-    
-    metrics = {"by_sample": {}}
-    metrics["best"] = compute_all_metrics(config, hardware, best_results)
-    for sid, sample_res in by_sample_results.items():
-        metrics["by_sample"][sid] = compute_all_metrics(config, hardware, by_sample_results[sid])
-    return metrics
-
-"""
-Outputs something like this:
-{
-    "best": {
-        "corrrectness": {
-            "total": 100,
-            "compiled": 100,
-            "correct": 100,
-        },
-        "speedups": {
-            "torch": {
-                "mean_speedup_correct": 1.0,
-                "fast_p_results": {
-                    0.0: 1.0,
-                    0.5: 1.0,
-                    0.8: 1.0,
-                    1.0: 1.0,
-                    1.5: 1.0,
-                    2.0: 1.0,
-                }
-            },
-            ...
-    },
-    "by_sample": {
-        "0": {
-            "correctness": {
-                ...
-            },
-            "speedups": {
-                "torch": {
-                    "mean_speedup_correct": 1.0,
-                    "fast_p_results": {
-                        ...
-                    }
-                },
-                ...
-            }
-        },
-        ...
-    }
-}
-
-"""
-
-
 dummy_result = {
     "sample_id": 0, 
     "compiled": False, 
@@ -213,12 +145,12 @@ dummy_result = {
     "runtime_stats": {}
 }
 
-def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
-    assert config["num_parallel"] == 1, "Iterative refinement is only supported for 1 parallel run"
+
+def increasing_best_solution_metrics(config: TestTimeScalingConfig, hardware: str, eval_results: dict, num_steps) -> dict:
     best_by_step = {}
     best_by_step[0] = {k: v["0"] if "0" in v else dummy_result for k, v in eval_results.items()}
 
-    for step in range(1, config["num_iterations"]):
+    for step in range(1, num_steps):
         best_by_step[step] = {}
         for pid, prob_res in eval_results.items():
             prev_best = best_by_step[step - 1][pid]
@@ -241,11 +173,34 @@ def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, hardware
     return metrics
 
 
+def compute_metrics_best_of_n(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+    by_sample_results = {}
+    for pid, prob_res in eval_results.items():
+        for sid, sample_res in prob_res.items():
+            if sid not in by_sample_results:
+                by_sample_results[sid] = {}
+            
+            by_sample_results[sid][pid] = sample_res
+    
+    metrics = {"by_sample": {}}
+    for sid, sample_res in by_sample_results.items():
+        metrics["by_sample"][sid] = compute_all_metrics(config, hardware, by_sample_results[sid])
+    metrics["best_by_sample"] = increasing_best_solution_metrics(config, hardware, eval_results, config["num_parallel"])
+    return metrics
+
+
+def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+    assert config["num_parallel"] == 1, "Iterative refinement is only supported for 1 parallel run"
+    return increasing_best_solution_metrics(config, hardware, eval_results, config["num_iterations"])
+
+
 def compute_metrics_metr(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
-    pass
+    return increasing_best_solution_metrics(config, hardware, eval_results, config["num_samples"])
+
 
 def compute_metrics_stanford(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
     pass
+
 
 def compute_metrics(config: TestTimeScalingConfig, hardware: str, eval_file_path: str, run_dir: str) -> dict:
     with open(eval_file_path, 'r') as f:

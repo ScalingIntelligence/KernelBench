@@ -623,8 +623,8 @@ def time_execution_with_cuda_event(
 
         # Calculate the elapsed time in milliseconds
         elapsed_time_ms = start_event.elapsed_time(end_event)
-        if verbose:
-            print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
+        # if verbose:
+        #     print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
         elapsed_times.append(elapsed_time_ms)
 
     # Record profiler information
