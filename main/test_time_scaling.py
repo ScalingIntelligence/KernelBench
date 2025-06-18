@@ -50,23 +50,20 @@ def best_of_n(config: TestTimeScalingConfig, dataset, problem_id_range: range, i
     Generate num_samples for each problem independently
     """
     # Define workloads
-    workload = []
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
-    for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
-        for sample_id in range(config.num_parallel):
+    for sample_id in range(config.num_parallel):
+        workload = []
+        for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
             workload.append(
                 WorkArgs(
                     problem_id=int(problem_id),
                     sample_id=sample_id
                 )
             )
-    
-    # Generate samples
-    generation_results = batch_generate(workload, config, dataset, inference_server, run_dir)    
-    
-    # Evaluate samples
-    eval_file_path = os.path.join(run_dir, f"eval_results.json")
-    batch_eval(workload, config, dataset, run_dir, eval_file_path)
+        
+        batch_generate(workload, config, dataset, inference_server, run_dir)     
+        batch_eval(workload, config, dataset, run_dir, eval_file_path)
 
 
 def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):

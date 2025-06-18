@@ -183,8 +183,8 @@ def main():
         metrics_by_method_by_sample = {}
         for method in methods:
             run_dir = os.path.join(RUNS_DIR, method + f"_level{args.level}")
-            if not os.path.exists(run_dir):
-                print(f'Run directory {run_dir} does not exist')
+            if not os.path.exists(os.path.join(run_dir, "metrics.json")):
+                print(f'Run directory {run_dir} does not exist or does not have metrics.json')
                 continue
             metrics = load_metrics(run_dir)
             metrics = metrics["best_by_sample"] if "best_by_sample" in metrics else metrics
@@ -210,7 +210,7 @@ def main():
         metrics_by_level_by_sample = {}
         for level in [1, 2, 3]:
             run_dir = os.path.join(RUNS_DIR, args.method + f"_level{level}")
-            if not os.path.exists(run_dir):
+            if not os.path.exists(os.path.join(run_dir, "metrics.json")):
                 print(f'Run directory {run_dir} does not exist')
                 continue
             metrics = load_metrics(run_dir)
