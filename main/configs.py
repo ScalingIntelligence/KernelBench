@@ -85,7 +85,7 @@ def parse_args():
     parser.add_argument("--runs_dir", type=str, default=os.path.join(REPO_TOP_DIR, "runs"))
 
     # Methods
-    parser.add_argument("--method", type=str, required=True)
+    parser.add_argument("--method", type=str, default="base")
     parser.add_argument("--prompt", type=str, default="regular")
     parser.add_argument("--num_parallel", type=int, default=1)
     parser.add_argument("--num_samples", type=int, default=1)

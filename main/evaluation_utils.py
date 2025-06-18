@@ -11,8 +11,9 @@ from src.dataset import construct_kernelbench_dataset
 from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, eval_reference_kernel, KernelExecResult, check_metadata_serializable_all_types
 
-from configs import TestTimeScalingConfig
+from configs import TestTimeScalingConfig, parse_args
 from utils import WorkArgs, EvaluationWorkArgs, fetch_ref_arch_from_problem_id, fetch_kernel_from_disk, check_if_eval_exists_local
+from src.utils import set_gpu_arch
 
 
 def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScalingConfig, dataset, run_dir: str) -> KernelExecResult | None:
@@ -219,14 +220,32 @@ def batch_eval(
 
 
 if __name__ == "__main__":
-    # Testing
-    work_arg = EvaluationWorkArgs(problem_id=1, sample_id=0, device=torch.device("cuda:0"))
-    run_dir = "runs/base_level1"
-    config_file = os.path.join(run_dir, "config.yaml")
-    with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
-    del config["_tags"]
-    config = Namespace(**config)
-    dataset = construct_kernelbench_dataset(config.level)
+    config = parse_args()
+    # Check if CUDA is available
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
 
-    evaluate_single_sample(work_arg, config, dataset, run_dir)
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method("spawn")
+
+    # 1. Set up
+    # Set up dataset
+    curr_level_dataset = construct_kernelbench_dataset(config.level)
+
+    # set up run directory
+    run_dir = os.path.join(config.runs_dir, config.run_name)
+
+    with open(os.path.join(run_dir, "config.yaml"), "w") as f:
+        yaml.dump(vars(config), f)
+ 
+    # set GPU arch to configure what target to build for
+    set_gpu_arch(config.gpu_arch)
+    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
+
+    eval_file_path = os.path.join(run_dir, f"eval_results.json")
+
+    total_work = [WorkArgs(problem_id=problem_id, sample_id=0) for problem_id in range(1, len(curr_level_dataset) + 1)]
+
+    batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
+
+
