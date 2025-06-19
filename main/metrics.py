@@ -197,8 +197,8 @@ def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, hardware
 def compute_metrics_metr(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
     for i in range(config["num_samples"]):
         for pid, prob_res in eval_results.items():
-            if str(i+1) not in prob_res:
-                eval_results[pid][str(i+1)] = eval_results[pid][str(i)]
+            if str(i+1) in prob_res:
+                eval_results[pid][str(i)] = eval_results[pid][str(i+1)]
     return increasing_best_solution_metrics(config, hardware, eval_results, config["num_samples"])
 
 
@@ -228,7 +228,7 @@ def compute_metrics(config: TestTimeScalingConfig, hardware: str, eval_file_path
             raise ValueError(f"Invalid method: {config['method']}")
 
     print("Computed all metrics")
-    print(metrics)
+    # print(metrics)
 
     metrics_file = os.path.join(run_dir, "metrics.json")
     with open(metrics_file, "w") as f:
