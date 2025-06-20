@@ -134,7 +134,8 @@ def measure_program_time(
 def record_baseline_times(use_torch_compile: bool = False, 
                           torch_compile_backend: str="inductor", 
                           torch_compile_options: str="default",
-                          file_name: str="baseline_time.json"):
+                          file_name: str="baseline_time.json",
+                          levels: list[int]=[1, 2, 3]):
     """
     Generate baseline time for KernelBench, 
     configure profiler options for PyTorch
@@ -143,7 +144,7 @@ def record_baseline_times(use_torch_compile: bool = False,
     device = torch.device("cuda:0")
     json_results = {}
     
-    for level in [1, 2, 3]:
+    for level in levels:
         PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
         dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
         json_results[f"level{level}"] = {}
@@ -199,6 +200,7 @@ if __name__ == "__main__":
     
     # Replace this with whatever hardware you are running on 
     hardware_name = sys.argv[1]
+    levels = [int(level) for level in sys.argv[2].split(",")]
 
     # input(f"You are about to start recording baseline time for {hardware_name}, press Enter to continue...")
     # Systematic recording of baseline time
@@ -210,20 +212,23 @@ if __name__ == "__main__":
     record_baseline_times(use_torch_compile=False, 
                           torch_compile_backend=None,
                           torch_compile_options=None, 
-                          file_name=f"{hardware_name}/baseline_time_torch.json")
+                          file_name=f"{hardware_name}/baseline_time_torch.json",
+                          levels=levels)
     
     # 2. Record Torch Compile using Inductor
     for torch_compile_mode in ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]:
         record_baseline_times(use_torch_compile=True, 
                               torch_compile_backend="inductor",
                               torch_compile_options=torch_compile_mode, 
-                              file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_{torch_compile_mode}.json")
+                              file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_{torch_compile_mode}.json",
+                              levels=levels)
  
     # 3. Record Torch Compile using cudagraphs
     record_baseline_times(use_torch_compile=True, 
                           torch_compile_backend="cudagraphs",
                           torch_compile_options=None, 
-                          file_name=f"{hardware_name}/baseline_time_torch_compile_cudagraphs.json")
+                          file_name=f"{hardware_name}/baseline_time_torch_compile_cudagraphs.json",
+                          levels=levels)
     
 
 
