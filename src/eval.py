@@ -3,6 +3,7 @@ Helpers for Evaluations
 """
 
 import requests
+import shutil
 import torch
 import torch.nn as nn
 import os, subprocess
@@ -87,7 +88,7 @@ class KernelExecResult(BaseModel):
 
 
 def load_original_model_and_inputs(
-    model_original_src: str, context: dict
+    model_original_src: str, context: dict, model_name: str = None
 ) -> tuple[nn.Module, callable, callable]:
     """
     Load class from original NN.module pytorch code
@@ -103,8 +104,18 @@ def load_original_model_and_inputs(
     try:
         exec(model_original_src, context)  # expose to current namespace
     except Exception as e:
-        print(f"Error in executing original code {e}")
-        return None
+        print("Failed to load model. Trying to import from the file directly.")
+        if "." in model_name:
+            model_name = model_name.split(".")[0]
+        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_name}.py")
+        os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
+        with open(tmp_dir, "w") as f:
+            f.write(model_original_src)
+        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
+        exec(f"from model_{model_name} import Model, get_init_inputs, get_inputs", context)
+        Model, get_init_inputs, get_inputs = context["Model"], context["get_init_inputs"], context["get_inputs"]
+        print(f"Successfully loaded model from the file directly: {tmp_dir}") 
+        return (Model, get_init_inputs, get_inputs)
 
     # these should be defined in the original model code and present in the context
     get_init_inputs_fn = context.get("get_init_inputs")
@@ -114,7 +125,7 @@ def load_original_model_and_inputs(
 
 
 def load_custom_model(
-    model_custom_src: str, context: dict, build_directory: str = None
+    model_custom_src: str, context: dict, build_directory: str = None, model_custom_name: str = None
 ) -> nn.Module:
     """
     Load class from custom NN.module pytorch code
@@ -129,11 +140,25 @@ def load_custom_model(
 
     try:
         compile(model_custom_src, "<string>", "exec")
-        exec(model_custom_src, context)
-        # DANGER: need to delete refernece from global namespace
-    except SyntaxError as e:
-        print(f"Syntax Error in custom generated code or Compilation Error {e}")
+    except Exception as e:
+        print(f"Syntax Error in custom generated code {e}")
         return None
+    
+    try:
+        exec(model_custom_src, context)
+    except Exception as e:
+        print(f"Failed to load model. Trying to import from the file directly.")
+        if "." in model_custom_name:
+            model_custom_name = model_custom_name.split(".")[0]
+        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_custom_name}.py")
+        os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
+        with open(tmp_dir, "w") as f:
+            f.write(model_custom_src)
+        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
+        exec(f"from model_{model_custom_name} import ModelNew", context)
+        ModelNew = context["ModelNew"]
+        print(f"Successfully loaded model from the file directly: {tmp_dir}") 
+        return ModelNew
 
     ModelNew = context.get("ModelNew")
     return ModelNew
@@ -294,6 +319,8 @@ def build_compile_cache_with_capturing(
 def eval_kernel_against_ref(
     original_model_src: str,
     custom_model_src: str,
+    original_model_name: str = None,
+    custom_model_name: str = None,
     seed_num: int = 42,
     num_correct_trials: int = 1,
     num_perf_trials: int = 10,
@@ -328,7 +355,7 @@ def eval_kernel_against_ref(
         print("[Eval] Loading Original Model")
 
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-        original_model_src, context
+        original_model_src, context, original_model_name
     )
     set_seed(seed_num)  # set seed for reproducible input
     init_inputs = get_init_inputs()
@@ -353,7 +380,7 @@ def eval_kernel_against_ref(
     try:
         os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
         # add hash for later to distinguish between multi-turn kernels
-        ModelNew = load_custom_model(custom_model_src, context, build_dir)
+        ModelNew = load_custom_model(custom_model_src, context, build_dir, custom_model_name)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:
         print(
@@ -461,6 +488,7 @@ def eval_kernel_against_ref(
 
 def eval_reference_kernel(
     original_model_src: str,
+    original_model_name: str,
     seed_num: int = 42,
     num_correct_trials: int = 1,
     num_perf_trials: int = 10,
@@ -488,7 +516,7 @@ def eval_reference_kernel(
         print("[Eval] Loading Original Model")
 
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-        original_model_src, context
+        original_model_src, context, original_model_name
     )
     set_seed(seed_num)  # set seed for reproducible input
     init_inputs = get_init_inputs()

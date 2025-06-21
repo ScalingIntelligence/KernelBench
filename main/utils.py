@@ -49,7 +49,7 @@ def get_evaluation_results_for_problem(problem_id: int, eval_file_path: str) -> 
     return {}
 
 
-def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -> str | None:
+def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -> tuple[str, str] | None:
     """
     Fetch reference architecture from problem directory
     Either from Hugging Face or Local Dataset
@@ -70,19 +70,20 @@ def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -
     problem_number = int(problem_name.split("_")[0])
     assert problem_number == problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({problem_id})"
     
-    return ref_arch_src
+    return ref_arch_src, problem_name
 
 
-def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> str | None:
+def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> tuple[str, str] | None:
     """
     Fetch kernel file from disk (stored in runs/{run_name})
     """
-    kernel_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py")
+    kernel_name = f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py"
+    kernel_path = os.path.join(run_dir, kernel_name)
     
     if os.path.exists(kernel_path):
-        return read_file(kernel_path)
+        return read_file(kernel_path), kernel_name
     else:
-        return None
+        return None, None
 
 
 def fetch_eval_result_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> dict | None:

@@ -1,12 +1,12 @@
 import torch
+import shutil
 import sys
 import numpy as np
 from src.eval import (
     load_original_model_and_inputs,
     time_execution_with_cuda_event,
     get_timing_stats,
-    set_seed,
-    fetch_ref_arch_from_problem_id,
+    set_seed
 )
 from src.dataset import construct_problem_dataset_from_problem_dir
 from src.utils import read_file
@@ -82,13 +82,15 @@ def measure_program_time(
         torch_compile_options: str="default",
         device: torch.device="cuda:0",
         verbose: bool = False,
+        level: int = 1,
+        problem_id: int = 1,
 ) -> dict:
     """
     Measure the time of a KernelBench reference architecture
     """
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-        ref_arch_src, context
+        ref_arch_src, context, model_name=ref_arch_name
     )
     try:
         with torch.no_grad():
@@ -159,7 +161,9 @@ def record_baseline_times(use_torch_compile: bool = False,
                 torch_compile_backend=torch_compile_backend,
                 torch_compile_options=torch_compile_options,
                 device=device,
-                verbose=False # do not print 
+                verbose=False, # do not print ,
+                level=level,
+                problem_id=problem_id
             )
             json_results[f"level{level}"][ref_arch_name] = runtime_stats
 

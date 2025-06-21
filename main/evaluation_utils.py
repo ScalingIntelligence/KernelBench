@@ -27,10 +27,10 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScali
         work_args.device,
     )
     # Fetch reference architecture from problem directory
-    ref_arch_src = fetch_ref_arch_from_problem_id(dataset, problem_id, configs.dataset_src)
+    ref_arch_src, ref_arch_name = fetch_ref_arch_from_problem_id(dataset, problem_id, configs.dataset_src)
 
     # Fetch kernel from disk
-    kernel_src = fetch_kernel_from_disk(run_dir, configs.level, problem_id, sample_id)
+    kernel_src, kernel_name = fetch_kernel_from_disk(run_dir, configs.level, problem_id, sample_id)
 
     assert kernel_src is not None, f"Kernel not found for problem {problem_id} sample {sample_id}"
 
@@ -40,13 +40,16 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScali
         if configs.method == "METR" and sample_id == 0:
             eval_result = eval_reference_kernel(
                 original_model_src=ref_arch_src,
+                original_model_name=ref_arch_name,
                 verbose=configs.verbose,
                 device=device,
             )
         else:
             eval_result = eval_kernel_against_ref(
                 original_model_src=ref_arch_src,
+                original_model_name=ref_arch_name,
                 custom_model_src=kernel_src,
+                custom_model_name=kernel_name,
                 measure_performance=configs.measure_performance,
                 verbose=configs.verbose,    
                 num_correct_trials=configs.num_correct_trials,

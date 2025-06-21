@@ -195,7 +195,8 @@ def exec_result_to_exeution_feedback(exec_result: KernelExecResult) -> str:
     compilation_error = exec_result['metadata']['compilation_error'] if 'compilation_error' in exec_result['metadata'] else None
     runtime_error = exec_result['metadata']['runtime_error'] if 'runtime_error' in exec_result['metadata'] else None
     correctness_issue = exec_result['metadata']['correctness_issue'] if 'correctness_issue' in exec_result['metadata'] else None
-    correctness_feedback = compilation_error if compilation_error else runtime_error if runtime_error else correctness_issue if correctness_issue else "All trials passed" 
+    other_error = exec_result['metadata']['other_error'] if 'other_error' in exec_result['metadata'] else None
+    correctness_feedback = compilation_error if compilation_error else runtime_error if runtime_error else correctness_issue if correctness_issue else other_error if other_error else "All trials passed" 
 
     evaluation_feedback = f"""
 Here is your Evaluation Result:
