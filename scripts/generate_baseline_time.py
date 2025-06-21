@@ -88,10 +88,15 @@ def measure_program_time(
     """
     Measure the time of a KernelBench reference architecture
     """
-    context = {}
-    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-        ref_arch_src, context, model_name=ref_arch_name
-    )
+    try:
+        context = {}
+        Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
+            ref_arch_src, context, model_name=ref_arch_name
+        )
+    except Exception as e: 
+        print(f"[Eval] Error in Loading Model: {e}")
+        return None
+
     try:
         with torch.no_grad():
             torch.cuda.synchronize(device=device)
