@@ -249,8 +249,8 @@ if __name__ == "__main__":
 
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
-    total_work = [WorkArgs(problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1, 4)]
+    total_work = [WorkArgs(problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1)] # TODO: change accordingly
 
     batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
 
-
+    
