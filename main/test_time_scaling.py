@@ -104,7 +104,7 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
     # 0. Add the reference architecture as the first sample
     print(f"[METR] Adding reference architecture as the first sample")
     for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
-        ref_arch_src = fetch_ref_arch_from_problem_id(dataset, problem_id, config.dataset_src)
+        ref_arch_src, _ = fetch_ref_arch_from_problem_id(dataset, problem_id, config.dataset_src)
         kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{problem_id}_sample_{0}_kernel.py")
         with open(kernel_path, "w") as f:
             f.write(ref_arch_src)

@@ -298,7 +298,7 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config: TestTimeScaling
     # Fetch previous history of kernels
     history = []
     for sample_id in range(work.sample_id % config.num_parallel, work.sample_id):
-        kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, sample_id)
+        kernel_src, _ = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, sample_id)
         exec_result = fetch_eval_result_from_disk(run_dir, config.level, work.problem_id, sample_id)
         history.append((kernel_src, exec_result))
     
@@ -328,7 +328,7 @@ def generate_prompt_metr(work: WorkArgs, config: TestTimeScalingConfig, ref_arch
     if config.verbose:
         print(f"[METR] Sampled kernel {sampled_kernel_id} with speedup {ref_kernel_result['runtime'] / sampled_kernel_eval_result['runtime']}")
 
-    sampled_kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, sampled_kernel_id)
+    sampled_kernel_src, _ = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, sampled_kernel_id)
 
     return prompt_refinement_from_last_kernel(ref_arch_src, config, sampled_kernel_src, sampled_kernel_eval_result)
 
@@ -351,7 +351,7 @@ def generate_prompt_stanford(work: WorkArgs, config: TestTimeScalingConfig, ref_
         last_step_best_kernels = last_step_best_kernels + random.choices(last_step_incorrect_kernels, k=config.num_best - len(last_step_best_kernels))
 
     last_step_best_kernel = last_step_best_kernels[work.sample_id % config.num_best] # use top config.num_best kernels
-    last_step_best_kernel_src = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, int(last_step_best_kernel["sample_id"]))
+    last_step_best_kernel_src, _ = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, int(last_step_best_kernel["sample_id"]))
     if config.verbose:
         print(f"[Stanford] Last step best kernel sample_id: {int(last_step_best_kernel['sample_id'])}")
 

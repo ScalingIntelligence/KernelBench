@@ -9,7 +9,7 @@ from prompts import generate_prompt
 
 
 def generate_sample_single(work: WorkArgs, config: TestTimeScalingConfig, dataset, inference_server: callable, run_dir: str) -> bool:
-    ref_arch_src = fetch_ref_arch_from_problem_id(dataset, work.problem_id, config.dataset_src)
+    ref_arch_src, _ = fetch_ref_arch_from_problem_id(dataset, work.problem_id, config.dataset_src)
 
     # Construct Prompt   
     custom_cuda_prompt = generate_prompt(work, config, ref_arch_src, inference_server, run_dir)
