@@ -89,6 +89,7 @@ def measure_program_time(
     Measure the time of a KernelBench reference architecture
     """
     try:
+        print(f"[Eval] Loading model {ref_arch_name}")
         context = {}
         Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
             ref_arch_src, context, model_name=ref_arch_name
@@ -117,10 +118,10 @@ def measure_program_time(
             model = Model(*init_inputs)
             
             if use_torch_compile:
-                print(f"Using torch.compile to compile model {ref_arch_name} with {torch_compile_backend} backend and {torch_compile_options} mode")
+                print(f"[Eval] Using torch.compile to compile model {ref_arch_name} with {torch_compile_backend} backend and {torch_compile_options} mode")
                 model = torch.compile(model, backend=torch_compile_backend, mode=torch_compile_options)
             else:
-                print(f"Using PyTorch Eager Execution on {ref_arch_name}")
+                print(f"[Eval] Using PyTorch Eager Execution on {ref_arch_name}")
             
             model = model.cuda(device=device)
             torch.cuda.synchronize(device=device)
@@ -149,6 +150,7 @@ def record_baseline_times(use_torch_compile: bool = False,
     save to specified file
     """
     device = torch.device("cuda:0")
+    # torch.set_default_device("cuda:0")
     json_results = {}
     
     for level in levels:
@@ -224,20 +226,20 @@ if __name__ == "__main__":
                           file_name=f"{hardware_name}/baseline_time_torch.json",
                           levels=levels)
     
-    # 2. Record Torch Compile using Inductor
-    for torch_compile_mode in ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]:
-        record_baseline_times(use_torch_compile=True, 
-                              torch_compile_backend="inductor",
-                              torch_compile_options=torch_compile_mode, 
-                              file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_{torch_compile_mode}.json",
-                              levels=levels)
+    # # 2. Record Torch Compile using Inductor
+    # for torch_compile_mode in ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]:
+    #     record_baseline_times(use_torch_compile=True, 
+    #                           torch_compile_backend="inductor",
+    #                           torch_compile_options=torch_compile_mode, 
+    #                           file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_{torch_compile_mode}.json",
+    #                           levels=levels)
  
-    # 3. Record Torch Compile using cudagraphs
-    record_baseline_times(use_torch_compile=True, 
-                          torch_compile_backend="cudagraphs",
-                          torch_compile_options=None, 
-                          file_name=f"{hardware_name}/baseline_time_torch_compile_cudagraphs.json",
-                          levels=levels)
+    # # 3. Record Torch Compile using cudagraphs
+    # record_baseline_times(use_torch_compile=True, 
+    #                       torch_compile_backend="cudagraphs",
+    #                       torch_compile_options=None, 
+    #                       file_name=f"{hardware_name}/baseline_time_torch_compile_cudagraphs.json",
+    #                       levels=levels)
     
 
 

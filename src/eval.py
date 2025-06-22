@@ -104,7 +104,7 @@ def load_original_model_and_inputs(
     try:
         exec(model_original_src, context)  # expose to current namespace
     except Exception as e:
-        print("Failed to load model. Trying to import from the file directly.")
+        print(f"Failed to load model due to {e}. Trying to import from the file directly.")
         if "." in model_name:
             model_name = model_name.split(".")[0]
         tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_name}.py")
