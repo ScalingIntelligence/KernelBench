@@ -13,6 +13,7 @@ from src.utils import read_file
 import os
 import json
 from tqdm import tqdm
+import traceback
 
 """
 Generate baseline time for KernelBench
@@ -136,6 +137,7 @@ def measure_program_time(
             return runtime_stats
     except Exception as e:
         print(f"[Eval] Error in Measuring Performance: {e}")
+        print(traceback.format_exc())
 
 
 

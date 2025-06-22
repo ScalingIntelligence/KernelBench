@@ -7,14 +7,9 @@ import torch.nn.functional as F
 from typing import Callable
 from diffusers.models import ModelMixin
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-try:
-    import flash_attn
-    from flash_attn.flash_attn_interface import _flash_attn_forward
-    from flash_attn.flash_attn_interface import flash_attn_varlen_func
-except ImportError:
-    flash_attn = None
-    flash_attn_varlen_func = None
-    _flash_attn_forward = None
+import flash_attn
+from flash_attn.flash_attn_interface import _flash_attn_forward
+from flash_attn.flash_attn_interface import flash_attn_varlen_func
 import collections.abc
 
 from itertools import repeat

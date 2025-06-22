@@ -21,13 +21,15 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 4097
 
+    device: str = "cuda"
+
 
 class RMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-6, device: str = None):
         super().__init__()
         self.eps = eps
         # The gamma parameter
-        self.weight = nn.Parameter(torch.ones(dim))
+        self.weight = nn.Parameter(torch.ones(dim, device=device))
 
     def _norm(self, x: torch.Tensor):
         # (B, Seq_Len, Dim) * (B, Seq_Len, 1) = (B, Seq_Len, Dim)
@@ -39,25 +41,25 @@ class RMSNorm(nn.Module):
         return self.weight * self._norm(x.float()).type_as(x)
 
 
-def precompute_theta_pos_frequencies(head_dim: int, seq_len: int,theta: float = 10000.0):
+def precompute_theta_pos_frequencies(head_dim: int, seq_len: int,theta: float = 10000.0, device: str = None):
     # As written in the paragraph 3.2.2 of the paper
     # >> In order to generalize our results in 2D to any xi ∈ Rd where **d is even**, [...]
     assert head_dim % 2 == 0, "Dimension must be divisible by 2"
     # Build the theta parameter
     # According to the formula theta_i = 10000^(-2(i-1)/dim) for i = [1, 2, ... dim/2]
     # Shape: (Head_Dim / 2)
-    theta_numerator = torch.arange(0, head_dim, 2).float()
+    theta_numerator = torch.arange(0, head_dim, 2, device=device).float()
     # Shape: (Head_Dim / 2)
     theta = 1.0 / (theta ** (theta_numerator / head_dim)) # (Dim / 2)
     # Construct the positions (the "m" parameter)
     # Shape: (Seq_Len)
-    m = torch.arange(seq_len)
+    m = torch.arange(seq_len, device=device)
     # Multiply each theta by each position using the outer product.
     # Shape: (Seq_Len) outer_product* (Head_Dim / 2) -> (Seq_Len, Head_Dim / 2)
     freqs = torch.outer(m, theta).float()
     # We can compute complex numbers in the polar form c = R * exp(m * theta), where R = 1 as follows:
     # (Seq_Len, Head_Dim / 2) -> (Seq_Len, Head_Dim / 2)
-    freqs_complex = torch.polar(torch.ones_like(freqs), freqs)
+    freqs_complex = torch.polar(torch.ones_like(freqs, device=device), freqs)
     return freqs_complex
 
 def apply_rotary_embeddings(x: torch.Tensor, freqs_complex: torch.Tensor):
@@ -102,13 +104,13 @@ class SelfAttention(nn.Module):
         self.n_rep = self.n_heads_q // self.n_kv_heads
         self.head_dim = args.dim // args.n_heads
 
-        self.wq = nn.Linear(args.dim, args.n_heads * self.head_dim, bias=False)
-        self.wk = nn.Linear(args.dim, self.n_kv_heads * self.head_dim, bias=False)
-        self.wv = nn.Linear(args.dim, self.n_kv_heads * self.head_dim, bias=False)
-        self.wo = nn.Linear(args.n_heads * self.head_dim, args.dim, bias=False)
+        self.wq = nn.Linear(args.dim, args.n_heads * self.head_dim, bias=False, device=args.device)
+        self.wk = nn.Linear(args.dim, self.n_kv_heads * self.head_dim, bias=False, device=args.device)
+        self.wv = nn.Linear(args.dim, self.n_kv_heads * self.head_dim, bias=False, device=args.device)
+        self.wo = nn.Linear(args.n_heads * self.head_dim, args.dim, bias=False, device=args.device)
 
-        self.register_buffer("cache_k", torch.zeros((args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim)))
-        self.register_buffer("cache_v", torch.zeros((args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim)))
+        self.register_buffer("cache_k", torch.zeros((args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim), device=args.device))
+        self.register_buffer("cache_v", torch.zeros((args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim), device=args.device))
 
     def forward(
         self,
@@ -158,9 +160,9 @@ class FeedForward(nn.Module):
         # Round the hidden_dim to the nearest multiple of the multiple_of parameter
         hidden_dim = args.multiple_of * ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
 
-        self.w1 = nn.Linear(args.dim, hidden_dim, bias=False)
-        self.w2 = nn.Linear(hidden_dim, args.dim, bias=False)
-        self.w3 = nn.Linear(args.dim, hidden_dim, bias=False)
+        self.w1 = nn.Linear(args.dim, hidden_dim, bias=False, device=args.device)
+        self.w2 = nn.Linear(hidden_dim, args.dim, bias=False, device=args.device)
+        self.w3 = nn.Linear(args.dim, hidden_dim, bias=False, device=args.device)
 
     def forward(self, x: torch.Tensor):
         # (B, Seq_Len, Dim) --> (B, Seq_Len, Hidden_Dim)
@@ -187,9 +189,9 @@ class EncoderBlock(nn.Module):
         self.feed_forward = FeedForward(args)
 
         # Normalization BEFORE the attention block
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps, device=args.device)
         # Normalization BEFORE the feed forward block
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps, device=args.device)
     
     def forward(self, x: torch.Tensor, start_pos: int, freqs_complex: torch.Tensor):
         # (B, Seq_Len, Dim) + (B, Seq_Len, Dim) --> (B, Seq_Len, Dim)
@@ -209,16 +211,16 @@ class Model(nn.Module):
         self.args = args
         self.vocab_size = args.vocab_size
         self.n_layers = args.n_layers
-        self.tok_embeddings = nn.Embedding(self.vocab_size, args.dim)
+        self.tok_embeddings = nn.Embedding(self.vocab_size, args.dim, device=args.device)
 
         self.layers = nn.ModuleList()
         for layer_id in range(args.n_layers):
             self.layers.append(EncoderBlock(args))
 
-        self.norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.output = nn.Linear(args.dim, self.vocab_size, bias=False)
+        self.norm = RMSNorm(args.dim, eps=args.norm_eps, device=args.device)
+        self.output = nn.Linear(args.dim, self.vocab_size, bias=False, device=args.device)
 
-        self.register_buffer("freqs_complex", precompute_theta_pos_frequencies(self.args.dim // self.args.n_heads, self.args.max_seq_len * 2))
+        self.register_buffer("freqs_complex", precompute_theta_pos_frequencies(self.args.dim // self.args.n_heads, self.args.max_seq_len * 2, device=args.device))
         
         self(*precomputed_input_args)
 

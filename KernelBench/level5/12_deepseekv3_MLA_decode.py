@@ -71,6 +71,7 @@ class ModelArgs:
     beta_fast: int = 32
     beta_slow: int = 1
     mscale: float = 1.
+    device: str = "cuda"
     
 class Model(nn.Module):
     """
@@ -100,20 +101,20 @@ class Model(nn.Module):
         self.qk_head_dim = args.qk_nope_head_dim + args.qk_rope_head_dim
         self.v_head_dim = args.v_head_dim
 
-        self.wq_a = Linear(self.dim, self.q_lora_rank)
-        self.q_norm = RMSNorm(self.q_lora_rank)
-        self.wq_b = Linear(self.q_lora_rank, self.n_heads * self.qk_head_dim)
-        self.wkv_a = Linear(self.dim, self.kv_lora_rank + self.qk_rope_head_dim)
-        self.kv_norm = RMSNorm(self.kv_lora_rank)
-        self.wkv_b = Linear(self.kv_lora_rank, self.n_heads * (self.qk_nope_head_dim + self.v_head_dim))
-        self.wo = Linear(self.n_heads * self.v_head_dim, self.dim)
+        self.wq_a = Linear(self.dim, self.q_lora_rank, device=args.device)
+        self.q_norm = RMSNorm(self.q_lora_rank, device=args.device)
+        self.wq_b = Linear(self.q_lora_rank, self.n_heads * self.qk_head_dim, device=args.device)
+        self.wkv_a = Linear(self.dim, self.kv_lora_rank + self.qk_rope_head_dim, device=args.device)
+        self.kv_norm = RMSNorm(self.kv_lora_rank, device=args.device)
+        self.wkv_b = Linear(self.kv_lora_rank, self.n_heads * (self.qk_nope_head_dim + self.v_head_dim), device=args.device)
+        self.wo = Linear(self.n_heads * self.v_head_dim, self.dim, device=args.device)
         self.softmax_scale = self.qk_head_dim ** -0.5
         if args.max_seq_len > args.original_seq_len:
             mscale = 0.1 * args.mscale * math.log(args.rope_factor) + 1.0
             self.softmax_scale = self.softmax_scale * mscale * mscale
 
-        self.register_buffer("k_cache", torch.zeros(args.max_batch_size, args.max_seq_len, self.n_local_heads, self.qk_head_dim), persistent=False)
-        self.register_buffer("v_cache", torch.zeros(args.max_batch_size, args.max_seq_len, self.n_local_heads, self.v_head_dim), persistent=False)
+        self.register_buffer("k_cache", torch.zeros(args.max_batch_size, args.max_seq_len, self.n_local_heads, self.qk_head_dim, device=args.device), persistent=False)
+        self.register_buffer("v_cache", torch.zeros(args.max_batch_size, args.max_seq_len, self.n_local_heads, self.v_head_dim, device=args.device), persistent=False)
         
         # precompute fixed prompt
         self(*precomputed_input_args)
@@ -242,17 +243,17 @@ def precompute_freqs_cis(args: ModelArgs) -> torch.Tensor:
         """
         if min == max:
             max += 0.001
-        linear_func = (torch.arange(dim, dtype=torch.float32) - min) / (max - min)
+        linear_func = (torch.arange(dim, dtype=torch.float32, device=args.device) - min) / (max - min)
         ramp_func = torch.clamp(linear_func, 0, 1)
         return ramp_func
 
-    freqs = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
+    freqs = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float32, device=args.device) / dim))
     if seqlen > args.original_seq_len:
         low, high = find_correction_range(beta_fast, beta_slow, dim, base, args.original_seq_len)
         smooth = 1 - linear_ramp_factor(low, high, dim // 2)
         freqs = freqs / factor * (1 - smooth) + freqs * smooth
 
-    t = torch.arange(seqlen)
+    t = torch.arange(seqlen, device=args.device)
     freqs = torch.outer(t, freqs)
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
     return freqs_cis
