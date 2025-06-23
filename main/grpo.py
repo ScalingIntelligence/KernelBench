@@ -15,7 +15,7 @@ from evaluation_utils import evaluate_single_sample, EvaluationWorkArgs
 from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
 from run_manager import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
-from src.utils import set_gpu_arch
+from src.utils import set_gpu_arch, extract_last_code
 
 
 def get_train_dataset():
@@ -59,8 +59,13 @@ def train(config, vf_env):
         eval_steps=100,
         save_steps=50,
         logging_steps=10,
+        max_completion_length=10000,
+        num_generations=4,
+        num_batches_ahead=0,
         gradient_checkpointing=True,
-        report_to="wandb"
+        report_to="wandb",
+        vllm_server_host=config.host,
+        vllm_server_port=config.port
     )
     trainer = vf.GRPOTrainer(
         model=model,
@@ -111,19 +116,23 @@ def main(config):
  
     # Evaluation
     def reward_from_exec_result(level, problem, exec_result):
-        if exec_result.is_correct:
+        if exec_result.correctness:
             baseline_results = fetch_baseline_results(level, problem, config.hardware)
             speedup = baseline_results["mean"] / exec_result.runtime
-            return 0.3 + speedup
+            return 0.3 + float(speedup)
         else:
             return 0.0
 
 
     def reward_func(prompt, completion, answer, **kwargs):
+        prompt = prompt[1]["content"]
+        completion = completion[0]["content"]
+        kernel_src = extract_last_code(completion, ["python", "cpp"])
+        answer = answer[0]
         level, problem = extract_metadata_from_prompt(prompt)
-        sample_id = find_highest_sample_id(level, problem, run_dir) + 1
+        sample_id = find_highest_sample_id(run_dir, level, problem) + 1
 
-        write_kernel_to_disk(run_dir, level, problem, sample_id, completion)
+        write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
 
         exec_result = evaluate_single_sample(
             work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=config.eval_device),
@@ -131,6 +140,7 @@ def main(config):
             run_dir=run_dir
         )
         return reward_from_exec_result(level, problem, exec_result)
+    
 
     kernel_rubric = vf.Rubric(funcs=[reward_func], weights=[1.0]) 
     vf_env = vf.SingleTurnEnv(dataset=dataset, system_prompt="You are a kernel expert", rubric=kernel_rubric)

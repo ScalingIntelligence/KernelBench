@@ -12,9 +12,9 @@ def parse_args(rl_training=False):
     parser.add_argument("--runs_dir", type=str, default=os.path.join(REPO_TOP_DIR, "runs"))
 
     # Methods
+    parser.add_argument("--method", type=str, default="base")
+    parser.add_argument("--prompt", type=str, default="regular")
     if not rl_training:
-        parser.add_argument("--method", type=str, default="base")
-        parser.add_argument("--prompt", type=str, default="regular")
         parser.add_argument("--num_parallel", type=int, default=1)
         parser.add_argument("--num_samples", type=int, default=1)
         parser.add_argument("--num_iterations", type=int, default=1)
@@ -35,13 +35,16 @@ def parse_args(rl_training=False):
         parser.add_argument("--temperature", type=float, default=1.0)
         parser.add_argument("--num_workers", type=int, default=1)
         parser.add_argument("--api_query_interval", type=float, default=0.0)
+    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--port", type=int, default=8081)
 
     # Eval
     parser.add_argument("--eval_mode", type=str, default="local")
     parser.add_argument("--gpu_arch", type=str, default="Ampere")
-    parser.add_argument("--num_gpu_devices", type=int, default=1)
     if rl_training:
-        parser.add_argument("--eval_device", type=str, default="cuda:1")
+        parser.add_argument("--eval_device", type=str, default="cuda:0")
+    else:
+        parser.add_argument("--num_gpu_devices", type=int, default=1)
 
     parser.add_argument("--build_cache_with_cpu", type=bool, default=True)
     parser.add_argument("--num_cpu_workers", type=int, default=1)
@@ -53,7 +56,7 @@ def parse_args(rl_training=False):
     parser.add_argument("--measure_performance", type=bool, default=True)
 
     # Logging
-    parser.add_argument("--verbose", type=bool, default=False)
+    parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--log_prompt", type=bool, default=True)
     parser.add_argument("--log_response", type=bool, default=True)
     parser.add_argument("--store_type", type=str, default="local")

@@ -7,6 +7,9 @@ import wandb
 
 from dotenv import load_dotenv
 load_dotenv()
+import sys
+REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(REPO_TOP_DIR)
 
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
@@ -234,6 +237,7 @@ def main(config):
 
     # Create inference function with config parameters
     inference_server = create_inference_server_from_presets(server_type=config.server_type,
+                                                        server_address=f"http://{config.host}:{config.port}/v1",
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,

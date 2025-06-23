@@ -157,6 +157,9 @@ def query_server(
             model = model_name
             client = AutoModelForCausalLM.from_pretrained(model_name)
             tokenizer = AutoTokenizer.from_pretrained(model_name)
+        case "vllm":
+            client = OpenAI(base_url=server_address, api_key="EMPTY")
+            model = model_name
         case _:
             raise NotImplementedError
 
@@ -372,6 +375,18 @@ def query_server(
         ]
 
         outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    elif server_type == "vllm":
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+        )
+        outputs = [choice.message.content for choice in response.choices]
     # for all other kinds of servers, use standard API
     else:
         if type(prompt) == str:
@@ -449,6 +464,11 @@ SERVER_PRESETS = {
     },
     "huggingface": {
         "model_name": "Qwen/QwQ-32B",
+        "temperature": 0.6,
+        "max_tokens": 4096,
+    },
+    "vllm": {
+        "model_name": "Qwen/Qwen2.5-0.5B-Instruct",
         "temperature": 0.6,
         "max_tokens": 4096,
     }

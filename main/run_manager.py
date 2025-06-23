@@ -31,8 +31,8 @@ def find_highest_sample_id(run_dir: str, level: int, problem_id: int) -> int:
     """
     Find the highest sample ID for a given problem
     """
-    sample_ids = [int(f.split("_")[-1].split(".")[0]) for f in os.listdir(run_dir) if f.startswith(f"level_{level}_problem_{problem_id}_sample_")]
-    return max(sample_ids)
+    sample_ids = [int(f.split("_")[-2]) for f in os.listdir(run_dir) if f.startswith(f"level_{level}_problem_{problem_id}_sample_")]
+    return max(sample_ids, default=-1)
 
 
 def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> tuple[str, str] | None:
