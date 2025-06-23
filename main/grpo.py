@@ -1,178 +1,132 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import os
 import yaml
 import multiprocessing as mp
 import wandb
-from argparse import ArgumentParser, parse_args
+import pandas as pd
 
-from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers import Trainer, TrainingArguments
-from transformers import DataCollatorForLanguageModeling
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
-from transformers import DataCollatorForLanguageModeling
+import verifiers as vf
+from verifiers.envs import SingleTurnEnv, MultiTurnEnv
+from verifiers.parsers import XMLParser
+from verifiers.rubrics import Rubric
+
+from utils import WorkArgs, fetch_ref_arch_from_level_problem_id
+from configs import parse_args
+from prompts import prompt_base
+from evaluation_utils import evaluate_single_sample
 
 from src.dataset import construct_kernelbench_dataset
-from src.utils import set_gpu_arch
-from utils import WorkArgs
-from generation_utils import batch_generate
-from evaluation_utils import batch_eval
+from src.utils import set_gpu_arch, create_inference_server_from_presets
 
 
-def get_rewards(work_args, eval_file, config):
-    # TODO
-    return 1.0
+def get_train_dataset():
+    return construct_kernelbench_dataset(1) # for now use level 1 for training
 
-def get_model_and_tokenizer(model_name):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    return model, tokenizer
+def get_eval_dataset():
+    return construct_kernelbench_dataset(2) # for now use level 2 for evaluation
+ 
 
+def construct_dataset(config, train=True):
+    if train:
+        dataset = get_train_dataset()
+    else:
+        dataset = get_eval_dataset()
 
-
-def create_inference_server_from_hf_model(model, tokenizer, config):
-    def call_model(inputs):
-        return model.generate(inputs, max_new_tokens=config.max_tokens)
-
-
-
-def train(config, dataset, problem_id_range, run_dir):
-    eval_file = os.path.join(run_dir, "eval_results.json")
-
-    model, tokenizer = get_model_and_tokenizer(config.model_name)
-    inference_server = create_inference_server_from_hf_model(model, tokenizer)
-    for i in range(config.num_train_steps):
-        # Define work load
-        work_args = []
-        for pid in range(problem_id_range.start, problem_id_range.stop + 1):
-            work_args.append(WorkArgs(problem_id=pid, sample_id=i))
-
-        # generate
-        logits = batch_generate(work_args, config, dataset, inference_server, run_dir)
-
-        # evaluate
-        batch_eval(work_args, config, dataset, inference_server, run_dir)
-        rewards = get_rewards(work_args, eval_file, config)
-
-        # gradient step
-        # TODO
+    qa_dataset = []
+    for (level, problem) in dataset:
+        ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, config.dataset_src)
+        question = prompt_base(ref_arch_src)
+        answer = ref_arch_src
+        qa_dataset.append((question, answer))
+    
+    df = pd.DataFrame(qa_dataset, columns=["question", "answer"])
+    return df
 
 
 
+def train(config, vf_env):
+    model, tokenizer = vf.get_model_and_tokenizer(config.model_name)
+    trainer = vf.GRPOTrainer(
+        model=model,
+        processing_class=tokenizer,
+        env=vf_env,
+        args=vf.grpo_defaults(run_name=config.run_name)
+    )
+    trainer.train()
 
 
-def main():
-    argparser = ArgumentParser()
-    argparser.add_argument("--run_name", type=str, default="grpo_run")
-    argparser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    argparser.add_argument("--num_train_steps", type=int, default=100)
-    argparser.add_argument("--gpu_arch", type=str, default="Ampere")
-    argparser.add_argument("--num_gpu_devices", type=int, default=1)
-    argparser.add_argument("--num_cpu_workers", type=int, default=1)
-    # TODO: add args
-    args = parse_args()
-    args.gpu_arch = args.gpu_arch.split(",")
+def eval(config, vf_env):
+    inference_server = create_inference_server_from_presets(server_type="huggingface", model_name=config.model_name, max_tokens=config.max_tokens, temperature=config.temperature, num_workers=config.num_workers, api_query_interval=config.api_query_interval)
+    results = vf_env.evaluate(inference_server, config.model_name, num_samples=config.num_samples)
+    print(results)
+    return results
 
-    tags = args.run_name.split(",")
-    tags.extend([args.model_name])
+
+def main(config):
+    # Set up wandb
+    tags = ["rl_training"] + config._tags.split(",")
+    tags.extend([config.run_name, config.model_name])
     wandb.init(
         project="KernelBench",
         entity="j1mk1m",
         tags=tags
     )
-    config = args
-    print(f"Starting Test-Time Scaling with config: {config}")
+    print(f"Starting RL training with config: {config}")
 
-    # Check if CUDA is available
+    # GPU setup 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
+ 
+    set_gpu_arch(config.gpu_arch)
+    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method("spawn")
 
-    # 1. Set up
-    # Set up dataset
-    # TODO: train and eval set
-    train_set = construct_kernelbench_dataset(1)
-    eval_set = construct_kernelbench_dataset(2)
+    # Construct dataset
+    dataset = construct_dataset(config)
 
+    # Set up run directory
     run_dir = os.path.join(config.runs_dir, config.run_name)
     os.makedirs(run_dir, exist_ok=True)
 
     with open(os.path.join(run_dir, "config.yaml"), "w") as f:
         yaml.dump(vars(config), f)
  
-    # set GPU arch to configure what target to build for
-    set_gpu_arch(config.gpu_arch)
-    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
+    # Evaluation
+    def reward_func(prompt, completion, answer, **kwargs):
+        exec_result = evaluate_single_sample(
+            work_args=WorkArgs(level=config.level, problem_id=1, sample_id=0),
+            configs=config,
+            run_dir=run_dir
+        )
+        return 1.0
 
-    train(args, train_set, eval_set, run_dir)
+    kernel_rubric = Rubric(funcs=[reward_func], weights=[1.0]) 
+    vf_env = vf.SingleTurnEnv(dataset=dataset, system_prompt="You are a kernel expert", rubric=kernel_rubric)
 
+    # TODO: add multi-turn env
+    class KernelMultiTurnEnv(MultiTurnEnv):
+        def __init__(self, dataset, max_turns):
+            rubric = Rubric(funcs=[reward_func], weights=[1.0])
+            system_prompt = "You are a kernel expert"
+            super().__init__(dataset=dataset, system_prompt=system_prompt, rubric=rubric, max_turns=max_turns)
+        
+        def env_response(self, messages, state, **kwargs):
+            # eval logic to parse response and run kernel
+            pass
 
+        def is_completed(self, messages, state, **kwargs):
+            return state.get("completed", False) or state.get("attempts", 0) >= self.max_turns
+        
+        def score_rollout(self, rollout, **kwargs):
+            pass
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# import verifiers as vf
-# from verifiers.envs import SingleTurnEnv, MultiTurnEnv
-# from verifiers.parsers import XMLParser
-# from verifiers.rubrics import Rubric
-
-# # Evaluation
-# def reward_func(prompt, completion, answer, **kwargs):
-#     return 1.0
-
-# kernel_rubric = Rubric(funcs=[reward_func], weights=[1.0])
-    
-
-# class KernelSingleTurnEnv(SingleTurnEnv):
-#     def __init__(self, dataset):
-#         rubric = Rubric(funcs=[reward_func], weights=[1.0])
-#         system_prompt = "You are a kernel expert"
-#         super().__init__(dataset=dataset, system_prompt=system_prompt, rubric=rubric)
-    
-# class KernelMultiTurnEnv(MultiTurnEnv):
-#     def __init__(self, dataset, max_turns):
-#         rubric = Rubric(funcs=[reward_func], weights=[1.0])
-#         system_prompt = "You are a kernel expert"
-#         super().__init__(dataset=dataset, system_prompt=system_prompt, rubric=rubric, max_turns=max_turns)
-    
-#     def env_response(self, messages, state, **kwargs):
-#         # eval logic to parse response and run kernel
-#         pass
-
-#     def is_completed(self, messages, state, **kwargs):
-#         return state.get("completed", False) or state.get("attempts", 0) >= self.max_turns
-    
-#     def score_rollout(self, rollout, **kwargs):
-#         pass
-    
+    train(config, vf_env)
 
 
-# # train.py
+        
 
-# model, tokenizer = vf.get_model_and_tokenizer(model_name)
-# trainer = vf.GRPOTrainer(
-#     model=model,
-#     processing_class=tokenizer,
-#     env=vf_env,
-#     args=vf.grpo_defaults(run_name="...")
-# )
-# trainer.train()
+if __name__ == "__main__":
+    configs = parse_args(rl_training=True)
+    main(configs)

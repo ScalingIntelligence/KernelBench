@@ -8,7 +8,8 @@ from src.utils import read_file
 from src.eval import KernelExecResult
 
 from configs import TestTimeScalingConfig
-from utils import WorkArgs, fetch_kernel_from_disk, fetch_eval_result_from_disk, get_evaluation_results_for_problem
+from utils import WorkArgs
+from run_manager import fetch_kernel_from_disk, fetch_eval_results_for_problem, fetch_eval_result_from_disk
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -314,7 +315,7 @@ def generate_prompt_metr(work: WorkArgs, config: TestTimeScalingConfig, ref_arch
     
     # Fetch evaluation results
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
-    eval_results = get_evaluation_results_for_problem(work.problem_id, eval_file_path)
+    eval_results = fetch_eval_results_for_problem(work.level, work.problem_id, eval_file_path)
 
     ref_kernel_result = eval_results["0"]
     assert ref_kernel_result["correctness"], "Reference kernel is not correct"
@@ -338,7 +339,7 @@ def generate_prompt_stanford(work: WorkArgs, config: TestTimeScalingConfig, ref_
         return prompt_main(ref_arch_src, config)
     
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
-    eval_results = get_evaluation_results_for_problem(work.problem_id, eval_file_path)
+    eval_results = fetch_eval_results_for_problem(work.level, work.problem_id, eval_file_path)
     # Get best kernel(s) from last round
     last_iteration_start_id = (work.sample_id // config.num_parallel - 1) * config.num_parallel
     last_step_sample_id_range = range(last_iteration_start_id, last_iteration_start_id + config.num_parallel)

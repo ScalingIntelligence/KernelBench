@@ -77,7 +77,7 @@ class TestTimeScalingConfig(Config):
         return f"TestTimeScalingConfig({self.to_dict()})"
     
 
-def parse_args():
+def parse_args(rl_training=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("--_tags", type=str, default="test")
 
@@ -85,26 +85,29 @@ def parse_args():
     parser.add_argument("--runs_dir", type=str, default=os.path.join(REPO_TOP_DIR, "runs"))
 
     # Methods
-    parser.add_argument("--method", type=str, default="base")
-    parser.add_argument("--prompt", type=str, default="regular")
-    parser.add_argument("--num_parallel", type=int, default=1)
-    parser.add_argument("--num_samples", type=int, default=1)
-    parser.add_argument("--num_iterations", type=int, default=1)
-    parser.add_argument("--num_best", type=int, default=1)
+    if not rl_training:
+        parser.add_argument("--method", type=str, default="base")
+        parser.add_argument("--prompt", type=str, default="regular")
+        parser.add_argument("--num_parallel", type=int, default=1)
+        parser.add_argument("--num_samples", type=int, default=1)
+        parser.add_argument("--num_iterations", type=int, default=1)
+        parser.add_argument("--num_best", type=int, default=1)
 
     # Dataset
     parser.add_argument("--dataset_src", type=str, default="local")
-    parser.add_argument("--dataset_name", type=str, default="ScalingIntelligence/KernelBench")
-    parser.add_argument("--level", type=int, required=True)
-    parser.add_argument("--subset", type=str, default="(None, None)")
+    # parser.add_argument("--dataset_name", type=str, default="ScalingIntelligence/KernelBench")
+    if not rl_training:
+        parser.add_argument("--level", type=int, required=True)
+        parser.add_argument("--subset", type=str, default="(None, None)")
 
     # Inference Server
-    parser.add_argument("--server_type", type=str, default="openai")
     parser.add_argument("--model_name", type=str, default="gpt-4o-mini")
-    parser.add_argument("--max_tokens", type=int, default=4096)
-    parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--num_workers", type=int, default=1)
-    parser.add_argument("--api_query_interval", type=float, default=0.0)
+    if not rl_training:
+        parser.add_argument("--server_type", type=str, default="openai")
+        parser.add_argument("--max_tokens", type=int, default=4096)
+        parser.add_argument("--temperature", type=float, default=1.0)
+        parser.add_argument("--num_workers", type=int, default=1)
+        parser.add_argument("--api_query_interval", type=float, default=0.0)
 
     # Eval
     parser.add_argument("--eval_mode", type=str, default="local")
@@ -131,8 +134,9 @@ def parse_args():
     # Convert to same format as TestTimeScalingConfig.
     # TODO: this is hack for now, eventually migrate fully to argparse for wandb compatibility
     args.gpu_arch = args.gpu_arch.split(",")
-    if "None" not in args.subset:
-        args.run_name = args.run_name + "_" + args.subset
+    
     range_str = args.subset.strip("()").split(",")
+    if range_str[0] != "None":
+        args.run_name = args.run_name + "_" + range_str[0] + "_" + range_str[1]
     args.subset = (None, None) if range_str[0] == "None" else (int(range_str[0]), int(range_str[1]))
     return args

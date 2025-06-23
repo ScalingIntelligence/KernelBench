@@ -3,38 +3,47 @@ import torch
 import wandb
 import json
 import time
-from argparse import Namespace 
 from tqdm import tqdm
 import multiprocessing as mp
 import yaml
+from dataclasses import dataclass
 
-from src.dataset import construct_kernelbench_dataset
 from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, eval_reference_kernel, KernelExecResult, check_metadata_serializable_all_types
 
-from configs import TestTimeScalingConfig, parse_args
-from utils import WorkArgs, EvaluationWorkArgs, fetch_ref_arch_from_problem_id, fetch_kernel_from_disk, check_if_eval_exists_local
+from configs import parse_args
+from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
+from utils import WorkArgs
+from run_manager import fetch_kernel_from_disk, check_if_eval_exists_local
+
 from src.utils import set_gpu_arch
 
+@dataclass
+class EvaluationWorkArgs:
+    level: int
+    problem_id: int
+    sample_id: int
+    device: torch.device
 
-def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScalingConfig, dataset, run_dir: str) -> KernelExecResult | None:
+
+def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str) -> KernelExecResult | None:
     """
     Evaluate a single sample on a single GPU
     """
-    problem_id, sample_id, device = (
+    level, problem_id, sample_id, device = (
+        work_args.level,
         work_args.problem_id,
         work_args.sample_id,
         work_args.device,
     )
     # Fetch reference architecture from problem directory
-    ref_arch_src, ref_arch_name = fetch_ref_arch_from_problem_id(dataset, problem_id, configs.dataset_src)
+    ref_arch_src, ref_arch_name = fetch_ref_arch_from_level_problem_id(level, problem_id, configs.dataset_src)
 
     # Fetch kernel from disk
-    kernel_src, kernel_name = fetch_kernel_from_disk(run_dir, configs.level, problem_id, sample_id)
-
+    kernel_src, kernel_name = fetch_kernel_from_disk(run_dir, level, problem_id, sample_id)
     assert kernel_src is not None, f"Kernel not found for problem {problem_id} sample {sample_id}"
 
-    build_dir = os.path.join(configs.kernel_eval_build_dir, configs.run_name, f"{problem_id}", f"{sample_id}")
+    build_dir = os.path.join(configs.kernel_eval_build_dir, configs.run_name, f"level_{level}", f"{problem_id}", f"{sample_id}")
 
     try: 
         if configs.method == "METR" and sample_id == 0:
@@ -83,7 +92,7 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs: TestTimeScali
             return eval_result
 
 
-def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: KernelExecResult, eval_file_path: str):
+def add_to_eval_results_file(level: int, problem_id: int, sample_id: int, eval_result: KernelExecResult, eval_file_path: str):
     """
     Add evaluation result to eval results file
     TODO: migrate database support
@@ -96,10 +105,13 @@ def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: Kerne
         eval_results = {}
     
     # Add new result
-    if str(problem_id) not in eval_results:
-        eval_results[str(problem_id)] = {}
+    if str(level) not in eval_results:
+        eval_results[str(level)] = {}
+
+    if str(problem_id) not in eval_results[str(level)]:
+        eval_results[str(level)][str(problem_id)] = {}
     
-    eval_results[str(problem_id)][str(sample_id)] = {
+    eval_results[str(level)][str(problem_id)][str(sample_id)] = {
         'problem_id': problem_id,
         'sample_id': sample_id,
         'compiled': eval_result.compiled,
@@ -119,8 +131,7 @@ def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: Kerne
 
 def batch_eval(
     total_work: list[WorkArgs],
-    config: TestTimeScalingConfig,
-    dataset,
+    config: dict,
     run_dir: str,
     eval_file_path: str,
 ):
@@ -129,11 +140,11 @@ def batch_eval(
     We put in time out for each batch, consider trying again with larger time out if it didn't finish building.
     Cache directory is removed if evaluation times out or fails
     """
-    total_work = [work for work in total_work if not check_if_eval_exists_local(work.problem_id, work.sample_id, eval_file_path)]
+    total_work = [work for work in total_work if not check_if_eval_exists_local(work.level, work.problem_id, work.sample_id, eval_file_path)]
 
     # Build Cache on CPU as that is faster
     if config.build_cache_with_cpu:
-        compilation_results = batch_compile([(arg.problem_id, arg.sample_id) for arg in total_work], vars(config))
+        compilation_results = batch_compile([(arg.level, arg.problem_id, arg.sample_id) for arg in total_work], vars(config))
 
     # construct a list of work args
     batch_size = config.num_gpu_devices
@@ -153,12 +164,12 @@ def batch_eval(
                 work_args = [
                     (
                         EvaluationWorkArgs(
+                            level=work_arg.level,
                             problem_id=work_arg.problem_id,
                             sample_id=work_arg.sample_id,
                             device=torch.device(f"cuda:{i%batch_size}"),
                         ),
                         config,
-                        dataset,
                         run_dir,
                     )
                     for i, work_arg in enumerate(curr_work_batch)
@@ -177,32 +188,32 @@ def batch_eval(
                 batch_timeout = config.timeout
                 for i, async_result in enumerate(async_results):
                     work_arg = curr_work_batch[i]
-                    problem_id, sample_id = work_arg.problem_id, work_arg.sample_id
+                    level, problem_id, sample_id = work_arg.level, work_arg.problem_id, work_arg.sample_id
 
                     try:
                         elapsed_time = time.time() - start_time
                         remaining_time = max(0, batch_timeout - elapsed_time)
                         result = async_result.get(timeout=remaining_time)
-                        results.append((problem_id, sample_id, result))
+                        results.append((level, problem_id, sample_id, result))
                         
                     except mp.TimeoutError:
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
-                        results.append((problem_id, sample_id, None))
+                        results.append((level, problem_id, sample_id, None))
                     
                         remove_cache_dir(vars(config), problem_id, sample_id)
                     except Exception as e:
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
                         )
-                        results.append((problem_id, sample_id, None))
+                        results.append((level, problem_id, sample_id, None))
                         remove_cache_dir(vars(config), problem_id, sample_id)
 
                 end_time = time.time()
 
                 # current batch summary
-                for problem_id, sample_id, result in results:
+                for level, problem_id, sample_id, result in results:
                     print("-" * 128)
                     print(
                         f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_id}"
@@ -212,7 +223,7 @@ def batch_eval(
                     # add all the batch results here to avoid file race condition
                     # add to eval result if valid result
                     if result is not None:
-                        add_to_eval_results_file(problem_id, sample_id, result, eval_file_path)
+                        add_to_eval_results_file(level, problem_id, sample_id, result, eval_file_path)
 
                 if config.verbose:
                     print("-" * 128)
@@ -249,8 +260,8 @@ if __name__ == "__main__":
 
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
-    total_work = [WorkArgs(problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1)] # TODO: change accordingly
+    total_work = [WorkArgs(level=config.level, problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1)] # TODO: change accordingly
 
-    batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
+    batch_eval(total_work, config, run_dir, eval_file_path)
 
     

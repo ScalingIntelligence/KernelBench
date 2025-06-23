@@ -8,11 +8,11 @@ import wandb
 from dotenv import load_dotenv
 load_dotenv()
 
-from src.dataset import construct_kernelbench_dataset
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
-from configs import TestTimeScalingConfig, parse_args
-from utils import WorkArgs, fetch_ref_arch_from_problem_id
+from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
+from configs import parse_args
+from utils import WorkArgs
 from generation_utils import batch_generate
 from evaluation_utils import batch_eval
 
@@ -24,7 +24,7 @@ Test-time scaling approaches
 4. Stanford: NL idea gen + branching
 """
 
-def base(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+def base(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
     """
     Base approach
     """
@@ -33,18 +33,19 @@ def base(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
     for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
         workload.append(
             WorkArgs(
+                level=level,
                 problem_id=int(problem_id),
                 sample_id=0
             )
         )
     
-    batch_generate(workload, config, dataset, inference_server, run_dir)    
+    batch_generate(workload, config, inference_server, run_dir)    
     
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
-    batch_eval(workload, config, dataset, run_dir, eval_file_path)
+    batch_eval(workload, config, run_dir, eval_file_path)
 
 
-def best_of_n(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+def best_of_n(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
     """
     Best-of-N approach
     Generate num_samples for each problem independently
@@ -57,16 +58,17 @@ def best_of_n(config: TestTimeScalingConfig, dataset, problem_id_range: range, i
         for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
             workload.append(
                 WorkArgs(
+                    level=level,
                     problem_id=int(problem_id),
                     sample_id=sample_id
                 )
             )
         
-        batch_generate(workload, config, dataset, inference_server, run_dir)     
-        batch_eval(workload, config, dataset, run_dir, eval_file_path)
+        batch_generate(workload, config, inference_server, run_dir)     
+        batch_eval(workload, config, run_dir, eval_file_path)
 
 
-def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+def iterative_refinement(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
     """
     Iterative refinement approach
     """
@@ -82,16 +84,17 @@ def iterative_refinement(config: TestTimeScalingConfig, dataset, problem_id_rang
             for sample_id in range(config.num_parallel):
                 workload.append(
                     WorkArgs(
+                        level=level,
                         problem_id=int(problem_id),
                         sample_id=sample_id + iteration * config.num_parallel
                     )
                 )
 
-        batch_generate(workload, config, dataset, inference_server, run_dir)
-        batch_eval(workload, config, dataset, run_dir, eval_file_path)
+        batch_generate(workload, config, inference_server, run_dir)
+        batch_eval(workload, config, run_dir, eval_file_path)
 
 
-def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+def metr(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
     """
     METR approach
     1. Generate 8 samples in parallel
@@ -104,8 +107,8 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
     # 0. Add the reference architecture as the first sample
     print(f"[METR] Adding reference architecture as the first sample")
     for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
-        ref_arch_src, _ = fetch_ref_arch_from_problem_id(dataset, problem_id, config.dataset_src)
-        kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{problem_id}_sample_{0}_kernel.py")
+        ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem_id, config.dataset_src)
+        kernel_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{0}_kernel.py")
         with open(kernel_path, "w") as f:
             f.write(ref_arch_src)
 
@@ -113,12 +116,13 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
     for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
         workload.append(
             WorkArgs(
+                level=level,
                 problem_id=int(problem_id),
                 sample_id=0
             )
         )
     
-    batch_eval(workload, config, dataset, run_dir, eval_file_path) 
+    batch_eval(workload, config, run_dir, eval_file_path) 
 
     # 1. Generate 8 samples in parallel
     print(f"[METR] Generating {config.num_parallel} samples in parallel")
@@ -127,13 +131,14 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
         for sample_id in range(1, config.num_parallel + 1):
             workload.append(
                 WorkArgs(
+                    level=level,
                     problem_id=int(problem_id),
                     sample_id=sample_id
                 )
             )
     
-    batch_generate(workload, config, dataset, inference_server, run_dir)
-    batch_eval(workload, config, dataset, run_dir, eval_file_path)
+    batch_generate(workload, config, inference_server, run_dir)
+    batch_eval(workload, config, run_dir, eval_file_path)
 
     # 2. Continue generating samples until we reach num_samples
     for sample_id in range(config.num_parallel + 1, config.num_samples + 1):
@@ -142,16 +147,17 @@ def metr(config: TestTimeScalingConfig, dataset, problem_id_range: range, infere
         for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
             workload.append(
                 WorkArgs(
+                    level=level,
                     problem_id=int(problem_id),
                     sample_id=sample_id
                 )
             )
             
-        batch_generate(workload, config, dataset, inference_server, run_dir)
-        batch_eval(workload, config, dataset, run_dir, eval_file_path)
+        batch_generate(workload, config, inference_server, run_dir)
+        batch_eval(workload, config, run_dir, eval_file_path)
 
 
-def stanford(config: TestTimeScalingConfig, dataset, problem_id_range: range, inference_server: callable, run_dir: str):
+def stanford(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
     """
     Stanford approach: Beam Search variant
     """
@@ -165,20 +171,21 @@ def stanford(config: TestTimeScalingConfig, dataset, problem_id_range: range, in
             for sample_id in range(config.num_parallel):
                 workload.append(
                     WorkArgs(
+                        level=level,
                         problem_id=int(problem_id),
                         sample_id=sample_id + iteration * config.num_parallel
                     )
                 )
         
-        batch_generate(workload, config, dataset, inference_server, run_dir)
-        batch_eval(workload, config, dataset, run_dir, eval_file_path)
+        batch_generate(workload, config, inference_server, run_dir)
+        batch_eval(workload, config, run_dir, eval_file_path)
 
 
 def main(config):
     """
     Test-Time Scaling for Particular Level
     """
-    tags = config._tags.split(",")
+    tags = ["test-time-scaling"] + config._tags.split(",")
     tags.extend([config.run_name, config.method, config.prompt, str(config.level), config.model_name])
     wandb.init(
         project="KernelBench",
@@ -232,21 +239,19 @@ def main(config):
                                                         max_tokens=config.max_tokens,
                                                         verbose=config.verbose)
     
-    # at this point, we have: curr_level_dataset, problem_id_range, inference_server, run_dir
-
 
     # Run the test-time scaling approach
     match config.method:
         case "base":
-            base(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+            base(config, config.level, problem_id_range, inference_server, run_dir)
         case "best-of-N":
-            best_of_n(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+            best_of_n(config, config.level, problem_id_range, inference_server, run_dir)
         case "iterative refinement":
-            iterative_refinement(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+            iterative_refinement(config, config.level, problem_id_range, inference_server, run_dir)
         case "METR":
-            metr(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+            metr(config, config.level, problem_id_range, inference_server, run_dir)
         case "Stanford":
-            stanford(config, curr_level_dataset, problem_id_range, inference_server, run_dir)
+            stanford(config, config.level, problem_id_range, inference_server, run_dir)
         case _:
             raise ValueError(f"Invalid method: {config.method}")
  
