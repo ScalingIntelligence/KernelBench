@@ -11,7 +11,7 @@ from src.dataset import construct_kernelbench_dataset
 from configs import TestTimeScalingConfig
 
 
-BASELINES = ["torch", "torch_compile_inductor_default", "torch_compile_inductor_reduce-overhead", "torch_compile_inductor_max-autotune", "torch_compile_inductor_max-autotune-no-cudagraphs"]
+BASELINES = ["torch"] # , "torch_compile_inductor_default", "torch_compile_inductor_reduce-overhead", "torch_compile_inductor_max-autotune", "torch_compile_inductor_max-autotune-no-cudagraphs"]
 
 
 def compute_correctness_metrics(eval_results):
@@ -50,9 +50,23 @@ def compute_efficiency_metrics(eval_results, baseline_results):
     """
     expects eval_results and baseline_results to be dict (problem_id -> exec_result)
     """
-    is_correct = np.array([entry["correctness"] for entry in eval_results.values()])
-    baseline_speed = np.array([entry["mean"] for entry in baseline_results.values()])
-    actual_speed = np.array([entry["runtime"] for entry in eval_results.values()])
+    # Filter out problems where baseline_results is empty
+    eval = []
+    baseline = []
+    for k, v in baseline_results.items():
+        if v is None: 
+            print(f"Skipping {k} in baseline_results")
+            continue
+        problem_number = k.split("_")[0]
+        if problem_number not in eval_results: 
+            print(f"Problem {problem_number} not in eval_results")
+            continue
+        eval.append(eval_results[problem_number])
+        baseline.append(v)
+
+    is_correct = np.array([entry["correctness"] for entry in eval])
+    baseline_speed = np.array([entry["mean"] for entry in baseline])
+    actual_speed = np.array([entry["runtime"] for entry in eval])
     n = len(is_correct)
 
     assert len(baseline_speed) == n, "Baseline speedup values do not match the number of eval results"
@@ -87,7 +101,7 @@ def compute_efficiency_metrics_all_baselines(config: TestTimeScalingConfig, hard
             comp_metrics = compute_efficiency_metrics(eval_results, baseline_results)
             results[baseline] = comp_metrics
         except Exception as e:
-            # print(f"Error computing efficiency metrics for {baseline}: {e}")
+            print(f"Error computing efficiency metrics for {baseline}: {e}")
             continue
 
     return results
