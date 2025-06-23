@@ -1,9 +1,0 @@
-[project]
-name = "kernel-bench"
-version = "0.1.0"
-description = "KernelBench"
-authors = [{ name = "James Kim", email = "gyeongwk@andrew.cmu.edu" }]
-requires-python = ">=3.8"
-dependencies = [
-    "verifiers[all]>=0.0.0",
-]

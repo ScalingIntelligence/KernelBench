@@ -5,6 +5,7 @@ import multiprocessing as mp
 import wandb
 import pandas as pd
 import json
+from datasets import Dataset
 
 import verifiers as vf
 
@@ -37,7 +38,7 @@ def construct_dataset(config, train=True):
         answer = ref_arch_src
         qa_dataset.append((question, answer))
     
-    df = pd.DataFrame(qa_dataset, columns=["question", "answer"])
+    df = Dataset.from_pandas(pd.DataFrame(qa_dataset, columns=["question", "answer"]))
     return df
 
 def extract_metadata_from_prompt(prompt):
@@ -50,13 +51,11 @@ def extract_metadata_from_prompt(prompt):
 def train(config, vf_env):
     model, tokenizer = vf.get_model_and_tokenizer(config.model_name)
 
-    config = vf.GRPOConfig(
+    grpo_config = vf.GRPOConfig(
         run_name=config.run_name,
         output_dir=os.path.join(config.runs_dir, config.run_name, "checkpoints"),
         learning_rate=1e-5,
-        batch_size=16,
-        group_size=4,
-        num_epochs=3,
+        max_prompt_length=None,
         eval_steps=100,
         save_steps=50,
         logging_steps=10,
@@ -65,9 +64,9 @@ def train(config, vf_env):
     )
     trainer = vf.GRPOTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         env=vf_env,
-        config=config,
+        args=grpo_config,
         eval_dataset=construct_dataset(config, train=False)
     )
     trainer.train()
@@ -159,6 +158,5 @@ def main(config):
         
 
 if __name__ == "__main__":
-    print(vf.__dict__)
     configs = parse_args(rl_training=True)
     main(configs)
