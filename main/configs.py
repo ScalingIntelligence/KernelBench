@@ -40,6 +40,8 @@ def parse_args(rl_training=False):
     parser.add_argument("--eval_mode", type=str, default="local")
     parser.add_argument("--gpu_arch", type=str, default="Ampere")
     parser.add_argument("--num_gpu_devices", type=int, default=1)
+    if rl_training:
+        parser.add_argument("--eval_device", type=str, default="cuda:1")
 
     parser.add_argument("--build_cache_with_cpu", type=bool, default=True)
     parser.add_argument("--num_cpu_workers", type=int, default=1)
@@ -61,8 +63,9 @@ def parse_args(rl_training=False):
     # Post processing
     args.gpu_arch = args.gpu_arch.split(",")
     
-    range_str = args.subset.strip("()").split(",")
-    if range_str[0] != "None":
-        args.run_name = args.run_name + "_" + range_str[0] + "_" + range_str[1]
-    args.subset = (None, None) if range_str[0] == "None" else (int(range_str[0]), int(range_str[1]))
+    if not rl_training:
+        range_str = args.subset.strip("()").split(",")
+        if range_str[0] != "None":
+            args.run_name = args.run_name + "_" + range_str[0] + "_" + range_str[1]
+        args.subset = (None, None) if range_str[0] == "None" else (int(range_str[0]), int(range_str[1]))
     return args

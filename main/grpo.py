@@ -4,26 +4,24 @@ import yaml
 import multiprocessing as mp
 import wandb
 import pandas as pd
+import json
 
 import verifiers as vf
-from verifiers.envs import SingleTurnEnv, MultiTurnEnv
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import Rubric
 
-from utils import WorkArgs, fetch_ref_arch_from_level_problem_id
 from configs import parse_args
 from prompts import prompt_base
-from evaluation_utils import evaluate_single_sample
+from evaluation_utils import evaluate_single_sample, EvaluationWorkArgs
+from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
+from run_manager import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
-from src.dataset import construct_kernelbench_dataset
-from src.utils import set_gpu_arch, create_inference_server_from_presets
+from src.utils import set_gpu_arch
 
 
 def get_train_dataset():
-    return construct_kernelbench_dataset(1) # for now use level 1 for training
+    return [(1, problem) for problem in range(1, 11)] # for now use level 1 for training
 
 def get_eval_dataset():
-    return construct_kernelbench_dataset(2) # for now use level 2 for evaluation
+    return [(2, problem) for problem in range(1, 11)] # for now use level 2 for evaluation
  
 
 def construct_dataset(config, train=True):
@@ -35,31 +33,51 @@ def construct_dataset(config, train=True):
     qa_dataset = []
     for (level, problem) in dataset:
         ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, config.dataset_src)
-        question = prompt_base(ref_arch_src)
+        question = f"Level {level} Problem {problem}:\n" + prompt_base(ref_arch_src)
         answer = ref_arch_src
         qa_dataset.append((question, answer))
     
     df = pd.DataFrame(qa_dataset, columns=["question", "answer"])
     return df
 
+def extract_metadata_from_prompt(prompt):
+    level = int(prompt.split("Level ")[1].split("Problem ")[0].strip())
+    problem = int(prompt.split("Problem ")[1].split(":")[0].strip())
+    return level, problem
+
 
 
 def train(config, vf_env):
     model, tokenizer = vf.get_model_and_tokenizer(config.model_name)
+
+    config = vf.GRPOConfig(
+        run_name=config.run_name,
+        output_dir=os.path.join(config.runs_dir, config.run_name, "checkpoints"),
+        learning_rate=1e-5,
+        batch_size=16,
+        group_size=4,
+        num_epochs=3,
+        eval_steps=100,
+        save_steps=50,
+        logging_steps=10,
+        gradient_checkpointing=True,
+        report_to="wandb"
+    )
     trainer = vf.GRPOTrainer(
         model=model,
-        processing_class=tokenizer,
+        tokenizer=tokenizer,
         env=vf_env,
-        args=vf.grpo_defaults(run_name=config.run_name)
+        config=config,
+        eval_dataset=construct_dataset(config, train=False)
     )
     trainer.train()
 
+    trainer.save_model(os.path.join(config.runs_dir, config.run_name))
 
-def eval(config, vf_env):
-    inference_server = create_inference_server_from_presets(server_type="huggingface", model_name=config.model_name, max_tokens=config.max_tokens, temperature=config.temperature, num_workers=config.num_workers, api_query_interval=config.api_query_interval)
-    results = vf_env.evaluate(inference_server, config.model_name, num_samples=config.num_samples)
-    print(results)
-    return results
+    eval_results = trainer.evaluate()
+    print(eval_results)
+    with open(os.path.join(config.runs_dir, config.run_name, "rl_eval_results.json"), "w") as f:
+        json.dump(eval_results, f)
 
 
 def main(config):
@@ -78,7 +96,6 @@ def main(config):
         raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
  
     set_gpu_arch(config.gpu_arch)
-    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method("spawn")
@@ -94,21 +111,35 @@ def main(config):
         yaml.dump(vars(config), f)
  
     # Evaluation
+    def reward_from_exec_result(level, problem, exec_result):
+        if exec_result.is_correct:
+            baseline_results = fetch_baseline_results(level, problem, config.hardware)
+            speedup = baseline_results["mean"] / exec_result.runtime
+            return 0.3 + speedup
+        else:
+            return 0.0
+
+
     def reward_func(prompt, completion, answer, **kwargs):
+        level, problem = extract_metadata_from_prompt(prompt)
+        sample_id = find_highest_sample_id(level, problem, run_dir) + 1
+
+        write_kernel_to_disk(run_dir, level, problem, sample_id, completion)
+
         exec_result = evaluate_single_sample(
-            work_args=WorkArgs(level=config.level, problem_id=1, sample_id=0),
+            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=config.eval_device),
             configs=config,
             run_dir=run_dir
         )
-        return 1.0
+        return reward_from_exec_result(level, problem, exec_result)
 
-    kernel_rubric = Rubric(funcs=[reward_func], weights=[1.0]) 
+    kernel_rubric = vf.Rubric(funcs=[reward_func], weights=[1.0]) 
     vf_env = vf.SingleTurnEnv(dataset=dataset, system_prompt="You are a kernel expert", rubric=kernel_rubric)
 
     # TODO: add multi-turn env
-    class KernelMultiTurnEnv(MultiTurnEnv):
+    class KernelMultiTurnEnv(vf.MultiTurnEnv):
         def __init__(self, dataset, max_turns):
-            rubric = Rubric(funcs=[reward_func], weights=[1.0])
+            rubric = kernel_rubric
             system_prompt = "You are a kernel expert"
             super().__init__(dataset=dataset, system_prompt=system_prompt, rubric=rubric, max_turns=max_turns)
         
@@ -128,5 +159,6 @@ def main(config):
         
 
 if __name__ == "__main__":
+    print(vf.__dict__)
     configs = parse_args(rl_training=True)
     main(configs)
