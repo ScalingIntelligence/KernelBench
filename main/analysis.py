@@ -42,7 +42,7 @@ def plot_failure_modes(metrics_by_level, name):
     # Create rectangle with different colored sections
     colors = ['lightcoral', 'lightsalmon', 'wheat', 'plum', 'yellowgreen']
     
-    y_offset = 0.7
+    y_offset = 0.8
     for level, percentages in percentages_by_level.items():
         # Draw the main rectangle (wider and shorter)
         rect = plt.Rectangle((0, y_offset), 1, 0.2, facecolor='lightgray', edgecolor='black', linewidth=1)
@@ -69,7 +69,7 @@ def plot_failure_modes(metrics_by_level, name):
             
             current_x += width
 
-        y_offset -= 0.3
+        y_offset -= 0.25
     
     # Set axis properties
     ax.set_xlim(-0.05, 1.05)
@@ -208,7 +208,7 @@ def main():
         print(f'Analyzing {name} across levels')
         metrics_by_level_best = {}
         metrics_by_level_by_sample = {}
-        for level in [1, 2, 3]:
+        for level in [1, 2, 3, 5]:
             run_dir = os.path.join(RUNS_DIR, args.method + f"_level{level}")
             if not os.path.exists(os.path.join(run_dir, "metrics.json")):
                 print(f'Run directory {run_dir} does not exist')

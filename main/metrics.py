@@ -54,11 +54,11 @@ def compute_efficiency_metrics(eval_results, baseline_results):
     baseline = []
     for k, v in baseline_results.items():
         if v is None: 
-            print(f"Skipping {k} in baseline_results")
+            # print(f"Skipping {k} in baseline_results")
             continue
         problem_number = k.split("_")[0]
         if problem_number not in eval_results: 
-            print(f"Problem {problem_number} not in eval_results")
+            # print(f"Problem {problem_number} not in eval_results")
             continue
         eval.append(eval_results[problem_number])
         baseline.append(v)
@@ -208,10 +208,12 @@ def compute_metrics_iterative_refinement(config, hardware: str, eval_results: di
 
 
 def compute_metrics_metr(config, hardware: str, eval_results: dict) -> dict:
-    for i in range(config["num_samples"]):
+    for i in range(config["num_samples"]-1):
         for pid, prob_res in eval_results.items():
             if str(i+1) in prob_res:
                 eval_results[pid][str(i)] = eval_results[pid][str(i+1)]
+            else:
+                eval_results[pid][str(i)] = dummy_result
     return increasing_best_solution_metrics(config, hardware, eval_results, config["num_samples"])
 
 
