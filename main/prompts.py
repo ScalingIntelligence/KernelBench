@@ -7,7 +7,6 @@ import random
 from src.utils import read_file
 from src.eval import KernelExecResult
 
-from configs import TestTimeScalingConfig
 from utils import WorkArgs
 from run_manager import fetch_kernel_from_disk, fetch_eval_results_for_problem, fetch_eval_result_from_disk
 
@@ -182,7 +181,7 @@ Here is an example architecture:\n\n
     return prompt
 
 
-def prompt_main(ref_arch_src: str, config: TestTimeScalingConfig) -> str:
+def prompt_main(ref_arch_src: str, config) -> str:
     match config.prompt:
         case "regular":
             return prompt_base(ref_arch_src)
@@ -217,7 +216,7 @@ Here is your wall clock time: {exec_result["runtime"]} milliseconds.
     return evaluation_feedback
 
 
-def prompt_refinement_from_last_kernel(ref_arch_src: str, config: TestTimeScalingConfig, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
+def prompt_refinement_from_last_kernel(ref_arch_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
     prompt = prompt_main(ref_arch_src, config)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
@@ -254,7 +253,7 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     return prompt
 
 
-def prompt_idea_generation(ref_arc_src: str, config: TestTimeScalingConfig, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
+def prompt_idea_generation(ref_arc_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
     prompt = prompt_main(ref_arc_src, config)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
@@ -270,7 +269,7 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     prompt += "Generate an idea for how to improve the kernel. Please do not output code yet, just the idea."
     return prompt
 
-def prompt_refinement_from_idea(ref_arc_src: str, config: TestTimeScalingConfig, last_kernel_src: str, last_exec_result: KernelExecResult, idea: str) -> str:
+def prompt_refinement_from_idea(ref_arc_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult, idea: str) -> str:
     prompt = prompt_main(ref_arc_src, config)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
@@ -292,7 +291,7 @@ Here is your idea for how to improve the kernel:
     return prompt
 
 
-def generate_prompt_iterative_refinement(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
     if work.sample_id < config.num_parallel:
         return prompt_main(ref_arch_src, config)
     
@@ -309,7 +308,7 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config: TestTimeScaling
     return prompt
 
 
-def generate_prompt_metr(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt_metr(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
     if work.sample_id <= config.num_parallel:
         return prompt_main(ref_arch_src, config)
     
@@ -334,7 +333,7 @@ def generate_prompt_metr(work: WorkArgs, config: TestTimeScalingConfig, ref_arch
     return prompt_refinement_from_last_kernel(ref_arch_src, config, sampled_kernel_src, sampled_kernel_eval_result)
 
 
-def generate_prompt_stanford(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
     if work.sample_id < config.num_parallel:
         return prompt_main(ref_arch_src, config)
     
@@ -364,7 +363,7 @@ def generate_prompt_stanford(work: WorkArgs, config: TestTimeScalingConfig, ref_
     return prompt
 
 
-def generate_prompt(work: WorkArgs, config: TestTimeScalingConfig, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
     match config.method:
         case "base":
             return prompt_main(ref_arch_src, config)

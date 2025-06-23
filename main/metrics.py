@@ -8,7 +8,6 @@ from tabulate import tabulate
 from src.score import *
 from src.utils import read_file
 from src.dataset import construct_kernelbench_dataset
-from configs import TestTimeScalingConfig
 
 
 BASELINES = ["torch"] # , "torch_compile_inductor_default", "torch_compile_inductor_reduce-overhead", "torch_compile_inductor_max-autotune", "torch_compile_inductor_max-autotune-no-cudagraphs"]
@@ -86,7 +85,7 @@ def compute_efficiency_metrics(eval_results, baseline_results):
         "fast_p_results": results
     }
 
-def compute_efficiency_metrics_all_baselines(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+def compute_efficiency_metrics_all_baselines(config, hardware: str, eval_results: dict) -> dict:
     results = {}
     for baseline in BASELINES:
         try:
@@ -145,7 +144,7 @@ def compute_all_metrics(config, hardware, eval_results):
     return {"correctness": correctness_metrics, "speedups": efficiency_metrics}
 
 
-def compute_metrics_base(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_base(config, hardware: str, eval_results: dict) -> dict:
     eval_results = {k: v["0"] for k, v in eval_results.items()}
     return compute_all_metrics(config, hardware, eval_results)
 
@@ -160,7 +159,7 @@ dummy_result = {
 }
 
 
-def increasing_best_solution_metrics(config: TestTimeScalingConfig, hardware: str, eval_results: dict, num_steps) -> dict:
+def increasing_best_solution_metrics(config, hardware: str, eval_results: dict, num_steps) -> dict:
     best_by_step = {}
     best_by_step[0] = {k: v["0"] if "0" in v else dummy_result for k, v in eval_results.items()}
 
@@ -187,7 +186,7 @@ def increasing_best_solution_metrics(config: TestTimeScalingConfig, hardware: st
     return metrics
 
 
-def compute_metrics_best_of_n(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_best_of_n(config, hardware: str, eval_results: dict) -> dict:
     by_sample_results = {}
     for pid, prob_res in eval_results.items():
         for sid, sample_res in prob_res.items():
@@ -203,12 +202,12 @@ def compute_metrics_best_of_n(config: TestTimeScalingConfig, hardware: str, eval
     return metrics
 
 
-def compute_metrics_iterative_refinement(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_iterative_refinement(config, hardware: str, eval_results: dict) -> dict:
     assert config["num_parallel"] == 1, "Iterative refinement is only supported for 1 parallel run"
     return increasing_best_solution_metrics(config, hardware, eval_results, config["num_iterations"])
 
 
-def compute_metrics_metr(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_metr(config, hardware: str, eval_results: dict) -> dict:
     for i in range(config["num_samples"]):
         for pid, prob_res in eval_results.items():
             if str(i+1) in prob_res:
@@ -216,11 +215,11 @@ def compute_metrics_metr(config: TestTimeScalingConfig, hardware: str, eval_resu
     return increasing_best_solution_metrics(config, hardware, eval_results, config["num_samples"])
 
 
-def compute_metrics_stanford(config: TestTimeScalingConfig, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_stanford(config, hardware: str, eval_results: dict) -> dict:
     pass
 
 
-def compute_metrics(config: TestTimeScalingConfig, hardware: str, eval_file_path: str, run_dir: str) -> dict:
+def compute_metrics(config, hardware: str, eval_file_path: str, run_dir: str) -> dict:
     with open(eval_file_path, 'r') as f:
         eval_results = json.load(f)
 
