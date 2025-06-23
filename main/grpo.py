@@ -11,10 +11,11 @@ import verifiers as vf
 
 from configs import parse_args
 from prompts import prompt_base
-from evaluation_utils import evaluate_single_sample, EvaluationWorkArgs
+from evaluation_utils import evaluate_single_sample, EvaluationWorkArgs, add_to_eval_results_file
 from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
 from run_manager import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
+from src.eval import check_metadata_serializable_all_types
 from src.utils import set_gpu_arch, extract_last_code
 
 
@@ -46,10 +47,26 @@ def extract_metadata_from_prompt(prompt):
     problem = int(prompt.split("Problem ")[1].split(":")[0].strip())
     return level, problem
 
+def write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir):
+    eval_result_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_eval_result.json")
+    eval_result = {
+        'level': level,
+        'problem_id': problem,
+        'sample_id': sample_id,
+        'compiled': exec_result.compiled,
+        'correctness': exec_result.correctness,
+        'metadata': check_metadata_serializable_all_types(exec_result.metadata),
+        'runtime': exec_result.runtime,
+        'runtime_stats': exec_result.runtime_stats,
+    }
 
+    with open(eval_result_path, "w") as f:
+        json.dump(eval_result, f)
 
 def train(config, vf_env):
     model, tokenizer = vf.get_model_and_tokenizer(config.model_name)
+    model.to("cuda:0")
+    print(f"Model device: {model.device}")
 
     grpo_config = vf.GRPOConfig(
         run_name=config.run_name,
@@ -126,19 +143,64 @@ def main(config):
 
     def reward_func(prompt, completion, answer, **kwargs):
         prompt = prompt[1]["content"]
-        completion = completion[0]["content"]
-        kernel_src = extract_last_code(completion, ["python", "cpp"])
-        answer = answer[0]
         level, problem = extract_metadata_from_prompt(prompt)
         sample_id = find_highest_sample_id(run_dir, level, problem) + 1
 
+        if config.log_prompt:
+            prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
+            with open(prompt_path, "w") as f:
+                f.write(prompt)
+
+        completion = completion[0]["content"]
+        if config.log_response:
+            response_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_response.txt")
+            with open(response_path, "w") as f:
+                f.write(completion)
+ 
+        kernel_src = extract_last_code(completion, ["python", "cpp"])
+        answer = answer[0]
+
         write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
 
+        # return 1.0 # test for now
+
+        # Find available CUDA device
+        # available_devices = []
+        # for i in range(torch.cuda.device_count()):
+        #     try:
+        #         # Try to allocate a small tensor to check if device is available
+        #         torch.cuda.set_device(i)
+        #         test_tensor = torch.zeros(1, device=f'cuda:{i}')
+        #         del test_tensor
+        #         available_devices.append(i)
+        #     except (RuntimeError, torch.cuda.OutOfMemoryError):
+        #         continue
+    
+        # if not available_devices:
+        #     # Wait for a device to become available
+        #     print(f"Waiting for CUDA device to become available...")
+        #     while not available_devices:
+        #         for i in range(torch.cuda.device_count()):
+        #             try:
+        #                 torch.cuda.set_device(i)
+        #                 test_tensor = torch.zeros(1, device=f'cuda:{i}')
+        #                 del test_tensor
+        #                 available_devices.append(i)
+        #                 break
+        #             except (RuntimeError, torch.cuda.OutOfMemoryError):
+        #                 continue
+        #         if not available_devices:
+        #             time.sleep(1)  # Wait 1 second before checking again
+
+        # Use the first available device
+        eval_device = torch.device(f'cuda:3')
+
         exec_result = evaluate_single_sample(
-            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=config.eval_device),
+            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
             configs=config,
             run_dir=run_dir
         )
+        write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
         return reward_from_exec_result(level, problem, exec_result)
     
 

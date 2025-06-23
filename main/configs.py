@@ -28,9 +28,9 @@ def parse_args(rl_training=False):
         parser.add_argument("--subset", type=str, default="(None, None)")
 
     # Inference Server
-    parser.add_argument("--model_name", type=str, default="gpt-4o-mini")
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-0.5B-Instruct")
     if not rl_training:
-        parser.add_argument("--server_type", type=str, default="openai")
+        parser.add_argument("--server_type", type=str, default="vllm")
         parser.add_argument("--max_tokens", type=int, default=4096)
         parser.add_argument("--temperature", type=float, default=1.0)
         parser.add_argument("--num_workers", type=int, default=1)
@@ -41,9 +41,7 @@ def parse_args(rl_training=False):
     # Eval
     parser.add_argument("--eval_mode", type=str, default="local")
     parser.add_argument("--gpu_arch", type=str, default="Ampere")
-    if rl_training:
-        parser.add_argument("--eval_device", type=str, default="cuda:0")
-    else:
+    if not rl_training:
         parser.add_argument("--num_gpu_devices", type=int, default=1)
 
     parser.add_argument("--build_cache_with_cpu", type=bool, default=True)
