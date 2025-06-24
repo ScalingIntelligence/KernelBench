@@ -64,8 +64,9 @@ def write_eval_result_to_separate_file(level, problem, sample_id, exec_result, r
         json.dump(eval_result, f)
 
 def train(config, vf_env):
-    model, tokenizer = vf.get_model_and_tokenizer(config.model_name)
-    model.to("cuda:0")
+    model, tokenizer = vf.get_model_and_tokenizer(config.model_name, model_kwargs={
+        "torch_dtype": torch.bfloat16
+    })
     print(f"Model device: {model.device}")
 
     grpo_config = vf.GRPOConfig(

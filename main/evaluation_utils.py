@@ -200,14 +200,16 @@ def batch_eval(
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
-                        results.append((level, problem_id, sample_id, None))
+                        result = KernelExecResult(compiled=False, correctness=False, metadata={"other_error": "timeout"})
+                        results.append((level, problem_id, sample_id, result))
                     
                         remove_cache_dir(vars(config), level, problem_id, sample_id)
                     except Exception as e:
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
                         )
-                        results.append((level, problem_id, sample_id, None))
+                        result = KernelExecResult(compiled=False, correctness=False, metadata={"other_error": str(e)})
+                        results.append((level, problem_id, sample_id, result))
                         remove_cache_dir(vars(config), level, problem_id, sample_id)
 
                 end_time = time.time()
