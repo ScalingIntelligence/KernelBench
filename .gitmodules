@@ -1,0 +1,3 @@
+[submodule "verifiers_docs"]
+	path = verifiers_docs
+	url = git@github.com:willccbb/verifiers.git
