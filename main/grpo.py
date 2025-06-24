@@ -13,7 +13,7 @@ import verifiers as vf
 from configs import parse_args
 from prompts import prompt_base
 from evaluation_utils import evaluate_single_sample, EvaluationWorkArgs, add_to_eval_results_file
-from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
+from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2
 from run_manager import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
 from src.eval import check_metadata_serializable_all_types
@@ -21,10 +21,10 @@ from src.utils import set_gpu_arch, extract_last_code
 
 
 def get_train_dataset():
-    return [(1, problem) for problem in range(1, 11)] # for now use level 1 for training
+    return [(1, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 1 for training
 
 def get_eval_dataset():
-    return [(2, problem) for problem in range(1, 11)] # for now use level 2 for evaluation
+    return [(1, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 2 for evaluation
  
 
 def construct_dataset(config, train=True):
@@ -76,12 +76,13 @@ def train(config, vf_env):
         output_dir=os.path.join(config.runs_dir, config.run_name, "checkpoints"),
         learning_rate=1e-5,
         max_prompt_length=None,
-        eval_steps=100,
-        save_steps=50,
-        logging_steps=10,
+        eval_steps=10,
+        save_steps=5,
+        logging_steps=5,
         max_completion_length=10000,
         num_generations=4,
-        gradient_accumulation_steps=1,
+        gradient_accumulation_steps=4,
+        bf16_full_eval=True,
         num_batches_ahead=0,
         gradient_checkpointing=True,
         report_to="wandb",
@@ -204,7 +205,7 @@ def main(config):
         #             time.sleep(1)  # Wait 1 second before checking again
 
         # Use the first available device
-        eval_device = torch.device(f'cuda:1')
+        eval_device = torch.device(f'cuda:3')
 
         exec_result = evaluate_single_sample(
             work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
