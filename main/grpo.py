@@ -1,4 +1,5 @@
 import torch
+import datetime
 import os
 import yaml
 import multiprocessing as mp
@@ -68,20 +69,19 @@ def train(config, vf_env):
     model, tokenizer = vf.get_model_and_tokenizer(config.model_name, model_kwargs={
         "torch_dtype": torch.bfloat16
     })
-    model.to("cuda")
-    print(f"Model device: {model.device}")
 
     grpo_config = vf.GRPOConfig(
         run_name=config.run_name,
-        output_dir=os.path.join(config.runs_dir, config.run_name, "checkpoints"),
+        output_dir=os.path.join("/data/user_data/gyeongwk/grpo/", config.run_name, "checkpoints"),
         learning_rate=1e-5,
         max_prompt_length=None,
-        eval_steps=10,
-        save_steps=5,
-        logging_steps=5,
+        eval_steps=50,
+        save_steps=50,
+        logging_steps=10,
         max_completion_length=10000,
         num_generations=4,
         gradient_accumulation_steps=4,
+        per_device_train_batch_size=1,
         bf16_full_eval=True,
         num_batches_ahead=0,
         gradient_checkpointing=True,
@@ -95,13 +95,6 @@ def train(config, vf_env):
         env=vf_env,
         args=grpo_config,
         eval_dataset=construct_dataset(config, train=False),
-        peft_config=LoraConfig(
-            r=16,
-            lora_alpha=32,
-            lora_dropout=0.05,
-            bias="none",
-            task_type="CAUSAL_LM"
-        )
     )
     trainer.train()
 
@@ -130,9 +123,6 @@ def main(config):
  
     set_gpu_arch(config.gpu_arch)
 
-    if mp.get_start_method(allow_none=True) is None:
-        mp.set_start_method("spawn")
-
     # Construct dataset
     dataset = construct_dataset(config)
 
@@ -156,63 +146,36 @@ def main(config):
     def reward_func(prompt, completion, answer, **kwargs):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
-        sample_id = find_highest_sample_id(run_dir, level, problem) + 1
+        # sample_id = find_highest_sample_id(run_dir, level, problem) + 1
+        datetime_str = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
 
         if config.log_prompt:
-            prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
+            prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{datetime_str}_prompt.txt")
             with open(prompt_path, "w") as f:
                 f.write(prompt)
 
         completion = completion[0]["content"]
         if config.log_response:
-            response_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_response.txt")
+            response_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{datetime_str}_response.txt")
             with open(response_path, "w") as f:
                 f.write(completion)
  
         kernel_src = extract_last_code(completion, ["python", "cpp"])
+        kernel_name = f"level_{level}_problem_{problem}_sample_{datetime_str}"
         answer = answer[0]
 
-        write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
+        write_kernel_to_disk(run_dir, level, problem, datetime_str, kernel_src)
 
         # return 1.0 # test for now
 
-        # Find available CUDA device
-        # available_devices = []
-        # for i in range(torch.cuda.device_count()):
-        #     try:
-        #         # Try to allocate a small tensor to check if device is available
-        #         torch.cuda.set_device(i)
-        #         test_tensor = torch.zeros(1, device=f'cuda:{i}')
-        #         del test_tensor
-        #         available_devices.append(i)
-        #     except (RuntimeError, torch.cuda.OutOfMemoryError):
-        #         continue
-    
-        # if not available_devices:
-        #     # Wait for a device to become available
-        #     print(f"Waiting for CUDA device to become available...")
-        #     while not available_devices:
-        #         for i in range(torch.cuda.device_count()):
-        #             try:
-        #                 torch.cuda.set_device(i)
-        #                 test_tensor = torch.zeros(1, device=f'cuda:{i}')
-        #                 del test_tensor
-        #                 available_devices.append(i)
-        #                 break
-        #             except (RuntimeError, torch.cuda.OutOfMemoryError):
-        #                 continue
-        #         if not available_devices:
-        #             time.sleep(1)  # Wait 1 second before checking again
-
-        # Use the first available device
-        eval_device = torch.device(f'cuda:3')
+        eval_device = torch.device(f'cuda:2')
 
         exec_result = evaluate_single_sample(
-            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
+            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=datetime_str, device=eval_device, kernel_src=kernel_src, kernel_name=kernel_name),
             configs=config,
             run_dir=run_dir
         )
-        write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
+        write_eval_result_to_separate_file(level, problem, datetime_str, exec_result, run_dir)
         return reward_from_exec_result(level, problem, exec_result)
     
 

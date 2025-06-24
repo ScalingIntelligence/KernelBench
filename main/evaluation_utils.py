@@ -26,7 +26,7 @@ class EvaluationWorkArgs:
     device: torch.device
 
 
-def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str) -> KernelExecResult | None:
+def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
     """
     Evaluate a single sample on a single GPU
     """
@@ -40,7 +40,8 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str)
     ref_arch_src, ref_arch_name = fetch_ref_arch_from_level_problem_id(level, problem_id, configs.dataset_src)
 
     # Fetch kernel from disk
-    kernel_src, kernel_name = fetch_kernel_from_disk(run_dir, level, problem_id, sample_id)
+    if kernel_src is None:
+        kernel_src, kernel_name = fetch_kernel_from_disk(run_dir, level, problem_id, sample_id)
     assert kernel_src is not None, f"Kernel not found for problem {problem_id} sample {sample_id}"
 
     build_dir = os.path.join(configs.kernel_eval_build_dir, configs.run_name, f"level_{level}", f"{problem_id}", f"{sample_id}")
