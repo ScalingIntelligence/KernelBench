@@ -31,7 +31,7 @@ def find_highest_sample_id(run_dir: str, level: int, problem_id: int) -> int:
     """
     Find the highest sample ID for a given problem
     """
-    sample_ids = [int(f.split("_")[-2]) for f in os.listdir(run_dir) if f.startswith(f"level_{level}_problem_{problem_id}_sample_")]
+    sample_ids = [int(f.split("_")[-2]) for f in os.listdir(run_dir) if f.startswith(f"level_{level}_problem_{problem_id}_sample_") and f.endswith(".py")]
     return max(sample_ids, default=-1)
 
 

@@ -58,6 +58,7 @@ def parse_args(rl_training=False):
     parser.add_argument("--log_prompt", type=bool, default=True)
     parser.add_argument("--log_response", type=bool, default=True)
     parser.add_argument("--store_type", type=str, default="local")
+    parser.add_argument("--hardware", type=str, default="A6000_babel")
 
     args = parser.parse_args()
 

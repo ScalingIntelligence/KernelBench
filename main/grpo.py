@@ -6,6 +6,7 @@ import wandb
 import pandas as pd
 import json
 from datasets import Dataset
+from peft import LoraConfig, get_peft_model
 
 import verifiers as vf
 
@@ -67,6 +68,7 @@ def train(config, vf_env):
     model, tokenizer = vf.get_model_and_tokenizer(config.model_name, model_kwargs={
         "torch_dtype": torch.bfloat16
     })
+    model.to("cuda")
     print(f"Model device: {model.device}")
 
     grpo_config = vf.GRPOConfig(
@@ -79,6 +81,7 @@ def train(config, vf_env):
         logging_steps=10,
         max_completion_length=10000,
         num_generations=4,
+        gradient_accumulation_steps=1,
         num_batches_ahead=0,
         gradient_checkpointing=True,
         report_to="wandb",
@@ -90,7 +93,14 @@ def train(config, vf_env):
         processing_class=tokenizer,
         env=vf_env,
         args=grpo_config,
-        eval_dataset=construct_dataset(config, train=False)
+        eval_dataset=construct_dataset(config, train=False),
+        peft_config=LoraConfig(
+            r=16,
+            lora_alpha=32,
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM"
+        )
     )
     trainer.train()
 
@@ -194,7 +204,7 @@ def main(config):
         #             time.sleep(1)  # Wait 1 second before checking again
 
         # Use the first available device
-        eval_device = torch.device(f'cuda:3')
+        eval_device = torch.device(f'cuda:1')
 
         exec_result = evaluate_single_sample(
             work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
