@@ -87,7 +87,8 @@ def train(config, vf_env):
         gradient_checkpointing=True,
         report_to="wandb",
         vllm_server_host=config.host,
-        vllm_server_port=config.port
+        vllm_server_port=config.port,
+        max_concurrent=1 # this corresponds to number of GPUs used for eval
     )
     trainer = vf.GRPOTrainer(
         model=model,
@@ -171,9 +172,11 @@ def main(config):
         eval_device = torch.device(f'cuda:2')
 
         exec_result = evaluate_single_sample(
-            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=datetime_str, device=eval_device, kernel_src=kernel_src, kernel_name=kernel_name),
+            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=datetime_str, device=eval_device),
             configs=config,
-            run_dir=run_dir
+            run_dir=run_dir,
+            kernel_src=kernel_src, 
+            kernel_name=kernel_name
         )
         write_eval_result_to_separate_file(level, problem, datetime_str, exec_result, run_dir)
         return reward_from_exec_result(level, problem, exec_result)
