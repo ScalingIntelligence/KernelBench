@@ -27,12 +27,14 @@ def check_if_kernel_exists(run_dir: str, level: int, problem_id: int, sample_id:
     return os.path.exists(kernel_path) 
 
 
-def find_highest_sample_id(run_dir: str, level: int, problem_id: int) -> int:
+def find_highest_sample_id(run_dir: str, level: int, problem_id: int, thread_id: int, batch_size: int) -> int:
     """
     Find the highest sample ID for a given problem
     """
-    sample_ids = [int(f.split("_")[-2]) for f in os.listdir(run_dir) if f.startswith(f"level_{level}_problem_{problem_id}_sample_") and f.endswith(".py")]
-    return max(sample_ids, default=-1)
+    sample_id = thread_id
+    while check_if_kernel_exists(run_dir, level, problem_id, sample_id):
+        sample_id += batch_size
+    return sample_id
 
 
 def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id: int) -> tuple[str, str] | None:

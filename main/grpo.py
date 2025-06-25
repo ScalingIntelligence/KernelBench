@@ -150,8 +150,7 @@ def main(config):
     def reward_func(prompt, completion, answer, thread_id, **kwargs):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
-        sample_id = find_highest_sample_id(run_dir, level, problem) + 1 + thread_id
-        # datetime_str = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
+        sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 4 * config.gpu_offset)
 
         if config.log_prompt:
             prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
