@@ -69,6 +69,7 @@ def write_eval_result_to_separate_file(level, problem, sample_id, exec_result, r
         json.dump(eval_result, f)
 
 def train(config, vf_env):
+    torch.autograd.set_detect_anomaly(True)
     model, tokenizer = vf.get_model_and_tokenizer(config.model_name, model_kwargs={
         "torch_dtype": torch.bfloat16
     })
@@ -77,10 +78,10 @@ def train(config, vf_env):
         run_name=config.run_name,
         output_dir=os.path.join("/data/user_data/gyeongwk/grpo/", config.run_name, "checkpoints"),
         learning_rate=1e-5,
-        max_prompt_length=None,
+        max_prompt_length=8128,
         eval_steps=50,
         save_steps=50,
-        logging_steps=10,
+        logging_steps=1,
         max_completion_length=10000,
         num_generations=4,
         gradient_accumulation_steps=4,
@@ -167,7 +168,8 @@ def main(config):
         kernel_name = f"level_{level}_problem_{problem}_sample_{sample_id}"
         answer = answer[0]
 
-        write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
+        if kernel_src is not None:
+            write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
 
         # return 1.0 # test for now
         device_id = (thread_id % config.max_concurrent_eval) + config.gpu_offset

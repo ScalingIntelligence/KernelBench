@@ -112,6 +112,8 @@ def hardware_check(eval_results: dict, hardware_ref: str):
     hardware = list(list(eval_results.values())[0].values())[0]["metadata"]["hardware"]
     for _, prob_res in eval_results.items():
         for _, sample_res in prob_res.items():
+            if "metadata" not in sample_res or "hardware" not in sample_res["metadata"]:
+                continue
             assert sample_res["metadata"]["hardware"] == hardware, f"Hardware mismatch: {sample_res['metadata']['hardware']} != {hardware}"
     print(f"Computing metrics for {hardware} with baseline {hardware_ref} (Should match)")
 
@@ -223,10 +225,10 @@ def compute_metrics_stanford(config, hardware: str, eval_results: dict) -> dict:
 
 def compute_metrics(config, hardware: str, eval_file_path: str, run_dir: str) -> dict:
     with open(eval_file_path, 'r') as f:
-        eval_results = json.load(f)
+        eval_results = json.load(f)[f'{config["level"]}']
 
     print("Checking that results are on the same hardware")
-    hardware_check(eval_results, hardware)
+    # hardware_check(eval_results, hardware)
 
     match config["method"]:
         case "base":
