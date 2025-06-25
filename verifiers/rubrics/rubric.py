@@ -60,6 +60,7 @@ class Rubric:
                           state: Dict[str, Any],
                           task: str = "default",
                           info: dict = {},
+                          thread_id: int = 0,
                           **kwargs) -> float:
         """
         Invoke `func` with only the required arguments.
@@ -79,6 +80,7 @@ class Rubric:
             state=state,
             task=task,
             info=info,
+            thread_id=thread_id,
         )
         ans = 0.0
         merged = {**common, **kwargs}
@@ -98,6 +100,7 @@ class Rubric:
         return ans
     
     async def score_rollout(self,
+                            thread_id: int,
                             prompt: Union[str, List[Dict[str, Any]]],
                             completion: Union[str, List[Dict[str, Any]]],
                             answer: Any,
@@ -118,6 +121,7 @@ class Rubric:
                 state,
                 task=task,
                 info=info,
+                thread_id=thread_id,
                 **kwargs
             )
             for func in self.get_reward_funcs()
@@ -127,9 +131,9 @@ class Rubric:
         rewards['reward'] = sum([reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())])
         return rewards
 
-    async def _score_single(self, semaphore, *pcasti, **kw):
+    async def _score_single(self, semaphore, i, *pcasti, **kw):
         async with semaphore:
-            return await self.score_rollout(*pcasti, **kw)
+            return await self.score_rollout(i, *pcasti, **kw)
 
     async def _score_all(
             self, prompts, completions, answers, states, tasks, infos,
@@ -138,8 +142,8 @@ class Rubric:
         from tqdm.asyncio import tqdm_asyncio
         semaphore = Semaphore(max_concurrent)
         rollout_tasks = [
-            self._score_single(semaphore, *pcasti, **kwargs)
-            for pcasti in zip(prompts, completions, answers, states, tasks, infos)
+            self._score_single(semaphore, i, *pcasti, **kwargs)
+            for i, pcasti in enumerate(zip(prompts, completions, answers, states, tasks, infos))
         ]
         rewards = await tqdm_asyncio.gather(
             *rollout_tasks,

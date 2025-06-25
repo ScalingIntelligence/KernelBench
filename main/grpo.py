@@ -9,6 +9,9 @@ import json
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model
 
+import sys
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(REPO_ROOT)
 import verifiers as vf
 
 from configs import parse_args
@@ -88,7 +91,7 @@ def train(config, vf_env):
         report_to="wandb",
         vllm_server_host=config.host,
         vllm_server_port=config.port,
-        max_concurrent=1 # this corresponds to number of GPUs used for eval
+        max_concurrent_eval=config.max_concurrent_eval
     )
     trainer = vf.GRPOTrainer(
         model=model,
@@ -144,41 +147,44 @@ def main(config):
             return 0.0
 
 
-    def reward_func(prompt, completion, answer, **kwargs):
+    def reward_func(prompt, completion, answer, thread_id, **kwargs):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
-        # sample_id = find_highest_sample_id(run_dir, level, problem) + 1
-        datetime_str = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
+        sample_id = find_highest_sample_id(run_dir, level, problem) + 1 + thread_id
+        # datetime_str = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
 
         if config.log_prompt:
-            prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{datetime_str}_prompt.txt")
+            prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
             with open(prompt_path, "w") as f:
                 f.write(prompt)
 
         completion = completion[0]["content"]
         if config.log_response:
-            response_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{datetime_str}_response.txt")
+            response_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_response.txt")
             with open(response_path, "w") as f:
                 f.write(completion)
  
         kernel_src = extract_last_code(completion, ["python", "cpp"])
-        kernel_name = f"level_{level}_problem_{problem}_sample_{datetime_str}"
+        kernel_name = f"level_{level}_problem_{problem}_sample_{sample_id}"
         answer = answer[0]
 
-        write_kernel_to_disk(run_dir, level, problem, datetime_str, kernel_src)
+        write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
 
         # return 1.0 # test for now
+        device_id = (thread_id % config.max_concurrent_eval) + config.gpu_offset
 
-        eval_device = torch.device(f'cuda:2')
+        eval_device = torch.device(f'cuda:{device_id}')
+        if config.verbose:
+            print(f"Evaluating on device {eval_device} for sample {sample_id}")
 
         exec_result = evaluate_single_sample(
-            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=datetime_str, device=eval_device),
+            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
             configs=config,
             run_dir=run_dir,
             kernel_src=kernel_src, 
             kernel_name=kernel_name
         )
-        write_eval_result_to_separate_file(level, problem, datetime_str, exec_result, run_dir)
+        write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
         return reward_from_exec_result(level, problem, exec_result)
     
 

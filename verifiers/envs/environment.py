@@ -319,6 +319,7 @@ class Environment(ABC):
                  model: str | None = None,
                  sampling_args: Dict[str, Any] = {},
                  max_concurrent: int | None = None,
+                 max_concurrent_eval: int | None = None,
                  score_rollouts: bool = True,
                  **kwargs: Any) -> Dict[str, Any]:
         """
@@ -335,6 +336,8 @@ class Environment(ABC):
         gen_sampling_args.update(sampling_args)
         if max_concurrent is None:
             max_concurrent = self.max_concurrent
+        if max_concurrent_eval is None:
+            max_concurrent_eval = self.max_concurrent_eval
 
         # run rollouts    
         if isinstance(inputs, Dataset):
@@ -369,7 +372,7 @@ class Environment(ABC):
                 states=results['state'],
                 tasks=results['task'],
                 infos=results['info'],
-                max_concurrent=max_concurrent,
+                max_concurrent=max_concurrent_eval,
                 apply_weights=True
             )       
             results.update(results_rewards)
@@ -532,6 +535,7 @@ class Environment(ABC):
                  sampling_args: Dict[str, Any] = {},
                  num_samples: int = -1,
                  max_concurrent: int = 128,
+                 max_concurrent_eval: int = 1,
                  **kwargs: Any
                 ) -> Dict[str, Any]:
         """
@@ -555,7 +559,7 @@ class Environment(ABC):
             inputs = inputs.select(range(num_samples))
 
         results = self.generate(
-            inputs, client, model, sampling_args, max_concurrent, **kwargs
+            inputs, client, model, sampling_args, max_concurrent, max_concurrent_eval, **kwargs
         )
         return results
 
@@ -566,6 +570,7 @@ class Environment(ABC):
                      client: OpenAI | None = None,
                      model: str | None = None,
                      max_concurrent: int | None = None,
+                     max_concurrent_eval: int | None = None,
                      num_samples: int = -1,
                      sampling_args: Dict[str, Any] = {'temperature': 0.6},
                      state_columns: List[str] = [],
@@ -589,12 +594,15 @@ class Environment(ABC):
                 model = self.model
             if max_concurrent is None:
                 max_concurrent = self.max_concurrent
+            if max_concurrent_eval is None:
+                max_concurrent_eval = self.max_concurrent_eval
             results = self.evaluate(
                 client,
                 model, 
                 sampling_args,
                 num_samples, 
                 max_concurrent, 
+                max_concurrent_eval,
                 **kwargs
             )
         cols = ['prompt', 'completion', 'answer', 'reward']

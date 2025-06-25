@@ -154,6 +154,10 @@ class GRPOConfig(TrainingArguments):
         default=1024,
         metadata={"help": "Maximum number of concurrent requests to the environment."},
     )
+    max_concurrent_eval: int = field(
+        default=1,
+        metadata={"help": "Maximum number of concurrent requests to the environment for evaluation (reward computation)."},
+    )
     # Async generation parameters
     num_batches_ahead: int = field(
         default=1,

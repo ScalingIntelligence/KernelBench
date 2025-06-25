@@ -266,6 +266,7 @@ class GRPOTrainer(Trainer):
         self.max_completion_length = args.max_completion_length  # = |o_i| in the GRPO paper
         self.num_generations = args.num_generations  # = G in the GRPO paper
         self.max_concurrent = args.max_concurrent
+        self.max_concurrent_eval = args.max_concurrent_eval
         self.max_num_processes = args.max_num_processes
         self.temperature = args.temperature
         self.top_p = args.top_p
@@ -368,6 +369,7 @@ class GRPOTrainer(Trainer):
         # Environment integration parameters
         self.mask_env_responses = args.mask_env_responses
         self.max_concurrent = args.max_concurrent
+        self.max_concurrent_eval = args.max_concurrent_eval
 
         # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
         # final optimization step.
@@ -759,6 +761,7 @@ class GRPOTrainer(Trainer):
                         max_completion_length=self.max_completion_length,
                         mask_truncated_completions=self.mask_truncated_completions,
                         max_concurrent=self.max_concurrent,
+                        max_concurrent_eval=self.max_concurrent_eval,
                         device=self.accelerator.device,
                         accelerator=self.accelerator,
                         process_index=self.accelerator.process_index,
@@ -1010,6 +1013,7 @@ class GRPOTrainer(Trainer):
             model=self._get_model_name(),
             sampling_args=self._get_sampling_args(),
             max_concurrent=self.max_concurrent,
+            max_concurrent_eval=self.max_concurrent_eval
         )
         
         # Process results to compute metrics

@@ -17,6 +17,7 @@ class BatchRequest:
     max_completion_length: int
     mask_truncated_completions: bool
     max_concurrent: int
+    max_concurrent_eval: int
     device: torch.device
     accelerator: Any
     process_index: int
@@ -228,6 +229,7 @@ class AsyncBatchGenerator:
             sampling_args=self.sampling_args,
             score_rollouts=True,
             max_concurrent=request.max_concurrent,
+            max_concurrent_eval=request.max_concurrent_eval
         )
         
         # Extract all reward-related keys
