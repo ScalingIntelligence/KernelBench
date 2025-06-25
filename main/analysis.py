@@ -149,7 +149,7 @@ def plot_fast_p_barchart(metrics_by_label, p="1.0", name=None):
             fast_p_score = metrics["speedups"]["torch"]["fast_p_results"][p]
 
         plt.bar(label, fast_p_score, label=label)
-        plt.text(label, fast_p_score + 0.01, f'{fast_p_score:.3f}', 
+        plt.text(label, fast_p_score + 0.01, f'{fast_p_score:.2f}', 
                 ha='center', va='bottom')
 
 
@@ -168,31 +168,37 @@ def main():
     parser.add_argument("--method", type=str, default=None, help="Method to plot")
     # OR
     parser.add_argument("--level", type=int, default=None, help="Level to plot")
+    parser.add_argument("--model", type=str, default=None, help="Model to plot")
     parser.add_argument("--methods", type=str, default=None, help="Methods to plot")
     args = parser.parse_args()
 
     if args.method is None:
-        if args.level is None or args.methods is None:
-            raise ValueError("Either run_dir or level and methods must be provided")
+        if args.level is None and args.methods is None:
+            raise ValueError("Either level or methods must be provided")
         # analyze by method 
         name = f"Level_{args.level}"
         print(f'Analyzing {name} across methods')
-        methods = args.methods.split(",")
+        if args.methods is None:
+            methods = ["base", "best_of_n", "IR", "metr"]
+        else:
+            methods = args.methods.split(",")
 
         metrics_by_method_best = {}
         metrics_by_method_by_sample = {}
         for method in methods:
-            run_dir = os.path.join(RUNS_DIR, method + f"_level{args.level}")
+            method_name = method if args.model is None else f"{method} ({args.model})"
+            run_name = method + f"_level{args.level}" + (f"_{args.model}" if args.model is not None else "")
+            run_dir = os.path.join(RUNS_DIR, run_name)
             if not os.path.exists(os.path.join(run_dir, "metrics.json")):
                 print(f'Run directory {run_dir} does not exist or does not have metrics.json')
                 continue
             metrics = load_metrics(run_dir)
             metrics = metrics["best_by_sample"] if "best_by_sample" in metrics else metrics
             if "0" in metrics:
-                metrics_by_method_best[method] = metrics[str(max(list(map(int, metrics.keys()))))]
-                metrics_by_method_by_sample[method] = metrics
+                metrics_by_method_best[method_name] = metrics[str(max(list(map(int, metrics.keys()))))]
+                metrics_by_method_by_sample[method_name] = metrics
             else:
-                metrics_by_method_best[method] = metrics
+                metrics_by_method_best[method_name] = metrics
 
         plot_fast_p_scores_across_p(metrics_by_method_best, name)
         plot_fast_p_barchart(metrics_by_method_best, p="mean", name=name)
