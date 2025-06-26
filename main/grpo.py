@@ -79,9 +79,6 @@ def train(config, vf_env):
         output_dir=os.path.join("/data/user_data/gyeongwk/grpo/", config.run_name, "checkpoints"),
         learning_rate=1e-5,
         max_prompt_length=8128,
-        eval_steps=50,
-        save_steps=50,
-        logging_steps=1,
         max_completion_length=10000,
         num_generations=4,
         gradient_accumulation_steps=4,
@@ -92,14 +89,18 @@ def train(config, vf_env):
         report_to="wandb",
         vllm_server_host=config.host,
         vllm_server_port=config.port,
-        max_concurrent_eval=config.max_concurrent_eval
+        max_concurrent_eval=config.max_concurrent_eval,
+        eval_strategy="steps",
+        eval_steps=20,
+        max_steps=100,
+        save_steps=20,
+        logging_steps=1,
     )
     trainer = vf.GRPOTrainer(
         model=model,
         processing_class=tokenizer,
         env=vf_env,
         args=grpo_config,
-        eval_dataset=construct_dataset(config, train=False),
     )
     trainer.train()
 
@@ -171,7 +172,7 @@ def main(config):
         if kernel_src is not None:
             write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
 
-        # return 1.0 # test for now
+        # return 0.5 # test for now
         device_id = (thread_id % config.max_concurrent_eval) + config.gpu_offset
 
         eval_device = torch.device(f'cuda:{device_id}')
@@ -190,7 +191,7 @@ def main(config):
     
 
     kernel_rubric = vf.Rubric(funcs=[reward_func], weights=[1.0]) 
-    vf_env = vf.SingleTurnEnv(dataset=dataset, system_prompt="You are a kernel expert", rubric=kernel_rubric)
+    vf_env = vf.SingleTurnEnv(dataset=dataset, eval_dataset=construct_dataset(config, train=False), system_prompt="You are a kernel expert", rubric=kernel_rubric)
 
     # TODO: add multi-turn env
     class KernelMultiTurnEnv(vf.MultiTurnEnv):

@@ -1870,7 +1870,7 @@ def make_parser():
                         help="Whether to enable prefix caching in vLLM.")
     parser.add_argument("--no-enable-prefix-caching", dest="enable_prefix_caching", action="store_false",
                         help="Disable prefix caching in vLLM.")
-    parser.add_argument("--enforce-eager", action="store_true", default=None,
+    parser.add_argument("--enforce-eager", action="store_true", 
                         help="Whether to enforce eager execution. If True, disable CUDA graph and always execute in eager mode.")
     parser.add_argument("--kv-cache-dtype", type=str, default="auto",
                         help="Data type to use for KV cache. If set to 'auto', the dtype will default to the model data type.")
