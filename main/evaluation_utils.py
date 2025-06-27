@@ -1,6 +1,5 @@
 import os
 import torch
-import wandb
 import json
 import time
 from tqdm import tqdm
@@ -17,6 +16,7 @@ from utils import WorkArgs
 from run_manager import fetch_kernel_from_disk, check_if_eval_exists_local
 
 from src.utils import set_gpu_arch
+
 
 @dataclass
 class EvaluationWorkArgs:
@@ -91,6 +91,52 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str,
             eval_result = KernelExecResult(compiled=False, correctness=False, 
                                                 metadata=metadata)
             return eval_result
+
+
+def evaluate_single_sample_in_separate_process(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
+    """
+    Evaluate a single sample in a separate process
+    """
+    level, problem_id, sample_id, device = (
+        work_args.level,
+        work_args.problem_id,
+        work_args.sample_id,
+        work_args.device,
+    )
+    
+    
+    # Create argument tuple for the process
+    args_tuple = (work_args, configs, run_dir, kernel_src, kernel_name)
+    
+    # Run evaluation in separate process with timeout
+    with mp.Pool(1) as pool:
+        try:
+            result = pool.apply_async(evaluate_single_sample, args_tuple)
+            eval_result = result.get(timeout=300)  # 5 minute timeout
+            return eval_result
+        except mp.TimeoutError:
+            metadata = {
+                "other_error": "Evaluation timed out after 5 minutes",
+                "hardware": torch.cuda.get_device_name(device=device),
+                "device": str(device),
+            }
+            return KernelExecResult(
+                compiled=False, 
+                correctness=False, 
+                metadata=metadata
+            )
+        except Exception as e:
+            metadata = {
+                "other_error": f"Pool error: {str(e)}",
+                "hardware": torch.cuda.get_device_name(device=device),
+                "device": str(device),
+            }
+            return KernelExecResult(
+                compiled=False, 
+                correctness=False, 
+                metadata=metadata
+            )
+
 
 
 def add_to_eval_results_file(level: int, problem_id: int, sample_id: int, eval_result: KernelExecResult, eval_file_path: str):
@@ -239,7 +285,7 @@ def batch_eval(
 
 if __name__ == "__main__":
     config = parse_args()
-    wandb.init(project="KernelBench", entity="j1mk1m", tags=[config.run_name, config.method, config.prompt, str(config.level), config.model_name])
+    # wandb.init(project="KernelBench", entity="j1mk1m", tags=[config.run_name, config.method, config.prompt, str(config.level), config.model_name])
     # Check if CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. Evaluation requires GPU.")

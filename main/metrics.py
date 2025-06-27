@@ -255,6 +255,65 @@ def compute_metrics(config, hardware: str, eval_file_path: str, run_dir: str) ->
     return metrics
 
 
+def collate_eval_results(run_dir):
+    """
+    Go through every file in directory and find those like "level_1_problem_1_sample_0_eval_results.json".
+    This file will contain a json object like {"1": {"1": {"0": eval_result}}}.
+    Combine all of these into one json and save it to file.
+    """
+    import glob
+    import re
+
+    # Pattern to match eval result files
+    pattern = os.path.join(run_dir, "level_*_problem_*_sample_*_eval_result.json")
+    eval_files = glob.glob(pattern)
+    
+    # Combined results structure: {level: {problem: {sample: eval_result}}}
+    combined_results = {}
+    
+    for file_path in eval_files:
+        # Extract level, problem, and sample from filename
+        filename = os.path.basename(file_path)
+        match = re.match(r"level_(\d+)_problem_(\d+)_sample_(\d+)_eval_result\.json", filename)
+        
+        if match:
+            level = match.group(1)
+            problem = match.group(2)
+            sample = match.group(3)
+            
+            # Read the eval result file
+            with open(file_path, 'r') as f:
+                eval_result = json.load(f)
+            
+            # Initialize nested structure if needed
+            if level not in combined_results:
+                combined_results[level] = {}
+            if problem not in combined_results[level]:
+                combined_results[level][problem] = {}
+            
+            # Add the eval result
+            combined_results[level][problem][sample] = eval_result
+
+    # Sort the combined results by level, problem_id, and sample_id
+    sorted_results = {}
+    for level in sorted(combined_results.keys(), key=int):
+        sorted_results[level] = {}
+        for problem in sorted(combined_results[level].keys(), key=int):
+            sorted_results[level][problem] = {}
+            for sample in sorted(combined_results[level][problem].keys(), key=int):
+                sorted_results[level][problem][sample] = combined_results[level][problem][sample]
+    
+    combined_results = sorted_results
+    
+    # Save combined results to file
+    output_path = os.path.join(run_dir, "eval_results.json")
+    with open(output_path, 'w') as f:
+        json.dump(combined_results, f, indent=4)
+    
+    print(f"Collated {len(eval_files)} eval result files into {output_path}")
+    return combined_results
+
+
 def main():
     argparser = ArgumentParser()
     argparser.add_argument("--run_dir", type=str, required=True)
@@ -265,6 +324,9 @@ def main():
     with open(config_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     eval_file_path = os.path.join(args.run_dir, "eval_results.json")
+    if not os.path.exists(eval_file_path):
+        print("Collating eval results")
+        collate_eval_results(args.run_dir)
 
     compute_metrics(config, args.hardware, eval_file_path, args.run_dir)
 

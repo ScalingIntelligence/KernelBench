@@ -71,6 +71,13 @@ KERNELBENCH_LEVEL_3_DATASET = construct_kernelbench_dataset(level=3)
 TRAIN_PROBLEM_IDS_LEVEL_1 = [49, 59, 40, 50, 83, 91, 15, 22, 35, 54, 12, 80, 37, 4, 33, 25, 78, 96, 34, 56, 74, 47, 63, 27, 65, 81, 72, 52, 39, 8, 84, 32, 64, 13, 79, 30, 21, 31, 87, 46, 62, 58, 71, 73, 6, 1, 11, 82, 85, 36] 
 TRAIN_PROBLEM_IDS_LEVEL_2 = [6, 62, 38, 51, 64, 81, 99, 71, 67, 76, 33, 74, 77, 63, 47, 25, 27, 84, 73, 96, 42, 88, 44, 89, 15, 1, 20, 53, 26, 65, 85, 79, 7, 43, 66, 98, 49, 55, 75, 45, 58, 11, 90, 60, 61, 72, 8, 68, 36, 14]
 
+def check_in_train_dataset(level: int, problem_id: int) -> bool:
+    if level == 1:
+        return problem_id in TRAIN_PROBLEM_IDS_LEVEL_1
+    elif level == 2:
+        return problem_id in TRAIN_PROBLEM_IDS_LEVEL_2
+    else:
+        return False
 
 
 ################################################################################

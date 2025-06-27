@@ -1,13 +1,10 @@
 import torch
-import datetime
 import os
 import yaml
-import multiprocessing as mp
 import wandb
 import pandas as pd
 import json
 from datasets import Dataset
-from peft import LoraConfig, get_peft_model
 
 import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,8 +13,8 @@ import verifiers as vf
 
 from configs import parse_args
 from prompts import prompt_base
-from evaluation_utils import evaluate_single_sample, EvaluationWorkArgs, add_to_eval_results_file
-from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2
+from evaluation_utils import evaluate_single_sample_in_separate_process, EvaluationWorkArgs
+from dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, check_in_train_dataset
 from run_manager import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
 from src.eval import check_metadata_serializable_all_types
@@ -80,7 +77,7 @@ def train(config, vf_env):
         learning_rate=1e-5,
         max_prompt_length=8128,
         max_completion_length=10000,
-        num_generations=4,
+        num_generations=8,
         gradient_accumulation_steps=4,
         per_device_train_batch_size=1,
         bf16_full_eval=True,
@@ -91,8 +88,8 @@ def train(config, vf_env):
         vllm_server_port=config.port,
         max_concurrent_eval=config.max_concurrent_eval,
         eval_strategy="steps",
-        eval_steps=20,
         max_steps=100,
+        eval_steps=20,
         save_steps=20,
         logging_steps=1,
     )
@@ -142,9 +139,13 @@ def main(config):
     # Evaluation
     def reward_from_exec_result(level, problem, exec_result):
         if exec_result.correctness:
-            baseline_results = fetch_baseline_results(level, problem, config.hardware)
-            speedup = baseline_results["mean"] / exec_result.runtime
-            return 0.3 + float(speedup)
+            try:
+                baseline_results = fetch_baseline_results(level, problem, config.hardware)
+                speedup = baseline_results["mean"] / exec_result.runtime
+                return 0.3 + float(speedup)
+            except Exception as e:
+                print(f"Error fetching baseline results for level {level} problem {problem}: {e}")
+                return 0.3
         else:
             return 0.0
 
@@ -152,7 +153,11 @@ def main(config):
     def reward_func(prompt, completion, answer, thread_id, **kwargs):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
-        sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 4 * config.gpu_offset)
+        if check_in_train_dataset(level, problem):
+            sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 4 * config.gpu_offset)
+        else:
+            sample_id = find_highest_sample_id(run_dir, level, problem, 0, 1) # just find the next sample_id
+
 
         if config.log_prompt:
             prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
@@ -165,6 +170,8 @@ def main(config):
             with open(response_path, "w") as f:
                 f.write(completion)
  
+        # ref_arch_src, ref_arch_name = fetch_ref_arch_from_level_problem_id(level, problem, config.dataset_src)
+
         kernel_src = extract_last_code(completion, ["python", "cpp"])
         kernel_name = f"level_{level}_problem_{problem}_sample_{sample_id}"
         answer = answer[0]
@@ -179,7 +186,7 @@ def main(config):
         if config.verbose:
             print(f"Evaluating on device {eval_device} for sample {sample_id}")
 
-        exec_result = evaluate_single_sample(
+        exec_result = evaluate_single_sample_in_separate_process(
             work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
             configs=config,
             run_dir=run_dir,

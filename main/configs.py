@@ -72,5 +72,6 @@ def parse_args(rl_training=False):
             args.run_name = args.run_name + "_" + range_str[0] + "_" + range_str[1]
         args.subset = (None, None) if range_str[0] == "None" else (int(range_str[0]), int(range_str[1]))
     else:
-        args.max_concurrent_eval = args.num_gpu_devices - args.gpu_offset
+        # args.max_concurrent_eval = args.num_gpu_devices - args.gpu_offset
+        args.max_concurrent_eval = 4
     return args
