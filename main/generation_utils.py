@@ -6,7 +6,7 @@ from src.utils import maybe_multithread, extract_last_code
 from utils import WorkArgs
 from prompts import generate_prompt
 from dataset import fetch_ref_arch_from_level_problem_id
-from run_manager import check_if_kernel_exists
+from run_utils import check_if_kernel_exists
 
 
 def generate_sample_single(work: WorkArgs, config, inference_server: callable, run_dir: str) -> bool:

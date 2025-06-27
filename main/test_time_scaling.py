@@ -14,7 +14,7 @@ sys.path.append(REPO_TOP_DIR)
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
 from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
-from configs import parse_args
+from configs import parse_test_time_scaling_args, RUNS_DIR
 from utils import WorkArgs
 from generation_utils import batch_generate
 from evaluation_utils import batch_eval
@@ -223,7 +223,7 @@ def main(config):
     print(f"Level {config.level} problems: {problem_id_range}")
 
     # set up run directory
-    run_dir = os.path.join(config.runs_dir, config.run_name)
+    run_dir = os.path.join(RUNS_DIR, config.run_name)
     os.makedirs(run_dir, exist_ok=True)
 
     with open(os.path.join(run_dir, "config.yaml"), "w") as f:
@@ -237,7 +237,7 @@ def main(config):
 
     # Create inference function with config parameters
     inference_server = create_inference_server_from_presets(server_type=config.server_type,
-                                                        server_address=f"http://{config.host}:{config.port}/v1",
+                                                        server_address=f"http://{config.vllm_host}:{config.vllm_port}/v1",
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
@@ -261,6 +261,6 @@ def main(config):
  
 
 if __name__ == "__main__": 
-    args = parse_args()
+    args = parse_test_time_scaling_args()
     main(args)
 

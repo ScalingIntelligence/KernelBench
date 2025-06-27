@@ -11,11 +11,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
 import verifiers as vf
 
-from configs import parse_args
+from configs import parse_rl_training_args, RUNS_DIR
 from prompts import prompt_base
-from evaluation_utils import evaluate_single_sample_in_separate_process, EvaluationWorkArgs
+from evaluation_utils import evaluate_single_sample_in_separate_process, EvaluationWorkArgs, evaluate_single_sample
 from dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, check_in_train_dataset
-from run_manager import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
+from run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
 from src.eval import check_metadata_serializable_all_types
 from src.utils import set_gpu_arch, extract_last_code
@@ -76,23 +76,25 @@ def train(config, vf_env):
         output_dir=os.path.join("/data/user_data/gyeongwk/grpo/", config.run_name, "checkpoints"),
         learning_rate=1e-5,
         max_prompt_length=8128,
-        max_completion_length=10000,
+        temperature=config.temperature,
+        max_completion_length=config.max_tokens,
         num_generations=8,
         gradient_accumulation_steps=4,
         per_device_train_batch_size=1,
-        bf16_full_eval=True,
         num_batches_ahead=0,
+        bf16_full_eval=True,
         gradient_checkpointing=True,
         report_to="wandb",
-        vllm_server_host=config.host,
-        vllm_server_port=config.port,
+        vllm_server_host=config.vllm_host,
+        vllm_server_port=config.vllm_port,
         max_concurrent_eval=config.max_concurrent_eval,
         eval_strategy="steps",
         max_steps=100,
-        eval_steps=20,
-        save_steps=20,
+        eval_steps=100,
+        save_steps=50,
         logging_steps=1,
     )
+
     trainer = vf.GRPOTrainer(
         model=model,
         processing_class=tokenizer,
@@ -101,11 +103,11 @@ def train(config, vf_env):
     )
     trainer.train()
 
-    trainer.save_model(os.path.join(config.runs_dir, config.run_name))
+    trainer.save_model(os.path.join(RUNS_DIR, config.run_name))
 
     eval_results = trainer.evaluate()
     print(eval_results)
-    with open(os.path.join(config.runs_dir, config.run_name, "rl_eval_results.json"), "w") as f:
+    with open(os.path.join(RUNS_DIR, config.run_name, "rl_eval_results.json"), "w") as f:
         json.dump(eval_results, f)
 
 
@@ -130,7 +132,7 @@ def main(config):
     dataset = construct_dataset(config)
 
     # Set up run directory
-    run_dir = os.path.join(config.runs_dir, config.run_name)
+    run_dir = os.path.join(RUNS_DIR, config.run_name)
     os.makedirs(run_dir, exist_ok=True)
 
     with open(os.path.join(run_dir, "config.yaml"), "w") as f:
@@ -154,15 +156,15 @@ def main(config):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
         if check_in_train_dataset(level, problem):
-            sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 4 * config.gpu_offset)
+            sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 8)
         else:
             sample_id = find_highest_sample_id(run_dir, level, problem, 0, 1) # just find the next sample_id
 
 
-        if config.log_prompt:
-            prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
-            with open(prompt_path, "w") as f:
-                f.write(prompt)
+        # if config.log_prompt:
+        #     prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
+        #     with open(prompt_path, "w") as f:
+        #         f.write(prompt)
 
         completion = completion[0]["content"]
         if config.log_response:
@@ -179,20 +181,28 @@ def main(config):
         if kernel_src is not None:
             write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
 
-        # return 0.5 # test for now
-        device_id = (thread_id % config.max_concurrent_eval) + config.gpu_offset
+        if config.eval_mode == "local":
+            device_id = (thread_id % config.max_concurrent_eval) + config.gpu_offset
 
-        eval_device = torch.device(f'cuda:{device_id}')
-        if config.verbose:
-            print(f"Evaluating on device {eval_device} for sample {sample_id}")
+            eval_device = torch.device(f'cuda:{device_id}')
+            if config.verbose:
+                print(f"Evaluating on device {eval_device} for sample {sample_id}")
 
-        exec_result = evaluate_single_sample_in_separate_process(
-            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
-            configs=config,
-            run_dir=run_dir,
-            kernel_src=kernel_src, 
-            kernel_name=kernel_name
-        )
+            exec_result = evaluate_single_sample_in_separate_process(
+                work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=eval_device),
+                configs=config,
+                run_dir=run_dir,
+                kernel_src=kernel_src, 
+                kernel_name=kernel_name
+            )
+        elif config.eval_mode == "remote":
+            exec_result = evaluate_single_sample(
+                work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=None),
+                configs=config,
+                run_dir=run_dir,
+                kernel_src=kernel_src, 
+                kernel_name=kernel_name
+            )
         write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
         return reward_from_exec_result(level, problem, exec_result)
     
@@ -218,10 +228,8 @@ def main(config):
             pass
 
     train(config, vf_env)
-
-
         
 
 if __name__ == "__main__":
-    configs = parse_args(rl_training=True)
+    configs = parse_rl_training_args()
     main(configs)

@@ -1,4 +1,6 @@
 import os
+import socket
+import pickle
 import torch
 import json
 import time
@@ -9,13 +11,13 @@ from dataclasses import dataclass
 
 from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, eval_reference_kernel, KernelExecResult, check_metadata_serializable_all_types
+from src.utils import set_gpu_arch
 
-from configs import parse_args
+from configs import parse_evaluation_args, RUNS_DIR, KERNEL_EVAL_BUILD_DIR
 from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
 from utils import WorkArgs
-from run_manager import fetch_kernel_from_disk, check_if_eval_exists_local
-
-from src.utils import set_gpu_arch
+from run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
+from evaluation_utils_modal import evalaute_single_sample_modal
 
 
 @dataclass
@@ -25,8 +27,27 @@ class EvaluationWorkArgs:
     sample_id: int
     device: torch.device
 
+def serialize_work_args(work_args: EvaluationWorkArgs):
+    """Serialize EvaluationWorkArgs for network transmission"""
+    return {
+        'level': work_args.level,
+        'problem_id': work_args.problem_id,
+        'sample_id': work_args.sample_id,
+        'device': str(work_args.device)  # Convert device to string for serialization
+    }
 
-def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
+
+def deserialize_work_args(data: dict) -> EvaluationWorkArgs:
+    """Deserialize data back to EvaluationWorkArgs"""
+    return EvaluationWorkArgs(
+        level=data['level'],
+        problem_id=data['problem_id'],
+        sample_id=data['sample_id'],
+        device=torch.device(data['device'])
+    )
+
+
+def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
     """
     Evaluate a single sample on a single GPU
     """
@@ -44,7 +65,7 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str,
         kernel_src, kernel_name = fetch_kernel_from_disk(run_dir, level, problem_id, sample_id)
     assert kernel_src is not None, f"Kernel not found for problem {problem_id} sample {sample_id}"
 
-    build_dir = os.path.join(configs.kernel_eval_build_dir, configs.run_name, f"level_{level}", f"{problem_id}", f"{sample_id}")
+    build_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, configs.run_name, f"level_{level}", f"{problem_id}", f"{sample_id}")
 
     try: 
         if configs.method == "METR" and sample_id == 0:
@@ -111,7 +132,7 @@ def evaluate_single_sample_in_separate_process(work_args: EvaluationWorkArgs, co
     # Run evaluation in separate process with timeout
     with mp.Pool(1) as pool:
         try:
-            result = pool.apply_async(evaluate_single_sample, args_tuple)
+            result = pool.apply_async(evaluate_single_sample_worker, args_tuple)
             eval_result = result.get(timeout=300)  # 5 minute timeout
             return eval_result
         except mp.TimeoutError:
@@ -136,7 +157,6 @@ def evaluate_single_sample_in_separate_process(work_args: EvaluationWorkArgs, co
                 correctness=False, 
                 metadata=metadata
             )
-
 
 
 def add_to_eval_results_file(level: int, problem_id: int, sample_id: int, eval_result: KernelExecResult, eval_file_path: str):
@@ -176,6 +196,111 @@ def add_to_eval_results_file(level: int, problem_id: int, sample_id: int, eval_r
         json.dump(eval_results, f, indent=2)
 
 
+def write_eval_result_for_sample(level: int, problem_id: int, sample_id: int, eval_result: KernelExecResult, run_dir):
+    file_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_eval_result.json")
+    with open(file_path, "w") as f:
+        json.dump(eval_result, f, indent=2)
+
+
+def send_evaluation_request(host: str, port: int, work_args: EvaluationWorkArgs, kernel_src: str = None, kernel_name: str = None):
+    """
+    Send an evaluation request to the server and receive the result.
+    
+    Args:
+        host: Server hostname (usually 'localhost')
+        port: Server port number
+        work_args: EvaluationWorkArgs object
+        kernel_src: Optional kernel source code
+        kernel_name: Optional kernel name
+    
+    Returns:
+        KernelExecResult object from the server
+    """
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
+    try:
+        # Connect to the server
+        client_socket.connect((host, port))
+        print(f"Connected to evaluation server at {host}:{port}")
+        
+        # Prepare the request
+        request = {
+            'work_args': serialize_work_args(work_args),
+            'kernel_src': kernel_src,
+            'kernel_name': kernel_name
+        }
+        
+        # Send the request
+        request_data = pickle.dumps(request)
+        client_socket.sendall(request_data)
+        
+        # Receive the response
+        response_data = b""
+        while True:
+            chunk = client_socket.recv(4096)
+            if not chunk:
+                break
+            response_data += chunk
+        
+        # Deserialize the response
+        result = pickle.loads(response_data)
+        return result
+        
+    except Exception as e:
+        print(f"Error communicating with server: {e}")
+        return None
+    finally:
+        client_socket.close()
+
+
+def check_server_status(host: str, port: int):
+    """
+    Check if the server is running and get basic status information.
+    
+    Args:
+        host: Server hostname
+        port: Server port number
+    
+    Returns:
+        True if server is reachable, False otherwise
+    """
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.settimeout(5)  # 5 second timeout
+    
+    try:
+        client_socket.connect((host, port))
+        print(f"Server at {host}:{port} is reachable")
+        return True
+    except Exception as e:
+        print(f"Cannot connect to server at {host}:{port}: {e}")
+        return False
+    finally:
+        client_socket.close()
+
+
+def check_eval_status(config):
+    if config.eval_method == "local":
+        return True
+    elif config.eval_method == "remote":
+        return check_server_status(config.eval_server_host, config.eval_server_port)
+    elif config.eval_method == "modal":
+        return True
+    else:
+        raise ValueError(f"Invalid evaluation method: {config.eval_method}")
+
+
+def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
+    """
+    Evaluate a single sample using the specified evaluation method
+    """
+    if config.eval_method == "local":
+        return evaluate_single_sample_worker(work_args, configs, run_dir, kernel_src, kernel_name)
+    elif config.eval_method == "remote":
+        return send_evaluation_request(config.eval_server_host, config.eval_server_port, work_args, kernel_src, kernel_name)
+    elif config.eval_method == "modal":
+        return evalaute_single_sample_modal(work_args, configs, run_dir, kernel_src, kernel_name)
+
+
 def batch_eval(
     total_work: list[WorkArgs],
     config: dict,
@@ -186,6 +311,7 @@ def batch_eval(
     Batch evaluation across multiple GPUs, do batch_size of work one on each GPU all at once
     We put in time out for each batch, consider trying again with larger time out if it didn't finish building.
     Cache directory is removed if evaluation times out or fails
+    NOTE: Only for local evaluation
     """
     total_work = [work for work in total_work if not check_if_eval_exists_local(work.level, work.problem_id, work.sample_id, eval_file_path)]
 
@@ -227,7 +353,7 @@ def batch_eval(
                 async_results = []
                 for work_arg in work_args:
                     async_results.append(
-                        pool.apply_async(evaluate_single_sample, work_arg)
+                        pool.apply_async(evaluate_single_sample_worker, work_arg)
                     )
             
                 # Collect results with a batch timeout
@@ -283,9 +409,12 @@ def batch_eval(
                 pbar.update(len(curr_work_batch))
 
 
+
 if __name__ == "__main__":
-    config = parse_args()
+    # Just run evaluation for already generated kernels
+    config = parse_evaluation_args()
     # wandb.init(project="KernelBench", entity="j1mk1m", tags=[config.run_name, config.method, config.prompt, str(config.level), config.model_name])
+
     # Check if CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device not available. Evaluation requires GPU.")
@@ -298,7 +427,7 @@ if __name__ == "__main__":
     curr_level_dataset = construct_kernelbench_dataset(config.level)
 
     # set up run directory
-    run_dir = os.path.join(config.runs_dir, config.run_name)
+    run_dir = os.path.join(RUNS_DIR, config.run_name)
 
     with open(os.path.join(run_dir, "config.yaml"), "w") as f:
         yaml.dump(vars(config), f)

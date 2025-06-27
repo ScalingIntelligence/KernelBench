@@ -1,4 +1,7 @@
-
+"""
+This file contains functions for evaluating on Modal.
+Call `eval_single_sample_modal` to evaluate a single sample on Modal.
+"""
 import modal
 import os
 import torch
@@ -12,14 +15,7 @@ import json
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 
-
-REPO_TOP_PATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-    )
-)
-
+from configs import REPO_TOP_DIR
 
 def set_seed(seed: int):
     torch.manual_seed(seed)
@@ -59,11 +55,11 @@ def load_original_model_and_inputs(
         print(f"Failed to load model due to {e}. Trying to import from the file directly.")
         if "." in model_name:
             model_name = model_name.split(".")[0]
-        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_name}.py")
+        tmp_dir = os.path.join(REPO_TOP_DIR, "cache", "tmp", f"model_{model_name}.py")
         os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
         with open(tmp_dir, "w") as f:
             f.write(model_original_src)
-        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
+        exec("import sys; sys.path.append('" + REPO_TOP_DIR + "/cache/tmp')", context)
         exec(f"from model_{model_name} import Model, get_init_inputs, get_inputs", context)
         Model, get_init_inputs, get_inputs = context["Model"], context["get_init_inputs"], context["get_inputs"]
         print(f"Successfully loaded model from the file directly: {tmp_dir}") 
@@ -102,11 +98,11 @@ def load_custom_model(
         print(f"Failed to load model. Trying to import from the file directly.")
         if "." in model_custom_name:
             model_custom_name = model_custom_name.split(".")[0]
-        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_custom_name}.py")
+        tmp_dir = os.path.join(REPO_TOP_DIR, "cache", "tmp", f"model_{model_custom_name}.py")
         os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
         with open(tmp_dir, "w") as f:
             f.write(model_custom_src)
-        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
+        exec("import sys; sys.path.append('" + REPO_TOP_DIR + "/cache/tmp')", context)
         exec(f"from model_{model_custom_name} import ModelNew", context)
         ModelNew = context["ModelNew"]
         print(f"Successfully loaded model from the file directly: {tmp_dir}") 
