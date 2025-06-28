@@ -5,15 +5,17 @@ import json
 import numpy as np
 from tabulate import tabulate
 
+from dataset import construct_kernelbench_dataset, TEST_PROBLEM_IDS_LEVEL_1, TEST_PROBLEM_IDS_LEVEL_2, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2
 from src.score import *
-from src.utils import read_file
-from src.dataset import construct_kernelbench_dataset
 
 
 BASELINES = ["torch"] # , "torch_compile_inductor_default", "torch_compile_inductor_reduce-overhead", "torch_compile_inductor_max-autotune", "torch_compile_inductor_max-autotune-no-cudagraphs"]
 
 
-def compute_correctness_metrics(eval_results):
+def compute_correctness_metrics(eval_results, subset=None):
+    """
+    Expects eval_results to be dict of problem_id -> exec_result
+    """
     total = 0
     compiled = 0
     correct = 0
@@ -21,7 +23,9 @@ def compute_correctness_metrics(eval_results):
     output_mismatch = 0
     output_shape_mismatch = 0
 
-    for _, res in eval_results.items():
+    for k, res in eval_results.items():
+        if subset is not None and int(k) not in subset:
+            continue
         total += 1
         if res["compiled"]:
             compiled += 1
@@ -45,9 +49,9 @@ def compute_correctness_metrics(eval_results):
     }
 
 
-def compute_efficiency_metrics(eval_results, baseline_results):
+def compute_efficiency_metrics(eval_results, baseline_results, subset=None):
     """
-    expects eval_results and baseline_results to be dict (problem_id -> exec_result)
+    Expects eval_results and baseline_results to be dict (problem_id -> exec_result)
     """
     # Filter out problems where baseline_results is empty
     eval = []
@@ -57,6 +61,8 @@ def compute_efficiency_metrics(eval_results, baseline_results):
             # print(f"Skipping {k} in baseline_results")
             continue
         problem_number = k.split("_")[0]
+        if subset is not None and int(problem_number) not in subset:
+            continue
         if problem_number not in eval_results: 
             # print(f"Problem {problem_number} not in eval_results")
             continue
@@ -85,7 +91,10 @@ def compute_efficiency_metrics(eval_results, baseline_results):
         "fast_p_results": results
     }
 
-def compute_efficiency_metrics_all_baselines(config, hardware: str, eval_results: dict) -> dict:
+def compute_efficiency_metrics_all_baselines(config, hardware: str, eval_results: dict, subset=None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> exec_result
+    """
     results = {}
     for baseline in BASELINES:
         try:
@@ -97,7 +106,7 @@ def compute_efficiency_metrics_all_baselines(config, hardware: str, eval_results
 
             baseline_results = baseline_results[f'level{config["level"]}']
 
-            comp_metrics = compute_efficiency_metrics(eval_results, baseline_results)
+            comp_metrics = compute_efficiency_metrics(eval_results, baseline_results, subset)
             results[baseline] = comp_metrics
         except Exception as e:
             print(f"Error computing efficiency metrics for {baseline}: {e}")
@@ -105,10 +114,9 @@ def compute_efficiency_metrics_all_baselines(config, hardware: str, eval_results
 
     return results
 
-# best, average, individual (per sample)
-
 
 def hardware_check(eval_results: dict, hardware_ref: str):
+    print("Checking that results are on the same hardware")
     hardware = list(list(eval_results.values())[0].values())[0]["metadata"]["hardware"]
     for _, prob_res in eval_results.items():
         for _, sample_res in prob_res.items():
@@ -117,6 +125,15 @@ def hardware_check(eval_results: dict, hardware_ref: str):
             assert sample_res["metadata"]["hardware"] == hardware, f"Hardware mismatch: {sample_res['metadata']['hardware']} != {hardware}"
     print(f"Computing metrics for {hardware} with baseline {hardware_ref} (Should match)")
 
+
+dummy_result = {
+    "sample_id": 0, 
+    "compiled": False, 
+    "correctness": False, 
+    "metadata": {},
+    "runtime": -1.0, 
+    "runtime_stats": {}
+}
 
 def patch(eval_results, dataset):
     """
@@ -135,33 +152,29 @@ def patch(eval_results, dataset):
     return eval_results
 
 
-def compute_all_metrics(config, hardware, eval_results):
+def compute_all_metrics(config, hardware, eval_results, subset=None):
     """
-    Expects eval_results to be dict of problem_id -> exec_result
+    Computes correctness and efficiency metrics for evaluation results of form dict of problem_id -> exec_result
     """
-    correctness_metrics = compute_correctness_metrics(eval_results)
+    correctness_metrics = compute_correctness_metrics(eval_results, subset)
     dataset = construct_kernelbench_dataset(config["level"])
     eval_results = patch(eval_results, dataset)
-    efficiency_metrics = compute_efficiency_metrics_all_baselines(config, hardware, eval_results)
+    efficiency_metrics = compute_efficiency_metrics_all_baselines(config, hardware, eval_results, subset)
     return {"correctness": correctness_metrics, "speedups": efficiency_metrics}
 
 
-def compute_metrics_base(config, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_base(config, hardware: str, eval_results: dict, subset: list[int] = None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> sample_id -> exec_result
+    """
     eval_results = {k: v["0"] for k, v in eval_results.items()}
-    return compute_all_metrics(config, hardware, eval_results)
+    return compute_all_metrics(config, hardware, eval_results, subset)
 
 
-dummy_result = {
-    "sample_id": 0, 
-    "compiled": False, 
-    "correctness": False, 
-    "metadata": {},
-    "runtime": -1.0, 
-    "runtime_stats": {}
-}
-
-
-def increasing_best_solution_metrics(config, hardware: str, eval_results: dict, num_steps) -> dict:
+def increasing_best_solution_metrics(config, hardware: str, eval_results: dict, num_steps, subset: list[int] = None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> sample_id -> exec_result
+    """
     best_by_step = {}
     best_by_step[0] = {k: v["0"] if "0" in v else dummy_result for k, v in eval_results.items()}
 
@@ -184,11 +197,14 @@ def increasing_best_solution_metrics(config, hardware: str, eval_results: dict, 
             
     metrics = {}
     for step, step_results in best_by_step.items():
-        metrics[step] = compute_all_metrics(config, hardware, step_results)
+        metrics[step] = compute_all_metrics(config, hardware, step_results, subset)
     return metrics
 
 
-def compute_metrics_best_of_n(config, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_best_of_n(config, hardware: str, eval_results: dict, subset: list[int] = None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> sample_id -> exec_result
+    """
     by_sample_results = {}
     for pid, prob_res in eval_results.items():
         for sid, sample_res in prob_res.items():
@@ -199,53 +215,88 @@ def compute_metrics_best_of_n(config, hardware: str, eval_results: dict) -> dict
     
     metrics = {"by_sample": {}}
     for sid, sample_res in by_sample_results.items():
-        metrics["by_sample"][sid] = compute_all_metrics(config, hardware, by_sample_results[sid])
+        metrics["by_sample"][sid] = compute_all_metrics(config, hardware, by_sample_results[sid], subset)
     metrics["best_by_sample"] = increasing_best_solution_metrics(config, hardware, eval_results, config["num_parallel"])
     return metrics
 
 
-def compute_metrics_iterative_refinement(config, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_iterative_refinement(config, hardware: str, eval_results: dict, subset: list[int] = None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> sample_id -> exec_result
+    """
     assert config["num_parallel"] == 1, "Iterative refinement is only supported for 1 parallel run"
-    return increasing_best_solution_metrics(config, hardware, eval_results, config["num_iterations"])
+    return increasing_best_solution_metrics(config, hardware, eval_results, config["num_iterations"], subset)
 
 
-def compute_metrics_metr(config, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_metr(config, hardware: str, eval_results: dict, subset: list[int] = None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> sample_id -> exec_result
+    """
     for i in range(config["num_samples"]-1):
         for pid, prob_res in eval_results.items():
             if str(i+1) in prob_res:
                 eval_results[pid][str(i)] = eval_results[pid][str(i+1)]
             else:
                 eval_results[pid][str(i)] = dummy_result
-    return increasing_best_solution_metrics(config, hardware, eval_results, config["num_samples"])
+    return increasing_best_solution_metrics(config, hardware, eval_results, config["num_samples"], subset)
 
 
-def compute_metrics_stanford(config, hardware: str, eval_results: dict) -> dict:
+def compute_metrics_stanford(config, hardware: str, eval_results: dict, subset: list[int] = None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> sample_id -> exec_result
+    """
     pass
 
 
-def compute_metrics(config, hardware: str, eval_file_path: str, run_dir: str) -> dict:
-    with open(eval_file_path, 'r') as f:
-        eval_results = json.load(f)[f'{config["level"]}']
-
-    print("Checking that results are on the same hardware")
+def compute_metrics_test_time_scaling(config, hardware: str, eval_results: dict, run_dir: str, subset: list[int] = None) -> dict:
+    """
+    Expects eval_results to be dict of problem_id -> sample_id -> exec_result
+    """
     # hardware_check(eval_results, hardware)
 
     match config["method"]:
         case "base":
-            metrics = compute_metrics_base(config, hardware, eval_results)
+            metrics = compute_metrics_base(config, hardware, eval_results, subset)
         case "best-of-N":
-            metrics = compute_metrics_best_of_n(config, hardware, eval_results)
+            metrics = compute_metrics_best_of_n(config, hardware, eval_results, subset)
         case "iterative refinement":
-            metrics = compute_metrics_iterative_refinement(config, hardware, eval_results)
+            metrics = compute_metrics_iterative_refinement(config, hardware, eval_results, subset)
         case "METR":
-            metrics = compute_metrics_metr(config, hardware, eval_results)
+            metrics = compute_metrics_metr(config, hardware, eval_results, subset)
         case "Stanford":
-            metrics = compute_metrics_stanford(config, hardware, eval_results)
+            metrics = compute_metrics_stanford(config, hardware, eval_results, subset)
         case _:
             raise ValueError(f"Invalid method: {config['method']}")
 
-    print("Computed all metrics")
-    # print(metrics)
+    metrics_file = os.path.join(run_dir, "metrics.json")
+    with open(metrics_file, "w") as f:
+        json.dump(metrics, f, indent=4)
+    print(f"Saved metrics to {metrics_file}")
+    
+    return metrics
+
+
+def compute_metrics_grpo(config, hardware: str, eval_results: dict, run_dir: str) -> dict:
+    # Eval subsets for Level 1 and 2
+    eval_results_level_1 = eval_results["1"]
+    eval_results_level_2 = eval_results["2"]
+
+    config["num_parallel"] = 64 # TODO: make this match number of kernels generated in training
+    metrics_train_level_1 = compute_metrics_best_of_n(config, hardware, eval_results_level_1, subset=TRAIN_PROBLEM_IDS_LEVEL_1)
+    metrics_train_level_2 = compute_metrics_best_of_n(config, hardware, eval_results_level_2, subset=TRAIN_PROBLEM_IDS_LEVEL_2)
+    metrics_eval_level_1 = compute_all_metrics(config, hardware, eval_results_level_1, subset=TEST_PROBLEM_IDS_LEVEL_1)
+    metrics_eval_level_2 = compute_all_metrics(config, hardware, eval_results_level_2, subset=TEST_PROBLEM_IDS_LEVEL_2)
+
+    metrics = {
+        "1": {
+            "train": metrics_train_level_1,
+            "eval": metrics_eval_level_1
+        },
+        "2": {
+            "train": metrics_train_level_2,
+            "eval": metrics_eval_level_2
+        }
+    }
 
     metrics_file = os.path.join(run_dir, "metrics.json")
     with open(metrics_file, "w") as f:
@@ -318,6 +369,7 @@ def main():
     argparser = ArgumentParser()
     argparser.add_argument("--run_dir", type=str, required=True)
     argparser.add_argument("--hardware", type=str, required=True)
+    argparser.add_argument("--grpo", action="store_true")
     args = argparser.parse_args()
 
     config_path = os.path.join(args.run_dir, "config.yaml")
@@ -328,7 +380,13 @@ def main():
         print("Collating eval results")
         collate_eval_results(args.run_dir)
 
-    compute_metrics(config, args.hardware, eval_file_path, args.run_dir)
+    with open(eval_file_path, 'r') as f:
+        eval_results = json.load(f)[f'{config["level"]}']
+
+    if args.grpo:
+        compute_metrics_grpo(config, args.hardware, eval_results, args.run_dir)
+    else:
+        compute_metrics_test_time_scaling(config, args.hardware, eval_results[f'{config["level"]}'], args.run_dir, subset=None)
 
 
 if __name__ == "__main__":

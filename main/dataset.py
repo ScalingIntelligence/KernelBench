@@ -69,7 +69,9 @@ KERNELBENCH_LEVEL_2_DATASET = construct_kernelbench_dataset(level=2)
 KERNELBENCH_LEVEL_3_DATASET = construct_kernelbench_dataset(level=3)
 
 TRAIN_PROBLEM_IDS_LEVEL_1 = [1, 4, 6, 8, 11, 12, 13, 15, 21, 22, 25, 27, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40, 46, 47, 49, 50, 52, 54, 56, 58, 59, 62, 63, 64, 65, 71, 72, 73, 74, 78, 79, 80, 81, 82, 83, 84, 85, 87, 91, 96]
-TRAIN_PROBLEM_IDS_LEVEL_2 = [1, 6, 7, 8, 11, 14, 15, 20, 25, 26, 27, 33, 36, 38, 42, 43, 44, 45, 47, 49, 51, 53, 55, 58, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 79, 81, 84, 85, 88, 89, 90, 96, 98, 99] 
+TEST_PROBLEM_IDS_LEVEL_1 = [i for i in range(1, 101) if i not in TRAIN_PROBLEM_IDS_LEVEL_1]
+TRAIN_PROBLEM_IDS_LEVEL_2 = [1, 6, 7, 8, 11, 14, 15, 20, 25, 26, 27, 33, 36, 38, 42, 43, 44, 45, 47, 49, 51, 53, 55, 58, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 79, 81, 84, 85, 88, 89, 90, 96, 98, 99]
+TEST_PROBLEM_IDS_LEVEL_2 = [i for i in range(1, 101) if i not in TRAIN_PROBLEM_IDS_LEVEL_2]
 
 
 def check_in_train_dataset(level: int, problem_id: int) -> bool:
@@ -107,10 +109,21 @@ def fetch_ref_arch_from_problem_id(dataset, problem_id: int, dataset_src: str) -
     
     return ref_arch_src, problem_name
 
-# TODO: better retrieval logic from level and problem id
 def fetch_ref_arch_from_level_problem_id(level: int, problem_id: int, dataset_src: str) -> tuple[str, str] | None:
-    dataset = construct_kernelbench_dataset(level)
-    return fetch_ref_arch_from_problem_id(dataset, problem_id, dataset_src)
+    if dataset_src == "local":
+        directory = os.path.join(KERNEL_BENCH_PATH, f"level{level}")
+        for file in os.listdir(directory):
+            if file.startswith(f"{problem_id}_") and file.endswith(".py"):
+                ref_arch_path = os.path.join(directory, file)
+                ref_arch_src = read_file(ref_arch_path)
+                problem_name = os.path.basename(ref_arch_path)
+                return ref_arch_src, problem_name
+        raise FileNotFoundError(f"No file found starting with '{problem_id}_' and ending with '.py' in {directory}")
+    elif dataset_src == "huggingface":
+        dataset = construct_kernelbench_dataset(level)
+        return fetch_ref_arch_from_problem_id(dataset, problem_id, dataset_src)
+    else:
+        raise ValueError(f"Invalid dataset_src: {dataset_src}")
 
 
 

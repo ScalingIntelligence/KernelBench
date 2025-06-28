@@ -76,7 +76,7 @@ def train(config, vf_env):
         output_dir=os.path.join("/data/user_data/gyeongwk/grpo/", config.run_name, "checkpoints"),
         shuffle_dataset=False,
         learning_rate=1e-5,
-        max_prompt_length=8128,
+        max_prompt_length=None,
         temperature=config.temperature,
         max_completion_length=config.max_tokens,
         num_generations=8,
@@ -156,7 +156,6 @@ def main(config):
     def reward_func(prompt, completion, answer, thread_id, **kwargs):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
-        print(f"level: {level}, problem: {problem} thread_id: {thread_id}")
         if check_in_train_dataset(level, problem):
             sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 8)
         else:

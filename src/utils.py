@@ -158,7 +158,7 @@ def query_server(
             client = AutoModelForCausalLM.from_pretrained(model_name)
             tokenizer = AutoTokenizer.from_pretrained(model_name)
         case "vllm":
-            client = OpenAI(base_url=server_address, api_key="EMPTY")
+            client = OpenAI(base_url=server_address, api_key="EMPTY", timeout=10000000.0, max_retries=3)
             model = model_name
         case _:
             raise NotImplementedError
