@@ -79,6 +79,8 @@ def parse_test_time_scaling_args():
     parser.add_argument("--eval_server_port", type=int, default=12345) # eval_mode is remote
     add_eval_args(parser)
 
+    add_logging_args(parser)
+
     args = parser.parse_args()
 
     # Post processing
@@ -98,6 +100,8 @@ def parse_evaluation_args():
     parser.add_argument("--subset", type=str, default="(None, None)")
 
     add_eval_args(parser)
+
+    add_logging_args(parser)
 
     args = parser.parse_args()
 
@@ -127,6 +131,8 @@ def parse_rl_training_args():
     parser.add_argument("--gpu_offset", type=int, default=2) # number of GPUs used for training (for local eval)
     add_eval_args(parser)
 
+    add_logging_args(parser)
+
 
     args = parser.parse_args()
 
@@ -149,5 +155,8 @@ def parse_eval_server_args():
 
     add_eval_args(parser)
 
+    add_logging_args(parser)
+
     args = parser.parse_args()
+    args.method = "base"
     return args

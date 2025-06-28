@@ -1,3 +1,7 @@
+"""
+Generation utils for Test-time Scaling
+"""
+
 import os
 import traceback
 

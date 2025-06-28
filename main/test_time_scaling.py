@@ -233,7 +233,7 @@ def main(config):
 
     # set GPU arch to configure what target to build for
     set_gpu_arch(config.gpu_arch)
-    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
+    assert config.num_eval_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_eval_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     # Create inference function with config parameters
     inference_server = create_inference_server_from_presets(server_type=config.server_type,

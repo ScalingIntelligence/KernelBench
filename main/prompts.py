@@ -9,10 +9,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import read_file
 from src.eval import KernelExecResult
 
+from configs import REPO_TOP_DIR
 from utils import WorkArgs
 from run_utils import fetch_kernel_from_disk, fetch_eval_results_for_problem, fetch_eval_result_from_disk
-
-REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 ############################################

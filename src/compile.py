@@ -11,6 +11,8 @@ import torch
 import os
 import multiprocessing as mp
 
+from main.configs import RUNS_DIR, KERNEL_EVAL_BUILD_DIR
+
 """
 Compile and Cache
 
@@ -33,9 +35,9 @@ def compile_single_sample(work_args: WorkArgs, config: dict) -> tuple[bool, str]
     
     utils.set_gpu_arch(config["gpu_arch"])
 
-    build_dir = os.path.join(config["kernel_eval_build_dir"], config["run_name"], f"level_{level}", f"{problem_id}", f"{sample_id}")
+    build_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, config["run_name"], f"level_{level}", f"{problem_id}", f"{sample_id}")
 
-    run_dir = os.path.join(config["runs_dir"], config["run_name"])
+    run_dir = os.path.join(RUNS_DIR, config["run_name"])
     kernel_src_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py")
 
     if not os.path.exists(kernel_src_path):
@@ -60,7 +62,7 @@ def remove_cache_dir(config, level, problem_id, sample_id):
     Remove the cached folder for sample compilation so it can start a clean build next time
     useful for time out, failed build, etc.
     """
-    cache_dir = os.path.join(config['kernel_eval_build_dir'], config["run_name"], f"level_{level}", f"{problem_id}", f"{sample_id}")
+    cache_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, config["run_name"], f"level_{level}", f"{problem_id}", f"{sample_id}")
     print(f"cache_dir to remove: {cache_dir}")
     if os.path.exists(cache_dir):
         try:

@@ -43,7 +43,7 @@ def deserialize_work_args(data: dict) -> EvaluationWorkArgs:
         level=data['level'],
         problem_id=data['problem_id'],
         sample_id=data['sample_id'],
-        device=torch.device(data['device'])
+        device=torch.device("cuda")
     )
 
 
@@ -202,7 +202,7 @@ def write_eval_result_for_sample(level: int, problem_id: int, sample_id: int, ev
         json.dump(eval_result, f, indent=2)
 
 
-def send_evaluation_request(host: str, port: int, work_args: EvaluationWorkArgs, kernel_src: str = None, kernel_name: str = None):
+def send_evaluation_request(host: str, port: int, work_args: EvaluationWorkArgs, run_name: str, kernel_src: str = None, kernel_name: str = None):
     """
     Send an evaluation request to the server and receive the result.
     
@@ -226,6 +226,7 @@ def send_evaluation_request(host: str, port: int, work_args: EvaluationWorkArgs,
         # Prepare the request
         request = {
             'work_args': serialize_work_args(work_args),
+            'run_name': run_name,
             'kernel_src': kernel_src,
             'kernel_name': kernel_name
         }
@@ -233,6 +234,7 @@ def send_evaluation_request(host: str, port: int, work_args: EvaluationWorkArgs,
         # Send the request
         request_data = pickle.dumps(request)
         client_socket.sendall(request_data)
+        client_socket.shutdown(socket.SHUT_WR)
         
         # Receive the response
         response_data = b""
@@ -279,25 +281,25 @@ def check_server_status(host: str, port: int):
 
 
 def check_eval_status(config):
-    if config.eval_method == "local":
+    if config.eval_mode == "local":
         return True
-    elif config.eval_method == "remote":
+    elif config.eval_mode == "remote":
         return check_server_status(config.eval_server_host, config.eval_server_port)
-    elif config.eval_method == "modal":
+    elif config.eval_mode == "modal":
         return True
     else:
-        raise ValueError(f"Invalid evaluation method: {config.eval_method}")
+        raise ValueError(f"Invalid evaluation method: {config.eval_mode}")
 
 
 def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
     """
     Evaluate a single sample using the specified evaluation method
     """
-    if config.eval_method == "local":
+    if configs.eval_mode == "local":
         return evaluate_single_sample_worker(work_args, configs, run_dir, kernel_src, kernel_name)
-    elif config.eval_method == "remote":
-        return send_evaluation_request(config.eval_server_host, config.eval_server_port, work_args, kernel_src, kernel_name)
-    elif config.eval_method == "modal":
+    elif configs.eval_mode == "remote":
+        return send_evaluation_request(configs.eval_server_host, configs.eval_server_port, work_args, configs.run_name, kernel_src, kernel_name)
+    elif configs.eval_mode == "modal":
         return evalaute_single_sample_modal(work_args, configs, run_dir, kernel_src, kernel_name)
 
 
@@ -320,7 +322,7 @@ def batch_eval(
         compilation_results = batch_compile([(arg.level, arg.problem_id, arg.sample_id) for arg in total_work], vars(config))
 
     # construct a list of work args
-    batch_size = config.num_gpu_devices
+    batch_size = config.num_eval_devices
 
     with tqdm(total=len(total_work), desc="Evaluation Progress") as pbar:
 
@@ -328,7 +330,7 @@ def batch_eval(
             curr_work_batch = total_work[:batch_size]
             total_work = total_work[batch_size:]  # pop the first batch_size elements
             print(
-                f"[Curr Batch] {len(curr_work_batch)} tasks over {config.num_gpu_devices} GPUs; [Total Work left] {len(total_work)}"
+                f"[Curr Batch] {len(curr_work_batch)} tasks over {config.num_eval_devices} GPUs; [Total Work left] {len(total_work)}"
             )
             assert len(curr_work_batch) <= batch_size, f"Current batch size {len(curr_work_batch)} is greater than the number of GPUs {batch_size}"
 
@@ -434,7 +436,7 @@ if __name__ == "__main__":
  
     # set GPU arch to configure what target to build for
     set_gpu_arch(config.gpu_arch)
-    assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
+    assert config.num_eval_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_eval_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 

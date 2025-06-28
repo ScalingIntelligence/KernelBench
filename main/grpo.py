@@ -74,13 +74,14 @@ def train(config, vf_env):
     grpo_config = vf.GRPOConfig(
         run_name=config.run_name,
         output_dir=os.path.join("/data/user_data/gyeongwk/grpo/", config.run_name, "checkpoints"),
+        shuffle_dataset=False,
         learning_rate=1e-5,
         max_prompt_length=8128,
         temperature=config.temperature,
         max_completion_length=config.max_tokens,
         num_generations=8,
-        gradient_accumulation_steps=4,
-        per_device_train_batch_size=1,
+        gradient_accumulation_steps=1,
+        per_device_train_batch_size=4,
         num_batches_ahead=0,
         bf16_full_eval=True,
         gradient_checkpointing=True,
@@ -155,6 +156,7 @@ def main(config):
     def reward_func(prompt, completion, answer, thread_id, **kwargs):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
+        print(f"level: {level}, problem: {problem} thread_id: {thread_id}")
         if check_in_train_dataset(level, problem):
             sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 8)
         else:
@@ -197,7 +199,7 @@ def main(config):
             )
         elif config.eval_mode == "remote":
             exec_result = evaluate_single_sample(
-                work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=None),
+                work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda")),
                 configs=config,
                 run_dir=run_dir,
                 kernel_src=kernel_src, 

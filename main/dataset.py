@@ -68,8 +68,9 @@ KERNELBENCH_LEVEL_1_DATASET = construct_kernelbench_dataset(level=1)
 KERNELBENCH_LEVEL_2_DATASET = construct_kernelbench_dataset(level=2)
 KERNELBENCH_LEVEL_3_DATASET = construct_kernelbench_dataset(level=3)
 
-TRAIN_PROBLEM_IDS_LEVEL_1 = [49, 59, 40, 50, 83, 91, 15, 22, 35, 54, 12, 80, 37, 4, 33, 25, 78, 96, 34, 56, 74, 47, 63, 27, 65, 81, 72, 52, 39, 8, 84, 32, 64, 13, 79, 30, 21, 31, 87, 46, 62, 58, 71, 73, 6, 1, 11, 82, 85, 36] 
-TRAIN_PROBLEM_IDS_LEVEL_2 = [6, 62, 38, 51, 64, 81, 99, 71, 67, 76, 33, 74, 77, 63, 47, 25, 27, 84, 73, 96, 42, 88, 44, 89, 15, 1, 20, 53, 26, 65, 85, 79, 7, 43, 66, 98, 49, 55, 75, 45, 58, 11, 90, 60, 61, 72, 8, 68, 36, 14]
+TRAIN_PROBLEM_IDS_LEVEL_1 = [1, 4, 6, 8, 11, 12, 13, 15, 21, 22, 25, 27, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40, 46, 47, 49, 50, 52, 54, 56, 58, 59, 62, 63, 64, 65, 71, 72, 73, 74, 78, 79, 80, 81, 82, 83, 84, 85, 87, 91, 96]
+TRAIN_PROBLEM_IDS_LEVEL_2 = [1, 6, 7, 8, 11, 14, 15, 20, 25, 26, 27, 33, 36, 38, 42, 43, 44, 45, 47, 49, 51, 53, 55, 58, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 79, 81, 84, 85, 88, 89, 90, 96, 98, 99] 
+
 
 def check_in_train_dataset(level: int, problem_id: int) -> bool:
     if level == 1:

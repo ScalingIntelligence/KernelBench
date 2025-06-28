@@ -96,7 +96,7 @@ def fetch_eval_result_from_disk(run_dir: str, level: int, problem_id: int, sampl
 
 
 def fetch_baseline_results(level: int, problem_id: int, hardware: str):
-    baseline_path = os.path.join(REPO_TOP_DIR, "results", "timing", f"baseline_time_{hardware}.json")
+    baseline_path = os.path.join(REPO_TOP_DIR, "results", "timing", hardware, "baseline_time_torch.json")
     with open(baseline_path, 'r') as f:
         baseline_results = json.load(f)
     return baseline_results[str(level)][str(problem_id)]
