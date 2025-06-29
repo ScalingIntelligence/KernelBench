@@ -373,7 +373,7 @@ class ScriptArguments:
         },
     )
     enforce_eager: Optional[bool] = field(
-        default=None,
+        default=False,
         metadata={
             "help": "Whether to enforce eager execution. If set to `True`, we will disable CUDA graph and always "
             "execute the model in eager mode. If `False` (default behavior), we will use CUDA graph and eager "
@@ -404,6 +404,10 @@ class ScriptArguments:
     token_chunk_size: int = field(
         default=64,
         metadata={"help": "Number of tokens to generate per iteration in token-chunk dynamic batching."},
+    )
+    rope_scaling: Optional[dict[str, AnyType]] = field(
+        default=None,
+        metadata={"help": "Rope scaling type. If set to 'dynamic', the rope scaling will be dynamic. If set to 'yarn', the rope scaling will be yarn."},
     )
 
 # Global/module-level variables for token-chunk dynamic batching
@@ -1346,7 +1350,7 @@ def main(script_args: ScriptArguments):
         ready_connections = set()
         
         # Timeout for waiting for workers to get ready (e.g., 5 minutes)
-        timeout_seconds = 300 
+        timeout_seconds = 600 
         start_wait_time = time.time()
 
         while len(ready_connections) < script_args.data_parallel_size:
@@ -1883,6 +1887,8 @@ def make_parser():
                         help="Timeout in seconds for a single request waiting for its turn and completion.")
     parser.add_argument("--token-chunk-size", type=int, default=64,
                         help="Number of tokens to generate per iteration per request in token-chunk dynamic batching.")
+    parser.add_argument("--rope-scaling", type=str, default=None,
+                        help="Rope scaling type. If set to 'dynamic', the rope scaling will be dynamic. If set to 'yarn', the rope scaling will be yarn.")
     
     return parser
 
@@ -1908,7 +1914,8 @@ def cli_main():
         log_level=args.log_level,
         max_batch_size=args.max_batch_size,
         batch_request_timeout_seconds=args.batch_request_timeout_seconds,
-        token_chunk_size=args.token_chunk_size
+        token_chunk_size=args.token_chunk_size,
+        rope_scaling=args.rope_scaling
     )
     
     main(script_args)

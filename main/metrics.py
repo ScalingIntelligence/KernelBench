@@ -3,7 +3,6 @@ from argparse import ArgumentParser
 import os
 import json
 import numpy as np
-from tabulate import tabulate
 
 from dataset import construct_kernelbench_dataset, TEST_PROBLEM_IDS_LEVEL_1, TEST_PROBLEM_IDS_LEVEL_2, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2
 from src.score import *
@@ -375,13 +374,14 @@ def main():
     config_path = os.path.join(args.run_dir, "config.yaml")
     with open(config_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+
     eval_file_path = os.path.join(args.run_dir, "eval_results.json")
     if not os.path.exists(eval_file_path):
         print("Collating eval results")
         collate_eval_results(args.run_dir)
 
     with open(eval_file_path, 'r') as f:
-        eval_results = json.load(f)[f'{config["level"]}']
+        eval_results = json.load(f)
 
     if args.grpo:
         compute_metrics_grpo(config, args.hardware, eval_results, args.run_dir)

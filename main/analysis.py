@@ -8,6 +8,7 @@ REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLOT_DIR = os.path.join(REPO_TOP_DIR, "plots")
 RUNS_DIR = os.path.join(REPO_TOP_DIR, "runs")
 
+
 def load_metrics(run_dir):
     metrics_file = os.path.join(run_dir, "metrics.json")
     with open(metrics_file, "r") as f:
@@ -15,11 +16,30 @@ def load_metrics(run_dir):
     return metrics
 
 
-def plot_failure_modes(metrics_by_level, name):
+MODEL_TO_NAME = {
+    "deepseek_r1": "DeepSeek-R1",
+    "QwQ_32B": "QwQ-32B",
+    "qwen_2.5_7b": "Qwen2.5-7B-Instruct",
+    "qwen_2.5_1.5b": "Qwen2.5-1.5B-Instruct",
+}
+
+METHOD_TO_NAME = {
+    "base": "Base",
+    "best_of_n": "Best-of-N",
+    "IR": "Iterative Refinement",
+    "metr": "METR",
+}
+
+
+def to_run_dir(method, level, model):
+    return os.path.join(RUNS_DIR, f"{method}_level{level}_{model}")
+
+
+def plot_failure_modes(metrics_by_label, name, plot_dir):
     print(f'Plotting failure modes for {name}')
     # Extract failure mode data
-    percentages_by_level = {}
-    for level, metrics in metrics_by_level.items():
+    percentages_by_label = {}
+    for label, metrics in metrics_by_label.items():
         correctness = metrics.get('correctness', {})
         failure_modes = {
             "Compilation Error": correctness["total"] - correctness["compiled"],
@@ -34,7 +54,7 @@ def plot_failure_modes(metrics_by_level, name):
         # Calculate percentages
         percentages = [v/total * 100 for v in failure_modes.values()]
 
-        percentages_by_level[level] = percentages
+        percentages_by_label[label] = percentages
     
     # Create figure and axis with more horizontal space for legend
     fig, ax = plt.subplots(figsize=(14, 4))
@@ -42,26 +62,30 @@ def plot_failure_modes(metrics_by_level, name):
     # Create rectangle with different colored sections
     colors = ['lightcoral', 'lightsalmon', 'wheat', 'plum', 'yellowgreen']
     
-    y_offset = 0.8
-    for level, percentages in percentages_by_level.items():
+    num_labels = len(percentages_by_label)
+    height_per_rectangle = 0.20
+    spacing_between_rectangles = 0.05
+    y_offset = (num_labels - 1) * (height_per_rectangle + spacing_between_rectangles) # top most rectangle
+    legend_elements = []
+    for label, percentages in percentages_by_label.items():
         # Draw the main rectangle (wider and shorter)
-        rect = plt.Rectangle((0, y_offset), 1, 0.2, facecolor='lightgray', edgecolor='black', linewidth=1)
+        rect = plt.Rectangle((0, y_offset), 1, height_per_rectangle, facecolor='lightgray', edgecolor='black', linewidth=1)
         ax.add_patch(rect)
         
         # Add level label on the left
-        ax.text(-0.05, y_offset + 0.1, f'{level}', ha='center', va='center', fontweight='bold', fontsize=12)
+        ax.text(-0.05, y_offset + height_per_rectangle/2, f'{label}', ha='center', va='center', fontweight='bold', fontsize=12)
         
         # Draw colored sections
-        current_x = 0
         legend_elements = []
+        current_x = 0
         for i, (label, percentage, color) in enumerate(zip(failure_modes.keys(), percentages, colors)):
             width = percentage / 100
-            section = plt.Rectangle((current_x, y_offset), width, 0.2, facecolor=color, edgecolor='black', linewidth=1)
+            section = plt.Rectangle((current_x, y_offset), width, height_per_rectangle, facecolor=color, edgecolor='black', linewidth=1)
             ax.add_patch(section)
             
             # Add percentage text in the center of each section
             center_x = current_x + width/2
-            ax.text(center_x, y_offset + 0.1, f'{percentage:.1f}%', 
+            ax.text(center_x, y_offset + height_per_rectangle/2, f'{percentage:.1f}%', 
                     ha='center', va='center', fontweight='bold', fontsize=10)
             
             # Create legend element
@@ -69,11 +93,11 @@ def plot_failure_modes(metrics_by_level, name):
             
             current_x += width
 
-        y_offset -= 0.25
+        y_offset -= height_per_rectangle + spacing_between_rectangles
     
     # Set axis properties
     ax.set_xlim(-0.05, 1.05)
-    ax.set_ylim(0, 1)
+    ax.set_ylim(0, num_labels * (height_per_rectangle + spacing_between_rectangles) - spacing_between_rectangles)
     ax.axis('off')
     
     # Add title
@@ -86,19 +110,19 @@ def plot_failure_modes(metrics_by_level, name):
     legend.get_title().set_fontsize(12) 
     
     plt.tight_layout()
-    plt.savefig(os.path.join(PLOT_DIR, f"{name}_failure_modes.png"), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, "failure_modes.png"), bbox_inches='tight')
     plt.close()
 
 
-def plot_fast_p_scores_across_p(metrics, name):
+def plot_fast_p_scores_across_p(metrics_by_label, name, plot_dir):
     """
-    Plots the fast_p scores across different p values. Legend by number of samples or by methods(?) or levels?
+    Plots the fast_p scores across different p values. 
     """
     print(f'Plotting fast_p scores across p for {name}')
     plt.figure(figsize=(10, 5))
 
-    for label, metric in metrics.items():
-        fast_p_scores = metric["speedups"]["torch"]["fast_p_results"]
+    for label, metrics in metrics_by_label.items():
+        fast_p_scores = metrics["speedups"]["torch"]["fast_p_results"]
         plt.plot(fast_p_scores.keys(), fast_p_scores.values(), marker='o', label=label)
         
     plt.ylim(0, 1.05)
@@ -106,18 +130,20 @@ def plot_fast_p_scores_across_p(metrics, name):
     plt.ylabel('fast_p score')
     plt.title(f'Fast P Score Distribution: {name}')
     plt.legend()
-    plt.savefig(os.path.join(PLOT_DIR, f"{name}_fast_p_scores.png"), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, "fast_p_scores.png"), bbox_inches='tight')
     plt.close() 
 
 
-def plot_fast_p_by_num_samples(metrics_by_label, p="1.0", name=None):
+def plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="1.0", name=None, plot_dir=None):
     """
-    Plots the fast_p score (for given p) by number of samples. Legend by level or methods?
+    Plots the fast_p score (for given p) by number of samples. 
+    Values of p: mean, 0.0 (correctness), 0.5, 1.0, 2.0, etc
     """
     print(f'Plotting fast_p by number of samples for {name} with p={p}')
     plt.figure(figsize=(10, 5))
+
     max_sample = 0
-    for label, metrics in metrics_by_label.items():
+    for label, metrics in metrics_by_label_by_sample.items():
         num_samples = list(map(lambda x: int(x) + 1, list(metrics.keys())))
         fast_p_scores = list(map(lambda x: x["speedups"]["torch"]["fast_p_results"][p] if p != "mean" else x["speedups"]["torch"]["mean_speedup_correct"], metrics.values()))
 
@@ -132,12 +158,14 @@ def plot_fast_p_by_num_samples(metrics_by_label, p="1.0", name=None):
     plt.ylabel("Correctness" if p == "0.0" else f'Fast_{p} Score' if p != "mean" else "Mean Speedup")
     plt.legend()
     plt.title(f"Correctness by Number of Samples: {name}" if p == "0.0" else f'Fast_{p} Score by Number of Samples: {name}' if p != "mean" else f"Mean Speedup by Number of Samples: {name}")
-    plt.savefig(os.path.join(PLOT_DIR, f"{name}_correctness_by_num_samples.png" if p == "0.0" else f"{name}_fast_{p}_by_num_samples.png" if p != "mean" else f"{name}_mean_speedup_by_num_samples.png"), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, f"correctness_by_num_samples.png" if p == "0.0" else f"fast_{p}_by_num_samples.png" if p != "mean" else f"mean_speedup_by_num_samples.png"), bbox_inches='tight')
     plt.close()
 
-def plot_fast_p_barchart(metrics_by_label, p="1.0", name=None):
+
+def plot_fast_p_barchart(metrics_by_label, p="1.0", name=None, plot_dir=None):
     """
-    Plots the fast_p score (for given p) by number of samples. Legend by level or methods?
+    Plots the fast_p score (for given p) by number of samples. 
+    Values of p: mean, 0.0 (correctness), 0.5, 1.0, 2.0, etc
     """
     print(f'Plotting fast_p by number of samples for {name} with p={p}')
     plt.figure(figsize=(10, 5))
@@ -152,89 +180,133 @@ def plot_fast_p_barchart(metrics_by_label, p="1.0", name=None):
         plt.text(label, fast_p_score + 0.01, f'{fast_p_score:.2f}', 
                 ha='center', va='bottom')
 
-
     if p != "mean":
         plt.ylim(0, 1.05)
 
     plt.xlabel('Method')
     plt.ylabel("Correctness" if p == "0.0" else f'Fast_{p} Score' if p != "mean" else "Mean Speedup")
     plt.title(f"Correctness by Method: {name}" if p == "0.0" else f'Fast_{p} Score by Method: {name}' if p != "mean" else f"Mean Speedup by Method: {name}")
-    plt.savefig(os.path.join(PLOT_DIR, f"{name}_correctness_by_method.png" if p == "0.0" else f"{name}_fast_{p}_by_method.png" if p != "mean" else f"{name}_mean_speedup_by_method.png"), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, f"correctness_by_method.png" if p == "0.0" else f"fast_{p}_by_method.png" if p != "mean" else f"mean_speedup_by_method.png"), bbox_inches='tight')
     plt.close()
+
+
+def plot_everything(metrics_by_label, metrics_by_label_by_sample, name, plot_dir):
+    plot_failure_modes(metrics_by_label, name, plot_dir)
+    plot_fast_p_scores_across_p(metrics_by_label, name=name, plot_dir=plot_dir)
+    plot_fast_p_barchart(metrics_by_label, p="mean", name=name, plot_dir=plot_dir) # Mean speedup
+    plot_fast_p_barchart(metrics_by_label, p="0.0", name=name, plot_dir=plot_dir) # Correctness
+    plot_fast_p_barchart(metrics_by_label, p="1.0", name=name, plot_dir=plot_dir) # Fast_1.0 score
+    if len(metrics_by_label_by_sample) > 0: # for test-time scaling methods: plot across number of samples
+        plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="mean", name=name, plot_dir=plot_dir) # Mean speedup
+        plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="0.0", name=name, plot_dir=plot_dir) # Correctness
+        plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="1.0", name=name, plot_dir=plot_dir) # Fast_1.0 score
+
 
 def main():
     # Code to get failure modes
     parser = ArgumentParser()
+    parser.add_argument("--axis", type=str, choices=["method", "level", "model"], required=True, help="Axis to plot")
     parser.add_argument("--method", type=str, default=None, help="Method to plot")
-    # OR
-    parser.add_argument("--level", type=int, default=None, help="Level to plot")
-    parser.add_argument("--model", type=str, default=None, help="Model to plot")
     parser.add_argument("--methods", type=str, default=None, help="Methods to plot")
+    parser.add_argument("--level", type=int, default=None, help="Level to plot")
+    parser.add_argument("--levels", type=str, default=None, help="Levels to plot")
+    parser.add_argument("--model", type=str, default=None, help="Model to plot")
+    parser.add_argument("--models", type=str, default=None, help="Models to plot")
     args = parser.parse_args()
 
-    if args.method is None:
-        if args.level is None and args.methods is None:
-            raise ValueError("Either level or methods must be provided")
-        # analyze by method 
-        name = f"Level_{args.level}"
-        print(f'Analyzing {name} across methods')
+    # Initialize 
+    name = None
+    plot_dir = None
+    metrics_by_label = {} # dict of label -> metrics
+    metrics_by_label_by_sample = {} # dict of label -> num_samples -> metrics
+
+    if args.axis == "method": # Analyze across methods of a given level and model
+        assert args.levels is None and args.models is None, "Cannot analyze across methods and levels/models"
+        assert args.level is not None and args.model is not None, "Specify a level and model"
+
         if args.methods is None:
             methods = ["base", "best_of_n", "IR", "metr"]
         else:
             methods = args.methods.split(",")
+        print(f'Analyzing results Level: {args.level} Model: {args.model} across Methods: {methods}')
+        name = f"Level {args.level} ({MODEL_TO_NAME[args.model]})"
+        plot_dir = os.path.join(PLOT_DIR, "across_methods", f"level{args.level}_{args.model}")
 
-        metrics_by_method_best = {}
-        metrics_by_method_by_sample = {}
         for method in methods:
-            method_name = method if args.model is None else f"{method} ({args.model})"
-            run_name = method + f"_level{args.level}" + (f"_{args.model}" if args.model is not None else "")
-            run_dir = os.path.join(RUNS_DIR, run_name)
+            method_name = METHOD_TO_NAME[method]
+            run_dir = to_run_dir(method, args.level, args.model)
             if not os.path.exists(os.path.join(run_dir, "metrics.json")):
                 print(f'Run directory {run_dir} does not exist or does not have metrics.json')
                 continue
+
             metrics = load_metrics(run_dir)
             metrics = metrics["best_by_sample"] if "best_by_sample" in metrics else metrics
-            if "0" in metrics:
-                metrics_by_method_best[method_name] = metrics[str(max(list(map(int, metrics.keys()))))]
-                metrics_by_method_by_sample[method_name] = metrics
-            else:
-                metrics_by_method_best[method_name] = metrics
+            if "0" in metrics: # for test-time scaling methods
+                metrics_by_label[method_name] = metrics[str(max(list(map(int, metrics.keys()))))]
+                metrics_by_label_by_sample[method_name] = metrics
+            else: # for base
+                metrics_by_label[method_name] = metrics
 
-        plot_fast_p_scores_across_p(metrics_by_method_best, name)
-        plot_fast_p_barchart(metrics_by_method_best, p="mean", name=name)
-        plot_fast_p_barchart(metrics_by_method_best, p="0.0", name=name)
-        plot_fast_p_barchart(metrics_by_method_best, p="1.0", name=name)
-        if len(metrics_by_method_by_sample) > 0:
-            plot_fast_p_by_num_samples(metrics_by_method_by_sample, p="mean", name=name)
-            plot_fast_p_by_num_samples(metrics_by_method_by_sample, p="0.0", name=name)
-            plot_fast_p_by_num_samples(metrics_by_method_by_sample, p="1.0", name=name)
+    elif args.axis == "level": # Analyze across level of given method and model
+        assert args.methods is None and args.models is None, "Cannot analyze across levels and methods/models"
+        assert args.method is not None and args.model is not None, "Specify a method and model"
 
-    else: # Analyze across level
-        name = args.method
-        print(f'Analyzing {name} across levels')
-        metrics_by_level_best = {}
-        metrics_by_level_by_sample = {}
-        for level in [1, 2, 3, 5]:
-            run_dir = os.path.join(RUNS_DIR, args.method + f"_level{level}")
+        if args.levels is None:
+            levels = [1, 2, 3, 5]
+        else:
+            levels = list(map(int, args.levels.split(",")))
+
+        print(f'Analyzing results Method: {args.method} Model: {args.model} across levels: {levels}')
+        name = f"{METHOD_TO_NAME[args.method]} ({MODEL_TO_NAME[args.model]})"
+        plot_dir = os.path.join(PLOT_DIR, "across_levels", f"{args.method}_{args.model}")
+
+        for level in levels:
+            level_name = f"Level {level}"
+            run_dir = to_run_dir(args.method, level, args.model)
             if not os.path.exists(os.path.join(run_dir, "metrics.json")):
-                print(f'Run directory {run_dir} does not exist')
+                print(f'Run directory {run_dir} does not exist or does not have metrics.json')
                 continue
+
             metrics = load_metrics(run_dir)
             metrics = metrics["best_by_sample"] if "best_by_sample" in metrics else metrics
             if "0" in metrics:
-                plot_fast_p_scores_across_p({f"n={int(k)+1}": v for k,v in metrics.items()}, f"{name}_level{level}")
-                metrics_by_level_best[f"Level {level}"] = metrics[str(max(list(map(int, metrics.keys()))))]
-                metrics_by_level_by_sample[f"Level {level}"] = metrics
+                metrics_by_label[level_name] = metrics[str(max(list(map(int, metrics.keys()))))]
+                metrics_by_label_by_sample[level_name] = metrics
             else:
-                metrics_by_level_best[f"Level {level}"] = metrics
+                metrics_by_label[level_name] = metrics
 
-        plot_failure_modes(metrics_by_level_best, name)
-        plot_fast_p_scores_across_p(metrics_by_level_best, name)
-        if len(metrics_by_level_by_sample) > 0:
-            plot_fast_p_by_num_samples(metrics_by_level_by_sample, p="mean", name=name)
-            plot_fast_p_by_num_samples(metrics_by_level_by_sample, p="0.0", name=name)
-            plot_fast_p_by_num_samples(metrics_by_level_by_sample, p="1.0", name=name)
-        
+    elif args.axis == "model": # Analyze across model of given method and level
+        assert args.methods is None and args.levels is None, "Cannot analyze across models and methods/levels"
+        assert args.method is not None and args.level is not None, "Specify a method and level"
+
+        if args.models is None:
+            models = ["QwQ_32B", "qwen_2.5_7b", "qwen_2.5_1.5b", "deepseek_r1"]
+        else:
+            models = args.models.split(",")
+
+        print(f'Analyzing results Method: {args.method} Level: {args.level} across models: {models}')
+        name = f"{METHOD_TO_NAME[args.method]} (Level {args.level})"
+        plot_dir = os.path.join(PLOT_DIR, "across_models", f"{args.method}_level{args.level}")
+
+        for model in models:
+            model_name = MODEL_TO_NAME[model]
+            run_dir = to_run_dir(args.method, args.level, model)
+            if not os.path.exists(os.path.join(run_dir, "metrics.json")):
+                print(f'Run directory {run_dir} does not exist or does not have metrics.json')
+                continue
+
+            metrics = load_metrics(run_dir)
+            metrics = metrics["best_by_sample"] if "best_by_sample" in metrics else metrics
+            if "0" in metrics:
+                metrics_by_label[model_name] = metrics[str(max(list(map(int, metrics.keys()))))]
+                metrics_by_label_by_sample[model_name] = metrics
+            else:
+                metrics_by_label[model_name] = metrics
+
+    # Plot everything
+    os.makedirs(plot_dir, exist_ok=True)
+    plot_everything(metrics_by_label, metrics_by_label_by_sample, name, plot_dir)
+
 
 if __name__ == "__main__":
     main()

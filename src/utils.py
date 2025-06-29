@@ -76,8 +76,8 @@ def query_server(
     prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,
     system_prompt: str = "You are a helpful assistant",  # only used for chat prompts
     temperature: float = 0.0,
-    top_p: float = 1.0, # nucleus sampling
-    top_k: int = 50, 
+    top_p: float = 0.95, # nucleus sampling
+    top_k: int = 40, 
     max_tokens: int = 128,  # max output tokens to generate
     num_completions: int = 1,
     server_port: int = 30000,  # only for local server hosted on SGLang
