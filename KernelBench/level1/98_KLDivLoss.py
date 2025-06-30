@@ -19,7 +19,8 @@ input_shape = (4096, )
 dim = 1
 
 def get_inputs():
-    return [torch.randn(batch_size, *input_shape).softmax(dim=-1), torch.randn(batch_size, *input_shape).softmax(dim=-1)]
+    scale = torch.randn(())
+    return [(torch.randn(batch_size, *input_shape)*scale).softmax(dim=-1), torch.randn(batch_size, *input_shape).softmax(dim=-1)]
 
 def get_init_inputs():
     return []
