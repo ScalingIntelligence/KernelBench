@@ -217,6 +217,7 @@ class Environment(ABC):
                 task: str = "default",
                 info: Dict[str, Any] = {},
                 sampling_args: Dict[str, Any] = {},
+                thread_id: int = 0,
                 **kwargs: Any) -> Tuple[Union[str, List[Dict[str, Any]]], Dict[str, Any]]:
         """
         Run a rollout for a given prompt.
@@ -233,13 +234,14 @@ class Environment(ABC):
                           task: str = "default",
                           info: Dict[str, Any] = {},
                           sampling_args: Dict[str, Any] = {},
+                          thread_id: int = 0,
                           **kwargs: Any) -> Tuple[Union[str, List[Dict[str, Any]]], Dict[str, Any]]:
         """
         Run a rollout for a given prompt.
         Returns a tuple of (completion, state).
         """
         async with semaphore:
-            return await asyncio.to_thread(self.rollout, client, model, prompt, answer, task, info, sampling_args, **kwargs)
+            return await asyncio.to_thread(self.rollout, client, model, prompt, answer, task, info, sampling_args, thread_id=thread_id, **kwargs)
 
     async def _run_all(self,
                        client: OpenAI,
@@ -257,8 +259,8 @@ class Environment(ABC):
         from tqdm.asyncio import tqdm_asyncio
         semaphore = Semaphore(max_concurrent)
         rollout_tasks = [
-            self._run_single(semaphore, client, model, prompt, answer, task, info, sampling_args, **kwargs)
-            for prompt, answer, task, info in zip(prompts, answers, tasks, infos)
+            self._run_single(semaphore, client, model, prompt, answer, task, info, sampling_args, thread_id=i,**kwargs)
+            for i, (prompt, answer, task, info) in enumerate(zip(prompts, answers, tasks, infos))
         ]
         return await tqdm_asyncio.gather(
             *rollout_tasks,

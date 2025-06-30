@@ -1,4 +1,5 @@
 import torch
+import time
 import os
 import yaml
 import wandb
@@ -12,13 +13,16 @@ sys.path.append(REPO_ROOT)
 import verifiers as vf
 
 from configs import parse_rl_training_args, RUNS_DIR
-from prompts import prompt_base
+from prompts import prompt_base, exec_result_to_exeution_feedback
 from evaluation_utils import evaluate_single_sample_in_separate_process, EvaluationWorkArgs, evaluate_single_sample
 from dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, check_in_train_dataset
 from run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
 from src.eval import check_metadata_serializable_all_types
 from src.utils import set_gpu_arch, extract_last_code
+
+
+BATCH_SIZE = 64
 
 
 def get_train_dataset():
@@ -136,6 +140,7 @@ def main(config):
 
     # Construct dataset
     dataset = construct_dataset(config)
+    eval_dataset = construct_dataset(config, train=False)
 
     # Set up run directory
     run_dir = os.path.join(RUNS_DIR, config.run_name)
@@ -162,15 +167,9 @@ def main(config):
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
         if check_in_train_dataset(level, problem):
-            sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, 8)
+            sample_id = find_highest_sample_id(run_dir, level, problem, thread_id * 1000, 1) # sample_id of a00b means trajectory a iteration b
         else:
             sample_id = find_highest_sample_id(run_dir, level, problem, 0, 1) # just find the next sample_id
-
-
-        # if config.log_prompt:
-        #     prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_prompt.txt")
-        #     with open(prompt_path, "w") as f:
-        #         f.write(prompt)
 
         completion = completion[0]["content"]
         if config.log_response:
@@ -178,11 +177,9 @@ def main(config):
             with open(response_path, "w") as f:
                 f.write(completion)
  
-        # ref_arch_src, ref_arch_name = fetch_ref_arch_from_level_problem_id(level, problem, config.dataset_src)
 
         kernel_src = extract_last_code(completion, ["python", "cpp"])
         kernel_name = f"level_{level}_problem_{problem}_sample_{sample_id}"
-        answer = answer[0]
 
         if kernel_src is not None:
             write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
@@ -212,28 +209,77 @@ def main(config):
         write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
         return reward_from_exec_result(level, problem, exec_result)
     
-
     kernel_rubric = vf.Rubric(funcs=[reward_func], weights=[1.0]) 
-    vf_env = vf.SingleTurnEnv(dataset=dataset, eval_dataset=construct_dataset(config, train=False), system_prompt="You are a kernel expert", rubric=kernel_rubric)
+    vf_env = vf.SingleTurnEnv(dataset=dataset, 
+                              eval_dataset=eval_dataset, 
+                              system_prompt="You are a kernel expert", 
+                              rubric=kernel_rubric)
 
-    # TODO: add multi-turn env
     class KernelMultiTurnEnv(vf.MultiTurnEnv):
         def __init__(self, dataset, max_turns):
             rubric = kernel_rubric
             system_prompt = "You are a kernel expert"
             super().__init__(dataset=dataset, system_prompt=system_prompt, rubric=rubric, max_turns=max_turns)
         
-        def env_response(self, messages, state, **kwargs):
+        def env_response(self, messages, state, thread_id, **kwargs):
             # eval logic to parse response and run kernel
-            pass
+            prompt = messages[1]["content"]
+            level, problem = extract_metadata_from_prompt(prompt)
+            sample_id = thread_id * 1000 + (len(messages) - 3) // 2 
+
+            if config.log_prompt:
+                # log entire trajectory
+                prompt_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{thread_id * 1000}_prompt.jsonl")
+                with open(prompt_path, "w") as f:
+                    for msg in messages:
+                        f.write(json.dumps(msg) + "\n")
+
+            last_response = messages[-1]["content"]
+            kernel_src = extract_last_code(last_response, ["python", "cpp"])
+            kernel_name = f"level_{level}_problem_{problem}_sample_{sample_id}"
+
+            if config.log_response:
+                response_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_response.txt")
+                with open(response_path, "w") as f:
+                    f.write(last_response)
+
+            if kernel_src is not None:
+                write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
+ 
+            assert config.eval_mode == "remote", "Only support remote eval for now"
+
+            exec_result = evaluate_single_sample(
+                work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda")),
+                configs=config,
+                run_dir=run_dir,
+                kernel_src=kernel_src, 
+                kernel_name=kernel_name
+            )
+            write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
+            env_msg = {"role": "user", "content": exec_result_to_exeution_feedback(exec_result)}
+            state["level"] = level
+            state["problem_id"] = problem
+            state["exec_result"] = exec_result
+            return env_msg, state
 
         def is_completed(self, messages, state, **kwargs):
-            return state.get("completed", False) or state.get("attempts", 0) >= self.max_turns
+            return False # Keep going until max_turn is reached
         
-        def score_rollout(self, rollout, **kwargs):
-            pass
-
-    train(config, vf_env)
+    def multi_turn_reward_func(prompt, completion, answer, thread_id, state, **kwargs):
+        return reward_from_exec_result(state["level"], state["problem_id"], state["exec_result"])
+ 
+    multi_turn_rubric = vf.Rubric(funcs=[multi_turn_reward_func], weights=[1.0]) 
+    
+    vf_multi_turn_env = KernelMultiTurnEnv(dataset=dataset, 
+                                            eval_dataset=eval_dataset, 
+                                            max_turns=config.max_turns, 
+                                            rubric=multi_turn_rubric, 
+                                            system_prompt="You are a kernel expert")
+        
+    if config.multi_turn:
+        train(config, vf_multi_turn_env)
+    else:
+        train(config, vf_env)
         
 
 if __name__ == "__main__":

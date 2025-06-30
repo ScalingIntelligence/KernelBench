@@ -23,6 +23,7 @@ class MultiTurnEnv(Environment):
     def env_response(self,
                      messages: List[Dict[str, Any]],
                      state: Dict[str, Any],
+                     thread_id: int = 0,
                      **kwargs: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         Generate a response from the environment (message, state).
@@ -37,6 +38,7 @@ class MultiTurnEnv(Environment):
                 task: str = "default",
                 info: Dict[str, Any] = {},
                 sampling_args: Dict[str, Any] = {},
+                thread_id: int = 0,
                 **kwargs: Any) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Generate a multi-turn rollout with the environment (messages, state).
@@ -65,7 +67,7 @@ class MultiTurnEnv(Environment):
             if self.is_completed(messages, state, **kwargs) or turn >= self.max_turns or has_error:
                 is_completed = True
             else:
-                env_msg, state = self.env_response(messages, state, **kwargs)
+                env_msg, state = self.env_response(messages, state, thread_id=thread_id, **kwargs)
                 messages.append(env_msg)
                 completion.append(env_msg)
         return completion, state

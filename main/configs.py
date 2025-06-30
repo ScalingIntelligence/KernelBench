@@ -115,6 +115,7 @@ def parse_rl_training_args():
     parser.add_argument("--_tags", type=str, default="test_rl_training")
 
     parser.add_argument("--run_name", type=str, required=True)
+    parser.add_argument("--multi_turn", action="store_true")
 
     # Dataset
     parser.add_argument("--dataset_src", type=str, default="local")
