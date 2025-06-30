@@ -537,7 +537,7 @@ def print_messages(messages):
         print("\n\n")
 
 
-def set_gpu_arch(arch_list: list[str]):
+def set_gpu_arch(arch_list: str | list[str]):
     """
     Set env variable for torch cuda arch list to build kernels for specified architectures
     """

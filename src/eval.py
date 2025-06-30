@@ -421,7 +421,7 @@ def eval_kernel_against_ref(
         )
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
         graceful_eval_cleanup(context, device)
-        metadata["runtime_error"] = e
+        metadata["runtime_error"] = str(e)
         return KernelExecResult(
             compiled=True, correctness=False, metadata=metadata
         )  # skip further steps
@@ -444,7 +444,7 @@ def eval_kernel_against_ref(
         )
     except Exception as e:
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
-        metadata["runtime_error"] = e
+        metadata["runtime_error"] = str(e)
         kernel_exec_result = KernelExecResult(
             compiled=True, correctness=False, metadata=metadata
         )

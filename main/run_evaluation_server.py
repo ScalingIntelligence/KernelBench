@@ -15,6 +15,7 @@ import multiprocessing as mp
 
 from configs import parse_eval_server_args, RUNS_DIR
 from evaluation_utils import evaluate_single_sample_in_separate_process, KernelExecResult, deserialize_work_args
+from src.utils import set_gpu_arch
 
 
 class GPUDeviceManager:
@@ -215,6 +216,8 @@ def main():
 
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method("spawn")
+    
+    set_gpu_arch(config.gpu_arch)
 
      
     # Display GPU information
