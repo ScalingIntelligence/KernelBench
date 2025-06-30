@@ -29,6 +29,7 @@ from multiprocessing.connection import Connection as MPConnection
 from typing import Any as AnyType
 from uuid import uuid4
 import traceback
+import json
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, StreamingResponse 
@@ -550,6 +551,7 @@ def llm_worker(
         max_model_len=script_args.max_model_len,
         max_num_seqs=script_args.max_batch_size,
         worker_extension_cls="verifiers.inference.vllm_server.WeightSyncWorkerExtension",
+        rope_scaling=json.loads(script_args.rope_scaling) if script_args.rope_scaling else None,
     )
 
     # Send ready signal to parent process
@@ -1350,7 +1352,7 @@ def main(script_args: ScriptArguments):
         ready_connections = set()
         
         # Timeout for waiting for workers to get ready (e.g., 5 minutes)
-        timeout_seconds = 600 
+        timeout_seconds = 1200 
         start_wait_time = time.time()
 
         while len(ready_connections) < script_args.data_parallel_size:
