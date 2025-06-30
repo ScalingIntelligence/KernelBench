@@ -551,7 +551,7 @@ def llm_worker(
         max_model_len=script_args.max_model_len,
         max_num_seqs=script_args.max_batch_size,
         worker_extension_cls="verifiers.inference.vllm_server.WeightSyncWorkerExtension",
-        rope_scaling=json.loads(script_args.rope_scaling) if script_args.rope_scaling else None,
+        rope_scaling=json.loads(script_args.rope_scaling) if script_args.rope_scaling else {"rope_type": "dynamic", "factor": 1.0},
     )
 
     # Send ready signal to parent process

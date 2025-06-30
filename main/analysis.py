@@ -162,12 +162,12 @@ def plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="1.0", name=None, p
     plt.close()
 
 
-def plot_fast_p_barchart(metrics_by_label, p="1.0", name=None, plot_dir=None):
+def plot_fast_p_barchart(metrics_by_label, p="1.0", axis="Method", name=None, plot_dir=None):
     """
-    Plots the fast_p score (for given p) by number of samples. 
+    Plots the fast_p score (for given p)
     Values of p: mean, 0.0 (correctness), 0.5, 1.0, 2.0, etc
     """
-    print(f'Plotting fast_p by number of samples for {name} with p={p}')
+    print(f'Plotting fast_p barchart for {name} with p={p}')
     plt.figure(figsize=(10, 5))
 
     for label, metrics in metrics_by_label.items():
@@ -183,19 +183,19 @@ def plot_fast_p_barchart(metrics_by_label, p="1.0", name=None, plot_dir=None):
     if p != "mean":
         plt.ylim(0, 1.05)
 
-    plt.xlabel('Method')
+    plt.xlabel(axis)
     plt.ylabel("Correctness" if p == "0.0" else f'Fast_{p} Score' if p != "mean" else "Mean Speedup")
-    plt.title(f"Correctness by Method: {name}" if p == "0.0" else f'Fast_{p} Score by Method: {name}' if p != "mean" else f"Mean Speedup by Method: {name}")
-    plt.savefig(os.path.join(plot_dir, f"correctness_by_method.png" if p == "0.0" else f"fast_{p}_by_method.png" if p != "mean" else f"mean_speedup_by_method.png"), bbox_inches='tight')
+    plt.title(f"Correctness by {axis}: {name}" if p == "0.0" else f'Fast_{p} Score by {axis}: {name}' if p != "mean" else f"Mean Speedup by {axis}: {name}")
+    plt.savefig(os.path.join(plot_dir, f"correctness.png" if p == "0.0" else f"fast_{p}.png" if p != "mean" else f"mean_speedup.png"), bbox_inches='tight')
     plt.close()
 
 
-def plot_everything(metrics_by_label, metrics_by_label_by_sample, name, plot_dir):
+def plot_everything(metrics_by_label, metrics_by_label_by_sample, axis, name, plot_dir):
     plot_failure_modes(metrics_by_label, name, plot_dir)
     plot_fast_p_scores_across_p(metrics_by_label, name=name, plot_dir=plot_dir)
-    plot_fast_p_barchart(metrics_by_label, p="mean", name=name, plot_dir=plot_dir) # Mean speedup
-    plot_fast_p_barchart(metrics_by_label, p="0.0", name=name, plot_dir=plot_dir) # Correctness
-    plot_fast_p_barchart(metrics_by_label, p="1.0", name=name, plot_dir=plot_dir) # Fast_1.0 score
+    plot_fast_p_barchart(metrics_by_label, p="mean", axis=axis, name=name, plot_dir=plot_dir) # Mean speedup
+    plot_fast_p_barchart(metrics_by_label, p="0.0", axis=axis, name=name, plot_dir=plot_dir) # Correctness
+    plot_fast_p_barchart(metrics_by_label, p="1.0", axis=axis, name=name, plot_dir=plot_dir) # Fast_1.0 score
     if len(metrics_by_label_by_sample) > 0: # for test-time scaling methods: plot across number of samples
         plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="mean", name=name, plot_dir=plot_dir) # Mean speedup
         plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="0.0", name=name, plot_dir=plot_dir) # Correctness
@@ -305,7 +305,7 @@ def main():
 
     # Plot everything
     os.makedirs(plot_dir, exist_ok=True)
-    plot_everything(metrics_by_label, metrics_by_label_by_sample, name, plot_dir)
+    plot_everything(metrics_by_label, metrics_by_label_by_sample, args.axis, name, plot_dir)
 
 
 if __name__ == "__main__":

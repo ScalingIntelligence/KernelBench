@@ -1,27 +1,44 @@
-# Metrics
-if [ "$1" == "metrics" ]; then
-python main/metrics.py --run_dir runs/base_level1 --hardware A6000_babel
-python main/metrics.py --run_dir runs/base_level2 --hardware A6000_babel
-python main/metrics.py --run_dir runs/base_level3 --hardware A6000_babel
-python main/metrics.py --run_dir runs/best_of_n_level1 --hardware A6000_babel
-python main/metrics.py --run_dir runs/best_of_n_level2 --hardware A6000_babel
-python main/metrics.py --run_dir runs/best_of_n_level3 --hardware A6000_babel
-python main/metrics.py --run_dir runs/IR_level1 --hardware A6000_babel
-python main/metrics.py --run_dir runs/IR_level2 --hardware A6000_babel
-python main/metrics.py --run_dir runs/IR_level3 --hardware A6000_babel
-python main/metrics.py --run_dir runs/metr_level1 --hardware A6000_babel
-python main/metrics.py --run_dir runs/metr_level2 --hardware A6000_babel
-python main/metrics.py --run_dir runs/metr_level3 --hardware A6000_babel
-fi
-
 # Analysis
-if [ "$1" == "analysis" ]; then
-python main/analysis.py --method base
-python main/analysis.py --method best_of_n
-python main/analysis.py --method IR
-python main/analysis.py --method metr
+python main/analysis.py --axis method --level 1 --model deepseek_r1
+python main/analysis.py --axis method --level 2 --model deepseek_r1
+python main/analysis.py --axis method --level 3 --model deepseek_r1
+python main/analysis.py --axis method --level 5 --model deepseek_r1
+python main/analysis.py --axis method --level 1 --model qwen_2.5_7b
+python main/analysis.py --axis method --level 2 --model qwen_2.5_7b
+# python main/analysis.py --axis method --level 3 --model qwen_2.5_7b
+# python main/analysis.py --axis method --level 5 --model qwen_2.5_7b
+python main/analysis.py --axis method --level 1 --model qwen_2.5_1.5b
+python main/analysis.py --axis method --level 2 --model qwen_2.5_1.5b
+# python main/analysis.py --axis method --level 3 --model qwen_2.5_1.5b
+# python main/analysis.py --axis method --level 5 --model qwen_2.5_1.5b
 
-python main/analysis.py --level 1 --methods "base,best_of_n,IR,metr"
-python main/analysis.py --level 2 --methods "base,best_of_n,IR,metr"
-python main/analysis.py --level 3 --methods "base,best_of_n,IR,metr"
-fi
+python main/analysis.py --axis level --method base --model deepseek_r1
+python main/analysis.py --axis level --method best_of_n --model deepseek_r1
+python main/analysis.py --axis level --method IR --model deepseek_r1
+python main/analysis.py --axis level --method metr --model deepseek_r1
+python main/analysis.py --axis level --method base --model qwen_2.5_7b
+python main/analysis.py --axis level --method best_of_n --model qwen_2.5_7b
+python main/analysis.py --axis level --method IR --model qwen_2.5_7b
+python main/analysis.py --axis level --method metr --model qwen_2.5_7b
+python main/analysis.py --axis level --method base --model qwen_2.5_1.5b
+python main/analysis.py --axis level --method best_of_n --model qwen_2.5_1.5b
+python main/analysis.py --axis level --method IR --model qwen_2.5_1.5b
+python main/analysis.py --axis level --method metr --model qwen_2.5_1.5b
+
+
+python main/analysis.py --axis model --method base --level 1
+python main/analysis.py --axis model --method base --level 2
+python main/analysis.py --axis model --method base --level 3
+python main/analysis.py --axis model --method base --level 5
+python main/analysis.py --axis model --method best_of_n --level 1
+python main/analysis.py --axis model --method best_of_n --level 2
+python main/analysis.py --axis model --method best_of_n --level 3
+python main/analysis.py --axis model --method best_of_n --level 5
+python main/analysis.py --axis model --method IR --level 1
+python main/analysis.py --axis model --method IR --level 2
+python main/analysis.py --axis model --method IR --level 3
+python main/analysis.py --axis model --method IR --level 5
+python main/analysis.py --axis model --method metr --level 1
+python main/analysis.py --axis model --method metr --level 2
+python main/analysis.py --axis model --method metr --level 3
+python main/analysis.py --axis model --method metr --level 5
