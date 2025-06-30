@@ -259,14 +259,22 @@ def main(config):
             env_msg = {"role": "user", "content": exec_result_to_exeution_feedback(exec_result)}
             state["level"] = level
             state["problem_id"] = problem
-            state["exec_result"] = exec_result
+            if "exec_result" not in state:
+                state["exec_result"] = []
+            state["exec_result"].append(exec_result)
             return env_msg, state
 
         def is_completed(self, messages, state, **kwargs):
             return False # Keep going until max_turn is reached
         
     def multi_turn_reward_func(prompt, completion, answer, thread_id, state, **kwargs):
-        return reward_from_exec_result(state["level"], state["problem_id"], state["exec_result"])
+        exec_results = state["exec_result"]
+        best_reward = 0.0
+        for exec_result in exec_results:
+            reward = reward_from_exec_result(state["level"], state["problem_id"], exec_result)
+            if reward > best_reward:
+                best_reward = reward
+        return best_reward
  
     multi_turn_rubric = vf.Rubric(funcs=[multi_turn_reward_func], weights=[1.0]) 
     
