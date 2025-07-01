@@ -15,7 +15,7 @@ import json
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 
-from configs import REPO_TOP_DIR
+from main.configs import REPO_TOP_DIR
 
 def set_seed(seed: int):
     torch.manual_seed(seed)

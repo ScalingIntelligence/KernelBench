@@ -1,0 +1,4 @@
+interaction:
+  - name: "kernel_bench"
+    class_name: "KernelBenchInteraction"
+    config: {}

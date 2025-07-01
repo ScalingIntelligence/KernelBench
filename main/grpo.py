@@ -12,17 +12,17 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
 import verifiers as vf
 
-from configs import parse_rl_training_args, RUNS_DIR
-from prompts import prompt_base, exec_result_to_exeution_feedback
-from evaluation_utils import evaluate_single_sample_in_separate_process, EvaluationWorkArgs, evaluate_single_sample
-from dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, check_in_train_dataset
-from run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
+from main.configs import parse_rl_training_args, RUNS_DIR
+from main.prompts import prompt_base, exec_result_to_exeution_feedback
+from main.evaluation_utils import evaluate_single_sample_in_separate_process, EvaluationWorkArgs, evaluate_single_sample
+from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, check_in_train_dataset
+from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
 from src.eval import check_metadata_serializable_all_types
 from src.utils import set_gpu_arch, extract_last_code
 
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 
 def get_train_dataset():
@@ -89,8 +89,8 @@ def train(config, vf_env):
         temperature=config.temperature,
         max_completion_length=config.max_tokens,
         num_generations=8,
-        gradient_accumulation_steps=4,
-        per_device_train_batch_size=2,
+        gradient_accumulation_steps=1,
+        per_device_train_batch_size=4,
         num_batches_ahead=0,
         bf16_full_eval=True,
         gradient_checkpointing=True,
@@ -164,10 +164,11 @@ def main(config):
 
 
     def reward_func(prompt, completion, answer, thread_id, **kwargs):
+        assert len(prompt) == 2, "Single turn: Prompt should have system prompt and user prompt"
         prompt = prompt[1]["content"]
         level, problem = extract_metadata_from_prompt(prompt)
         if check_in_train_dataset(level, problem):
-            sample_id = find_highest_sample_id(run_dir, level, problem, thread_id * 1000, 1) # sample_id of a00b means trajectory a iteration b
+            sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, BATCH_SIZE) # batch_size
         else:
             sample_id = find_highest_sample_id(run_dir, level, problem, 0, 1) # just find the next sample_id
 
@@ -216,10 +217,8 @@ def main(config):
                               rubric=kernel_rubric)
 
     class KernelMultiTurnEnv(vf.MultiTurnEnv):
-        def __init__(self, dataset, max_turns):
-            rubric = kernel_rubric
-            system_prompt = "You are a kernel expert"
-            super().__init__(dataset=dataset, system_prompt=system_prompt, rubric=rubric, max_turns=max_turns)
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
         
         def env_response(self, messages, state, thread_id, **kwargs):
             # eval logic to parse response and run kernel
@@ -280,7 +279,7 @@ def main(config):
     
     vf_multi_turn_env = KernelMultiTurnEnv(dataset=dataset, 
                                             eval_dataset=eval_dataset, 
-                                            max_turns=config.max_turns, 
+                                            max_turns=8, 
                                             rubric=multi_turn_rubric, 
                                             system_prompt="You are a kernel expert")
         

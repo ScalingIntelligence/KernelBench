@@ -13,11 +13,11 @@ sys.path.append(REPO_TOP_DIR)
 
 from src.utils import set_gpu_arch, create_inference_server_from_presets
 
-from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
-from configs import parse_test_time_scaling_args, RUNS_DIR
-from utils import WorkArgs
-from generation_utils import batch_generate
-from evaluation_utils import batch_eval
+from main.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
+from main.configs import parse_test_time_scaling_args, RUNS_DIR
+from main.utils import WorkArgs
+from main.generation_utils import batch_generate
+from main.evaluation_utils import batch_eval
 
 """
 Test-time scaling approaches

@@ -4,20 +4,24 @@ import pickle
 import torch
 import json
 import time
+import sys
 from tqdm import tqdm
 import multiprocessing as mp
 import yaml
 from dataclasses import dataclass
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(REPO_ROOT)
+
 from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, eval_reference_kernel, KernelExecResult, check_metadata_serializable_all_types
 from src.utils import set_gpu_arch
 
-from configs import parse_evaluation_args, RUNS_DIR, KERNEL_EVAL_BUILD_DIR
-from dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
-from utils import WorkArgs
-from run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
-from evaluation_utils_modal import evalaute_single_sample_modal
+from main.configs import parse_evaluation_args, RUNS_DIR, KERNEL_EVAL_BUILD_DIR
+from main.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
+from main.utils import WorkArgs
+from main.run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
+from main.evaluation_utils_modal import evalaute_single_sample_modal
 
 
 @dataclass
