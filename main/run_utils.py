@@ -8,8 +8,9 @@ Manages the directory created during runs.
 """
 import os
 import json
- 
+
 from src.utils import read_file
+from src.eval import check_metadata_serializable_all_types
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -104,3 +105,20 @@ def fetch_baseline_results(level: int, problem_id: int, hardware: str):
         if int(prob_name.split("_")[0]) == problem_id:
             return results
     return None
+
+
+def write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir):
+    eval_result_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_eval_result.json")
+    eval_result = {
+        'level': level,
+        'problem_id': problem,
+        'sample_id': sample_id,
+        'compiled': exec_result.compiled,
+        'correctness': exec_result.correctness,
+        'metadata': check_metadata_serializable_all_types(exec_result.metadata),
+        'runtime': exec_result.runtime,
+        'runtime_stats': exec_result.runtime_stats,
+    }
+
+    with open(eval_result_path, "w") as f:
+        json.dump(eval_result, f)

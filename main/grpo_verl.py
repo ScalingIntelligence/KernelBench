@@ -15,16 +15,18 @@ sys.path.append(REPO_ROOT)
 from main.prompts import prompt_base
 from main.evaluation_utils import send_evaluation_request, EvaluationWorkArgs
 from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, KERNEL_BENCH_PATH
-from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
+from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk, write_eval_result_to_separate_file
 
 from src.utils import set_gpu_arch, extract_last_code
 
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
 RUN_NAME = "grpo_verl_test"
-EVAL_SERVER_HOST = "babel-1-1"
+EVAL_SERVER_HOST = "babel-7-17"
 EVAL_SERVER_PORT = 8083
-BATCH_SIZE = 32
+NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"
+
+os.makedirs(os.path.join(RUNS_DIR, RUN_NAME), exist_ok=True)
 
 # Dataset conversion
 def get_train_dataset():
@@ -101,12 +103,13 @@ def reward_from_exec_result(level, problem, exec_result):
         return 0.0
 
 
-def compute_score(data_source, solution_str, ground_truth, extra_info=None):
+def compute_score(data_source, solution_str, ground_truth, extra_info=None, i=None):
     split, level, problem = extra_info['split'], extra_info['level'], extra_info['problem']
     run_dir = os.path.join(RUNS_DIR, RUN_NAME)
-    thread_id = 0 # for now
+
+    thread_id = i # for now
     if split == "train":
-        sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, BATCH_SIZE) # batch_size
+        sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, NUM_GENERATIONS) # batch_size
     else:
         sample_id = find_highest_sample_id(run_dir, level, problem, 0, 1) # just find the next sample_id
 
@@ -123,7 +126,7 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
 
     work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
     exec_result = send_evaluation_request(EVAL_SERVER_HOST, EVAL_SERVER_PORT, work_args, RUN_NAME, kernel_src, kernel_name)
-    # write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
+    write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
     return reward_from_exec_result(level, problem, exec_result)
 
 
