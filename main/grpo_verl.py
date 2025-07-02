@@ -1,24 +1,15 @@
 import torch
-import time
 import os
 import sys
-import yaml
-import pandas as pd
-import json
-import asyncio
-from concurrent.futures import ProcessPoolExecutor
-from functools import partial
-import psutil
-
-from datasets import Dataset
+from uuid import uuid4
 
 from verl.interactions.base import BaseInteraction
-from uuid import uuid4
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
 
 from main.prompts import prompt_base
-from main.evaluation_utils import send_evaluation_request, send_batch_evaluation_request, EvaluationWorkArgs
+from main.evaluation_utils import send_evaluation_request, send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args
 from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, KERNEL_BENCH_PATH
 from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk, write_eval_result_to_separate_file
 
@@ -26,73 +17,12 @@ from src.utils import set_gpu_arch, extract_last_code
 
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
 RUN_NAME = "grpo_verl_test"
-EVAL_SERVER_HOST = "babel-7-25"
+EVAL_SERVER_HOST = "babel-2-29"
 EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"
 
 os.makedirs(os.path.join(RUNS_DIR, RUN_NAME), exist_ok=True)
-
-# Dataset conversion
-def get_train_dataset():
-    return [(1, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 1 for training
-
-def get_eval_dataset():
-    return [(1, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 2 for evaluation
- 
-
-def construct_dataset(train=True):
-    if train:
-        dataset = get_train_dataset()
-    else:
-        dataset = get_eval_dataset()
-
-    qa_dataset = []
-    for (level, problem) in dataset:
-        ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
-        question = prompt_base(ref_arch_src)
-        answer = ref_arch_src
-        qa_dataset.append((question, answer, level, problem))
-    
-    df = Dataset.from_pandas(pd.DataFrame(qa_dataset, columns=["question", "answer", "level", "problem"]))
-    return df
-
-def make_map_fn(split):
-    def process_fn(example):
-        question = example.pop('question')
-
-        answer = example.pop('answer')
-        level = example.pop('level')
-        problem = example.pop('problem')
-        data = {
-            "data_source": "KernelBench",
-            "prompt": [{
-                "role": "user",
-                "content": question
-            }],
-            "reward_model": {
-                "style": "custom",
-                "ground_truth": answer 
-            },
-            "extra_info": {
-                'split': split,
-                'level': level,
-                'problem': problem
-            }
-        }
-        return data
-    return process_fn
-
-
-def process_dataset():
-    train_dataset = construct_dataset(train=True)
-    eval_dataset = construct_dataset(train=False)
-    train_dataset = train_dataset.map(make_map_fn('train'))
-    eval_dataset = eval_dataset.map(make_map_fn('eval'))
-
-    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset.parquet"))
-    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset.parquet"))
-
 
 # Define custom reward functions
 def reward_from_exec_result(level, problem, exec_result):
@@ -165,22 +95,18 @@ def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos,
 
             work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
             job_list.append({
-                "work_args": work_args,
+                "work_args": serialize_work_args(work_args),
                 "run_name": RUN_NAME,
                 "kernel_src": kernel_src,
                 "kernel_name": kernel_name
             })
     
-    pretty_job_list = [f"level_{job['work_args'].level}_problem_{job['work_args'].problem_id}_sample_{job['work_args'].sample_id}" for job in job_list]
-    print("\n".join(pretty_job_list))
-
     results = send_batch_evaluation_request(EVAL_SERVER_HOST, EVAL_SERVER_PORT, job_list)
 
     rewards = []
-    for result in results:
-        level = result.extra_info['level']
-        problem = result.extra_info['problem']
-        sample_id = result.extra_info['sample_id']
+    for result, job in zip(results, job_list):
+        level = job['work_args'].level
+        problem = job['work_args'].problem_id
         reward = reward_from_exec_result(level, problem, result)
         rewards.append(reward)
     return rewards

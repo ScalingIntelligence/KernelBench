@@ -3,9 +3,18 @@
 ################################################################################
 
 import os
+import sys
 import random
 import re
 import hashlib
+import json
+from datasets import Dataset
+import pandas as pd
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(REPO_ROOT)
+
+from main.prompts import prompt_base
 from src.utils import read_file
 
 REPO_TOP_PATH = os.path.abspath(
@@ -15,6 +24,7 @@ REPO_TOP_PATH = os.path.abspath(
     )
 )
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+RUNS_DIR = os.path.join(REPO_TOP_PATH, "runs")
 
 
 def assign_problem_hash(problem_path: str) -> list[int]:
@@ -210,3 +220,128 @@ level3_representative_subset = [
 ]
 
 level3_representative_subset_problem_ids = [1, 5, 8, 11, 20, 33, 38, 43]
+
+
+################################################################################
+# Data set for verl GRPO
+################################################################################
+def get_train_dataset():
+    return [(1, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 1 for training
+
+def get_eval_dataset():
+    return [(1, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 2 for evaluation
+ 
+
+def construct_dataset(train=True):
+    if train:
+        dataset = get_train_dataset()
+    else:
+        dataset = get_eval_dataset()
+
+    qa_dataset = []
+    for (level, problem) in dataset:
+        ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
+        question = prompt_base(ref_arch_src)
+        answer = ref_arch_src
+        qa_dataset.append((question, answer, level, problem))
+    
+    df = Dataset.from_pandas(pd.DataFrame(qa_dataset, columns=["question", "answer", "level", "problem"]))
+    return df
+
+
+def make_map_fn(split):
+    def process_fn(example):
+        question = example.pop('question')
+
+        answer = example.pop('answer')
+        level = example.pop('level')
+        problem = example.pop('problem')
+        data = {
+            "data_source": "KernelBench",
+            "prompt": [{
+                "role": "user",
+                "content": question
+            }],
+            "reward_model": {
+                "style": "custom",
+                "ground_truth": answer 
+            },
+            "extra_info": {
+                'split': split,
+                'level': level,
+                'problem': problem
+            }
+        }
+        return data
+    return process_fn
+
+
+def process_dataset():
+    train_dataset = construct_dataset(train=True)
+    eval_dataset = construct_dataset(train=False)
+    train_dataset = train_dataset.map(make_map_fn('train'))
+    eval_dataset = eval_dataset.map(make_map_fn('eval'))
+
+    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset.parquet"))
+    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset.parquet"))
+
+
+def search_for_best_kernels():
+    k = 5
+    for level in [1, 2]:
+        best_k_kernels = {} # problem_id -> best kernels
+        for directory in os.listdir(RUNS_DIR):
+            if f"level{level}" in directory and "DeepSeek" in directory:
+                print(f"Searching for best kernels in {directory}")
+                eval_file_path = os.path.join(RUNS_DIR, directory, "eval_results.json")
+                if not os.path.exists(eval_file_path):
+                    print(f"No eval results found for {directory}")
+                    continue
+                with open(eval_file_path, "r") as f:
+                    eval_results = json.load(f)
+                for problem, samples in eval_results[f"{level}"].items():
+                    if problem not in best_k_kernels:
+                        best_k_kernels[problem] = []
+                    for sample_id, eval_result in samples.items():
+                        if eval_result["correctness"]: # initial filter for correct
+                            eval_result["run_name"] = directory
+                            best_k_kernels[problem].append(eval_result)
+        # sort by runtime
+        for problem, kernels in best_k_kernels.items():
+            best_k_kernels[problem].sort(key=lambda x: x["runtime"])
+            best_k_kernels[problem] = best_k_kernels[problem][:k]
+
+        with open(os.path.join(KERNEL_BENCH_PATH, f"best_k_kernels_level{level}.json"), "w") as f:
+            json.dump(best_k_kernels, f, indent=2)
+        print(f"Best {k} kernels for level {level} saved to {os.path.join(KERNEL_BENCH_PATH, f'best_k_kernels_level{level}.json')}")
+
+
+def process_dataset_for_sft():
+    k = 4
+    sft_dataset = []
+    for level in [1, 2]:
+        TRAIN_SET = TRAIN_PROBLEM_IDS_LEVEL_1 if level == 1 else TRAIN_PROBLEM_IDS_LEVEL_2
+        with open(os.path.join(KERNEL_BENCH_PATH, f"best_k_kernels_level{level}.json"), "r") as f:
+            best_k_kernels = json.load(f)
+        for problem, eval_results in best_k_kernels.items():
+            if int(problem) not in TRAIN_SET:
+                print(f"Skipping problem {problem} because it is not in the train set")
+                continue
+            for eval_result in eval_results[:k]:
+                run_name = eval_result["run_name"]
+                kernel_path = os.path.join(RUNS_DIR, run_name, f"level_{level}_problem_{problem}_sample_{eval_result['sample_id']}_kernel.py")
+                kernel_src = read_file(kernel_path)
+
+                ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
+                question = prompt_base(ref_arch_src)
+                answer = kernel_src
+                sft_dataset.append((question, answer, level, problem))
+    
+    df = Dataset.from_pandas(pd.DataFrame(sft_dataset, columns=["question", "answer", "level", "problem"]))
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}.parquet"))
+    print(f"SFT dataset for level {level} saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}.parquet')}")
+
+
+
+if __name__ == "__main__":
+    process_dataset_for_sft()

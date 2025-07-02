@@ -397,15 +397,18 @@ def main():
         for level, problems in eval_results.items():
             for problem, samples in problems.items():
                 if "correctness" in samples:
-                    print(f"Deprecated eval results found")
                     deprecated = True
                     break
                 break
+            break
 
         if deprecated:
-            compute_metrics_test_time_scaling(config, args.hardware, eval_results, args.run_dir, subset=None)
-        else:
-            compute_metrics_test_time_scaling(config, args.hardware, eval_results[f'{config["level"]}'], args.run_dir, subset=None)
+            print("Deprecated eval results found. Updating to new format")
+            eval_results = {f"{config['level']}": eval_results}
+            with open(eval_file_path, "w") as f:
+                json.dump(eval_results, f, indent=4)
+
+        compute_metrics_test_time_scaling(config, args.hardware, eval_results[f'{config["level"]}'], args.run_dir, subset=None)
 
 
 if __name__ == "__main__":
