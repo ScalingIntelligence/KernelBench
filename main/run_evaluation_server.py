@@ -12,6 +12,7 @@ from typing import Optional
 import logging
 import torch
 import multiprocessing as mp
+from tqdm import tqdm
 
 from configs import parse_eval_server_args, RUNS_DIR
 from evaluation_utils import evaluate_single_sample_in_separate_process, KernelExecResult, deserialize_work_args
@@ -189,7 +190,11 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
             job_list = request.get('batch', [])
             results = [None] * len(job_list)
             threads = []
+            completed_count = 0
+            progress_lock = threading.Lock()
+            
             def run_job(idx, job):
+                nonlocal completed_count
                 try:
                     results[idx] = process_single_job(job, configs, gpu_manager)
                 except Exception as e:
@@ -199,12 +204,18 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
                         correctness=False,
                         metadata={"server_error": str(e)}
                     )
-            for idx, job in enumerate(job_list):
-                t = threading.Thread(target=run_job, args=(idx, job))
-                t.start()
-                threads.append(t)
-            for t in threads:
-                t.join()
+                finally:
+                    with progress_lock:
+                        completed_count += 1
+                        pbar.update(1)
+            
+            with tqdm(total=len(job_list), desc="Processing batch jobs") as pbar:
+                for idx, job in enumerate(job_list):
+                    t = threading.Thread(target=run_job, args=(idx, job))
+                    t.start()
+                    threads.append(t)
+                for t in threads:
+                    t.join()
             response_data = pickle.dumps(results)
             client_socket.sendall(response_data)
             client_socket.shutdown(socket.SHUT_WR)

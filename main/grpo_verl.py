@@ -105,8 +105,8 @@ def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos,
 
     rewards = []
     for result, job in zip(results, job_list):
-        level = job['work_args'].level
-        problem = job['work_args'].problem_id
+        level = job['work_args']["level"]
+        problem = job['work_args']["problem_id"]
         reward = reward_from_exec_result(level, problem, result)
         rewards.append(reward)
     return rewards
