@@ -508,7 +508,7 @@ class GRPOTrainer(Trainer):
 
         return RepeatSampler(
             data_source=self.train_dataset, # type: ignore
-            mini_repeat_count=self.num_generations,
+            mini_repeat_count=self.num_generations // self.num_processes,
             batch_size=self.generation_batch_size // self.num_generations,
             repeat_count=self.num_iterations * self.gradient_accumulation_steps,
             shuffle=self.shuffle_dataset,

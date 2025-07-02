@@ -4,7 +4,7 @@ python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     data.train_files=$HOME/KernelBench/KernelBench/train_dataset.parquet \
     data.val_files=$HOME/KernelBench/KernelBench/eval_dataset.parquet \
-    data.train_batch_size=4 \
+    data.train_batch_size=32 \
     data.max_prompt_length=8192 \
     data.max_response_length=16384 \
     data.filter_overlong_prompts=True \

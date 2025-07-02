@@ -1,4 +1,5 @@
 import yaml
+import argparse
 from argparse import ArgumentParser
 import os
 import json
@@ -26,13 +27,13 @@ def compute_correctness_metrics(eval_results, subset=None):
         if subset is not None and int(k) not in subset:
             continue
         total += 1
-        if res["compiled"]:
+        if "compiled" in res and res["compiled"]:
             compiled += 1
-        if res["correctness"]:
+        if "correctness" in res and res["correctness"]:
             correct += 1
-        if "runtime_error" in res["metadata"]:
+        if "metadata" in res and "runtime_error" in res["metadata"]:
             runtime_error += 1
-        if "correctness_issue" in res["metadata"]:
+        if "metadata" in res and "correctness_issue" in res["metadata"]:
             if res["metadata"]["correctness_issue"] == "Output mismatch":
                 output_mismatch += 1
             elif "Output shape mismatch" in res["metadata"]["correctness_issue"]:
@@ -281,9 +282,11 @@ def compute_metrics_grpo(config, hardware: str, eval_results: dict, run_dir: str
     eval_results_level_2 = eval_results["2"]
 
     config["num_parallel"] = 64 # TODO: make this match number of kernels generated in training
+    config["level"] = 1
     metrics_train_level_1 = compute_metrics_best_of_n(config, hardware, eval_results_level_1, subset=TRAIN_PROBLEM_IDS_LEVEL_1)
-    metrics_train_level_2 = compute_metrics_best_of_n(config, hardware, eval_results_level_2, subset=TRAIN_PROBLEM_IDS_LEVEL_2)
     metrics_eval_level_1 = compute_all_metrics(config, hardware, eval_results_level_1, subset=TEST_PROBLEM_IDS_LEVEL_1)
+    config["level"] = 2
+    metrics_train_level_2 = compute_metrics_best_of_n(config, hardware, eval_results_level_2, subset=TRAIN_PROBLEM_IDS_LEVEL_2)
     metrics_eval_level_2 = compute_all_metrics(config, hardware, eval_results_level_2, subset=TEST_PROBLEM_IDS_LEVEL_2)
 
     metrics = {
@@ -372,8 +375,12 @@ def main():
     args = argparser.parse_args()
 
     config_path = os.path.join(args.run_dir, "config.yaml")
-    with open(config_path, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+    if not os.path.exists(config_path):
+        print("No config file found. Using empty dict")
+        config = argparse.Namespace()
+    else:
+        with open(config_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
 
     eval_file_path = os.path.join(args.run_dir, "eval_results.json")
     if not os.path.exists(eval_file_path):
@@ -386,7 +393,19 @@ def main():
     if args.grpo:
         compute_metrics_grpo(config, args.hardware, eval_results, args.run_dir)
     else:
-        compute_metrics_test_time_scaling(config, args.hardware, eval_results[f'{config["level"]}'], args.run_dir, subset=None)
+        deprecated = False
+        for level, problems in eval_results.items():
+            for problem, samples in problems.items():
+                if "correctness" in samples:
+                    print(f"Deprecated eval results found")
+                    deprecated = True
+                    break
+                break
+
+        if deprecated:
+            compute_metrics_test_time_scaling(config, args.hardware, eval_results, args.run_dir, subset=None)
+        else:
+            compute_metrics_test_time_scaling(config, args.hardware, eval_results[f'{config["level"]}'], args.run_dir, subset=None)
 
 
 if __name__ == "__main__":

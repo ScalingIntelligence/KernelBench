@@ -22,7 +22,7 @@ from src.eval import check_metadata_serializable_all_types
 from src.utils import set_gpu_arch, extract_last_code
 
 
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 
 
 def get_train_dataset():
@@ -78,7 +78,7 @@ def train(config, vf_env):
     grpo_config = vf.GRPOConfig(
         run_name=config.run_name,
         output_dir=os.path.join("/data/user_data/gyeongwk/grpo/", config.run_name, "checkpoints"),
-        shuffle_dataset=False,
+        shuffle_dataset=True,
         learning_rate=2e-6,
         max_grad_norm=0.5,
         warmup_ratio=0.03,
@@ -90,7 +90,7 @@ def train(config, vf_env):
         max_completion_length=config.max_tokens,
         num_generations=8,
         gradient_accumulation_steps=1,
-        per_device_train_batch_size=4,
+        per_device_train_batch_size=1,
         num_batches_ahead=0,
         bf16_full_eval=True,
         gradient_checkpointing=True,
@@ -99,9 +99,9 @@ def train(config, vf_env):
         vllm_server_port=config.vllm_port,
         max_concurrent_eval=config.max_concurrent_eval,
         eval_strategy="steps",
-        max_steps=100,
-        eval_steps=100,
-        save_steps=50,
+        max_steps=180,
+        eval_steps=180,
+        save_steps=90,
         logging_steps=1,
     )
 
