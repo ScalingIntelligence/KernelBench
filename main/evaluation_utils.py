@@ -415,6 +415,39 @@ def batch_eval(
                 pbar.update(len(curr_work_batch))
 
 
+def send_batch_evaluation_request(host: str, port: int, job_list: list):
+    """
+    Send a batch evaluation request to the server and receive the list of results.
+    Each job in job_list should be a dict with keys:
+        - 'work_args': serialized EvaluationWorkArgs (dict)
+        - 'run_name': str
+        - 'kernel_src': str or None
+        - 'kernel_name': str or None
+    Returns:
+        List of KernelExecResult objects from the server (same order as job_list)
+    """
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        client_socket.connect((host, port))
+        print(f"Connected to evaluation server at {host}:{port} (batch mode)")
+        request = {'batch': job_list}
+        request_data = pickle.dumps(request)
+        client_socket.sendall(request_data)
+        client_socket.shutdown(socket.SHUT_WR)
+        response_data = b""
+        while True:
+            chunk = client_socket.recv(4096)
+            if not chunk:
+                break
+            response_data += chunk
+        results = pickle.loads(response_data)
+        return results
+    except Exception as e:
+        print(f"Error communicating with server (batch): {e}")
+        return None
+    finally:
+        client_socket.close()
+
 
 if __name__ == "__main__":
     # Just run evaluation for already generated kernels

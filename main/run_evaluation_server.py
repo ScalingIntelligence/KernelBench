@@ -142,8 +142,35 @@ def start_evaluation_server(port: int, configs):
         server_socket.close()
 
 
+def process_single_job(request, configs, gpu_manager):
+    """Process a single evaluation job and return the result."""
+    work_args = deserialize_work_args(request['work_args'])
+    kernel_src = request.get('kernel_src')
+    kernel_name = request.get('kernel_name')
+    run_name = request.get('run_name')
+    run_dir = os.path.join(RUNS_DIR, run_name)
+    configs.run_name = run_name
+    os.makedirs(run_dir, exist_ok=True)
+
+    logging.info(f"Processing evaluation for level {work_args.level}, problem {work_args.problem_id}, sample {work_args.sample_id}")
+
+    # Acquire a free GPU
+    gpu_id = gpu_manager.wait_for_gpu()
+    work_args.device = torch.device(f"cuda:{gpu_id}")
+    logging.info(f"Assigned GPU {gpu_id} to request")
+
+    try:
+        result = evaluate_single_sample_in_separate_process(
+            work_args, configs, run_dir, kernel_src, kernel_name
+        )
+    finally:
+        gpu_manager.release_gpu(gpu_id)
+        logging.info(f"Released GPU {gpu_id}")
+    return result
+
+
 def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDeviceManager'):
-    """Handle a single client connection"""
+    """Handle a single client connection, supporting single or batch mode."""
     try:
         # Receive the request data
         data = b""
@@ -152,57 +179,49 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
             if not chunk:
                 break
             data += chunk
-        
         if not data:
             return
-        
         # Deserialize the request
         request = pickle.loads(data)
-        
-        # Extract the components
-        work_args = deserialize_work_args(request['work_args'])
-        kernel_src = request.get('kernel_src')
-        kernel_name = request.get('kernel_name')
-        run_name = request.get('run_name')
-        run_dir = os.path.join(RUNS_DIR, run_name)
-        configs.run_name = run_name
-        os.makedirs(run_dir, exist_ok=True) # make sure the run directory exists
-        
-        logging.info(f"Processing evaluation for level {work_args.level}, problem {work_args.problem_id}, sample {work_args.sample_id}")
-        
-        # Acquire a free GPU
-        gpu_id = gpu_manager.wait_for_gpu()
-        
-        # Assign the acquired GPU to the work args
-        work_args.device = torch.device(f"cuda:{gpu_id}")
-        logging.info(f"Assigned GPU {gpu_id} to request")
-        
-        try:
-            # Run the evaluation
-            result = evaluate_single_sample_in_separate_process(
-                work_args, configs, run_dir, kernel_src, kernel_name
-            )
-        finally:
-            # Always release the GPU, even if evaluation fails
-            gpu_manager.release_gpu(gpu_id)
-            logging.info(f"Released GPU {gpu_id}")
-        
-        # Send the result back
-        logging.info(f"Evaluation result for {work_args.level}, {work_args.problem_id}, {work_args.sample_id}: {result}")
-        response_data = pickle.dumps(result)
-        client_socket.sendall(response_data)
-        client_socket.shutdown(socket.SHUT_WR)
-        
-    except Exception as e:
-        logging.info(f"Error handling client: {e}")
-        # Send error response
-        error_result = KernelExecResult(
-            compiled=False,
-            correctness=False,
-            metadata={"server_error": str(e)}
-        )
-        response_data = pickle.dumps(error_result)
-        client_socket.sendall(response_data)
+
+        if getattr(configs, 'mode', 'single') == 'batch':
+            # Expect a batch of jobs: request['batch'] is a list of job dicts
+            job_list = request.get('batch', [])
+            results = [None] * len(job_list)
+            threads = []
+            def run_job(idx, job):
+                try:
+                    results[idx] = process_single_job(job, configs, gpu_manager)
+                except Exception as e:
+                    logging.info(f"Error in batch job: {e}")
+                    results[idx] = KernelExecResult(
+                        compiled=False,
+                        correctness=False,
+                        metadata={"server_error": str(e)}
+                    )
+            for idx, job in enumerate(job_list):
+                t = threading.Thread(target=run_job, args=(idx, job))
+                t.start()
+                threads.append(t)
+            for t in threads:
+                t.join()
+            response_data = pickle.dumps(results)
+            client_socket.sendall(response_data)
+            client_socket.shutdown(socket.SHUT_WR)
+        else:
+            # Single job mode (original behavior)
+            try:
+                result = process_single_job(request, configs, gpu_manager)
+            except Exception as e:
+                logging.info(f"Error handling client: {e}")
+                result = KernelExecResult(
+                    compiled=False,
+                    correctness=False,
+                    metadata={"server_error": str(e)}
+                )
+            response_data = pickle.dumps(result)
+            client_socket.sendall(response_data)
+            client_socket.shutdown(socket.SHUT_WR)
     finally:
         client_socket.close()
 
