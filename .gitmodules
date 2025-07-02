@@ -1,3 +1,6 @@
 [submodule "verifiers_docs"]
 	path = verifiers_docs
 	url = git@github.com:willccbb/verifiers.git
+[submodule "verl"]
+    path = verl
+    url = git@github.com:volcengine/verl.git
