@@ -15,9 +15,9 @@ class Model(nn.Module):
         x = torch.nn.functional.mish(x)
         return x
 
-batch_size = 128
-in_features = 10
-out_features = 20
+batch_size = 1024
+in_features = 8192
+out_features = 8192
 
 def get_inputs():
     return [torch.randn(batch_size, in_features)]

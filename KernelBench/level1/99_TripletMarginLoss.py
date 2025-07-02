@@ -15,8 +15,8 @@ class Model(nn.Module):
     def forward(self, anchor, positive, negative):
         return self.loss_fn(anchor, positive, negative)
 
-batch_size = 128
-input_shape = (4096, )
+batch_size = 32768
+input_shape = (8192,)
 dim = 1
 
 def get_inputs():

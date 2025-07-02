@@ -29,13 +29,13 @@ class Model(nn.Module):
         return x
 
 batch_size = 128
-in_channels = 3
-out_channels = 16
-height, width = 32, 32
+in_channels = 8
+out_channels = 64
+height, width = 128, 128 
 kernel_size = 3
-num_groups = 8
+num_groups = 16
 scale_shape = (out_channels, 1, 1)
-maxpool_kernel_size = 2
+maxpool_kernel_size = 4
 clamp_min = 0.0
 clamp_max = 1.0
 

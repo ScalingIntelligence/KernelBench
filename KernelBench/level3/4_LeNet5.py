@@ -49,9 +49,9 @@ class Model(nn.Module):
         
         return x
 
-# Test code for the LeNet-5 model
-batch_size = 1
-num_classes = 10
+# Test code for the LeNet-5 model (larger batch & image)
+batch_size = 4096
+num_classes = 20
 
 def get_inputs():
     return [torch.randn(batch_size, 1, 32, 32)]

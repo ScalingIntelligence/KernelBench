@@ -27,11 +27,11 @@ class Model(nn.Module):
         return x
 
 batch_size = 16
-in_channels = 8
-out_channels = 16
-depth, height, width = 16, 32, 32
-kernel_size = 3
-stride = 2
+in_channels  = 16  
+out_channels = 64  
+depth = 32; height = width = 128  
+kernel_size  = 3
+stride       = 1  
 padding = 1
 bias_shape = (1, 1, 1, 1, 1)
 scaling_factor = 2.0

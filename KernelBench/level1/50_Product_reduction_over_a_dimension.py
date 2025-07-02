@@ -27,9 +27,9 @@ class Model(nn.Module):
         """
         return torch.prod(x, dim=self.dim)
 
-batch_size = 16
-dim1 = 256
-dim2 = 256
+batch_size = 128
+dim1 = 4096
+dim2 = 4095
 reduction_dim = 1
 
 def get_inputs():

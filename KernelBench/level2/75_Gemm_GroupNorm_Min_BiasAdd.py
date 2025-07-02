@@ -18,10 +18,10 @@ class Model(nn.Module):
         x = x + self.bias
         return x
 
-batch_size = 128
-in_features = 512
-out_features = 256
-num_groups = 8
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+num_groups = 512
 bias_shape = (1, out_features, 1, 1)
 
 def get_inputs():

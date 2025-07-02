@@ -32,15 +32,15 @@ class Model(nn.Module):
         return self.conv_transpose3d(x)
 
 # Test code
-batch_size = 16
+batch_size = 4
 in_channels = 32
-out_channels = 64
+out_channels = 32
 kernel_size = 3
-depth = 16
-height = 32
-width = 32
+depth = 32
+height = 64
+width = 128
 stride = 2
-padding = 3
+padding = 1
 groups = 4
 
 def get_inputs():

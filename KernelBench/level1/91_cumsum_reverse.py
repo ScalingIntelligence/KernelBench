@@ -16,8 +16,8 @@ class Model(nn.Module):
     def forward(self, x):
         return torch.cumsum(x.flip(self.dim), dim=self.dim).flip(self.dim)
 
-batch_size = 128
-input_shape = (4000,)
+batch_size = 32768
+input_shape = (32768,)
 dim = 1
 
 def get_inputs():

@@ -28,11 +28,11 @@ class Model(nn.Module):
         return x
 
 
-batch_size = 128
-in_features = 512
-out_features = 1024
+batch_size = 1024
+in_features = 8192
+out_features = 8192
 bias_shape = (out_features,)
-num_groups = 32
+num_groups = 256
 
 def get_inputs():
     return [torch.randn(batch_size, in_features)]

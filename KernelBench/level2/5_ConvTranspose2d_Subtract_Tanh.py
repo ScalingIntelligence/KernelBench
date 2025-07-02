@@ -17,9 +17,9 @@ class Model(nn.Module):
         return x
 
 batch_size = 128
-in_channels = 32
-out_channels = 16
-height, width = 16, 16
+in_channels  = 64  
+out_channels = 64  
+height = width = 256 
 kernel_size = 4
 bias_shape = (out_channels, 1, 1)
 

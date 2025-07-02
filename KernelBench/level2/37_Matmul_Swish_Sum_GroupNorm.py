@@ -24,10 +24,10 @@ class Model(nn.Module):
         x = self.group_norm(x)
         return x
 
-batch_size = 128
-in_features = 512
-out_features = 1024
-num_groups = 32
+batch_size = 32768
+in_features = 1024
+out_features = 4096
+num_groups = 64
 bias_shape = (out_features,)
 
 def get_inputs():

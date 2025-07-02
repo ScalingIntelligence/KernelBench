@@ -34,9 +34,9 @@ class Model(nn.Module):
 
 batch_size = 16
 channels = 32
-dim1 = 64
-dim2 = 64
-dim3 = 64
+dim1 = 128
+dim2 = 128
+dim3 = 128
 kernel_size = 3
 stride = 2
 padding = 1

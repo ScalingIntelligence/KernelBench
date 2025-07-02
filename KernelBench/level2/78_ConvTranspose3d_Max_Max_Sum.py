@@ -19,12 +19,12 @@ class Model(nn.Module):
         return x
 
 batch_size = 16
-in_channels = 8
-out_channels = 16
-depth, height, width = 16, 32, 32
-kernel_size = 3
+in_channels = 32
+out_channels = 64
+depth, height, width = 32, 32, 32
+kernel_size = 5
 stride = 2
-padding = 1
+padding = 2
 
 def get_inputs():
     return [torch.randn(batch_size, in_channels, depth, height, width)]

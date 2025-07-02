@@ -29,11 +29,11 @@ class Model(nn.Module):
         return x_logsumexp
 
 batch_size = 128
-in_channels = 3
-out_channels = 16
-height, width = 32, 32
+in_channels = 8
+out_channels = 64
+height, width = 128, 128
 kernel_size = 3
-groups = 8
+groups = 16
 
 def get_inputs():
     return [torch.randn(batch_size, in_channels, height, width)]

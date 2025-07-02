@@ -20,11 +20,11 @@ class Model(nn.Module):
         return x
 
 batch_size = 128
-in_channels = 32
-out_channels = 64
-height, width = 16, 16
-kernel_size = 4
-stride = 2
+in_channels  = 64  
+out_channels = 64  
+height = width = 256  
+kernel_size  = 3
+stride = 1
 padding = 1
 maxpool_kernel_size = 2
 maxpool_stride = 2

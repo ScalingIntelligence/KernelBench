@@ -33,11 +33,11 @@ class Model(nn.Module):
 
 # Test code
 batch_size = 16
-in_channels = 3
-out_channels = 64
+in_channels = 16
+out_channels = 128
 kernel_size = 3
-width = 256
-height = 256
+width = 1024
+height = 1024
 
 def get_inputs():
     x = torch.randn(batch_size, in_channels, height, width)

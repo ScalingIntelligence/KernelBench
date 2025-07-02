@@ -32,8 +32,8 @@ class Model(nn.Module):
         return torch.cumprod(x, dim=self.dim)
 
 # Define input dimensions and parameters
-batch_size = 128
-input_shape = (4000,)
+batch_size = 32768
+input_shape = (32768,)
 dim = 1
 
 def get_inputs():

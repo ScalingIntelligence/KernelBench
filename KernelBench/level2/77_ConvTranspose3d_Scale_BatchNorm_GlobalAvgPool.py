@@ -22,9 +22,9 @@ class Model(nn.Module):
 
 batch_size = 16
 in_channels = 64
-out_channels = 32
+out_channels = 128
 depth, height, width = 16, 32, 32
-kernel_size = 3
+kernel_size = 5
 scale_factor = 2.0
 
 def get_inputs():

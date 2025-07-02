@@ -30,14 +30,14 @@ class Model(nn.Module):
         return self.conv_transpose2d(x)
 
 # Test code
-batch_size = 16
+batch_size = 8
 in_channels = 32
-out_channels = 64
-kernel_size = (3, 5)
-height = 128
-width = 256
+out_channels = 32
+kernel_size = (3, 7)
+height = 512
+width = 1024
 stride = (1, 1)
-padding = (1, 2)
+padding = (1, 3)
 
 def get_inputs():
     x = torch.randn(batch_size, in_channels, height, width)

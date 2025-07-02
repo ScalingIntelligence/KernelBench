@@ -85,7 +85,7 @@ class Model(nn.Module):
         vlad = F.normalize(vlad)
         return vlad  # B x DK
 
-batch_size = 32
+batch_size = 2048
 num_features = 100
 num_clusters = 32
 feature_size = 512

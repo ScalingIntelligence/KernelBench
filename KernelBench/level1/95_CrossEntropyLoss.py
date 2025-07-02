@@ -14,9 +14,9 @@ class Model(nn.Module):
     def forward(self, predictions, targets):
         return torch.nn.functional.cross_entropy(predictions, targets)
 
-batch_size = 4096
-num_classes = 10
-input_shape = (num_classes, )  # Output for each class
+batch_size = 32768
+num_classes = 4096
+input_shape = (num_classes,)
 dim = 1
 
 def get_inputs():

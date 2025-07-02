@@ -26,10 +26,10 @@ class Model(nn.Module):
         x = torch.max(x, dim=1).values
         return x
 
-batch_size = 128
-in_features = 512
-out_features = 256
-pool_kernel_size = 4
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+pool_kernel_size = 16
 scale_factor = 2.0
 
 def get_inputs():

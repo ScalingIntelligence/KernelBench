@@ -30,9 +30,9 @@ class Model(nn.Module):
         x = torch.logsumexp(x, dim=1, keepdim=True) # (batch_size, 1)
         return x
 
-batch_size = 128
-in_features = 10
-out_features = 5
+batch_size = 1024
+in_features  = 8192  
+out_features = 8192
 
 def get_inputs():
     return [torch.randn(batch_size, in_features)]
