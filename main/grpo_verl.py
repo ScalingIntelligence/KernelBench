@@ -5,6 +5,11 @@ import sys
 import yaml
 import pandas as pd
 import json
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
+import psutil
+
 from datasets import Dataset
 
 from verl.interactions.base import BaseInteraction
@@ -21,7 +26,7 @@ from src.utils import set_gpu_arch, extract_last_code
 
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
 RUN_NAME = "grpo_verl_test"
-EVAL_SERVER_HOST = "babel-7-17"
+EVAL_SERVER_HOST = "babel-11-13"
 EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"
@@ -107,7 +112,7 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None, i=No
     split, level, problem = extra_info['split'], extra_info['level'], extra_info['problem']
     run_dir = os.path.join(RUNS_DIR, RUN_NAME)
 
-    thread_id = i # for now
+    thread_id = i % NUM_GENERATIONS
     if split == "train":
         sample_id = find_highest_sample_id(run_dir, level, problem, thread_id, NUM_GENERATIONS) # batch_size
     else:
@@ -124,10 +129,19 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None, i=No
     if kernel_src is not None:
         write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src)
 
-    work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
-    exec_result = send_evaluation_request(EVAL_SERVER_HOST, EVAL_SERVER_PORT, work_args, RUN_NAME, kernel_src, kernel_name)
-    write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
-    return reward_from_exec_result(level, problem, exec_result)
+        work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
+        exec_result = send_evaluation_request(EVAL_SERVER_HOST, EVAL_SERVER_PORT, work_args, RUN_NAME, kernel_src, kernel_name)
+        write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
+        
+        return reward_from_exec_result(level, problem, exec_result)
+
+    print(f"No kernel src found for level {level} problem {problem} sample {sample_id}")
+    return 0.0
+
+
+def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos, **kwargs):
+    return [compute_score(data_source, solution_str, ground_truth, extra_info, i) for i, (data_source, solution_str, ground_truth, extra_info) in enumerate(zip(data_sources, solution_strs, ground_truths, extra_infos))]
+
 
 
 
@@ -168,5 +182,5 @@ class KernelBenchInteraction(BaseInteraction):
 
 
 
-if __name__ == "__main__":
-    process_dataset()
+# if __name__ == "__main__":
+#     process_dataset()
