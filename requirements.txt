@@ -4,7 +4,10 @@ numpy
 openai
 packaging
 pydra_config
-torch==2.5.0
+torch --index-url https://download.pytorch.org/whl/rocm6.2.4
+torchvision --index-url https://download.pytorch.org/whl/rocm6.2.4
+torchaudio --index-url https://download.pytorch.org/whl/rocm6.2.4
+--index-url https://test.pypi.org/simple "hip-python"
 tqdm
 datasets
 transformers
@@ -12,5 +15,5 @@ google-generativeai
 together
 pytest
 ninja
-archon-ai
+# archon-ai
 einops
