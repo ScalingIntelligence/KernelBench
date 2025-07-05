@@ -25,8 +25,8 @@ class Model(nn.Module):
 
 batch_size = 128
 in_channels = 3
-out_channels = 16
-D, H, W = 16, 32, 32
+out_channels = 24  # Increased output channels
+D, H, W = 24, 32, 32  # Increased depth
 kernel_size = 3
 dim = 2  # Dimension along which to apply minimum operation (e.g., depth)
 

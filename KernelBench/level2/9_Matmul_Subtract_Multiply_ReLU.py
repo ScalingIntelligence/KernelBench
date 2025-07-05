@@ -18,9 +18,9 @@ class Model(nn.Module):
         x = torch.relu(x)
         return x
 
-batch_size = 128
-in_features = 10
-out_features = 5
+batch_size = 1024
+in_features = 8192
+out_features = 8192
 subtract_value = 2.0
 multiply_value = 1.5
 

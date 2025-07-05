@@ -15,8 +15,8 @@ class Model(nn.Module):
         cosine_sim = torch.nn.functional.cosine_similarity(predictions, targets, dim=1)
         return torch.mean(1 - cosine_sim)
 
-batch_size = 128
-input_shape = (4096, )
+batch_size = 8192 * 2
+input_shape = (8192 * 2,)
 dim = 1
 
 def get_inputs():

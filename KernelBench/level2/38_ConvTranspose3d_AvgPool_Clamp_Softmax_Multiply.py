@@ -27,10 +27,10 @@ class Model(nn.Module):
         x = x * 2
         return x
 
-batch_size = 16
-in_channels = 8
-out_channels = 16
-depth, height, width = 16, 32, 32
+batch_size = 4
+in_channels = 32
+out_channels = 64
+depth, height, width = 32, 64, 64
 kernel_size = 3
 stride = 2
 padding = 1

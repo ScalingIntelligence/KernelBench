@@ -30,12 +30,12 @@ class Model(nn.Module):
         return self.conv2d(x)
 
 # Test code
-batch_size = 16
-in_channels = 3
-out_channels = 3
+batch_size = 64
+in_channels = 128
+out_channels = 128
 kernel_size = 3
-width_in = 256
-height_in = 128
+width_in = 512
+height_in = 256
 stride = 1
 padding = 0
 

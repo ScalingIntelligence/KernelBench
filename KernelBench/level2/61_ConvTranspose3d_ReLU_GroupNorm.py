@@ -27,7 +27,7 @@ class Model(nn.Module):
 batch_size = 16
 in_channels = 64
 out_channels = 128
-D, H, W = 8, 16, 16
+D, H, W = 32, 32, 32
 kernel_size = 3
 groups = 8
 bias = False

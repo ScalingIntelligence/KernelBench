@@ -33,10 +33,10 @@ class Model(nn.Module):
         ], 1)
 
 # Test code
-batch_size = 10
+batch_size = 128
 num_input_features = 3
 num_output_features = 64
-height, width = 224, 224
+height, width = 256, 256
 squeeze_channels = 6
 expand1x1_channels = 64
 expand3x3_channels = 64

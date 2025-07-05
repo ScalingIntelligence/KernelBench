@@ -22,9 +22,9 @@ class Model(nn.Module):
         return torch.bmm(A, B)
 
 batch_size = 128
-m = 128
-k = 256
-n = 512
+m = 128 * 8
+k = 256 * 8
+n = 512 * 8
 
 def get_inputs():
     A = torch.randn(batch_size, m, k)

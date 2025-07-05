@@ -29,9 +29,9 @@ class Model(nn.Module):
 
 
 batch_size = 128
-input_size = 512
-hidden_size = 256
-num_groups = 8
+input_size = 8192
+hidden_size = 8192
+num_groups = 512
 
 def get_inputs():
     return [torch.randn(batch_size, input_size)]

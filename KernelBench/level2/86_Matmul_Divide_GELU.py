@@ -22,9 +22,9 @@ class Model(nn.Module):
         x = torch.nn.functional.gelu(x)
         return x
 
-batch_size = 128
-input_size = 512
-output_size = 1024
+batch_size = 1024
+input_size = 8192
+output_size = 8192
 divisor = 10.0
 
 def get_inputs():

@@ -26,10 +26,10 @@ class Model(nn.Module):
         x = torch.relu(x)
         return x
 
-batch_size = 128
-in_features = 512
-out_features = 1024
-num_groups = 8
+batch_size = 16384
+in_features = 4096
+out_features = 4096
+num_groups = 64
 
 def get_inputs():
     return [torch.randn(batch_size, in_features)]

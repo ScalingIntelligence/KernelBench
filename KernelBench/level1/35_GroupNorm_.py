@@ -28,11 +28,11 @@ class Model(nn.Module):
         """
         return self.gn(x)
 
-batch_size = 16
+batch_size = 112  # scaled up
 features = 64
 num_groups = 8
-dim1 = 256
-dim2 = 256
+dim1 = 512
+dim2 = 512
 
 def get_inputs():
     x = torch.randn(batch_size, features, dim1, dim2)

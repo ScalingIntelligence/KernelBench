@@ -17,10 +17,10 @@ class Model(nn.Module):
         x = torch.logsumexp(x, dim=0)
         return x
 
-batch_size = 128
-input_size = 10
-hidden_size = 20
-output_size = 5
+batch_size = 16384
+input_size = 2048
+hidden_size = 4096
+output_size = 1024
 
 def get_inputs():
     return [torch.randn(batch_size, input_size)]

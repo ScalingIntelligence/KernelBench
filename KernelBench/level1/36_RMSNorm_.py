@@ -33,10 +33,10 @@ class Model(nn.Module):
         # Normalize the input by dividing by the RMS
         return x / rms
 
-batch_size = 16
+batch_size = 112
 features = 64
-dim1 = 256
-dim2 = 256
+dim1 = 512
+dim2 = 512
 
 def get_inputs():
     x = torch.randn(batch_size, features, dim1, dim2)

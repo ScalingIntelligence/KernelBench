@@ -31,13 +31,18 @@ class Model(nn.Module):
         """
         return self.maxpool(x)
 
-batch_size = 16
-features = 64
-sequence_length = 128
-kernel_size = 4
-stride = 2
-padding = 2
-dilation = 3
+# make 32× more elements
+batch_size = 128
+features = 192
+# large sequence length for more compute (elements ~1.07B)
+sequence_length = 65536
+
+# increase kernel size for more compute per element
+kernel_size = 8
+stride      = 1
+padding     = 4
+dilation    = 3            # keep it
+
 return_indices = False
 
 def get_inputs():

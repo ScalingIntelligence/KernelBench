@@ -619,3 +619,70 @@ def maybe_multiprocess_cuda(
                     print("Got an error!", e)
                     continue
     return output_data
+
+# src/random_inputs.py
+import os, torch, itertools
+from torch.distributions import Normal, Uniform, Laplace, Exponential, LogNormal
+
+# Pick which distributions are allowed in “random” mode.
+_DEFAULT_RANDOM_POOL = (
+    ("normal",      lambda shape: Normal(0, 1).sample(shape)),
+    ("uniform",     lambda shape: Uniform(-1, 1).sample(shape)),
+    ("laplace",     lambda shape: Laplace(0, 1).sample(shape)),
+    ("exponential", lambda shape: Exponential(1).sample(shape)),   # strictly >0
+    ("lognormal",   lambda shape: LogNormal(0, 1).sample(shape)),  # strictly >0
+)
+
+# Hand-picked “targeted / edge-case” tensors grow over time.
+_TARGETED_CASES = {
+    "all_zeros"   : lambda shape: torch.zeros(shape),
+    "all_ones"    : lambda shape: torch.ones(shape),
+    "large_pos"   : lambda shape: torch.full(shape, 1e6),
+    "large_neg"   : lambda shape: torch.full(shape, -1e6),
+    "tiny_vals"   : lambda shape: torch.full(shape, 1e-6),
+    "nan_patch"   : lambda shape: torch.cat(
+        (torch.randn(shape[:-1] + (shape[-1] // 2,)),
+         torch.full(shape[:-1] + (shape[-1] - shape[-1] // 2,), float("nan"))),
+        dim=-1),
+}
+
+def sample(shape, mode="random"):
+    """
+    shape : torch.Size or tuple
+    mode  : "random"  – draw from a rotating pool of distributions
+            "target"  – return a tensor from a randomly chosen edge-case pattern
+            <dist>    – force a single distribution name, e.g. "laplace"
+    """
+    if mode == "random":
+        # Round-robin through default pool
+        idx = int(torch.empty((), dtype=torch.int64).random_()) % len(_DEFAULT_RANDOM_POOL)
+        _, fn = _DEFAULT_RANDOM_POOL[idx]
+        return fn(shape)
+
+    # Explicit distribution name
+    pool = dict(_DEFAULT_RANDOM_POOL)
+    if mode not in pool:
+        raise ValueError(f"Unknown distribution {mode}")
+    return pool[mode](shape)
+
+_original_torch_randn      = torch.randn
+_original_torch_randn_like = torch.randn_like
+
+def _randn_patched(*size, **kwargs):
+    # normalise *size → shape tuple
+    shape = size[0] if len(size) == 1 and isinstance(size[0], (tuple, torch.Size)) else size
+    device        = kwargs.pop("device", None)
+    dtype         = kwargs.pop("dtype",  None)
+    requires_grad = kwargs.pop("requires_grad", False)
+
+    t = sample(shape, mode="random")
+    if dtype is not None:  t = t.to(dtype)
+    if device is not None: t = t.to(device)
+    if requires_grad:      t.requires_grad_(True)
+    return t
+
+def _randn_like_patched(input, **kwargs):
+    return _randn_patched(*input.shape, **kwargs)
+
+torch.randn      = _randn_patched
+torch.randn_like = _randn_like_patched

@@ -29,9 +29,9 @@ class Model(nn.Module):
         x = x * torch.nn.functional.mish(x)  # Mish activation
         return x
 
-batch_size = 128
-input_size = 512
-hidden_size = 1024
+batch_size = 1024
+input_size = 8192
+hidden_size = 8192
 scale_factor = 2.0
 clamp_min = -10.0
 clamp_max = 10.0

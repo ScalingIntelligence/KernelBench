@@ -88,7 +88,7 @@ class Model(nn.Module):
         return Y
 
 # Test parameters
-batch_size = 16
+batch_size = 2048
 seq_length = 128
 n_heads = 8
 d_head = 64

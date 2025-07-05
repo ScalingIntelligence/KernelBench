@@ -22,7 +22,7 @@ class Model(nn.Module):
 batch_size = 128
 in_channels = 3
 out_channels = 16
-depth, height, width = 16, 32, 32
+depth, height, width = 16, 64, 64
 kernel_size = 3
 groups = 8
 min_value = 0.0

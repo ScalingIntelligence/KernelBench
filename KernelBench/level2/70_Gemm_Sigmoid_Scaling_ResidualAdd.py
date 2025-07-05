@@ -27,9 +27,9 @@ class Model(nn.Module):
         x = x + original_x
         return x
 
-batch_size = 128
-input_size = 1024
-hidden_size = 512
+batch_size = 1024
+input_size = 8192
+hidden_size = 8192
 scaling_factor = 2.0
 
 def get_inputs():

@@ -14,8 +14,8 @@ class Model(nn.Module):
     def forward(self, predictions, targets):
         return torch.mean(torch.clamp(1 - predictions * targets, min=0))
 
-batch_size = 128
-input_shape = (1,)
+batch_size = 32768
+input_shape = (32768,)
 dim = 1
 
 def get_inputs():

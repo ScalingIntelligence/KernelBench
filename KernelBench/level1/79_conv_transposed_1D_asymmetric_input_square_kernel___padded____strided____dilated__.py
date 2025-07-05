@@ -36,7 +36,8 @@ batch_size = 16
 in_channels = 32
 out_channels = 64
 kernel_size = 3
-length = 128
+# long sequence
+length = 131072
 stride = 2
 padding = 1
 dilation = 2

@@ -22,9 +22,9 @@ class Model(nn.Module):
         x = torch.relu(x)
         return x
 
-batch_size = 128
-in_features = 1024
-out_features = 512
+batch_size = 1024
+in_features = 8192
+out_features = 8192
 bias_shape = (out_features,)
 
 def get_inputs():

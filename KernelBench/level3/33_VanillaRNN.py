@@ -35,10 +35,10 @@ class Model(nn.Module):
         output = self.h2o(self.hidden)  # Compute output
         return output
 
-batch_size = 8
-input_size = 1024
-hidden_size = 256
-output_size = 128
+batch_size = 256
+input_size = 16384
+hidden_size = 16384
+output_size = 8192
 sequence_length = 256
 
 def get_inputs():

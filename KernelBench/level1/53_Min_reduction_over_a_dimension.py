@@ -27,9 +27,9 @@ class Model(nn.Module):
         """
         return torch.min(x, dim=self.dim)[0]
 
-batch_size = 16
-dim1 = 256
-dim2 = 256
+batch_size = 128
+dim1 = 4096
+dim2 = 4095
 
 def get_inputs():
     x = torch.randn(batch_size, dim1, dim2)
