@@ -2,17 +2,21 @@
 Helpers for Evaluations
 """
 
+import importlib
+import json
+import os, subprocess
+import random
+import sys
+import tempfile
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from typing import Union
+
+import numpy as np
 import requests
 import torch
 import torch.nn as nn
-import os, subprocess
 from pydantic import BaseModel
-import numpy as np
-import random
-import json
-from contextlib import redirect_stdout, redirect_stderr
-from io import StringIO
-import sys
 
 from . import utils
 
@@ -23,6 +27,11 @@ REPO_TOP_PATH = os.path.abspath(
     )
 )
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+
+
+def get_error_name(e: Exception) -> str:
+
+    return f"{e.__class__.__module__}.{e.__class__.__name__}"
 
 
 def fetch_kernel_from_database(
@@ -113,6 +122,39 @@ def load_original_model_and_inputs(
     return (Model, get_init_inputs_fn, get_inputs_fn)
 
 
+def load_custom_model_with_tempfile(model_custom_src, entry_point="ModelNew"):
+    """
+    Writes the provided Python code string to a temporary .py file,
+    dynamically imports the module so we can access the modified model class.
+
+    Returns both a Model class and the temporary file. The temporary file must be
+    deleted manually be the caller.
+
+    This is a hack that is needed for triton code as compile / exec do not play well
+    with the @triton.jit decorator.
+    """
+
+    # Create a temporary named file with a .py extension
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
+        # Write the code string into the file
+        tmp_file.write(model_custom_src)
+        # Capture the path to the file
+        tempfile_path = tmp_file.name
+        temp_file = tmp_file
+
+    # Create a module specification pointing to our temp file
+    spec = importlib.util.spec_from_file_location("temp_module", tempfile_path)
+    # Create a new module based on that spec
+    temp_module = importlib.util.module_from_spec(spec)
+    # Execute the code in the module's namespace
+    spec.loader.exec_module(temp_module)
+
+    ModelNew = getattr(temp_module, entry_point)
+
+    # Return the object (class, function, etc.) that was defined in the code
+    return ModelNew, temp_file
+
+
 def load_custom_model(
     model_custom_src: str, context: dict, build_directory: str = None
 ) -> nn.Module:
@@ -151,7 +193,11 @@ def _cleanup_cuda_extensions():
         shutil.rmtree(torch_extensions_path)
 
 
-def graceful_eval_cleanup(curr_context: dict, device: torch.device):
+def graceful_eval_cleanup(
+    curr_context: dict,
+    device: torch.device,
+    tempfile: tempfile.NamedTemporaryFile = None,
+):
     """
     Clean up env, gpu cache, and compiled CUDA extensions after evaluation
     """  # delete ran-specific function definitions before next eval run
@@ -166,8 +212,12 @@ def graceful_eval_cleanup(curr_context: dict, device: torch.device):
         torch.cuda.synchronize(
             device=device
         )  # Wait for all CUDA operations to complete
+    if tempfile:
+        tempfile.close()
+        os.remove(tempfile.name)
 
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
+
 
 def build_compile_cache_legacy(
     custom_model_src: str,
@@ -202,11 +252,12 @@ def build_compile_cache_legacy(
         if verbose:
             print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
     except Exception as e:
-        print(f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        print(
+            f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}"
+        )
         return False, stdout_buffer.getvalue(), str(e)
-    
-    return True, stdout_buffer.getvalue(), None
 
+    return True, stdout_buffer.getvalue(), None
 
 
 def build_compile_cache(
@@ -242,16 +293,16 @@ def build_compile_cache(
         if verbose:
             print(f"[Compilation] Compilation Successful, saved cache at: {build_dir}")
     except Exception as e:
-        print(f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}")
+        print(
+            f"[Compilation] Failed to compile custom CUDA kernel. Unable to cache, \nError: {e}"
+        )
         return False, stdout_buffer.getvalue(), str(e)
 
     return True, stdout_buffer.getvalue(), None
 
 
 def build_compile_cache_with_capturing(
-    custom_model_src: str,
-    verbose: bool = False,
-    build_dir: os.PathLike = None
+    custom_model_src: str, verbose: bool = False, build_dir: os.PathLike = None
 ) -> tuple[int, str, str]:
     """
     Write a temporary python file to compile the custom model on CPU
@@ -273,22 +324,21 @@ def build_compile_cache_with_capturing(
         f.write(custom_model_src)
 
     # Execute the temporary Python file and capture output
-    process = subprocess.Popen(['python', tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        ["python", tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     stdout, stderr = process.communicate()
     returncode = process.returncode
 
     # Clean up temporary file
     os.remove(tmp)
 
-
     if verbose:
         print("[CPU Precompile] return code: ", returncode)
-        print("[CPU Precompile] stdout: \n", stdout.decode('utf-8'))
-        print("[CPU Precompile] stderr: \n", stderr.decode('utf-8')) 
+        print("[CPU Precompile] stdout: \n", stdout.decode("utf-8"))
+        print("[CPU Precompile] stderr: \n", stderr.decode("utf-8"))
 
-    return returncode, stdout.decode('utf-8'), stderr.decode('utf-8')
-
-
+    return returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
 
 
 def eval_kernel_against_ref(
@@ -300,7 +350,10 @@ def eval_kernel_against_ref(
     verbose: bool = False,
     measure_performance: bool = False,
     build_dir: os.PathLike = None,
-    device: torch.device = torch.cuda.current_device() if torch.cuda.is_available() else None, # have to run on GPU
+    device: Union[torch.device, int] = (
+        torch.cuda.current_device() if torch.cuda.is_available() else None
+    ),  # have to run on GPU
+    backend: str = "cuda",  # can be 'cuda' or 'triton'
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -308,6 +361,7 @@ def eval_kernel_against_ref(
     num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
     num_perf_trials: run the evalutation many times to take the average
     device: GPU (cuda) device to run the evalutation on
+    backend: str, either 'cuda' or 'triton', determines which backend implementation to use
     """
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -320,7 +374,25 @@ def eval_kernel_against_ref(
 
     # set CUDA device
     torch.cuda.set_device(device)
+    is_triton = backend == "triton"
+    metadata = {}  # for storing result metadata
+    metadata["hardware"] = torch.cuda.get_device_name(device=device)
+    metadata["device"] = str(device)  # for debugging
 
+    if is_triton:
+        # need to set env var for triton code to guarentee no wrong device shennanignas
+        if isinstance(device, int):
+            device_num = device
+        elif isinstance(device, torch.device):
+            assert (
+                device.type == "cuda"
+            ), "CUDA is not availible on device, cannot run Eval"
+            device_num = device.index
+        else:
+            raise ValueError(
+                f"device must be an int or torch.device, got {type(device)}"
+            )
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(device_num)
     context = {}
 
     if verbose:
@@ -345,15 +417,17 @@ def eval_kernel_against_ref(
     if verbose:
         print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
 
-    metadata = {}  # for storing result metadata
-    metadata["hardware"] = torch.cuda.get_device_name(device=device)
-    metadata["device"] = str(device)  # for debugging
-
     # this is where compilation happens
     try:
         os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
+        tempfile = None
         # add hash for later to distinguish between multi-turn kernels
-        ModelNew = load_custom_model(custom_model_src, context, build_dir)
+        if is_triton:
+            ModelNew, tempfile = load_custom_model_with_tempfile(
+                custom_model_src, entry_point="ModelNew"
+            )
+        else:
+            ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:
         print(
@@ -367,11 +441,12 @@ def eval_kernel_against_ref(
             print(
                 f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
             )
-            graceful_eval_cleanup(context, device)
+            graceful_eval_cleanup(context, device, tempfile)
             return None
         else:
+            metadata["compilation_error_name"] = get_error_name(e)
             metadata["compilation_error"] = e
-            graceful_eval_cleanup(context, device)
+            graceful_eval_cleanup(context, device, tempfile)
             return KernelExecResult(
                 compiled=False, metadata=metadata
             )  # skip further steps
@@ -390,8 +465,9 @@ def eval_kernel_against_ref(
             f"Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
         )
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
-        graceful_eval_cleanup(context, device)
+        graceful_eval_cleanup(context, device, tempfile)
         metadata["runtime_error"] = e
+        metadata["runtime_error_name"] = get_error_name(e)
         return KernelExecResult(
             compiled=True, correctness=False, metadata=metadata
         )  # skip further steps
@@ -415,6 +491,7 @@ def eval_kernel_against_ref(
     except Exception as e:
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
         metadata["runtime_error"] = e
+        metadata["runtime_error_name"] = get_error_name(e)
         kernel_exec_result = KernelExecResult(
             compiled=True, correctness=False, metadata=metadata
         )
@@ -454,7 +531,7 @@ def eval_kernel_against_ref(
                 print(f"[Eval] Error in Measuring Performance: {e}")
             kernel_exec_result.metadata["error_during_performance"] = e
 
-    graceful_eval_cleanup(context, device)
+    graceful_eval_cleanup(context, device, tempfile)
     return kernel_exec_result
 
 
@@ -600,6 +677,7 @@ def run_and_check_correctness(
                         f"Output shape mismatch: Expected {output.shape}, got {output_new.shape}",
                         metadata,
                     )
+                    metadata["correctness_issue_name"] = "correctness_issue"
                     if verbose:
                         print(
                             f"[FAIL] trial {trial}: Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
@@ -631,6 +709,7 @@ def run_and_check_correctness(
                 metadata = register_and_format_exception(
                     "runtime_error", e, metadata, truncate=True
                 )
+                metadata["runtime_error_name"] = get_error_name(e)
                 return KernelExecResult(
                     compiled=True, correctness=False, metadata=metadata
                 )
@@ -678,11 +757,13 @@ def check_metadata_serializable(metadata: dict):
 
     return metadata
 
+
 def check_metadata_serializable_all_types(metadata: dict):
     """
     Ensure metadata is JSON serializable,
     if not, convert non-serializable values to strings recursively
     """
+
     def convert_to_serializable(obj):
         if isinstance(obj, dict):
             return {k: convert_to_serializable(v) for k, v in obj.items()}
