@@ -1,22 +1,21 @@
 """
-This script tests the correctness of models in KernelBench by generating random inputs 
+This script tests the correctness of models in KernelBench by generating random inputs
 and random initialization. It compares the output of the original model against itself.
 It ensures that the test is well-formed and there are no sources of non-determinism in the test.
 
 Usage: python test_bench.py
 """
 
-import importlib
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import random
-import numpy as np
 import os
+import importlib
+import random
 import importlib.util
 
+import torch
+import numpy as np
+
 """
-Test all the reference architectures compiles 
+Test all the reference architectures compiles
 and reproduce the same results when run against itself
 """
 
