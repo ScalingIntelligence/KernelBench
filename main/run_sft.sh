@@ -1,11 +1,11 @@
 set -x
 
-RUN_NAME="sft_Qwen2.5-7B-Instruct_best_4"
+RUN_NAME="sft_Qwen2.5-7B-Instruct_best_1"
 
 torchrun --standalone --nnodes=1 --nproc_per_node=4 \
     -m verl.trainer.fsdp_sft_trainer \
-    data.train_files=$HOME/KernelBench/KernelBench/sft_dataset_best_4_train.parquet \
-    data.val_files=$HOME/KernelBench/KernelBench/sft_dataset_best_4_eval.parquet \
+    data.train_files=$HOME/KernelBench/KernelBench/sft_dataset_best_1_train.parquet \
+    data.val_files=$HOME/KernelBench/KernelBench/sft_dataset_best_1_eval.parquet \
     data.prompt_key=question \
     data.response_key=answer \
     data.train_batch_size=8 \
@@ -19,5 +19,5 @@ torchrun --standalone --nnodes=1 --nproc_per_node=4 \
     trainer.experiment_name=$RUN_NAME \
     trainer.default_local_dir=/data/user_data/gyeongwk/KernelBench/sft/$RUN_NAME \
     trainer.n_gpus_per_node=4 \
-    trainer.total_epochs=4 \
+    trainer.total_epochs=50 \
     trainer.logger=['console','wandb'] 

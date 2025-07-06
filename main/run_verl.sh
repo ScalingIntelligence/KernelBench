@@ -37,10 +37,10 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='KernelBench' \
     trainer.experiment_name=$RUN_NAME \
-    trainer.default_local_dir="$HOME/KernelBench/runs/$RUN_NAME" \
-    trainer.val_before_train=False \
+    trainer.default_local_dir="/data/user_data/gyeongwk/KernelBench/grpo/$RUN_NAME" \
+    trainer.val_before_train=True \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=1 \
-    trainer.test_freq=5 \
+    trainer.save_freq=10 \
+    trainer.test_freq=10 \
     trainer.total_epochs=1 $@
