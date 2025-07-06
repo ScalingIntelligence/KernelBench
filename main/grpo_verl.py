@@ -13,11 +13,12 @@ from main.evaluation_utils import send_evaluation_request, send_batch_evaluation
 from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, KERNEL_BENCH_PATH
 from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk, write_eval_result_to_separate_file
 
-from src.utils import set_gpu_arch, extract_last_code
+from src.utils import extract_last_code
 
+# RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
-RUN_NAME = "grpo_verl_test"
-EVAL_SERVER_HOST = "babel-2-29"
+RUN_NAME = "grpo_Qwen2.5-7B-Instruct"
+EVAL_SERVER_HOST = "babel-11-13"
 EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"
@@ -93,13 +94,13 @@ def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos,
         if kernel_src is not None:
             write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src) # for debugging
 
-            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
-            job_list.append({
-                "work_args": serialize_work_args(work_args),
-                "run_name": RUN_NAME,
-                "kernel_src": kernel_src,
-                "kernel_name": kernel_name
-            })
+        work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
+        job_list.append({
+            "work_args": serialize_work_args(work_args),
+            "run_name": RUN_NAME,
+            "kernel_src": kernel_src,
+            "kernel_name": kernel_name
+        })
     
     results = send_batch_evaluation_request(EVAL_SERVER_HOST, EVAL_SERVER_PORT, job_list)
 
@@ -107,6 +108,8 @@ def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos,
     for result, job in zip(results, job_list):
         level = job['work_args']["level"]
         problem = job['work_args']["problem_id"]
+        sample_id = job['work_args']["sample_id"]
+        write_eval_result_to_separate_file(level, problem, sample_id, result, run_dir)
         reward = reward_from_exec_result(level, problem, result)
         rewards.append(reward)
     return rewards

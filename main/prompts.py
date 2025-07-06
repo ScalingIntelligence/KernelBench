@@ -36,6 +36,18 @@ Let's think step by step.\n
 """ 
 
 
+def prompt_bare(ref_arch_src: str) -> str:
+    prompt = PROBLEM_STATEMENT
+    prompt += f"""
+    You are given the following architecture: \n
+    ```
+    {ref_arch_src}
+    ```
+    """
+    prompt += PROBLEM_INSTRUCTION
+    return prompt
+
+
 def prompt_with_one_example(
     arc_src: str, example_arch_src: str, example_new_arch_src: str
 ) -> str:
