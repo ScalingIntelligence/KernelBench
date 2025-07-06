@@ -28,7 +28,7 @@ class Model(nn.Module):
         return x
 
 
-batch_size = 128
+batch_size = 256
 input_size = 8192
 hidden_size = 8192
 num_groups = 512
