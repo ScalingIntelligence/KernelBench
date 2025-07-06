@@ -14,7 +14,7 @@ import pandas as pd
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
 
-from main.prompts import prompt_base
+from main.prompts import prompt_base, prompt_bare
 from src.utils import read_file
 
 REPO_TOP_PATH = os.path.abspath(
@@ -330,19 +330,21 @@ def process_dataset_for_sft(k=1):
                 kernel_src = read_file(kernel_path)
 
                 ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
-                question = prompt_base(ref_arch_src)
+                question = prompt_bare(ref_arch_src)
                 answer = kernel_src
                 if int(problem) in TRAIN_SET:
                     sft_dataset.append((question, answer, level, problem))
                 else:
                     sft_eval_dataset.append((question, answer, level, problem))
     
+    print(f"Collected {len(sft_dataset)} train samples and {len(sft_eval_dataset)} eval samples")
+    
     df = Dataset.from_pandas(pd.DataFrame(sft_dataset, columns=["question", "answer", "level", "problem"]))
     df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_train.parquet"))
-    print(f"SFT dataset for level {level} saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_train.parquet')}")
+    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_train.parquet')}")
     df = Dataset.from_pandas(pd.DataFrame(sft_eval_dataset, columns=["question", "answer", "level", "problem"]))
     df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_eval.parquet"))
-    print(f"SFT eval dataset for level {level} saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_eval.parquet')}")
+    print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_eval.parquet')}")
 
 
 

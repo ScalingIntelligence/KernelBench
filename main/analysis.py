@@ -28,7 +28,6 @@ METHOD_TO_NAME = {
     "best_of_n": "Best-of-N",
     "IR": "Iterative Refinement",
     "metr": "METR",
-    "eval_grpo": "GRPO"
 }
 
 
@@ -231,7 +230,7 @@ def main():
         else:
             methods = args.methods.split(",")
         print(f'Analyzing results Level: {args.level} Model: {args.model} across Methods: {methods}')
-        name = f"Level {args.level} ({MODEL_TO_NAME[args.model]})"
+        name = f"Level {args.level} ({args.model})"
         plot_dir = os.path.join(PLOT_DIR, "across_methods", f"level{args.level}_{args.model}" + (f"_{args.tag}" if args.tag else ""))
 
         for method in methods:
@@ -259,7 +258,7 @@ def main():
             levels = list(map(int, args.levels.split(",")))
 
         print(f'Analyzing results Method: {args.method} Model: {args.model} across levels: {levels}')
-        name = f"{METHOD_TO_NAME[args.method]} ({MODEL_TO_NAME[args.model]})"
+        name = f"{METHOD_TO_NAME[args.method]} ({args.model})"
         plot_dir = os.path.join(PLOT_DIR, "across_levels", f"{args.method}_{args.model}" + (f"_{args.tag}" if args.tag else ""))
 
         for level in levels:
@@ -282,7 +281,7 @@ def main():
         assert args.method is not None and args.level is not None, "Specify a method and level"
 
         if args.models is None:
-            models = ["QwQ_32B", "qwen_2.5_7b", "qwen_2.5_1.5b", "deepseek_r1"]
+            models = ["QwQ-32B", "Qwen2.5-7B-Instruct", "Qwen2.5-1.5B-Instruct", "DeepSeek-R1"]
         else:
             models = args.models.split(",")
 
@@ -291,7 +290,7 @@ def main():
         plot_dir = os.path.join(PLOT_DIR, "across_models", f"{args.method}_level{args.level}" + (f"_{args.tag}" if args.tag else ""))
 
         for model in models:
-            model_name = MODEL_TO_NAME[model]
+            model_name = model
             run_dir = to_run_dir(args.method, args.level, model)
             if not os.path.exists(os.path.join(run_dir, "metrics.json")):
                 print(f'Run directory {run_dir} does not exist or does not have metrics.json')
