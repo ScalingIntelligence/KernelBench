@@ -11,11 +11,11 @@ from peft import PeftModel
 def main(num):
     model_name = "Qwen/Qwen2.5-7B-Instruct"
     peft_model = f"/data/user_data/gyeongwk/KernelBench/sft/sft_Qwen2.5-7B-Instruct_best_{num}"
-    merged_peft_model_name = f"gyeongwk/sft_Qwen2.5-7B-Instruct_best_{num}-merged-peft"
+    target_path = f"/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT{num}"
+    merged_peft_model_name = f"gyeongwk/Qwen2.5-7B-Instruct-SFT{num}"
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    tokenizer.pad_token = tokenizer.eos_token
-    max_seq_length = tokenizer.model_max_length
+    # tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    # tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -31,12 +31,12 @@ def main(num):
     )
 
     model = model.merge_and_unload()
-    model.save_pretrained(merged_peft_model_name)
-    tokenizer.save_pretrained(merged_peft_model_name)
+    model.save_pretrained(target_path)
+    # tokenizer.save_pretrained(target_path)
     model.push_to_hub(merged_peft_model_name)
-    tokenizer.push_to_hub(merged_peft_model_name)
+    # tokenizer.push_to_hub(merged_peft_model_name)
 
 
 if __name__ == "__main__":
-    for i in range(1, 5):
+    for i in range(1, 2):
         main(i)

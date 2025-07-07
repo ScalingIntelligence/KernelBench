@@ -331,7 +331,7 @@ def process_dataset_for_sft(k=1):
 
                 ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
                 question = prompt_bare(ref_arch_src)
-                answer = kernel_src
+                answer = "```python\n" + kernel_src + "\n```"
                 if int(problem) in TRAIN_SET:
                     sft_dataset.append((question, answer, level, problem))
                 else:
