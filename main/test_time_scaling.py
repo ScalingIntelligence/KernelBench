@@ -195,6 +195,7 @@ def main(config):
         entity="j1mk1m",
         tags=tags
     )
+    wandb.log({"run_name": config.run_name, "method": config.method, "prompt": config.prompt, "level": config.level, "model_name": config.model_name})
     print(f"Starting Test-Time Scaling with config: {config}")
 
     # Check if CUDA is available
