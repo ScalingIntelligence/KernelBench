@@ -10,6 +10,8 @@ import hashlib
 import json
 from datasets import Dataset
 import pandas as pd
+import argparse
+import yaml
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
@@ -286,8 +288,7 @@ def process_dataset():
     eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset.parquet"))
 
 
-def search_for_best_kernels():
-    k = 5
+def search_for_best_kernels(k):
     for level in [1, 2]:
         best_k_kernels = {} # problem_id -> best kernels
         for directory in os.listdir(RUNS_DIR):
@@ -303,6 +304,7 @@ def search_for_best_kernels():
                     if problem not in best_k_kernels:
                         best_k_kernels[problem] = []
                     for sample_id, eval_result in samples.items():
+                        if "metr" in directory and sample_id == "0": continue
                         if eval_result["correctness"]: # initial filter for correct
                             eval_result["run_name"] = directory
                             best_k_kernels[problem].append(eval_result)
@@ -329,26 +331,72 @@ def process_dataset_for_sft(k=1):
                 kernel_path = os.path.join(RUNS_DIR, run_name, f"level_{level}_problem_{problem}_sample_{eval_result['sample_id']}_kernel.py")
                 kernel_src = read_file(kernel_path)
 
+                response_path = os.path.join(RUNS_DIR, run_name, f"level_{level}_problem_{problem}_sample_{eval_result['sample_id']}_response.txt")
+                with open(response_path, "r") as f:
+                    response = f.read()
+                reasoning = response.split("REASONING TRACE:")[1].split("ANSWER:")[0].strip()
+
                 ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
                 question = prompt_bare(ref_arch_src)
                 answer = "```python\n" + kernel_src + "\n```"
+                answer_with_reasoning = reasoning + "\n" + answer
                 if int(problem) in TRAIN_SET:
-                    sft_dataset.append((question, answer, level, problem))
+                    sft_dataset.append((question, answer_with_reasoning, level, problem))
                 else:
-                    sft_eval_dataset.append((question, answer, level, problem))
+                    sft_eval_dataset.append((question, answer_with_reasoning, level, problem))
     
     print(f"Collected {len(sft_dataset)} train samples and {len(sft_eval_dataset)} eval samples")
     
     df = Dataset.from_pandas(pd.DataFrame(sft_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_train.parquet"))
-    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_train.parquet')}")
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_train_with_reasoning.parquet"))
+    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_train_with_reasoning.parquet')}")
     df = Dataset.from_pandas(pd.DataFrame(sft_eval_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_eval.parquet"))
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_eval_with_reasoning.parquet"))
     print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_eval.parquet')}")
+
+
+def update_eval_results(run_dir):
+    config_path = os.path.join(run_dir, "config.yaml")
+    if not os.path.exists(config_path):
+        print("No config file found. Using empty dict")
+        config = argparse.Namespace()
+    else:
+        with open(config_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+
+    eval_file_path = os.path.join(run_dir, "eval_results.json")
+    with open(eval_file_path, "r") as f:
+        eval_results = json.load(f)
+
+    deprecated = False
+    for level, problems in eval_results.items():
+        for problem, samples in problems.items():
+            if "correctness" in samples:
+                deprecated = True
+                break
+            break
+        break
+
+    if deprecated:
+        print("Deprecated eval results found. Updating to new format")
+        eval_results = {f"{config['level']}": eval_results}
+        with open(eval_file_path, "w") as f:
+            json.dump(eval_results, f, indent=4)
+
+
+def update_eval_results_for_all_runs():
+    for directory in os.listdir(RUNS_DIR):
+        if "level" in directory and "DeepSeek" in directory:
+            update_eval_results(os.path.join(RUNS_DIR, directory))
 
 
 
 if __name__ == "__main__":
+    # update_eval_results_for_all_runs()
+    search_for_best_kernels(k=1)
+    search_for_best_kernels(k=2)
+    search_for_best_kernels(k=3)
+    search_for_best_kernels(k=4)
     process_dataset_for_sft(k=1)
     process_dataset_for_sft(k=2)
     process_dataset_for_sft(k=3)

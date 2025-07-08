@@ -18,7 +18,7 @@ from src.utils import extract_last_code
 # RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
 RUN_NAME = "grpo_dapo_Qwen2.5-7B-Instruct"
-EVAL_SERVER_HOST = "babel-11-21"
+EVAL_SERVER_HOST = "babel-15-32"
 EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"

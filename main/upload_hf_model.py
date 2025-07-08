@@ -5,17 +5,13 @@ from transformers import (
     BitsAndBytesConfig,
     AutoTokenizer,
 )
-import numpy as np
 from peft import PeftModel
+import os
+import argparse
 
-def main(num):
-    model_name = "Qwen/Qwen2.5-7B-Instruct"
-    peft_model = f"/data/user_data/gyeongwk/KernelBench/sft/sft_Qwen2.5-7B-Instruct_best_{num}"
-    target_path = f"/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT{num}"
-    merged_peft_model_name = f"gyeongwk/Qwen2.5-7B-Instruct-SFT{num}"
-
-    # tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    # tokenizer.pad_token = tokenizer.eos_token
+def main(model_name, source_dir, target_dir, hf_name):
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -24,19 +20,24 @@ def main(num):
             
     model = PeftModel.from_pretrained(
         model, 
-        peft_model, 
+        source_dir, 
         torch_dtype=torch.float16,
         device_map="auto",
         offload_folder="offload", 
     )
 
     model = model.merge_and_unload()
-    model.save_pretrained(target_path)
-    # tokenizer.save_pretrained(target_path)
-    model.push_to_hub(merged_peft_model_name)
-    # tokenizer.push_to_hub(merged_peft_model_name)
+    model.save_pretrained(target_dir)
+    tokenizer.save_pretrained(target_dir)
+    model.push_to_hub(hf_name)
+    tokenizer.push_to_hub(hf_name)
 
 
 if __name__ == "__main__":
-    for i in range(1, 2):
-        main(i)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name", type=str, required=True)
+    parser.add_argument("--source_dir", type=str, required=True)
+    parser.add_argument("--target_dir", type=str, required=True)
+    parser.add_argument("--hf_name", type=str, required=True)
+    args = parser.parse_args()
+    main(args.model_name, args.source_dir, args.target_dir, args.hf_name)

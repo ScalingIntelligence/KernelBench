@@ -19,7 +19,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.ppo_mini_batch_size=4 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.actor.use_kl_loss=False \
-    actor_rollout_ref.actor.kl_loss_coeff=0.0 \
     actor_rollout_ref.actor.clip_ratio_high=0.28 \
     actor_rollout_ref.actor.grad_clip=0.5 \
     actor_rollout_ref.actor.entropy_coeff=0 \
@@ -34,10 +33,15 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
-    algorithm.kl_ctrl.kl_coeff=0.0 \
+    +algorithm.kl_ctrl.kl_coeff=0.0 \
     custom_reward_function.path=$HOME/KernelBench/main/grpo_verl.py \
     custom_reward_function.name=compute_score_batch \
     reward_model.reward_manager=dapo_batch \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.enable=True \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.len=8192 \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor=1.0 \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.log=False \
+    +reward_model.reward_kwargs.max_resp_len=16384 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='KernelBench' \
     trainer.experiment_name=$RUN_NAME \
