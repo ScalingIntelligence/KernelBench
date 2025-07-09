@@ -58,6 +58,7 @@ def is_generated_kernel_used(code: str) -> bool:
             self.generated_kernel_vars = set()  # e.g., matmul_cuda
             self.generated_kernel_attrs = set()  # e.g., self.matmul_cuda
             self.overwritten_attrs = set()
+            self.called_vars = set()
             self.called_attrs = set()
             self.pytorch_layer_names = {
                 "Conv1d", "Conv2d", "Conv3d", "ConvTranspose1d",
@@ -96,6 +97,12 @@ def is_generated_kernel_used(code: str) -> bool:
                 if isinstance(func.value.value, ast.Name) and func.value.value.id == "self":
                     attr_name = func.value.attr
                     self.called_attrs.add(attr_name)
+
+            # Case 5: Detect <kernel_var>.<method>() call
+            if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name): 
+                if func.value.id in self.generated_kernel_vars:
+                    self.called_vars.add(func.value.id)
+                
             self.generic_visit(node)
 
     try:
@@ -109,12 +116,9 @@ def is_generated_kernel_used(code: str) -> bool:
     # If a generated kernel var was assigned to a self.attr and that attr was later used (and not overwritten)
     used_attrs = analyzer.generated_kernel_attrs & analyzer.called_attrs
     effective_used_attrs = used_attrs - analyzer.overwritten_attrs
-    # print(f"Generated kernel attrs: {analyzer.generated_kernel_attrs}")
-    # print(f"Called attrs: {analyzer.called_attrs}")
-    # print(f"Overwritten attrs: {analyzer.overwritten_attrs}")
-    # print(f"Effective used attrs: {effective_used_attrs}")
+    used_vars = analyzer.generated_kernel_vars & analyzer.called_vars 
 
-    return len(effective_used_attrs) > 0
+    return len(effective_used_attrs) > 0 or len(used_vars) > 0
 
 
 

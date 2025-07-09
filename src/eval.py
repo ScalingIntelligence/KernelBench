@@ -398,13 +398,13 @@ def eval_kernel_against_ref(
             graceful_eval_cleanup(context, device)
             metadata["other_error"] = str(e)
             return KernelExecResult(
-                compiled=False, correctness=False, metadata=metadata
+                valid=True, compiled=False, correctness=False, metadata=metadata
             )
         else:
             metadata["compilation_error"] = str(e)
             graceful_eval_cleanup(context, device)
             return KernelExecResult(
-                compiled=False, metadata=metadata
+                valid=True, compiled=False, correctness=False, metadata=metadata
             )  # skip further steps
 
     # at this point we passed compilation
@@ -424,7 +424,7 @@ def eval_kernel_against_ref(
         graceful_eval_cleanup(context, device)
         metadata["runtime_error"] = str(e)
         return KernelExecResult(
-            compiled=True, correctness=False, metadata=metadata
+            valid=True, compiled=True, correctness=False, metadata=metadata
         )  # skip further steps
 
     kernel_exec_result = None
@@ -447,7 +447,7 @@ def eval_kernel_against_ref(
         # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
         metadata["runtime_error"] = str(e)
         kernel_exec_result = KernelExecResult(
-            compiled=True, correctness=False, metadata=metadata
+            valid=True, compiled=True, correctness=False, metadata=metadata
         )
 
     # Measure Performance [Optional] | conditioned on compilation + correctness + no exception so far
@@ -539,7 +539,7 @@ def eval_reference_kernel(
     metadata["hardware"] = torch.cuda.get_device_name(device=device)
     metadata["device"] = str(device)  # for debugging
     
-    kernel_exec_result = KernelExecResult(compiled=True, correctness=True, metadata=metadata)
+    kernel_exec_result = KernelExecResult(valid=True, compiled=True, correctness=True, metadata=metadata)
 
     try:
         if verbose:
@@ -729,7 +729,7 @@ def run_and_check_correctness(
                     "runtime_error", e, metadata, truncate=True
                 )
                 return KernelExecResult(
-                    compiled=True, correctness=False, metadata=metadata
+                    valid=True, compiled=True, correctness=False, metadata=metadata
                 )
 
             # Run the reference model AFTER the new model as per [Kevin](https://cognition.ai/blog/kevin-32b)
@@ -750,7 +750,7 @@ def run_and_check_correctness(
                             f"[FAIL] trial {trial}: Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
                         )
                     return KernelExecResult(
-                        compiled=True, correctness=False, metadata=metadata
+                        valid=True, compiled=True, correctness=False, metadata=metadata
                     )
 
                 # check output value difference
@@ -789,9 +789,9 @@ def run_and_check_correctness(
     metadata["correctness_trials"] = f"({pass_count} / {num_correct_trials})"
 
     if pass_count == num_correct_trials:
-        return KernelExecResult(compiled=True, correctness=True, metadata=metadata)
+        return KernelExecResult(valid=True, compiled=True, correctness=True, metadata=metadata)
     else:
-        return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
+        return KernelExecResult(valid=True, compiled=True, correctness=False, metadata=metadata)
 
 
 def check_metadata_serializable(metadata: dict):
