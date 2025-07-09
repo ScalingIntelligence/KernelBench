@@ -26,16 +26,20 @@ def main(model_name, source_dir, target_dir, hf_name):
         offload_folder="offload", 
     )
 
+    print("Merging and unloading model...")
     model = model.merge_and_unload()
+    print("Saving model...")
     model.save_pretrained(target_dir)
+    print("Saving tokenizer...")
     tokenizer.save_pretrained(target_dir)
+    print("Pushing model to hub...")
     model.push_to_hub(hf_name)
     tokenizer.push_to_hub(hf_name)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, required=True)
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--source_dir", type=str, required=True)
     parser.add_argument("--target_dir", type=str, required=True)
     parser.add_argument("--hf_name", type=str, required=True)

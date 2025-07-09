@@ -9,6 +9,7 @@ from tqdm import tqdm
 import multiprocessing as mp
 import yaml
 from dataclasses import dataclass
+import ast
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
@@ -51,6 +52,72 @@ def deserialize_work_args(data: dict) -> EvaluationWorkArgs:
     )
 
 
+def is_generated_kernel_used(code: str) -> bool:
+    class KernelUseAnalyzer(ast.NodeVisitor):
+        def __init__(self):
+            self.generated_kernel_vars = set()  # e.g., matmul_cuda
+            self.generated_kernel_attrs = set()  # e.g., self.matmul_cuda
+            self.overwritten_attrs = set()
+            self.called_attrs = set()
+            self.pytorch_layer_names = {
+                "Conv1d", "Conv2d", "Conv3d", "ConvTranspose1d",
+                "ConvTranspose2d", "ConvTranspose3d", "Linear", "BatchNorm1d",
+                "BatchNorm2d", "Embedding", "Sequential"
+            }
+
+        def visit_Assign(self, node):
+            # Case 1: Detect kernel var from load_inline
+            if isinstance(node.value, ast.Call):
+                if isinstance(node.value.func, ast.Name) and node.value.func.id == "load_inline":
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            self.generated_kernel_vars.add(target.id)
+
+            # Case 2: Track assignment to self.<attr> = <kernel var>
+            if isinstance(node.value, ast.Name) and node.value.id in self.generated_kernel_vars:
+                for target in node.targets:
+                    if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self":
+                        self.generated_kernel_attrs.add(target.attr)
+
+            # Case 3: Detect overwrites like self.attr = nn.Conv1d(...)
+            if isinstance(node.value, ast.Call):
+                func = node.value.func
+                if isinstance(func, ast.Attribute) and func.attr in self.pytorch_layer_names:
+                    for target in node.targets:
+                        if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self":
+                            self.overwritten_attrs.add(target.attr)
+
+            self.generic_visit(node)
+
+        def visit_Call(self, node):
+            # Case 4: Detect self.<attr>.<method>() call
+            func = node.func
+            if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute):
+                if isinstance(func.value.value, ast.Name) and func.value.value.id == "self":
+                    attr_name = func.value.attr
+                    self.called_attrs.add(attr_name)
+            self.generic_visit(node)
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False  # Malformed Python code
+
+    analyzer = KernelUseAnalyzer()
+    analyzer.visit(tree)
+
+    # If a generated kernel var was assigned to a self.attr and that attr was later used (and not overwritten)
+    used_attrs = analyzer.generated_kernel_attrs & analyzer.called_attrs
+    effective_used_attrs = used_attrs - analyzer.overwritten_attrs
+    # print(f"Generated kernel attrs: {analyzer.generated_kernel_attrs}")
+    # print(f"Called attrs: {analyzer.called_attrs}")
+    # print(f"Overwritten attrs: {analyzer.overwritten_attrs}")
+    # print(f"Effective used attrs: {effective_used_attrs}")
+
+    return len(effective_used_attrs) > 0
+
+
+
 def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
     """
     Evaluate a single sample on a single GPU
@@ -80,6 +147,13 @@ def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_di
                 device=device,
             )
         else:
+            valid = is_generated_kernel_used(kernel_src)
+            if not valid:
+                eval_result = KernelExecResult(
+                    valid=False, compiled=False, correctness=False, metadata={"other_error": "Kernel not used"}
+                )
+                return eval_result
+
             eval_result = eval_kernel_against_ref(
                 original_model_src=ref_arch_src,
                 original_model_name=ref_arch_name,
@@ -105,7 +179,7 @@ def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_di
                 "device": str(device),
             }  # log this for debugging as this usually signifies illegal memory access
             eval_result = KernelExecResult(
-                compiled=False, correctness=False, metadata=metadata
+                valid=True, compiled=False, correctness=False, metadata=metadata
             )
             return eval_result
         else:
@@ -113,7 +187,7 @@ def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_di
                         "hardware": torch.cuda.get_device_name(device=device),
                         "device": str(device)
                         } # for debugging
-            eval_result = KernelExecResult(compiled=False, correctness=False, 
+            eval_result = KernelExecResult(valid=True, compiled=False, correctness=False, 
                                                 metadata=metadata)
             return eval_result
 
@@ -146,8 +220,7 @@ def evaluate_single_sample_in_separate_process(work_args: EvaluationWorkArgs, co
                 "device": str(device),
             }
             return KernelExecResult(
-                compiled=False, 
-                correctness=False, 
+                valid=True, compiled=False, correctness=False, 
                 metadata=metadata
             )
         except Exception as e:
@@ -157,8 +230,7 @@ def evaluate_single_sample_in_separate_process(work_args: EvaluationWorkArgs, co
                 "device": str(device),
             }
             return KernelExecResult(
-                compiled=False, 
-                correctness=False, 
+                valid=True, compiled=False, correctness=False, 
                 metadata=metadata
             )
 
@@ -185,6 +257,7 @@ def add_to_eval_results_file(level: int, problem_id: int, sample_id: int, eval_r
     eval_results[str(level)][str(problem_id)][str(sample_id)] = {
         'problem_id': problem_id,
         'sample_id': sample_id,
+        'valid': eval_result.valid,
         'compiled': eval_result.compiled,
         'correctness': eval_result.correctness,
         'metadata': check_metadata_serializable_all_types(eval_result.metadata),
@@ -379,7 +452,7 @@ def batch_eval(
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
-                        result = KernelExecResult(compiled=False, correctness=False, metadata={"other_error": "timeout"})
+                        result = KernelExecResult(valid=True, compiled=False, correctness=False, metadata={"other_error": "timeout"})
                         results.append((level, problem_id, sample_id, result))
                     
                         remove_cache_dir(vars(config), level, problem_id, sample_id)
@@ -387,7 +460,7 @@ def batch_eval(
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
                         )
-                        result = KernelExecResult(compiled=False, correctness=False, metadata={"other_error": str(e)})
+                        result = KernelExecResult(valid=True, compiled=False, correctness=False, metadata={"other_error": str(e)})
                         results.append((level, problem_id, sample_id, result))
                         remove_cache_dir(vars(config), level, problem_id, sample_id)
 

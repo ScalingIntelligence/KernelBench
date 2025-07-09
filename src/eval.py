@@ -80,6 +80,7 @@ class KernelExecResult(BaseModel):
     Single Kernel Execution
     """
 
+    valid: bool = False
     compiled: bool = False
     correctness: bool = False
     metadata: dict = {}
