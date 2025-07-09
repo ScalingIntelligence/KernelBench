@@ -21,7 +21,7 @@ class Model(nn.Module):
         Returns:
             torch.Tensor: Output tensor with L1 normalization applied, same shape as input.
         """
-        return x / torch.sum(torch.abs(x), dim=1, keepdim=True)
+        return x / torch.mean(torch.abs(x), dim=1, keepdim=True)
 
 batch_size = 32768
 # choose dim so total <2^31
