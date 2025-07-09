@@ -14,23 +14,18 @@ class Model(nn.Module):
         """
         super(Model, self).__init__()
         # Initialize hidden state with random values
-        self.h0 = torch.randn((num_layers * 2, batch_size, hidden_size))
-        self.c0 = torch.randn((num_layers * 2, batch_size, hidden_size))
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout, bidirectional=True)
         self.fc = nn.Linear(hidden_size * 2, output_size)
     
-    def forward(self, x):
+    def forward(self, x,h0,c0):
         """
         Forward pass through the LSTM model.
 
         :param x: The input tensor, shape (batch_size, sequence_length, input_size)
         :return: The output tensor, shape (batch_size, sequence_length, output_size)
         """
-        self.h0 = self.h0.to(x.device)
-        self.c0 = self.h0.to(x.device)
-        
         # Forward propagate LSTM
-        out, hn = self.lstm(x, (self.h0, self.c0))  # out: tensor of shape (batch_size, seq_length, hidden_size)
+        out, hn = self.lstm(x, (h0, c0))  # out: tensor of shape (batch_size, seq_length, hidden_size)
         
         # Decode the hidden state of the last time step
         out = self.fc(out[:, -1, :])  # out: tensor of shape (batch_size, output_size)
@@ -47,7 +42,7 @@ output_size = 10
 dropout = 0.0
 
 def get_inputs():
-    return [torch.randn(batch_size, sequence_length, input_size)]
+    return [torch.randn(batch_size, sequence_length, input_size),torch.randn((num_layers*2, batch_size, hidden_size)),torch.randn((num_layers*2, batch_size, hidden_size))]
 
 def get_init_inputs():
     return [input_size, hidden_size, num_layers, output_size, dropout]
