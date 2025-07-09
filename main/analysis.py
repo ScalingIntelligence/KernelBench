@@ -162,6 +162,26 @@ def plot_fast_p_by_num_samples(metrics_by_label_by_sample, p="1.0", name=None, p
     plt.close()
 
 
+def plot_fast_p_by_epochs(metrics_by_epoch, p="1.0", name=None, plot_dir=None):
+    plt.figure(figsize=(10, 5))
+
+    for label, metrics in metrics_by_epoch.items():
+        epochs = list(metrics.keys())
+        fast_p_scores = list(map(lambda x: x["speedups"]["torch"]["fast_p_results"][p] if p != "mean" else x["speedups"]["torch"]["mean_speedup_correct"], metrics.values()))
+
+        plt.plot(epochs, fast_p_scores, marker='o', label=label)
+
+    if p != "mean":
+        plt.ylim(0, 1.05)
+
+    plt.xlabel('Number of Epochs')
+    plt.ylabel("Correctness" if p == "0.0" else f'Fast_{p} Score' if p != "mean" else "Mean Speedup")
+    plt.legend()
+    plt.title(f"Correctness by Number of Epochs: {name}" if p == "0.0" else f'Fast_{p} Score by Number of Epochs: {name}' if p != "mean" else f"Mean Speedup by Number of Epochs: {name}")
+    plt.savefig(os.path.join(plot_dir, f"correctness_by_num_epochs.png" if p == "0.0" else f"fast_{p}_by_num_epochs.png" if p != "mean" else f"mean_speedup_by_num_epochs.png"), bbox_inches='tight')
+    plt.close()
+
+
 def plot_fast_p_barchart(metrics_by_label, p="1.0", axis="Method", name=None, plot_dir=None):
     """
     Plots the fast_p score (for given p)
@@ -309,6 +329,37 @@ def main():
     plot_everything(metrics_by_label, metrics_by_label_by_sample, args.axis, name, plot_dir)
 
 
+def sft_analysis():
+    epochs = [4, 10, 20, 30, 40, 50]
+
+    metrics_by_level = {}
+
+    for level in [1, 2]:
+        metrics_by_epoch = {}
+
+        run_dir = os.path.join(RUNS_DIR, f"base_level{level}_Qwen2.5-7B-Instruct")
+        metrics = load_metrics(run_dir)
+        metrics_by_epoch[0] = metrics
+
+        for epoch in epochs:
+            run_dir = os.path.join(RUNS_DIR, f"base_level{level}_Qwen2.5-7B-Instruct-SFT1-{epoch}")
+            if not os.path.exists(os.path.join(run_dir, "metrics.json")):
+                print(f'Run directory {run_dir} does not exist or does not have metrics.json')
+                continue
+            metrics = load_metrics(run_dir)
+            metrics_by_epoch[epoch] = metrics
+
+        metrics_by_level[f"Level {level}"] = metrics_by_epoch
+    
+    plot_dir = os.path.join(PLOT_DIR, "sft_analysis", "SFT1")
+    os.makedirs(plot_dir, exist_ok=True)
+    plot_fast_p_by_epochs(metrics_by_level, p="0.0", name="SFT1", plot_dir=plot_dir)
+    plot_fast_p_by_epochs(metrics_by_level, p="1.0", name="SFT1", plot_dir=plot_dir)
+
+
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    sft_analysis()
 
