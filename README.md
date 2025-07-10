@@ -1,6 +1,11 @@
 # KernelBench: Can LLMs Write Efficient GPU Kernels? [ICML '25]
 [arXiv](https://arxiv.org/html/2502.10517v1) | [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [HuggingFace Dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) | 
 
+## Versions
+The huggingface dataset is updated to v0.1.
+- [v0.1](https://github.com/ScalingIntelligence/KernelBench/tree/v0.1) - Latest version (also main branch)
+- [v0](https://github.com/ScalingIntelligence/KernelBench/tree/v0) - Original Release
+
 A benchmark for evaluating LLMs' ability to generate efficient GPU kernels
 
 <img src="./assets/figures/KernelBenchMascot.png" width="200">
