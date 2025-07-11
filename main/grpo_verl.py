@@ -8,12 +8,11 @@ from verl.interactions.base import BaseInteraction
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
 
-from main.prompts import prompt_base
-from main.evaluation_utils import send_evaluation_request, send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args, is_generated_kernel_used
-from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, KERNEL_BENCH_PATH
 from src.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk, write_eval_result_to_separate_file
-
 from src.utils import extract_last_code
+
+from main.evaluation_utils import send_evaluation_request, send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args, is_generated_kernel_used
+
 
 # RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
@@ -160,8 +159,3 @@ class KernelBenchInteraction(BaseInteraction):
 
     async def finalize_interaction(self, instance_id, **kwargs):
         del self._instance_dict[instance_id]
-
-
-
-# if __name__ == "__main__":
-#     process_dataset()

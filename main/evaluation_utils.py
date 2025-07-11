@@ -16,13 +16,11 @@ sys.path.append(REPO_ROOT)
 
 from src.compile import batch_compile, remove_cache_dir
 from src.eval import eval_kernel_against_ref, eval_reference_kernel, KernelExecResult, check_metadata_serializable_all_types
-from src.utils import set_gpu_arch
+from src.utils import set_gpu_arch, WorkArgs
+from src.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
+from src.run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
 
 from main.configs import parse_evaluation_args, RUNS_DIR, KERNEL_EVAL_BUILD_DIR
-from main.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
-from main.utils import WorkArgs
-from src.run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
-from main.evaluation_utils_modal import evalaute_single_sample_modal
 
 
 @dataclass
@@ -358,8 +356,6 @@ def check_eval_status(config):
         return True
     elif config.eval_mode == "remote":
         return check_server_status(config.eval_server_host, config.eval_server_port)
-    elif config.eval_mode == "modal":
-        return True
     else:
         raise ValueError(f"Invalid evaluation method: {config.eval_mode}")
 
@@ -372,8 +368,6 @@ def evaluate_single_sample(work_args: EvaluationWorkArgs, configs, run_dir: str,
         return evaluate_single_sample_worker(work_args, configs, run_dir, kernel_src, kernel_name)
     elif configs.eval_mode == "remote":
         return send_evaluation_request(configs.eval_server_host, configs.eval_server_port, work_args, configs.run_name, kernel_src, kernel_name)
-    elif configs.eval_mode == "modal":
-        return evalaute_single_sample_modal(work_args, configs, run_dir, kernel_src, kernel_name)
 
 
 def batch_eval(

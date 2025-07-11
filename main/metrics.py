@@ -5,7 +5,7 @@ import os
 import json
 import numpy as np
 
-from dataset import construct_kernelbench_dataset, TEST_PROBLEM_IDS_LEVEL_1, TEST_PROBLEM_IDS_LEVEL_2, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2
+from src.dataset import construct_kernelbench_dataset, TEST_PROBLEM_IDS_LEVEL_1, TEST_PROBLEM_IDS_LEVEL_2, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2
 from src.score import *
 
 
@@ -367,14 +367,8 @@ def collate_eval_results(run_dir):
     return combined_results
 
 
-def main():
-    argparser = ArgumentParser()
-    argparser.add_argument("--run_dir", type=str, required=True)
-    argparser.add_argument("--hardware", type=str, required=True)
-    argparser.add_argument("--grpo", action="store_true")
-    args = argparser.parse_args()
-
-    config_path = os.path.join(args.run_dir, "config.yaml")
+def main(run_dir, hardware, grpo): 
+    config_path = os.path.join(run_dir, "config.yaml")
     if not os.path.exists(config_path):
         print("No config file found. Using empty dict")
         config = argparse.Namespace()
@@ -382,34 +376,25 @@ def main():
         with open(config_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
 
-    eval_file_path = os.path.join(args.run_dir, "eval_results.json")
+    eval_file_path = os.path.join(run_dir, "eval_results.json")
     if not os.path.exists(eval_file_path):
         print("Collating eval results")
-        collate_eval_results(args.run_dir)
+        collate_eval_results(run_dir)
 
     with open(eval_file_path, 'r') as f:
         eval_results = json.load(f)
 
-    if args.grpo:
-        compute_metrics_grpo(config, args.hardware, eval_results, args.run_dir)
+    if grpo:
+        compute_metrics_grpo(config, hardware, eval_results, run_dir)
     else:
-        deprecated = False
-        for level, problems in eval_results.items():
-            for problem, samples in problems.items():
-                if "correctness" in samples:
-                    deprecated = True
-                    break
-                break
-            break
-
-        if deprecated:
-            print("Deprecated eval results found. Updating to new format")
-            eval_results = {f"{config['level']}": eval_results}
-            with open(eval_file_path, "w") as f:
-                json.dump(eval_results, f, indent=4)
-
-        compute_metrics_test_time_scaling(config, args.hardware, eval_results[f'{config["level"]}'], args.run_dir, subset=None)
+        compute_metrics_test_time_scaling(config, hardware, eval_results[f'{config["level"]}'], run_dir, subset=None)
 
 
 if __name__ == "__main__":
-    main()
+    argparser = ArgumentParser()
+    argparser.add_argument("--run_dir", type=str, required=True)
+    argparser.add_argument("--hardware", type=str, required=True)
+    argparser.add_argument("--grpo", action="store_true")
+    args = argparser.parse_args()
+
+    main(args)

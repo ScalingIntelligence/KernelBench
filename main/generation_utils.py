@@ -5,11 +5,9 @@ Generation utils for Test-time Scaling
 import os
 import traceback
 
-from src.utils import maybe_multithread, extract_last_code
-
-from main.utils import WorkArgs
-from main.prompts import generate_prompt
-from main.dataset import fetch_ref_arch_from_level_problem_id
+from src.utils import maybe_multithread, extract_last_code, WorkArgs
+from src.prompt_constructor import generate_prompt
+from src.dataset import fetch_ref_arch_from_level_problem_id
 from src.run_utils import check_if_kernel_exists
 
 

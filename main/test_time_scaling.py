@@ -11,11 +11,10 @@ import sys
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_TOP_DIR)
 
-from src.utils import set_gpu_arch, create_inference_server_from_presets
+from src.utils import set_gpu_arch, create_inference_server_from_presets, WorkArgs
+from src.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
 
-from main.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
 from main.configs import parse_test_time_scaling_args, RUNS_DIR
-from main.utils import WorkArgs
 from main.generation_utils import batch_generate
 from main.evaluation_utils import batch_eval
 
