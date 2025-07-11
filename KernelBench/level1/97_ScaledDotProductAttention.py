@@ -2,25 +2,23 @@ import torch
 import torch.nn as nn
 
 class Model(nn.Module):
-    """
-    A model that computes Cosine Similarity Loss for comparing vectors.
-
-    Parameters:
-        None
-    """
     def __init__(self):
         super(Model, self).__init__()
 
-    def forward(self, predictions, targets):
-        cosine_sim = torch.nn.functional.cosine_similarity(predictions, targets, dim=1)
-        return torch.mean(1 - cosine_sim)
+    def forward(self, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
+        out = torch.nn.functional.scaled_dot_product_attention(Q, K, V)
+        return out
 
-batch_size = 128
-input_shape = (4096, )
-dim = 1
+batch_size = 2
+num_heads = 32
+sequence_length = 256
+embedding_dimension = 1024
 
 def get_inputs():
-    return [torch.randn(batch_size, *input_shape), torch.randn(batch_size, *input_shape)]
+    Q = torch.randn(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
+    K = torch.randn(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
+    V = torch.randn(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
+    return [Q, K, V]
 
 def get_init_inputs():
     return []
