@@ -23,6 +23,14 @@ from src.run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
 from main.configs import parse_evaluation_args, RUNS_DIR, KERNEL_EVAL_BUILD_DIR
 
 
+"""
+Evaluation utilities code
+- Evaluate single sample
+- Evaluate batch of samples
+- Send evaluation requests to server (see run_evaluation_server.py for server code)
+"""
+
+
 @dataclass
 class EvaluationWorkArgs:
     level: int

@@ -19,6 +19,13 @@ from evaluation_utils import evaluate_single_sample_in_separate_process, KernelE
 from src.utils import set_gpu_arch
 
 
+"""
+Evaluation server code that handles client requests across multiple GPUs.
+Each GPU is used for a single kernel evaluation at a time.
+"""
+
+
+
 class GPUDeviceManager:
     """Thread-safe GPU device manager for the evaluation server"""
     

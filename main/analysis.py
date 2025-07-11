@@ -8,6 +8,10 @@ REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLOT_DIR = os.path.join(REPO_TOP_DIR, "plots")
 RUNS_DIR = os.path.join(REPO_TOP_DIR, "runs")
 
+"""
+Creates plots for analyzing metrics across various axes: method, level, model.
+"""
+
 
 def load_metrics(run_dir):
     metrics_file = os.path.join(run_dir, "metrics.json")
@@ -329,34 +333,35 @@ def main():
     plot_everything(metrics_by_label, metrics_by_label_by_sample, args.axis, name, plot_dir)
 
 
-def sft_analysis():
-    # epochs = [4, 10, 20, 30, 40, 50]
+def sft_analysis_across_epochs():
+    epochs = [4, 10, 20, 30, 40, 50]
 
-    # metrics_by_level = {}
+    metrics_by_level = {}
 
-    # for level in [1, 2]:
-    #     metrics_by_epoch = {}
+    for level in [1, 2]:
+        metrics_by_epoch = {}
 
-    #     run_dir = os.path.join(RUNS_DIR, f"base_level{level}_Qwen2.5-7B-Instruct")
-    #     metrics = load_metrics(run_dir)
-    #     metrics_by_epoch[0] = metrics
+        run_dir = os.path.join(RUNS_DIR, f"base_level{level}_Qwen2.5-7B-Instruct")
+        metrics = load_metrics(run_dir)
+        metrics_by_epoch[0] = metrics
 
-    #     for epoch in epochs:
-    #         run_dir = os.path.join(RUNS_DIR, f"base_level{level}_Qwen2.5-7B-Instruct-SFT1-{epoch}")
-    #         if not os.path.exists(os.path.join(run_dir, "metrics.json")):
-    #             print(f'Run directory {run_dir} does not exist or does not have metrics.json')
-    #             continue
-    #         metrics = load_metrics(run_dir)
-    #         metrics_by_epoch[epoch] = metrics
+        for epoch in epochs:
+            run_dir = os.path.join(RUNS_DIR, f"base_level{level}_Qwen2.5-7B-Instruct-SFT1-{epoch}")
+            if not os.path.exists(os.path.join(run_dir, "metrics.json")):
+                print(f'Run directory {run_dir} does not exist or does not have metrics.json')
+                continue
+            metrics = load_metrics(run_dir)
+            metrics_by_epoch[epoch] = metrics
 
-    #     metrics_by_level[f"Level {level}"] = metrics_by_epoch
+        metrics_by_level[f"Level {level}"] = metrics_by_epoch
     
-    # plot_dir = os.path.join(PLOT_DIR, "sft_analysis", "SFT1")
-    # os.makedirs(plot_dir, exist_ok=True)
-    # plot_fast_p_by_epochs(metrics_by_level, p="0.0", name="SFT1", plot_dir=plot_dir)
-    # plot_fast_p_by_epochs(metrics_by_level, p="1.0", name="SFT1", plot_dir=plot_dir)
+    plot_dir = os.path.join(PLOT_DIR, "sft_analysis", "SFT1")
+    os.makedirs(plot_dir, exist_ok=True)
+    plot_fast_p_by_epochs(metrics_by_level, p="0.0", name="SFT1", plot_dir=plot_dir)
+    plot_fast_p_by_epochs(metrics_by_level, p="1.0", name="SFT1", plot_dir=plot_dir)
 
 
+def sft_analysis_across_datasets():
     for level in [1, 2]:
         metrics_by_dataset = {}
         for dataset in ["SFT1", "SFT2", "SFT3", "SFT4"]:
@@ -374,6 +379,5 @@ def sft_analysis():
 
 
 if __name__ == "__main__":
-    # main()
-    sft_analysis()
+    main()
 

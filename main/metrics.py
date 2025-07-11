@@ -9,6 +9,12 @@ from src.dataset import construct_kernelbench_dataset, TEST_PROBLEM_IDS_LEVEL_1,
 from src.score import *
 
 
+"""
+Given a run directory, compute correctness and efficiency metrics and save to metrics.json.
+Format depends on the test-time scaling method used.
+"""
+
+
 BASELINES = ["torch"] # , "torch_compile_inductor_default", "torch_compile_inductor_reduce-overhead", "torch_compile_inductor_max-autotune", "torch_compile_inductor_max-autotune-no-cudagraphs"]
 
 

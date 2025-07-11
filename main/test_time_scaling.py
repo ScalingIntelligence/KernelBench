@@ -19,11 +19,11 @@ from main.generation_utils import batch_generate
 from main.evaluation_utils import batch_eval
 
 """
-Test-time scaling approaches
+Implements basic test-time scaling approaches
 1. best-of-N
 2. iterative refinement
 3. METR evolutionary approach
-4. Stanford: NL idea gen + branching
+4. Stanford: NL idea gen + branching (TODO)
 """
 
 def base(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
