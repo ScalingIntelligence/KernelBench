@@ -17,7 +17,7 @@ from main.evaluation_utils import send_evaluation_request, send_batch_evaluation
 # RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
 RUN_NAME = "grpo_train_Qwen2.5-7B-Instruct-SFT"
-EVAL_SERVER_HOST = "babel-11-17"
+EVAL_SERVER_HOST = "babel-1-23"
 EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"

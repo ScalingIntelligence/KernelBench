@@ -1,7 +1,7 @@
 set -x
 
 RUN_NAME="grpo_train_Qwen2.5-7B-Instruct-SFT"
-MODEL="gyeongwk/Qwen2.5-7B-Instruct-SFT3-40"
+MODEL="/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \

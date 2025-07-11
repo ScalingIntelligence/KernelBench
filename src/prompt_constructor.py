@@ -55,22 +55,65 @@ In the end, make sure the final code block contains code for output architecture
 Let's think step by step.\n
 """ 
 
-def prompt_bare(ref_arch_src: str) -> str:
-    prompt = PROBLEM_STATEMENT
+TRITON_PROBLEM_STATEMENT = """You write custom Triton kernels to replace the pytorch operators in the given architecture to get speedups. \n
+    You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom Triton kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.\n
+"""
+TRITON_PROBLEM_INSTRUCTION = """
+Optimize the architecture named Model with custom Triton operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks in markdown format (i.e. ```python or ```cpp). Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Do not output testing code. \n
+"""
+TRITON_PROBLEM_INSTRUCTION_IMPROVE = """
+Optimize the architecture named Model with custom Triton operators! 
+Improve upon your previous attempts by debugging any correctness issues or improving the efficiency if the kernel was correct.
+Name your optimized output architecture ModelNew. Output the new code in codeblocks in markdown format (i.e. ```python or ```cpp). Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Do not output testing code. \n
+"""
+TRITON_PROBLEM_INSTRUCTION_COT = """
+Optimize the architecture named Model with custom Triton operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks in markdown format (i.e. ```python or ```cpp). Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Do not output testing code. 
+In the end, make sure the final code block contains code for output architecture ModelNew with cuda code.\n
+Let's think step by step.\n
+""" 
+
+
+def get_problem_statement(triton=False):
+    if triton:
+        return TRITON_PROBLEM_STATEMENT
+    else:
+        return PROBLEM_STATEMENT
+    
+def get_problem_instruction(triton=False):
+    if triton:
+        return TRITON_PROBLEM_INSTRUCTION
+    else:
+        return PROBLEM_INSTRUCTION
+
+def get_problem_instruction_improve(triton=False):
+    if triton:
+        return TRITON_PROBLEM_INSTRUCTION_IMPROVE
+    else:
+        return PROBLEM_INSTRUCTION_IMPROVE
+
+def get_problem_instruction_cot(triton=False):
+    if triton:
+        return TRITON_PROBLEM_INSTRUCTION_COT
+    else:
+        return PROBLEM_INSTRUCTION_COT
+
+
+def prompt_bare(ref_arch_src: str, triton=False) -> str:
+    prompt = get_problem_statement(triton)
     prompt += f"""
     You are given the following architecture: \n
     ```
     {ref_arch_src}
     ```
     """
-    prompt += PROBLEM_INSTRUCTION
+    prompt += get_problem_instruction(triton)
     return prompt
 
 
 def prompt_with_one_example(
-    arc_src: str, example_arch_src: str, example_new_arch_src: str
+    arc_src: str, example_arch_src: str, example_new_arch_src: str, triton=False
 ) -> str:
-    prompt = PROBLEM_STATEMENT
+    prompt = get_problem_statement(triton)
 
     if example_arch_src != "" and example_new_arch_src != "":
         prompt += f"""
@@ -90,11 +133,11 @@ def prompt_with_one_example(
     {arc_src}
     ```
     """
-    prompt += PROBLEM_INSTRUCTION_COT
+    prompt += get_problem_instruction_cot(triton)
     return prompt
 
 
-def prompt_base(ref_arch_src: str) -> str:
+def prompt_base(ref_arch_src: str, triton=False) -> str:
     """
     Using prompt example (an element-wise addition) for prompt templates
     The most basic form of example just to show LLM the task and the expected output format
@@ -122,10 +165,10 @@ def prompt_base(ref_arch_src: str) -> str:
     example_arch = read_file(example_arch_path)
     example_new_arch = read_file(example_new_arch_path)
 
-    return prompt_with_one_example(arch, example_arch, example_new_arch)
+    return prompt_with_one_example(arch, example_arch, example_new_arch, triton)
 
 
-def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu") -> str:
+def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu", triton=False) -> str:
     """
     Generate a prompt with a CoT example following a template 
     Avaliable CoT examples: 
@@ -134,7 +177,7 @@ def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu") -> str:
     - ex_tiled_matmul: tiled matrix multiplication
     """
 
-    prompt = PROBLEM_STATEMENT
+    prompt = get_problem_statement(triton)
     
     assert cot_example in ["ex_fuse_gelu", "ex_mnist2", "ex_tiled_matmul"]
 
@@ -198,7 +241,7 @@ Here is an example architecture:\n\n
 ```
 {base}
 ```\n
-{PROBLEM_INSTRUCTION_COT} \n
+{get_problem_instruction_cot(triton)} \n
 {cot} \n
 ```
 {kernel}
@@ -213,17 +256,17 @@ Here is an example architecture:\n\n
 {ref_arch_src}
 ```\n
 """
-    prompt += PROBLEM_INSTRUCTION_COT
+    prompt += get_problem_instruction_cot(triton)
 
     return prompt
 
 
-def prompt_main(ref_arch_src: str, config) -> str:
+def prompt_main(ref_arch_src: str, config, triton=False) -> str:
     match config.prompt:
         case "regular":
-            return prompt_base(ref_arch_src)
+            return prompt_base(ref_arch_src, triton)
         case "cot":
-            return prompt_cot(ref_arch_src, cot_example="ex_fuse_gelu")
+            return prompt_cot(ref_arch_src, cot_example="ex_fuse_gelu", triton=triton)
         case _:
             raise ValueError(f"Invalid prompt type: {config.prompt}")
 
@@ -253,8 +296,8 @@ Here is your wall clock time: {exec_result["runtime"]} milliseconds.
     return evaluation_feedback
 
 
-def prompt_refinement_from_last_kernel(ref_arch_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
-    prompt = prompt_main(ref_arch_src, config)
+def prompt_refinement_from_last_kernel(ref_arch_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult, triton=False) -> str:
+    prompt = prompt_main(ref_arch_src, config, triton)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
     prompt += f"""Your latest generated kernel:
@@ -266,12 +309,12 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
 {execution_feedback}
 """
 
-    prompt += PROBLEM_INSTRUCTION_IMPROVE
+    prompt += get_problem_instruction_improve(triton)
     return prompt
 
 
-def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]]) -> str:
-    prompt = prompt_base(ref_arch_src)
+def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]], triton=False) -> str:
+    prompt = prompt_base(ref_arch_src, triton)
 
     for kernel_src, exec_result in history:
 
@@ -286,12 +329,12 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
 {execution_feedback}
 """
     
-    prompt += PROBLEM_INSTRUCTION_IMPROVE
+    prompt += get_problem_instruction_improve(triton)
     return prompt
 
 
-def prompt_idea_generation(ref_arc_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult) -> str:
-    prompt = prompt_main(ref_arc_src, config)
+def prompt_idea_generation(ref_arc_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult, triton=False) -> str:
+    prompt = prompt_main(ref_arc_src, config, triton)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
     prompt += f"""Your latest generated kernel:
@@ -306,8 +349,8 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     prompt += "Generate an idea for how to improve the kernel. Please do not output code yet, just the idea."
     return prompt
 
-def prompt_refinement_from_idea(ref_arc_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult, idea: str) -> str:
-    prompt = prompt_main(ref_arc_src, config)
+def prompt_refinement_from_idea(ref_arc_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult, idea: str, triton=False) -> str:
+    prompt = prompt_main(ref_arc_src, config, triton)
     execution_feedback = exec_result_to_exeution_feedback(last_exec_result)
 
     prompt += f"""Your latest generated kernel:
@@ -324,13 +367,13 @@ Here is your idea for how to improve the kernel:
 ```
 """
 
-    prompt += PROBLEM_INSTRUCTION
+    prompt += get_problem_instruction(triton)
     return prompt
 
 
-def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False) -> str:
     if work.sample_id < config.num_parallel:
-        return prompt_main(ref_arch_src, config)
+        return prompt_main(ref_arch_src, config, triton)
     
     # Fetch previous history of kernels
     history = []
@@ -340,14 +383,14 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: s
         history.append((kernel_src, exec_result))
     
     # Construct prompt
-    prompt = prompt_refinement_from_history(ref_arch_src, history)
+    prompt = prompt_refinement_from_history(ref_arch_src, history, triton)
     
     return prompt
 
 
-def generate_prompt_metr(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt_metr(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False) -> str:
     if work.sample_id <= config.num_parallel:
-        return prompt_main(ref_arch_src, config)
+        return prompt_main(ref_arch_src, config, triton)
     
     # Fetch evaluation results
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
@@ -367,12 +410,12 @@ def generate_prompt_metr(work: WorkArgs, config, ref_arch_src: str, inference_se
 
     sampled_kernel_src, _ = fetch_kernel_from_disk(run_dir, config.level, work.problem_id, sampled_kernel_id)
 
-    return prompt_refinement_from_last_kernel(ref_arch_src, config, sampled_kernel_src, sampled_kernel_eval_result)
+    return prompt_refinement_from_last_kernel(ref_arch_src, config, sampled_kernel_src, sampled_kernel_eval_result, triton)
 
 
-def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False) -> str:
     if work.sample_id < config.num_parallel:
-        return prompt_main(ref_arch_src, config)
+        return prompt_main(ref_arch_src, config, triton)
     
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
     eval_results = fetch_eval_results_for_problem(work.level, work.problem_id, eval_file_path)
@@ -392,26 +435,27 @@ def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, inferenc
     if config.verbose:
         print(f"[Stanford] Last step best kernel sample_id: {int(last_step_best_kernel['sample_id'])}")
 
-    prompt = prompt_idea_generation(ref_arch_src, config, last_step_best_kernel_src, last_step_best_kernel)
+    prompt = prompt_idea_generation(ref_arch_src, config, last_step_best_kernel_src, last_step_best_kernel, triton)
 
     idea = inference_server(prompt)
 
-    prompt = prompt_refinement_from_idea(ref_arch_src, config, last_step_best_kernel_src, last_step_best_kernel, idea)
+    prompt = prompt_refinement_from_idea(ref_arch_src, config, last_step_best_kernel_src, last_step_best_kernel, idea, triton)
     return prompt
 
 
 def generate_prompt(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+    triton = "KernelLLM" in config.model_name
     match config.method:
         case "base":
-            return prompt_main(ref_arch_src, config)
+            return prompt_main(ref_arch_src, config, triton)
         case "best-of-N":
-            return prompt_main(ref_arch_src, config)
+            return prompt_main(ref_arch_src, config, triton)
         case "iterative refinement":
-            return generate_prompt_iterative_refinement(work, config, ref_arch_src, inference_server, run_dir)
+            return generate_prompt_iterative_refinement(work, config, ref_arch_src, inference_server, run_dir, triton)
         case "METR":
-            return generate_prompt_metr(work, config, ref_arch_src, inference_server, run_dir)
+            return generate_prompt_metr(work, config, ref_arch_src, inference_server, run_dir, triton)
         case "Stanford":
-            return generate_prompt_stanford(work, config, ref_arch_src, inference_server, run_dir)
+            return generate_prompt_stanford(work, config, ref_arch_src, inference_server, run_dir, triton)
         case _:
             raise ValueError(f"Invalid method: {config.method}")
 
