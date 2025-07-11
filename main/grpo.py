@@ -16,7 +16,7 @@ from main.configs import parse_rl_training_args, RUNS_DIR
 from main.prompts import prompt_base, exec_result_to_exeution_feedback
 from main.evaluation_utils import evaluate_single_sample_in_separate_process, EvaluationWorkArgs, evaluate_single_sample
 from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, check_in_train_dataset
-from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
+from src.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk
 
 from src.eval import check_metadata_serializable_all_types
 from src.utils import set_gpu_arch, extract_last_code

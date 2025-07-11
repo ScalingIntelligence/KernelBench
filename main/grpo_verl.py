@@ -11,7 +11,7 @@ sys.path.append(REPO_ROOT)
 from main.prompts import prompt_base
 from main.evaluation_utils import send_evaluation_request, send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args, is_generated_kernel_used
 from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, KERNEL_BENCH_PATH
-from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk, write_eval_result_to_separate_file
+from src.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk, write_eval_result_to_separate_file
 
 from src.utils import extract_last_code
 

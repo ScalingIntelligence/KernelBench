@@ -9,8 +9,8 @@ Manages the directory created during runs.
 import os
 import json
 
-from src.utils import read_file
-from src.eval import check_metadata_serializable_all_types
+from .utils import read_file
+from .eval import check_metadata_serializable_all_types
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -122,3 +122,42 @@ def write_eval_result_to_separate_file(level, problem, sample_id, exec_result, r
 
     with open(eval_result_path, "w") as f:
         json.dump(eval_result, f)
+
+
+################################################################################
+# Deprecated
+################################################################################
+# def update_eval_results(run_dir):
+#     config_path = os.path.join(run_dir, "config.yaml")
+#     if not os.path.exists(config_path):
+#         print("No config file found. Using empty dict")
+#         config = argparse.Namespace()
+#     else:
+#         with open(config_path, "r") as f:
+#             config = yaml.load(f, Loader=yaml.FullLoader)
+
+#     eval_file_path = os.path.join(run_dir, "eval_results.json")
+#     with open(eval_file_path, "r") as f:
+#         eval_results = json.load(f)
+
+#     deprecated = False
+#     for level, problems in eval_results.items():
+#         for problem, samples in problems.items():
+#             if "correctness" in samples:
+#                 deprecated = True
+#                 break
+#             break
+#         break
+
+#     if deprecated:
+#         print("Deprecated eval results found. Updating to new format")
+#         eval_results = {f"{config['level']}": eval_results}
+#         with open(eval_file_path, "w") as f:
+#             json.dump(eval_results, f, indent=4)
+
+
+# def update_eval_results_for_all_runs():
+#     for directory in os.listdir(RUNS_DIR):
+#         if "level" in directory and "DeepSeek" in directory:
+#             update_eval_results(os.path.join(RUNS_DIR, directory))
+

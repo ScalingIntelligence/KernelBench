@@ -2,37 +2,34 @@
 # Utils Functions
 ########################
 
-import multiprocessing
-import subprocess
 import re
-import random
-import tempfile
-from pathlib import Path
-import re
-import math
 import os
-import json
 from tqdm import tqdm
+import time
+import multiprocessing
+import concurrent
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from functools import cache
+from dataclasses import dataclass
 
+
+@dataclass
+class WorkArgs:
+    level: int
+    problem_id: int # logically indexed
+    sample_id: int
+
+
+########################################################
+# Inference Helpers
+########################################################
 # API clients
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from together import Together
 from openai import OpenAI
 import google.generativeai as genai
 import anthropic
 import boto3
-
-# from datasets import load_dataset
-import numpy as np
-from contextlib import contextmanager
-from collections import defaultdict
-import time
-import shutil
-import concurrent
-from functools import cache
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import hashlib
-
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Define API key access
 TOGETHER_KEY = os.environ.get("TOGETHER_API_KEY")
@@ -45,10 +42,6 @@ SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
 FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
 AWS_REGION = os.environ.get("AWS_REGION")
 
-
-########################################################
-# Inference Helpers
-########################################################
 
 @cache
 def load_deepseek_tokenizer():

@@ -21,7 +21,7 @@ from src.utils import set_gpu_arch
 from main.configs import parse_evaluation_args, RUNS_DIR, KERNEL_EVAL_BUILD_DIR
 from main.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
 from main.utils import WorkArgs
-from main.run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
+from src.run_utils import fetch_kernel_from_disk, check_if_eval_exists_local
 from main.evaluation_utils_modal import evalaute_single_sample_modal
 
 
