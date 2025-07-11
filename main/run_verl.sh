@@ -1,7 +1,7 @@
 set -x
 
 RUN_NAME="grpo_train_Qwen2.5-7B-Instruct-SFT"
-MODEL="/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT"
+MODEL="gyeongwk/Qwen2.5-7B-Instruct-SFT3-40"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -50,6 +50,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.val_before_train=True \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=10 \
-    trainer.test_freq=10 \
-    trainer.total_epochs=1 $@
+    trainer.save_freq=11 \
+    trainer.test_freq=11 \
+    trainer.total_epochs=5 $@
