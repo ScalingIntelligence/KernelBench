@@ -200,7 +200,7 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
                 except Exception as e:
                     logging.info(f"Error in batch job: {e}")
                     results[idx] = KernelExecResult(
-                        valid=False, compiled=False, correctness=False,
+                        compiled=False, correctness=False,
                         metadata={"server_error": str(e)}
                     )
                 finally:
@@ -225,7 +225,7 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
             except Exception as e:
                 logging.info(f"Error handling client: {e}")
                 result = KernelExecResult(
-                    valid=False, compiled=False, correctness=False,
+                    compiled=False, correctness=False,
                     metadata={"server_error": str(e)}
                 )
             response_data = pickle.dumps(result)

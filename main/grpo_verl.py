@@ -9,7 +9,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_ROOT)
 
 from main.prompts import prompt_base
-from main.evaluation_utils import send_evaluation_request, send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args
+from main.evaluation_utils import send_evaluation_request, send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args, is_generated_kernel_used
 from main.dataset import fetch_ref_arch_from_level_problem_id, TRAIN_PROBLEM_IDS_LEVEL_1, TRAIN_PROBLEM_IDS_LEVEL_2, KERNEL_BENCH_PATH
 from main.run_utils import find_highest_sample_id, fetch_baseline_results, write_kernel_to_disk, write_eval_result_to_separate_file
 
@@ -72,8 +72,11 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None, i=No
 
 def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos, **kwargs):
     run_dir = os.path.join(RUNS_DIR, RUN_NAME)
+
+    work_args_list = []
     job_list = []
     thread_ids = {}
+    rewards = {}
     for data_source, solution_str, ground_truth, extra_info in zip(data_sources, solution_strs, ground_truths, extra_infos):
         level = extra_info['level']
         problem = extra_info['problem']
@@ -83,6 +86,7 @@ def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos,
         else:
             thread_ids[key] += 1
         sample_id = thread_ids[key]
+        work_args_list.append((level, problem, sample_id))
 
         response_path = os.path.join(run_dir, f"level_{level}_problem_{problem}_sample_{sample_id}_response.txt")
         with open(response_path, "w") as f:
@@ -94,25 +98,33 @@ def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos,
         if kernel_src is not None:
             write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src) # for debugging
 
-        work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
-        job_list.append({
-            "work_args": serialize_work_args(work_args),
-            "run_name": RUN_NAME,
-            "kernel_src": kernel_src,
-            "kernel_name": kernel_name
-        })
+            if not is_generated_kernel_used(kernel_src):
+                rewards[f"{level}_{problem}_{sample_id}"] = 0.0
+                continue
+
+            work_args=EvaluationWorkArgs(level=level, problem_id=problem, sample_id=sample_id, device=torch.device("cuda"))
+            job_list.append({
+                "work_args": serialize_work_args(work_args),
+                "run_name": RUN_NAME,
+                "kernel_src": kernel_src,
+                "kernel_name": kernel_name
+            })
+        else:
+            rewards[f"{level}_{problem}_{sample_id}"] = 0.0
     
     results = send_batch_evaluation_request(EVAL_SERVER_HOST, EVAL_SERVER_PORT, job_list)
 
-    rewards = []
     for result, job in zip(results, job_list):
         level = job['work_args']["level"]
         problem = job['work_args']["problem_id"]
         sample_id = job['work_args']["sample_id"]
         write_eval_result_to_separate_file(level, problem, sample_id, result, run_dir)
         reward = reward_from_exec_result(level, problem, result)
-        rewards.append(reward)
-    return rewards
+        rewards[f"{level}_{problem}_{sample_id}"] = reward
+    
+    # Turn rewards into list in the same order as input
+    rewards_list = [rewards[f"{level}_{problem}_{sample_id}"] for level, problem, sample_id in work_args_list]
+    return rewards_list
 
 
 # Define Interaction Environment for multi-turn support

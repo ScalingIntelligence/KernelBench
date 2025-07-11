@@ -13,7 +13,7 @@ if __name__ == "__main__":
         if filename.endswith(".py"):
             with open(os.path.join(args.run_dir, filename), "r") as f:
                 kernel_src = f.read()
-                print(f"Analyzing {filename}")
+                # print(f"Analyzing {filename}")
                 is_used = is_generated_kernel_used(kernel_src)
                 print(f"{filename}: Is kernel used? {is_used}")
 

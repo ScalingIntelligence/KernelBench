@@ -1,6 +1,7 @@
 set -x
 
-RUN_NAME="grpo_dapo_Qwen2.5-7B-Instruct"
+RUN_NAME="grpo_train_Qwen2.5-7B-Instruct-SFT"
+MODEL="/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -11,7 +12,7 @@ python3 -m verl.trainer.main_ppo \
     data.max_response_length=16384 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
-    actor_rollout_ref.model.path=Qwen/Qwen2.5-7B-Instruct \
+    actor_rollout_ref.model.path=$MODEL \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.optim.lr=2e-6 \

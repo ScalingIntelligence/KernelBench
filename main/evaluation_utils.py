@@ -151,13 +151,6 @@ def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_di
                 device=device,
             )
         else:
-            valid = is_generated_kernel_used(kernel_src)
-            if not valid:
-                eval_result = KernelExecResult(
-                    valid=False, compiled=False, correctness=False, metadata={"other_error": "Kernel not used"}
-                )
-                return eval_result
-
             eval_result = eval_kernel_against_ref(
                 original_model_src=ref_arch_src,
                 original_model_name=ref_arch_name,
@@ -183,7 +176,7 @@ def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_di
                 "device": str(device),
             }  # log this for debugging as this usually signifies illegal memory access
             eval_result = KernelExecResult(
-                valid=True, compiled=False, correctness=False, metadata=metadata
+                compiled=False, correctness=False, metadata=metadata
             )
             return eval_result
         else:
@@ -191,7 +184,7 @@ def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_di
                         "hardware": torch.cuda.get_device_name(device=device),
                         "device": str(device)
                         } # for debugging
-            eval_result = KernelExecResult(valid=True, compiled=False, correctness=False, 
+            eval_result = KernelExecResult(compiled=False, correctness=False, 
                                                 metadata=metadata)
             return eval_result
 
@@ -224,7 +217,7 @@ def evaluate_single_sample_in_separate_process(work_args: EvaluationWorkArgs, co
                 "device": str(device),
             }
             return KernelExecResult(
-                valid=True, compiled=False, correctness=False, 
+                compiled=False, correctness=False, 
                 metadata=metadata
             )
         except Exception as e:
@@ -234,7 +227,7 @@ def evaluate_single_sample_in_separate_process(work_args: EvaluationWorkArgs, co
                 "device": str(device),
             }
             return KernelExecResult(
-                valid=True, compiled=False, correctness=False, 
+                compiled=False, correctness=False, 
                 metadata=metadata
             )
 
@@ -261,7 +254,6 @@ def add_to_eval_results_file(level: int, problem_id: int, sample_id: int, eval_r
     eval_results[str(level)][str(problem_id)][str(sample_id)] = {
         'problem_id': problem_id,
         'sample_id': sample_id,
-        'valid': eval_result.valid,
         'compiled': eval_result.compiled,
         'correctness': eval_result.correctness,
         'metadata': check_metadata_serializable_all_types(eval_result.metadata),
@@ -456,7 +448,7 @@ def batch_eval(
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
-                        result = KernelExecResult(valid=True, compiled=False, correctness=False, metadata={"other_error": "timeout"})
+                        result = KernelExecResult(compiled=False, correctness=False, metadata={"other_error": "timeout"})
                         results.append((level, problem_id, sample_id, result))
                     
                         remove_cache_dir(vars(config), level, problem_id, sample_id)
@@ -464,7 +456,7 @@ def batch_eval(
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
                         )
-                        result = KernelExecResult(valid=True, compiled=False, correctness=False, metadata={"other_error": str(e)})
+                        result = KernelExecResult(compiled=False, correctness=False, metadata={"other_error": str(e)})
                         results.append((level, problem_id, sample_id, result))
                         remove_cache_dir(vars(config), level, problem_id, sample_id)
 
