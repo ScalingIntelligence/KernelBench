@@ -1,40 +1,22 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class Model(nn.Module):
-    """
-    Simple model that performs product reduction over a dimension.
-    """
-    def __init__(self, dim: int):
-        """
-        Initializes the model with the dimension to reduce over.
-
-        Args:
-            dim (int): Dimension to reduce over.
-        """
+    def __init__(self, num_classes=1000):
         super(Model, self).__init__()
-        self.dim = dim
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=96, kernel_size=11, stride=4, padding=2)
+    
+    def forward(self, x):
+        x = self.conv1(x)
+        return x
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Performs product reduction over the specified dimension.
-
-        Args:
-            x (torch.Tensor): Input tensor.
-
-        Returns:
-            torch.Tensor: Output tensor with product reduction applied.
-        """
-        return torch.prod(x, dim=self.dim)
-
-batch_size = 16
-dim1 = 256
-dim2 = 256
-reduction_dim = 1
+# Test code
+batch_size = 100
+num_classes = 1000
 
 def get_inputs():
-    x = torch.randn(batch_size, dim1, dim2)
-    return [x]
+    return [torch.randn(batch_size, 3, 224, 224)]
 
 def get_init_inputs():
-    return [reduction_dim]
+    return [num_classes]
