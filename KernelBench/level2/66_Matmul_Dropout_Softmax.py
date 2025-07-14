@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class Model(nn.Module):
     """
-    A model that performs matrix multiplication, applies dropout, calculates the mean, and then applies softmax.
+    A model that performs matrix multiplication, applies dropout, and then applies softmax.
     """
     def __init__(self, in_features, out_features, dropout_p):
         super(Model, self).__init__()
@@ -20,8 +20,7 @@ class Model(nn.Module):
         """
         x = self.matmul(x)
         x = self.dropout(x)
-        x = torch.mean(x, dim=1, keepdim=True)
-        x = torch.softmax(x, dim=1)
+        x = torch.softmax(x, dim=1)  # Softmax over features
         return x
 
 batch_size = 128
