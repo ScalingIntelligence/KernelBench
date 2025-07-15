@@ -14,7 +14,7 @@ class Model(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         x = self.norm(x)
-        x = torch.min(x, torch.tensor(min_value))
+        x = torch.min(x, torch.tensor(min_value, device=x.device))
         x = torch.clamp(x, min=min_value, max=max_value)
         x = self.dropout(x)
         return x

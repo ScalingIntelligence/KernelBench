@@ -14,7 +14,7 @@ class Model(nn.Module):
     def forward(self, x):
         x = self.conv_transpose(x)
         x = x + self.add_value
-        x = torch.min(x, torch.tensor(0.0))
+        x = torch.min(x, torch.tensor(0.0, device=x.device))
         x = torch.nn.functional.gelu(x)
         x = x * self.multiply_value
         return x
