@@ -11,7 +11,7 @@ class Model(nn.Module):
 
 batch_size = 2
 num_heads = 32
-sequence_length = 256
+sequence_length = 512
 embedding_dimension = 1024
 
 def get_inputs():
