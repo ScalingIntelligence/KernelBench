@@ -63,9 +63,11 @@ def is_generated_kernel_used(code: str) -> bool:
         def __init__(self):
             self.generated_kernel_vars = set()  # e.g., matmul_cuda
             self.generated_kernel_attrs = set()  # e.g., self.matmul_cuda
+            self.generated_kernel_attrs_with_method = set()  # e.g., self.matmul_cuda.matmul_cpp
             self.overwritten_attrs = set()
             self.called_vars = set()
             self.called_attrs = set()
+            self.called_attrs_with_method = set()
             self.pytorch_layer_names = {
                 "Conv1d", "Conv2d", "Conv3d", "ConvTranspose1d",
                 "ConvTranspose2d", "ConvTranspose3d", "Linear", "BatchNorm1d",
@@ -85,6 +87,12 @@ def is_generated_kernel_used(code: str) -> bool:
                 for target in node.targets:
                     if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self":
                         self.generated_kernel_attrs.add(target.attr)
+            
+            # Case 2.5: Track assignment to self.<attr> = <kernel var>.<attr>
+            if isinstance(node.value, ast.Attribute) and isinstance(node.value.value, ast.Name) and node.value.value.id in self.generated_kernel_vars:
+                for target in node.targets:
+                    if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self":
+                        self.generated_kernel_attrs_with_method.add(target.attr)
 
             # Case 3: Detect overwrites like self.attr = nn.Conv1d(...)
             if isinstance(node.value, ast.Call):
@@ -97,14 +105,18 @@ def is_generated_kernel_used(code: str) -> bool:
             self.generic_visit(node)
 
         def visit_Call(self, node):
-            # Case 4: Detect self.<attr>.<method>() call
+            # Case 1: Detect self.<attr>() call
+            if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "self":
+                self.called_attrs_with_method.add(node.func.attr)
+
+            # Case 2: Detect self.<attr>.<method>() call
             func = node.func
             if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute):
                 if isinstance(func.value.value, ast.Name) and func.value.value.id == "self":
                     attr_name = func.value.attr
                     self.called_attrs.add(attr_name)
 
-            # Case 5: Detect <kernel_var>.<method>() call
+            # Case 3: Detect <kernel_var>.<method>() call
             if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name): 
                 if func.value.id in self.generated_kernel_vars:
                     self.called_vars.add(func.value.id)
@@ -114,17 +126,18 @@ def is_generated_kernel_used(code: str) -> bool:
     try:
         tree = ast.parse(code)
     except SyntaxError:
-        return False  # Malformed Python code
+        return False, None, None, None, None, None  # Malformed Python code
 
     analyzer = KernelUseAnalyzer()
     analyzer.visit(tree)
 
     # If a generated kernel var was assigned to a self.attr and that attr was later used (and not overwritten)
-    used_attrs = analyzer.generated_kernel_attrs & analyzer.called_attrs
+    used_attrs = (analyzer.generated_kernel_attrs & analyzer.called_attrs) | (analyzer.generated_kernel_attrs_with_method & analyzer.called_attrs_with_method)
     effective_used_attrs = used_attrs - analyzer.overwritten_attrs
     used_vars = analyzer.generated_kernel_vars & analyzer.called_vars 
 
-    return len(effective_used_attrs) > 0 or len(used_vars) > 0
+    is_used = len(effective_used_attrs) > 0 or len(used_vars) > 0
+    return is_used
 
 
 
@@ -548,7 +561,8 @@ if __name__ == "__main__":
 
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
-    total_work = [WorkArgs(level=config.level, problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1)] # TODO: change accordingly
+    # total_work = [WorkArgs(level=config.level, problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1)] # TODO: change accordingly
+    total_work = [WorkArgs(level=config.level, problem_id=problem_id, sample_id=sid) for problem_id in range(69, 70) for sid in range(1)] # TODO: change accordingly
 
     batch_eval(total_work, config, run_dir, eval_file_path)
 

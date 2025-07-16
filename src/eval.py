@@ -99,7 +99,7 @@ def load_original_model_and_inputs(
         compile(model_original_src, "<string>", "exec")
     except SyntaxError as e:
         print(f"Syntax Error in original code {e}")
-        return None
+        return None, None, None
 
     try:
         exec(model_original_src, context)  # expose to current namespace
@@ -142,7 +142,7 @@ def load_custom_model(
         compile(model_custom_src, "<string>", "exec")
     except Exception as e:
         print(f"Syntax Error in custom generated code {e}")
-        return None
+        raise e
     
     try:
         exec(model_custom_src, context)

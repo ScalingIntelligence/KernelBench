@@ -107,6 +107,8 @@ def parse_evaluation_args():
 
     # Post processing
     args = post_process_dataset_args(args)
+    args.method = "base"
+    args.prompt = "regular"
     return args
 
 
@@ -153,7 +155,6 @@ def parse_eval_server_args():
     parser.add_argument("--dataset_name", type=str, default="ScalingIntelligence/KernelBench")
 
     parser.add_argument("--port", type=int, default=12345)
-    parser.add_argument("--mode", type=str, choices=["single", "batch"], default="single", help="Server mode: 'single' for single job per request, 'batch' for batch jobs per request")
 
     add_eval_args(parser)
 

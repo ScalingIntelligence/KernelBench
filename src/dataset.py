@@ -10,8 +10,8 @@ import json
 from datasets import Dataset
 import pandas as pd
 
-from .utils import read_file
-from .prompt_constructor import prompt_base, prompt_bare
+from src.utils import read_file
+from src.prompt_constructor import prompt_base, prompt_bare
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -258,7 +258,14 @@ def make_map_fn(split):
             "extra_info": {
                 'split': split,
                 'level': level,
-                'problem': problem
+                'problem': problem,
+                'answer': answer,
+                "question": question,
+                "interaction_kwargs": {
+                    "name": "KernelBench",
+                    "query": question,
+                    "ground_truth": answer
+                }
             }
         }
         return data
@@ -326,29 +333,21 @@ def process_dataset_for_sft(k=1):
                 ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
                 question = prompt_bare(ref_arch_src)
                 answer = "```python\n" + kernel_src + "\n```"
-                answer_with_reasoning = reasoning + "\n" + answer
+                # answer = reasoning + "\n" + answer
                 if int(problem) in TRAIN_SET:
-                    sft_dataset.append((question, answer_with_reasoning, level, problem))
+                    sft_dataset.append((question, answer, level, problem))
                 else:
-                    sft_eval_dataset.append((question, answer_with_reasoning, level, problem))
+                    sft_eval_dataset.append((question, answer, level, problem))
     
     print(f"Collected {len(sft_dataset)} train samples and {len(sft_eval_dataset)} eval samples")
     
     df = Dataset.from_pandas(pd.DataFrame(sft_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_train_with_reasoning.parquet"))
-    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_train_with_reasoning.parquet')}")
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_train.parquet"))
+    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_train.parquet')}")
     df = Dataset.from_pandas(pd.DataFrame(sft_eval_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_eval_with_reasoning.parquet"))
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_eval.parquet"))
     print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_eval.parquet')}")
 
 
 if __name__ == "__main__":
-    # update_eval_results_for_all_runs()
-    search_for_best_kernels(k=1)
-    search_for_best_kernels(k=2)
-    search_for_best_kernels(k=3)
-    search_for_best_kernels(k=4)
-    process_dataset_for_sft(k=1)
-    process_dataset_for_sft(k=2)
-    process_dataset_for_sft(k=3)
-    process_dataset_for_sft(k=4)
+    process_dataset()

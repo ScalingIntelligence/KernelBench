@@ -188,7 +188,7 @@ def main(config):
     Test-Time Scaling for Particular Level
     """
     tags = ["test-time-scaling"] + config._tags.split(",")
-    tags.extend([config.run_name, config.method, config.prompt, str(config.level), config.model_name])
+    tags.extend([config.run_name, config.method, config.prompt, str(config.level)])
     wandb.init(
         project="KernelBench",
         entity="j1mk1m",

@@ -107,16 +107,31 @@ def start_evaluation_server(port: int, configs):
     Args:
         port: Port number to listen on
         configs: Configuration object
-        run_dir: Directory containing the run data
     
-    The server expects requests with the following structure:
+    The server automatically detects and handles both single and batch requests:
+    
+    Single request structure:
     {
         'work_args': EvaluationWorkArgs (serialized, device will be ignored),
         'kernel_src': str,
-        'kernel_name': str
+        'kernel_name': str,
+        'run_name': str
     }
     
-    Returns evaluation results as KernelExecResult objects.
+    Batch request structure:
+    {
+        'batch': [
+            {
+                'work_args': EvaluationWorkArgs (serialized, device will be ignored),
+                'kernel_src': str,
+                'kernel_name': str,
+                'run_name': str
+            },
+            ...
+        ]
+    }
+    
+    Returns evaluation results as KernelExecResult objects (single) or list of KernelExecResult objects (batch).
     """
     # Initialize GPU device manager
     num_gpus = torch.cuda.device_count()
@@ -178,7 +193,7 @@ def process_single_job(request, configs, gpu_manager):
 
 
 def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDeviceManager'):
-    """Handle a single client connection, supporting single or batch mode."""
+    """Handle a single client connection, automatically detecting single or batch requests."""
     try:
         # Receive the request data
         data = b""
@@ -192,9 +207,11 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
         # Deserialize the request
         request = pickle.loads(data)
 
-        if getattr(configs, 'mode', 'single') == 'batch':
-            # Expect a batch of jobs: request['batch'] is a list of job dicts
+        # Auto-detect request type: if request has a 'batch' key, it's a batch request
+        if 'batch' in request and isinstance(request['batch'], list):
+            # Batch mode: request['batch'] is a list of job dicts
             job_list = request.get('batch', [])
+            logging.info(f"Processing batch request with {len(job_list)} jobs")
             results = [None] * len(job_list)
             threads = []
             completed_count = 0
@@ -226,7 +243,8 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
             client_socket.sendall(response_data)
             client_socket.shutdown(socket.SHUT_WR)
         else:
-            # Single job mode (original behavior)
+            # Single job mode: request contains individual job data
+            logging.info("Processing single job request")
             try:
                 result = process_single_job(request, configs, gpu_manager)
             except Exception as e:

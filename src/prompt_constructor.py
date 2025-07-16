@@ -118,22 +118,22 @@ def prompt_with_one_example(
     if example_arch_src != "" and example_new_arch_src != "":
         prompt += f"""
         Here's an example to show you the syntax of inline embedding custom CUDA operators in torch: The example given architecture is: \n
-        ``` \n
-        {example_arch_src}
-        ``` \n
+```python
+{example_arch_src}
+``` \n
         The example new arch with custom CUDA kernels looks like this: 
-        ```
-        {example_new_arch_src}
-        ``` \n
+```python
+{example_new_arch_src}
+``` \n
         """
 
     prompt += f"""
     You are given the following architecture: \n
-    ```
-    {arc_src}
-    ```
+```python
+{arc_src}
+```
     """
-    prompt += get_problem_instruction_cot(triton)
+    prompt += get_problem_instruction(triton)
     return prompt
 
 
@@ -149,9 +149,14 @@ def prompt_base(ref_arch_src: str, triton=False) -> str:
     example_arch_path = os.path.join(
         REPO_TOP_PATH, f"src/prompts/model_ex_add.py"
     )
-    example_new_arch_path = os.path.join(
-        REPO_TOP_PATH, f"src/prompts/model_new_ex_add.py"
-    )
+    if triton:
+        example_new_arch_path = os.path.join(
+            REPO_TOP_PATH, f"src/prompts/model_new_ex_add_triton.py"
+        )
+    else:
+        example_new_arch_path = os.path.join(
+            REPO_TOP_PATH, f"src/prompts/model_new_ex_add.py"
+        )
 
     if not os.path.exists(example_arch_path):
         raise FileNotFoundError(

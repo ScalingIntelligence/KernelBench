@@ -1,6 +1,6 @@
 set -x
 
-RUN_NAME="grpo_train_Qwen2.5-7B-Instruct-SFT"
+RUN_NAME="grpo_train_multi_turn_Qwen2.5-7B-Instruct-SFT"
 MODEL="/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
@@ -27,11 +27,15 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
-    actor_rollout_ref.rollout.name=vllm \
+    actor_rollout_ref.rollout.name=sglang \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.max_model_len=8192 \
     actor_rollout_ref.rollout.temperature=0.6 \
+    actor_rollout_ref.rollout.multi_turn.enable=True \
+    actor_rollout_ref.rollout.multi_turn.max_assistant_turns=4 \
+    actor_rollout_ref.rollout.multi_turn.max_user_turns=4 \
+    actor_rollout_ref.rollout.multi_turn.interaction_config_path=$HOME/KernelBench/main/interaction_config.yaml \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
@@ -49,9 +53,9 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name=$RUN_NAME \
     trainer.default_local_dir="/data/user_data/gyeongwk/KernelBench/grpo/$RUN_NAME" \
     trainer.val_before_train=True \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=22 \
     trainer.test_freq=11 \
     trainer.val_before_train=False \
-    trainer.total_epochs=10 $@
+    trainer.total_epochs=5 $@
