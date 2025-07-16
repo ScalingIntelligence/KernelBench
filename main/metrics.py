@@ -403,4 +403,4 @@ if __name__ == "__main__":
     argparser.add_argument("--grpo", action="store_true")
     args = argparser.parse_args()
 
-    main(args)
+    main(args.run_dir, args.hardware, args.grpo)

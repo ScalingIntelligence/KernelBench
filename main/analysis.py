@@ -179,6 +179,7 @@ def plot_fast_p_by_epochs(metrics_by_epoch, p="1.0", name=None, plot_dir=None):
         plt.ylim(0, 1.05)
 
     plt.xlabel('Number of Epochs')
+    plt.xticks(epochs)
     plt.ylabel("Correctness" if p == "0.0" else f'Fast_{p} Score' if p != "mean" else "Mean Speedup")
     plt.legend()
     plt.title(f"Correctness by Number of Epochs: {name}" if p == "0.0" else f'Fast_{p} Score by Number of Epochs: {name}' if p != "mean" else f"Mean Speedup by Number of Epochs: {name}")
@@ -378,6 +379,31 @@ def sft_analysis_across_datasets():
         plot_fast_p_barchart(metrics_by_dataset, p="1.0", axis="Dataset", name=f"Level {level}", plot_dir=plot_dir)
 
 
+def grpo_analysis_across_epochs():
+    steps = [22, 44, 66, 88]
+
+    metrics_by_level = {}
+
+    for level in [1, 2]:
+        metrics_by_step = {}
+        metrics_by_step[0] = load_metrics(os.path.join(RUNS_DIR, "runs_SFT", f"base_level{level}_Qwen2.5-7B-Instruct-SFT3-40"))
+        for epoch, step in enumerate(steps):
+            run_dir = os.path.join(RUNS_DIR, f"base_level{level}_Qwen2.5-7B-Instruct-GRPO-step{step}")
+            if not os.path.exists(os.path.join(run_dir, "metrics.json")):
+                print(f'Run directory {run_dir} does not exist or does not have metrics.json')
+                continue
+            metrics = load_metrics(run_dir)
+            metrics_by_step[epoch + 1] = metrics
+
+        metrics_by_level[f"Level {level}"] = metrics_by_step
+
+    plot_dir = os.path.join(PLOT_DIR, "grpo_analysis")
+    os.makedirs(plot_dir, exist_ok=True)
+    plot_fast_p_by_epochs(metrics_by_level, p="0.0", name="GRPO", plot_dir=plot_dir)
+    plot_fast_p_by_epochs(metrics_by_level, p="1.0", name="GRPO", plot_dir=plot_dir)
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    grpo_analysis_across_epochs()
 
