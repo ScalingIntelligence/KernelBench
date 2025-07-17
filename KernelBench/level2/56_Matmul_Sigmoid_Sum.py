@@ -27,7 +27,7 @@ input_size = 32768
 hidden_size = 32768
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    return [torch.rand_mix(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, hidden_size]

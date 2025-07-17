@@ -30,15 +30,15 @@ class Model(nn.Module):
         return torch.einsum("bijl,lk->bijk", A, B)
 
 # Test code
-b = 16
+b = 8
 i = 256
 j = 512
 l = 256
 k = 768
 
 def get_inputs():
-    A = torch.randn(b, i, j, l)
-    B = torch.randn(l, k)
+    A = torch.rand_mix(b, i, j, l)
+    B = torch.rand_mix(l, k)
     return [A, B]
 
 def get_init_inputs():
