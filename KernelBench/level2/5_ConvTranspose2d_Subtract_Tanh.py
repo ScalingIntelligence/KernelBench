@@ -16,7 +16,7 @@ class Model(nn.Module):
         x = torch.tanh(x)
         return x
 
-batch_size = 64
+batch_size = 32
 in_channels  = 64  
 out_channels = 64  
 height = width = 256 

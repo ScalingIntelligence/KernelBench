@@ -9,7 +9,7 @@ class Model(nn.Module):
         out = torch.nn.functional.scaled_dot_product_attention(Q, K, V)
         return out
 
-batch_size = 2
+batch_size = 32
 num_heads = 32
 sequence_length = 512
 embedding_dimension = 1024

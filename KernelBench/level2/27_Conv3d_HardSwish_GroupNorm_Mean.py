@@ -23,11 +23,11 @@ class Model(nn.Module):
         return x
 
 # === Test config ===
-batch_size = 128
+batch_size = 1024
 in_channels = 3
 out_channels = 16
 depth, height, width = 16, 32, 32
-kernel_size = 3
+kernel_size = 4
 
 def get_inputs():
     return [torch.rand_mix(batch_size, in_channels, depth, height, width)]

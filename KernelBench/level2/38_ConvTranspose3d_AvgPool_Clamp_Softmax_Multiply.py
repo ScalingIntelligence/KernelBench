@@ -32,7 +32,7 @@ class Model(nn.Module):
         x = x * self.scale
         return x
 
-batch_size = 4
+batch_size = 32
 in_channels = 32
 out_channels = 64
 depth, height, width = 32, 64, 64

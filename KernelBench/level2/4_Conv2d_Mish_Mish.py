@@ -15,7 +15,7 @@ class Model(nn.Module):
         x = torch.nn.functional.mish(x)
         return x
 
-batch_size   = 128  
+batch_size   = 64  
 in_channels  = 64  
 out_channels = 128  
 height = width = 256

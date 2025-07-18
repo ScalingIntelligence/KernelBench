@@ -12,7 +12,7 @@ class Model(nn.Module):
         return x
 
 # Test code
-batch_size = 100
+batch_size = 256
 num_classes = 1000
 
 def get_inputs():

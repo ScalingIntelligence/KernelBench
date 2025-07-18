@@ -22,7 +22,7 @@ class Model(nn.Module):
         x = torch.min(x, dim=1, keepdim=True)[0]  # Minimum along channel dimension
         return x
 
-batch_size = 128
+batch_size = 64
 in_channels = 64
 out_channels = 128
 height = width = 256

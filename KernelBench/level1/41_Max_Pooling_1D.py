@@ -33,13 +33,12 @@ class Model(nn.Module):
 
 batch_size = 64
 features = 192
-
 sequence_length = 65536
 
 kernel_size = 8
 stride      = 1
 padding     = 4
-dilation    = 3           
+dilation    = 3            
 
 return_indices = False
 
