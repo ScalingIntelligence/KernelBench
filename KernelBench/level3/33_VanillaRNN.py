@@ -44,7 +44,7 @@ output_size = 8192
 sequence_length = 256
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size),torch.randn(batch_size, hidden_size)]
+    return [torch.rand_mix(batch_size, input_size),torch.rand_mix(batch_size, hidden_size)]
 
 def get_init_inputs():
     return [input_size, hidden_size, output_size]

@@ -28,13 +28,13 @@ class Model(nn.Module):
         return x
 
 
-batch_size = 256
+batch_size = 1024
 input_size = 8192
 hidden_size = 8192
 num_groups = 512
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    return [torch.rand_mix(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, hidden_size, num_groups]

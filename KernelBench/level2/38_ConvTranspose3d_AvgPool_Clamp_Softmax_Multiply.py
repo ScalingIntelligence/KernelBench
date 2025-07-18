@@ -32,7 +32,7 @@ class Model(nn.Module):
         x = x * self.scale
         return x
 
-batch_size = 4
+batch_size = 32
 in_channels = 32
 out_channels = 64
 depth, height, width = 32, 64, 64
@@ -45,7 +45,7 @@ clamp_min = 0.0
 clamp_max = 1.0
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, depth, height, width)]
+    return [torch.rand_mix(batch_size, in_channels, depth, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, output_padding, pool_kernel_size, clamp_min, clamp_max]

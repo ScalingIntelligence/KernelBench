@@ -30,7 +30,7 @@ in_features = 8192  # Increased input features
 out_features = 8192  # Increased output features
 
 def get_inputs():
-    return [torch.randn(batch_size, in_features), torch.randn(batch_size, out_features)]
+    return [torch.rand_mix(batch_size, in_features), torch.rand_mix(batch_size, out_features)]
 
 def get_init_inputs():
     return [in_features, out_features]

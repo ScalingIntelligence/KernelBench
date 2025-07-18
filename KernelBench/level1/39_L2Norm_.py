@@ -31,7 +31,7 @@ batch_size = 32768
 dim = 65535
 
 def get_inputs():
-    x = torch.randn(batch_size, dim)
+    x = torch.rand_mix(batch_size, dim)
     return [x]
 
 def get_init_inputs():

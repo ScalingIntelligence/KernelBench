@@ -29,7 +29,7 @@ class Model(nn.Module):
         """
         return self.avg_pool(x)
 
-batch_size = 128
+batch_size = 64
 in_channels = 128
 input_length = 65536
 kernel_size = 8
@@ -37,7 +37,7 @@ stride = 1
 padding = 4
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, input_length)
+    x = torch.rand_mix(batch_size, in_channels, input_length)
     return [x]
 
 def get_init_inputs():

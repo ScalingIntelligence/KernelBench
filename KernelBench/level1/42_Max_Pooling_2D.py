@@ -30,7 +30,7 @@ class Model(nn.Module):
         """
         return self.maxpool(x)
 
-batch_size = 64
+batch_size = 32
 channels = 64
 height = 512
 width = 512
@@ -40,7 +40,7 @@ padding = 1
 dilation = 1
 
 def get_inputs():
-    x = torch.randn(batch_size, channels, height, width)
+    x = torch.rand_mix(batch_size, channels, height, width)
     return [x]
 
 def get_init_inputs():

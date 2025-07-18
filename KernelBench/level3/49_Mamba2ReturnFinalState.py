@@ -85,7 +85,7 @@ d_state = 16
 block_len = 64
 
 def get_inputs():
-    return [torch.randn(batch_size, seq_length, n_heads, d_head)]
+    return [torch.rand_mix(batch_size, seq_length, n_heads, d_head)]
 
 def get_init_inputs():
     return [batch_size, seq_length, n_heads, d_head, d_state, block_len]

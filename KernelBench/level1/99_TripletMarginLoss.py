@@ -20,8 +20,8 @@ input_shape = (8192,)
 dim = 1
 
 def get_inputs():
-    scale = torch.randn(())
-    return [torch.randn(batch_size, *input_shape)*scale, torch.randn(batch_size, *input_shape), torch.randn(batch_size, *input_shape)]
+    scale = torch.rand_mix(())
+    return [torch.rand_mix(batch_size, *input_shape)*scale, torch.rand_mix(batch_size, *input_shape), torch.rand_mix(batch_size, *input_shape)]
     
 def get_init_inputs():
     return [1.0]  # Default margin

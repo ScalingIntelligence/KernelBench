@@ -30,7 +30,7 @@ subtract2_value = 0.2
 kernel_size_pool = 2
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand_mix(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, subtract1_value, subtract2_value, kernel_size_pool]

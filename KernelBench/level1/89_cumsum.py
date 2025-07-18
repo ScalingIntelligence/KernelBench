@@ -45,7 +45,7 @@ def get_inputs():
         list: A list containing a single randomly generated tensor with shape 
               (batch_size, *input_shape).
     """
-    return [torch.randn(batch_size, *input_shape)]
+    return [torch.rand_mix(batch_size, *input_shape)]
 
 def get_init_inputs():
     """

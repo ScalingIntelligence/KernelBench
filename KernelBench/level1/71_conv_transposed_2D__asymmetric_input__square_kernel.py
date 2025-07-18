@@ -41,7 +41,7 @@ height_in = 512
 width_in = 1024
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, height_in, width_in)
+    x = torch.rand_mix(batch_size, in_channels, height_in, width_in)
     return [x]
 
 def get_init_inputs():

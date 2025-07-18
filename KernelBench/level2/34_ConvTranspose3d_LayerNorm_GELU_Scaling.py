@@ -25,7 +25,7 @@ class Model(nn.Module):
         x = x * self.scaling_factor
         return x
 
-batch_size = 128
+batch_size = 32
 in_channels = 32
 out_channels = 64
 D, H, W = 16, 32, 32
@@ -37,7 +37,7 @@ eps = 1e-5
 scaling_factor = 1.0
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, D, H, W)]
+    return [torch.rand_mix(batch_size, in_channels, D, H, W)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, bias, eps, scaling_factor]

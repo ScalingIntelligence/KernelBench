@@ -28,7 +28,7 @@ subtract_value = 0.5
 pool_kernel_size = 2
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand_mix(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, subtract_value, pool_kernel_size]

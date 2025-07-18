@@ -78,7 +78,7 @@ dropout = 0.0
 emb_dropout = 0.0
 
 def get_inputs():
-    return [torch.randn(2, channels, image_size, image_size)]
+    return [torch.rand_mix(2, channels, image_size, image_size)]
 
 def get_init_inputs():
     return [image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, channels, dropout, emb_dropout]
