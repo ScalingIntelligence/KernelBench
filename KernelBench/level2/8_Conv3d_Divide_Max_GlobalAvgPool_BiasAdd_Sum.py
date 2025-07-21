@@ -24,10 +24,10 @@ class Model(nn.Module):
         x = torch.sum(x, dim=self.sum_dim)
         return x
 
-batch_size = 128
-in_channels = 3
-out_channels = 16
-depth, height, width = 16, 32, 32
+batch_size   = 128  
+in_channels  = 8            
+out_channels = 16  
+depth = 16; height = width = 64 
 kernel_size = (3, 3, 3)
 divisor = 2.0
 pool_size = (2, 2, 2)
@@ -35,7 +35,7 @@ bias_shape = (out_channels, 1, 1, 1)
 sum_dim = 1
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, depth, height, width)]
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, divisor, pool_size, bias_shape, sum_dim]

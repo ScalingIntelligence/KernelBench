@@ -21,18 +21,19 @@ class Model(nn.Module):
         x = self.group_norm(x)
         return x
 
-batch_size = 128
-in_channels = 32
-out_channels = 64
-kernel_size = 4
-stride = 2
-padding = 1
-groups = 8
-num_groups = 4
+batch_size = 512
+in_channels  = 64  
+out_channels = 128  
+height = width = 2048  
+kernel_size  = 5
+stride       = 1  
+padding      = 1
+groups       = 8
+num_groups   = 8
 height, width = 32, 32
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, groups, num_groups]

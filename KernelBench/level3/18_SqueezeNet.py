@@ -72,14 +72,14 @@ class Model(nn.Module):
         return torch.flatten(x, 1)
 
 # Test code
-batch_size = 1
+batch_size = 64
 input_channels = 3
-height = 224
-width = 224
+height = 512
+width = 512
 num_classes = 1000
 
 def get_inputs():
-    return [torch.randn(batch_size, input_channels, height, width)]
+    return [torch.rand(batch_size, input_channels, height, width)]
 
 def get_init_inputs():
     return [num_classes]

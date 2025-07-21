@@ -23,11 +23,11 @@ class Model(nn.Module):
 
 M = 256
 N = 256
-K = 131072
+K = 131072 * 4
 
 def get_inputs():
-    A = torch.randn(M, K)
-    B = torch.randn(K, N)
+    A = torch.rand(M, K)
+    B = torch.rand(K, N)
     return [A, B]
 
 def get_init_inputs():

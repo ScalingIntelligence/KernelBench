@@ -85,14 +85,14 @@ class Model(nn.Module):
         vlad = F.normalize(vlad)
         return vlad  # B x DK
 
-batch_size = 32
+batch_size = 2048
 num_features = 100
 num_clusters = 32
 feature_size = 512
 ghost_clusters = 16
 
 def get_inputs():
-  return [torch.randn(batch_size, num_features, feature_size)]
+  return [torch.rand(batch_size, num_features, feature_size)]
 
 def get_init_inputs():
   return [num_clusters, feature_size, ghost_clusters]

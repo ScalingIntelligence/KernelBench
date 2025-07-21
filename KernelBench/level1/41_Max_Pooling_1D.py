@@ -31,17 +31,19 @@ class Model(nn.Module):
         """
         return self.maxpool(x)
 
-batch_size = 16
-features = 64
-sequence_length = 128
-kernel_size = 4
-stride = 2
-padding = 2
-dilation = 3
+batch_size = 64
+features = 192
+sequence_length = 65536
+
+kernel_size = 8
+stride      = 1
+padding     = 4
+dilation    = 3            
+
 return_indices = False
 
 def get_inputs():
-    x = torch.randn(batch_size, features, sequence_length)
+    x = torch.rand(batch_size, features, sequence_length)
     return [x]
 
 def get_init_inputs():

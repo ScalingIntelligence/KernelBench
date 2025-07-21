@@ -61,7 +61,7 @@ n_embd = 768  # Hidden dimension, typical for BERT-base size
 n_head = 12   # Number of attention heads, typical for BERT-base size
 
 def get_inputs():
-    return [torch.randn(batch_size, max_seqlen, n_embd)]
+    return [torch.rand(batch_size, max_seqlen, n_embd)]
 
 def get_init_inputs():
     return [n_embd, n_head, max_seqlen]

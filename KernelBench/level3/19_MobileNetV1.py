@@ -69,7 +69,7 @@ num_classes = 1000
 alpha = 1.0
 
 def get_inputs():
-    return [torch.randn(batch_size, input_channels, height, width)]
+    return [torch.rand(batch_size, input_channels, height, width)]
 
 def get_init_inputs():
     return [num_classes, input_channels, alpha]

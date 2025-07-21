@@ -34,7 +34,7 @@ padding = 1
 output_padding = 1
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, D, H, W)]
+    return [torch.rand(batch_size, in_channels, D, H, W)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, output_padding]

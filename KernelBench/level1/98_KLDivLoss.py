@@ -14,12 +14,13 @@ class Model(nn.Module):
     def forward(self, predictions, targets):
         return torch.nn.functional.kl_div(torch.log(predictions), targets, reduction='batchmean')
 
-batch_size = 128
-input_shape = (4096, )
+batch_size = 8192 * 2
+input_shape = (8192 * 2,)
 dim = 1
 
 def get_inputs():
-    return [torch.randn(batch_size, *input_shape).softmax(dim=-1), torch.randn(batch_size, *input_shape).softmax(dim=-1)]
+    scale = torch.rand(())
+    return [(torch.rand(batch_size, *input_shape)*scale).softmax(dim=-1), torch.rand(batch_size, *input_shape).softmax(dim=-1)]
 
 def get_init_inputs():
     return []

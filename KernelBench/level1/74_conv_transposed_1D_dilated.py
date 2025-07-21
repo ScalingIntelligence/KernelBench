@@ -31,17 +31,17 @@ class Model(nn.Module):
         return self.conv1d_transpose(x)
 
 # Test code
-batch_size = 16
-in_channels = 3
+batch_size = 32
+in_channels = 32
 out_channels = 64
 kernel_size = 5
-length = 256
+length = 131072
 stride = 1
 padding = 0
 dilation = 3
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, length)
+    x = torch.rand(batch_size, in_channels, length)
     return [x]
 
 def get_init_inputs():

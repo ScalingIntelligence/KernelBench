@@ -37,16 +37,16 @@ class Model(nn.Module):
         return self.conv_transpose3d(x)
 
 # Test code
-batch_size = 16
-in_channels = 32
-out_channels = 16
+batch_size = 8
+in_channels = 48
+out_channels = 24
 kernel_size = 3
-depth = 16
-height = 32
-width = 64
+depth = 96
+height = 96
+width = 96
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, depth, height, width)
+    x = torch.rand(batch_size, in_channels, depth, height, width)
     return [x]
 
 def get_init_inputs():

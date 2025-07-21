@@ -21,7 +21,7 @@ class Model(nn.Module):
         self.h2o = nn.Linear(hidden_size, output_size)  # Hidden to output
         self.tanh = nn.Tanh()  # Activation function for hidden state
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, initial_hidden=None) -> torch.Tensor:
         """
         Forward pass of the Vanilla RNN.
         
@@ -29,20 +29,22 @@ class Model(nn.Module):
         :param hidden: Hidden state tensor of shape (batch_size, hidden_size).
         :return: Output tensor of shape (batch_size, output_size), and the new hidden state.
         """
+        if initial_hidden is not None:
+            self.hidden.copy_(initial_hidden)
         self.hidden = self.hidden.to(x.device)
         combined = torch.cat((x, self.hidden), dim=1)  # Concatenate input and hidden state
         self.hidden = self.tanh(self.i2h(combined))  # Update hidden state
         output = self.h2o(self.hidden)  # Compute output
         return output
 
-batch_size = 8
-input_size = 1024
-hidden_size = 256
-output_size = 128
+batch_size = 256
+input_size = 16384
+hidden_size = 16384
+output_size = 8192
 sequence_length = 256
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    return [torch.rand(batch_size, input_size),torch.rand(batch_size, hidden_size)]
 
 def get_init_inputs():
     return [input_size, hidden_size, output_size]

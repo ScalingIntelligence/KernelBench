@@ -77,7 +77,7 @@ class Model(nn.Module):
         return new_states[:, -1]
 
 # Test parameters
-batch_size = 16
+batch_size = 2048
 seq_length = 128
 n_heads = 8
 d_head = 64
@@ -85,7 +85,7 @@ d_state = 16
 block_len = 64
 
 def get_inputs():
-    return [torch.randn(batch_size, seq_length, n_heads, d_head)]
+    return [torch.rand(batch_size, seq_length, n_heads, d_head)]
 
 def get_init_inputs():
     return [batch_size, seq_length, n_heads, d_head, d_state, block_len]

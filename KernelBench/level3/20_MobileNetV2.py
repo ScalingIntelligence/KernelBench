@@ -125,7 +125,7 @@ batch_size = 10
 num_classes = 1000
 
 def get_inputs():
-    return [torch.randn(batch_size, 3, 224, 224)]
+    return [torch.rand(batch_size, 3, 224, 224)]
 
 def get_init_inputs():
     return [num_classes]
