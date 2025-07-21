@@ -92,7 +92,7 @@ feature_size = 512
 ghost_clusters = 16
 
 def get_inputs():
-  return [torch.rand_mix(batch_size, num_features, feature_size)]
+  return [torch.rand(batch_size, num_features, feature_size)]
 
 def get_init_inputs():
   return [num_clusters, feature_size, ghost_clusters]

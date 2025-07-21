@@ -41,7 +41,7 @@ padding = 0
 dilation = 3
 
 def get_inputs():
-    x = torch.rand_mix(batch_size, in_channels, length)
+    x = torch.rand(batch_size, in_channels, length)
     return [x]
 
 def get_init_inputs():

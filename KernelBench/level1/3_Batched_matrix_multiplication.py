@@ -27,8 +27,8 @@ k = 256 * 4
 n = 512 * 4
 
 def get_inputs():
-    A = torch.rand_mix(batch_size, m, k)
-    B = torch.rand_mix(batch_size, k, n)
+    A = torch.rand(batch_size, m, k)
+    B = torch.rand(batch_size, k, n)
     return [A, B]
 
 def get_init_inputs():

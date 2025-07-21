@@ -25,8 +25,8 @@ M = 16384 * 2
 N = 16 * 2
 
 def get_inputs():
-    A = torch.rand_mix(M, N)
-    B = torch.rand_mix(N, M)
+    A = torch.rand(M, N)
+    B = torch.rand(N, M)
     return [A, B]
 
 def get_init_inputs():

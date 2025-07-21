@@ -28,7 +28,7 @@ output_size = 8192
 divisor = 10.0
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, input_size)]
+    return [torch.rand(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, output_size, divisor]

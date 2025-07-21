@@ -24,7 +24,7 @@ kernel_size = 3
 divisor = 2
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_channels, height, width)]
+    return [torch.rand(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, divisor]

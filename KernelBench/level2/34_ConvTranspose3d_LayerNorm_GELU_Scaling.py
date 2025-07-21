@@ -37,7 +37,7 @@ eps = 1e-5
 scaling_factor = 1.0
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_channels, D, H, W)]
+    return [torch.rand(batch_size, in_channels, D, H, W)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, bias, eps, scaling_factor]

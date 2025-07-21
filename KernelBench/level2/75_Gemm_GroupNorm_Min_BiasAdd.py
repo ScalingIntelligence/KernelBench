@@ -25,7 +25,7 @@ num_groups = 512
 bias_shape = (1, out_features, 1, 1)
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_features)]
+    return [torch.rand(batch_size, in_features)]
 
 def get_init_inputs():
     return [in_features, out_features, num_groups, bias_shape]

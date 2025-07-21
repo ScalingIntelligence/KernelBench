@@ -29,7 +29,7 @@ out_features = 16384
 dropout_p = 0.2
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_features)]
+    return [torch.rand(batch_size, in_features)]
 
 def get_init_inputs():
     return [in_features, out_features, dropout_p]

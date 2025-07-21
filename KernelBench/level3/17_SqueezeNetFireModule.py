@@ -42,7 +42,7 @@ expand1x1_channels = 64
 expand3x3_channels = 64
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, num_input_features, height, width)]
+    return [torch.rand(batch_size, num_input_features, height, width)]
 
 def get_init_inputs():
     return [num_input_features, squeeze_channels, expand1x1_channels, expand3x3_channels]

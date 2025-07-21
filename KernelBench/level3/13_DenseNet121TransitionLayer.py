@@ -29,7 +29,7 @@ num_output_features = 64
 height, width = 256, 256
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, num_input_features, height, width)]
+    return [torch.rand(batch_size, num_input_features, height, width)]
 
 def get_init_inputs():
     return [num_input_features, num_output_features]

@@ -26,8 +26,8 @@ M = 4096
 N = 4096
 
 def get_inputs():
-    A = torch.rand_mix(N)
-    B = torch.rand_mix(N, M)
+    A = torch.rand(N)
+    B = torch.rand(N, M)
     return [A, B]
 
 def get_init_inputs():

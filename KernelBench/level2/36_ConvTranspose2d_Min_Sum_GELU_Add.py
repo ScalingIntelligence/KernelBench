@@ -29,7 +29,7 @@ output_padding = 1
 bias_shape = (1, 1, 1)
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_channels, height, width)]
+    return [torch.rand(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape]

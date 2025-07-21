@@ -29,7 +29,7 @@ bias_shape = (1,)
 divide_value = 1.0
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_features)]
+    return [torch.rand(batch_size, in_features)]
 
 def get_init_inputs():
     return [in_features, out_features, bn_eps, bn_momentum, bias_shape, divide_value]

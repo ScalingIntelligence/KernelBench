@@ -37,7 +37,7 @@ out_features = 4096
 scaling_factor = 0.5
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_features)]
+    return [torch.rand(batch_size, in_features)]
 
 def get_init_inputs():
     return [in_features, out_features, scaling_factor]

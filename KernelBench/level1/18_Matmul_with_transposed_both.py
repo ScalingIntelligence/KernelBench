@@ -26,8 +26,8 @@ K = 4096 * 2
 N = 2048 * 2
 
 def get_inputs():
-    A = torch.rand_mix(K, M)
-    B = torch.rand_mix(N, K)
+    A = torch.rand(K, M)
+    B = torch.rand(N, K)
     return [A, B]
 
 def get_init_inputs():

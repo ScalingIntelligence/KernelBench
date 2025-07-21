@@ -42,7 +42,7 @@ output_size = 10
 dropout = 0.0
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, sequence_length, input_size),torch.rand_mix((num_layers*2, batch_size, hidden_size)),torch.rand_mix((num_layers*2, batch_size, hidden_size))]
+    return [torch.rand(batch_size, sequence_length, input_size),torch.rand((num_layers*2, batch_size, hidden_size)),torch.rand((num_layers*2, batch_size, hidden_size))]
 
 def get_init_inputs():
     return [input_size, hidden_size, num_layers, output_size, dropout]

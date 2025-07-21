@@ -37,7 +37,7 @@ hidden_layer_sizes = [1024] * 16  # deep network with wider layers
 output_size = 8192
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, input_size)]
+    return [torch.rand(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, hidden_layer_sizes, output_size]

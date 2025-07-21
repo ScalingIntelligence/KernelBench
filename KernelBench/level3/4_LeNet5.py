@@ -54,7 +54,7 @@ batch_size = 4096
 num_classes = 20
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, 1, 32, 32)]
+    return [torch.rand(batch_size, 1, 32, 32)]
 
 def get_init_inputs():
     return [num_classes]

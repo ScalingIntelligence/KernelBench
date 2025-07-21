@@ -24,7 +24,7 @@ multiplier = 2.0
 negative_slope = 0.1
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_features)]
+    return [torch.rand(batch_size, in_features)]
 
 def get_init_inputs():
     return [in_features, out_features, multiplier, negative_slope]

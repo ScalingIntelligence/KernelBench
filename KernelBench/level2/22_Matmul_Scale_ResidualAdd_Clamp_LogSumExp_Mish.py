@@ -37,7 +37,7 @@ clamp_min = -10.0
 clamp_max = 10.0
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, input_size)]
+    return [torch.rand(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, hidden_size, scale_factor, clamp_min, clamp_max]

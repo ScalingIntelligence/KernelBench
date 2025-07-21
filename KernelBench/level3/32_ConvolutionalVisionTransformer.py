@@ -66,7 +66,7 @@ num_heads = 4
 num_classes = 1000
 
 def get_inputs():
-    return [torch.rand_mix(batch_size, in_channels, image_size, image_size)]
+    return [torch.rand(batch_size, in_channels, image_size, image_size)]
 
 def get_init_inputs():
     return [num_classes, embed_dim, num_heads]
