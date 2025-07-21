@@ -31,22 +31,19 @@ class Model(nn.Module):
         """
         return self.maxpool(x)
 
-# make 32× more elements
-batch_size = 128
+batch_size = 64
 features = 192
-# large sequence length for more compute (elements ~1.07B)
 sequence_length = 65536
 
-# increase kernel size for more compute per element
 kernel_size = 8
 stride      = 1
 padding     = 4
-dilation    = 3            # keep it
+dilation    = 3            
 
 return_indices = False
 
 def get_inputs():
-    x = torch.randn(batch_size, features, sequence_length)
+    x = torch.rand_mix(batch_size, features, sequence_length)
     return [x]
 
 def get_init_inputs():

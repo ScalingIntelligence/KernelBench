@@ -9,15 +9,15 @@ class Model(nn.Module):
         out = torch.nn.functional.scaled_dot_product_attention(Q, K, V)
         return out
 
-batch_size = 2
+batch_size = 32
 num_heads = 32
 sequence_length = 512
 embedding_dimension = 1024
 
 def get_inputs():
-    Q = torch.randn(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
-    K = torch.randn(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
-    V = torch.randn(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
+    Q = torch.rand_mix(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
+    K = torch.rand_mix(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
+    V = torch.rand_mix(batch_size, num_heads, sequence_length, embedding_dimension, device='cuda', dtype=torch.float16)
     return [Q, K, V]
 
 def get_init_inputs():

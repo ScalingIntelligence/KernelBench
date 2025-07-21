@@ -25,7 +25,7 @@ M = 16384 * 4
 N = 4096 * 4
 
 def get_inputs():
-    A = torch.randn(M, N)
+    A = torch.rand_mix(M, N)
     s = 3.14
     return [A, s]
 

@@ -25,7 +25,7 @@ out_features = 8192
 add_value_shape = (out_features,)
 
 def get_inputs():
-    return [torch.randn(batch_size, in_features)]
+    return [torch.rand_mix(batch_size, in_features)]
 
 def get_init_inputs():
     return [in_features, out_features, add_value_shape]

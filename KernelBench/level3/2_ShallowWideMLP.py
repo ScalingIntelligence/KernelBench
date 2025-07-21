@@ -37,7 +37,7 @@ hidden_layer_sizes = [32768, 32768]
 output_size = 16384
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    return [torch.rand_mix(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, hidden_layer_sizes, output_size]

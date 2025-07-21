@@ -19,7 +19,7 @@ input_shape = (32768,)
 dim = 1
 
 def get_inputs():
-    return [torch.randn(batch_size, *input_shape), torch.randint(0, 2, (batch_size,)).float() * 2 - 1]
+    return [torch.rand_mix(batch_size, *input_shape), torch.randint(0, 2, (batch_size,)).float() * 2 - 1]
 
 def get_init_inputs():
     return []

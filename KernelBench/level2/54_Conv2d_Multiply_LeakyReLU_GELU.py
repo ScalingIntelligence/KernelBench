@@ -26,7 +26,7 @@ kernel_size = 3
 multiplier_shape = (out_channels, 1, 1)
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand_mix(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, multiplier_shape]
