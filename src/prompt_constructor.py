@@ -276,11 +276,20 @@ def prompt_main(ref_arch_src: str, config, triton=False) -> str:
             raise ValueError(f"Invalid prompt type: {config.prompt}")
 
 
-def exec_result_to_exeution_feedback(exec_result: KernelExecResult) -> str:
-    compilation_error = exec_result['metadata']['compilation_error'] if 'compilation_error' in exec_result['metadata'] else None
-    runtime_error = exec_result['metadata']['runtime_error'] if 'runtime_error' in exec_result['metadata'] else None
-    correctness_issue = exec_result['metadata']['correctness_issue'] if 'correctness_issue' in exec_result['metadata'] else None
-    other_error = exec_result['metadata']['other_error'] if 'other_error' in exec_result['metadata'] else None
+def exec_result_to_exeution_feedback(exec_result: dict) -> str:
+    if isinstance(exec_result, KernelExecResult):
+        metadata = exec_result.metadata
+        correctness = exec_result.correctness
+        runtime = exec_result.runtime
+    else:
+        metadata = exec_result['metadata']
+        correctness = exec_result['correctness']
+        runtime = exec_result['runtime']
+
+    compilation_error = metadata['compilation_error'] if 'compilation_error' in metadata else None
+    runtime_error = metadata['runtime_error'] if 'runtime_error' in metadata else None
+    correctness_issue = metadata['correctness_issue'] if 'correctness_issue' in metadata else None
+    other_error = metadata['other_error'] if 'other_error' in metadata else None
     correctness_feedback = compilation_error if compilation_error else runtime_error if runtime_error else correctness_issue if correctness_issue else other_error if other_error else "All trials passed" 
 
     evaluation_feedback = f"""
@@ -290,12 +299,12 @@ Here is your Evaluation Result:
 ```
 """
 
-    if exec_result["correctness"]:
+    if correctness:
         evaluation_feedback += f"""
 Your kernel executed successfully and produced the correct output.
-Here is your wall clock time: {exec_result["runtime"]} milliseconds.
+Here is your wall clock time: {runtime} milliseconds.
 
-{exec_result["metadata"]["profiler_info"]}
+{metadata["profiler_info"]}
 """
 
     return evaluation_feedback

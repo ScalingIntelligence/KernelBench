@@ -1,12 +1,13 @@
 set -x
 
-RUN_NAME="grpo_train_Qwen2.5-7B-Instruct-SFT"
+RUN_NAME="grpo_train_level1_Qwen2.5-7B-Instruct-SFT"
 MODEL="/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=$HOME/KernelBench/KernelBench/train_dataset.parquet \
-    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset.parquet \
+    algorithm.norm_adv_by_std_in_grpo=False \
+    data.train_files=$HOME/KernelBench/KernelBench/train_dataset_level1.parquet \
+    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset_level1.parquet \
     data.train_batch_size=8 \
     data.max_prompt_length=8192 \
     data.max_response_length=16384 \
@@ -20,6 +21,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.ppo_mini_batch_size=1 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.use_kl_loss=False \
+    actor_rollout_ref.actor.loss_agg_mode="seq-mean-token-sum-norm" \
     actor_rollout_ref.actor.clip_ratio_high=0.28 \
     actor_rollout_ref.actor.grad_clip=0.5 \
     actor_rollout_ref.actor.entropy_coeff=0 \
@@ -31,7 +33,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.max_model_len=8192 \
-    actor_rollout_ref.rollout.temperature=0.6 \
+    actor_rollout_ref.rollout.temperature=0.8 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
@@ -51,7 +53,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.val_before_train=True \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=22 \
+    trainer.save_freq=11 \
     trainer.test_freq=11 \
     trainer.val_before_train=False \
     trainer.total_epochs=10 $@

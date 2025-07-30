@@ -1,17 +1,18 @@
 set -x
 
-RUN_NAME="grpo_train_multi_turn_Qwen2.5-7B-Instruct-SFT"
+RUN_NAME="grpo_train_multi_turn_level2_Qwen2.5-7B-Instruct-SFT"
 MODEL="/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=$HOME/KernelBench/KernelBench/train_dataset.parquet \
-    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset.parquet \
-    data.train_batch_size=8 \
-    data.max_prompt_length=8192 \
-    data.max_response_length=16384 \
+    data.train_files=$HOME/KernelBench/KernelBench/train_dataset_level2.parquet \
+    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset_level2.parquet \
+    data.train_batch_size=4 \
+    data.max_prompt_length=2048 \
+    data.max_response_length=4096 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
+    data.return_raw_chat=True \
     actor_rollout_ref.model.path=$MODEL \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
@@ -29,7 +30,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
     actor_rollout_ref.rollout.name=sglang \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
-    actor_rollout_ref.rollout.n=8 \
+    actor_rollout_ref.rollout.n=4 \
     actor_rollout_ref.rollout.max_model_len=8192 \
     actor_rollout_ref.rollout.temperature=0.6 \
     actor_rollout_ref.rollout.multi_turn.enable=True \
@@ -38,8 +39,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.multi_turn.interaction_config_path=$HOME/KernelBench/main/interaction_config.yaml \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    algorithm.use_kl_in_reward=False \
-    +algorithm.kl_ctrl.kl_coeff=0.0 \
     custom_reward_function.path=$HOME/KernelBench/main/grpo_verl.py \
     custom_reward_function.name=compute_score_batch \
     reward_model.reward_manager=dapo_batch \
@@ -48,6 +47,8 @@ python3 -m verl.trainer.main_ppo \
     +reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor=1.0 \
     +reward_model.reward_kwargs.overlong_buffer_cfg.log=False \
     +reward_model.reward_kwargs.max_resp_len=16384 \
+    algorithm.use_kl_in_reward=False \
+    +algorithm.kl_ctrl.kl_coeff=0.0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='KernelBench' \
     trainer.experiment_name=$RUN_NAME \
@@ -58,4 +59,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.save_freq=22 \
     trainer.test_freq=11 \
     trainer.val_before_train=False \
+    trainer.ray_wait_register_center_timeout=100000 \
     trainer.total_epochs=5 $@

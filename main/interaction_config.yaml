@@ -1,4 +1,4 @@
 interaction:
   - name: "KernelBench"
-    class_name: "main.grpo_verl.KernelBenchInteraction"
+    class_name: "main.grpo_verl_multiturn.KernelBenchInteraction"
     config: {}

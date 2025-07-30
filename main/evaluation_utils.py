@@ -140,6 +140,96 @@ def is_generated_kernel_used(code: str) -> bool:
     return is_used
 
 
+def torch_function_used(code: str) -> bool:
+    """
+    Checks whether the input code uses any torch function (e.g. torch.matmul) or nn layer (e.g. nn.Conv1d, nn.Linear, etc.)
+    inside the ModelNew class only, but ignores usage of nn.Module itself.
+    Returns True if any such usage is found in ModelNew, otherwise False.
+    """
+    import ast
+
+    class TorchFunctionAnalyzer(ast.NodeVisitor):
+        def __init__(self):
+            self.torch_used = False
+            self.nn_used = False
+            self.torch_aliases = set()
+            self.nn_aliases = set()
+            self.nn_module_names = {"Module", "Parameter", "init"}  # ignore nn.Module
+            self.torch_module_names = {"tensor", "Tensor", "ones", "zeros", "empty", "randn"}  # ignore nn.Module
+
+        def visit_Import(self, node):
+            for alias in node.names:
+                if alias.name == "torch":
+                    self.torch_aliases.add(alias.asname or "torch")
+                if alias.name == "torch.nn":
+                    self.nn_aliases.add(alias.asname or "nn")
+            self.generic_visit(node)
+
+        def visit_ImportFrom(self, node):
+            if node.module == "torch":
+                for alias in node.names:
+                    self.torch_aliases.add(alias.asname or alias.name)
+            if node.module == "torch.nn":
+                for alias in node.names:
+                    self.nn_aliases.add(alias.asname or alias.name)
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node):
+            # Check for torch.* or nn.* usage, but ignore nn.Module
+            value = node.value
+            if isinstance(value, ast.Name):
+                if value.id in self.torch_aliases and not self.torch_used:
+                    if node.attr not in self.torch_module_names:
+                        print(f"torch_used: {node.attr}")
+                        self.torch_used = True
+                if value.id in self.nn_aliases and not self.nn_used:
+                    if node.attr not in self.nn_module_names:
+                        print(f"nn_used: {node.attr}")
+                        self.nn_used = True
+            self.generic_visit(node)
+
+        def visit_Call(self, node):
+            # Check for torch.*() or nn.*() calls, but ignore nn.Module()
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                value = func.value
+                if isinstance(value, ast.Name):
+                    if value.id in self.torch_aliases and not self.torch_used:
+                        if func.attr not in self.torch_module_names:
+                            print(f"torch_used: {func.attr}")
+                            self.torch_used = True
+                    if value.id in self.nn_aliases and not self.nn_used:
+                        if func.attr not in self.nn_module_names:
+                            print(f"nn_used: {func.attr}")
+                            self.nn_used = True
+            self.generic_visit(node)
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+
+    # First, collect import aliases globally
+    import_analyzer = TorchFunctionAnalyzer()
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            import_analyzer.visit(node)
+
+    # Now, find the ModelNew class
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "ModelNew":
+            # For each method in ModelNew, analyze its body
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef):
+                    analyzer = TorchFunctionAnalyzer()
+                    analyzer.torch_aliases = set(import_analyzer.torch_aliases)
+                    analyzer.nn_aliases = set(import_analyzer.nn_aliases)
+                    analyzer.visit(item)
+                    if analyzer.torch_used or analyzer.nn_used:
+                        return True
+            return False  # No torch/nn usage found in ModelNew
+    return False  # No ModelNew class found
+
 
 def evaluate_single_sample_worker(work_args: EvaluationWorkArgs, configs, run_dir: str, kernel_src=None, kernel_name=None) -> KernelExecResult | None:
     """
@@ -338,6 +428,7 @@ def send_evaluation_request(host: str, port: int, work_args: EvaluationWorkArgs,
         
         # Deserialize the response
         result = pickle.loads(response_data)
+        print(f"Received result from server: {result}")
         return result
         
     except Exception as e:
