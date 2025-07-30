@@ -404,6 +404,6 @@ def grpo_analysis_across_epochs():
 
 
 if __name__ == "__main__":
-    # main()
-    grpo_analysis_across_epochs()
+    main()
+    # grpo_analysis_across_epochs()
 
