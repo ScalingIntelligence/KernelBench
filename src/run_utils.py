@@ -27,13 +27,20 @@ def check_if_kernel_exists(run_dir: str, level: int, problem_id: int, sample_id:
     kernel_path = os.path.join(run_dir, to_kernel_name(level, problem_id, sample_id))
     return os.path.exists(kernel_path) 
 
+def check_if_response_exists(run_dir: str, level: int, problem_id: int, sample_id: int) -> bool:
+    """
+    Check if a response for a given problem and sample ID already exists in the run directory
+    """
+    response_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_response.txt")
+    return os.path.exists(response_path)
+
 
 def find_highest_sample_id(run_dir: str, level: int, problem_id: int, thread_id: int, batch_size: int) -> int:
     """
     Find the highest sample ID for a given problem starting at thread_id and incrementing by batch_size
     """
     sample_id = thread_id
-    while check_if_kernel_exists(run_dir, level, problem_id, sample_id):
+    while check_if_response_exists(run_dir, level, problem_id, sample_id):
         sample_id += batch_size
     return sample_id
 

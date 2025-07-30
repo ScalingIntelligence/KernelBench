@@ -2,7 +2,7 @@ import os
 import argparse
 import json
 
-from evaluation_utils import is_generated_kernel_used
+from evaluation_utils import is_generated_kernel_used, torch_function_used
 
 
 if __name__ == "__main__":
@@ -24,10 +24,11 @@ if __name__ == "__main__":
 
             try:
                 # is_used, generated_kernel_attrs, called_attrs, overwritten_attrs, generated_kernel_vars, called_vars = is_generated_kernel_used(kernel_src)
-                is_used = is_generated_kernel_used(kernel_src)
+                is_kernel_used = is_generated_kernel_used(kernel_src)
+                is_torch_function_used = torch_function_used(kernel_src)
                 is_correct = eval_results[level][problem_id][sample_id]["correctness"]
                 # print(f"{filename}: Is kernel used? {is_used} / Is correct? {is_correct}")
-                if is_correct and not is_used:
+                if is_correct and is_torch_function_used:
                     print(f"Flagging {filename}")
                     # print(f"Generated kernel attrs: {generated_kernel_attrs}")
                     # print(f"Called attrs: {called_attrs}")
