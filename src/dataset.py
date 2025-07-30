@@ -214,11 +214,13 @@ def check_in_train_dataset(level: int, problem_id: int) -> bool:
 
 
 def get_train_dataset():
-    return [(1, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 1 for training
+    return [(1, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_1] # for now use level 1 for training
+    # return [(1, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 1 for training
 
 
 def get_eval_dataset():
-    return [(1, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 2 for evaluation
+    return [(1, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_1] # for now use level 1 for evaluation
+    # return [(1, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 2 for evaluation
  
 
 def construct_dataset(train=True):
@@ -264,7 +266,10 @@ def make_map_fn(split):
                 "interaction_kwargs": {
                     "name": "KernelBench",
                     "query": question,
-                    "ground_truth": answer
+                    "ground_truth": answer,
+                    "split": split,
+                    "level": level,
+                    "problem": problem,
                 }
             }
         }
@@ -278,8 +283,8 @@ def process_dataset():
     train_dataset = train_dataset.map(make_map_fn('train'))
     eval_dataset = eval_dataset.map(make_map_fn('eval'))
 
-    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset.parquet"))
-    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset.parquet"))
+    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset_level1.parquet"))
+    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset_level1.parquet"))
 
 
 def search_for_best_kernels(k):
@@ -331,7 +336,7 @@ def process_dataset_for_sft(k=1):
                 reasoning = response.split("REASONING TRACE:")[1].split("ANSWER:")[0].strip()
 
                 ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
-                question = prompt_bare(ref_arch_src)
+                question = prompt_base(ref_arch_src)
                 answer = "```python\n" + kernel_src + "\n```"
                 # answer = reasoning + "\n" + answer
                 if int(problem) in TRAIN_SET:
@@ -351,3 +356,7 @@ def process_dataset_for_sft(k=1):
 
 if __name__ == "__main__":
     process_dataset()
+    # process_dataset_for_sft(k=1)
+    # process_dataset_for_sft(k=2)
+    # process_dataset_for_sft(k=3)
+    # process_dataset_for_sft(k=4)
