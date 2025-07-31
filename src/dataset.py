@@ -355,8 +355,8 @@ def process_dataset_for_sft(k=1):
 
 
 if __name__ == "__main__":
-    search_for_best_kernels(k=8)
-    process_dataset_for_sft(k=8)
+    search_for_best_kernels(k=16)
+    process_dataset_for_sft(k=16)
     # process_dataset()
     # process_dataset_for_sft(k=1)
     # process_dataset_for_sft(k=2)
