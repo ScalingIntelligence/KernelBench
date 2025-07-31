@@ -291,7 +291,7 @@ def search_for_best_kernels(k):
     for level in [1, 2]:
         best_k_kernels = {} # problem_id -> best kernels
         for directory in os.listdir(RUNS_DIR):
-            if f"level{level}" in directory and "DeepSeek" in directory:
+            if f"level{level}" in directory:
                 print(f"Searching for best kernels in {directory}")
                 eval_file_path = os.path.join(RUNS_DIR, directory, "eval_results.json")
                 if not os.path.exists(eval_file_path):
@@ -355,7 +355,9 @@ def process_dataset_for_sft(k=1):
 
 
 if __name__ == "__main__":
-    process_dataset()
+    search_for_best_kernels(k=8)
+    process_dataset_for_sft(k=8)
+    # process_dataset()
     # process_dataset_for_sft(k=1)
     # process_dataset_for_sft(k=2)
     # process_dataset_for_sft(k=3)
