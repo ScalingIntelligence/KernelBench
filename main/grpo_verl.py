@@ -11,13 +11,14 @@ from src.run_utils import find_highest_sample_id, fetch_baseline_results, write_
 from src.utils import extract_last_code
 from src.eval import KernelExecResult
 
-from main.evaluation_utils import send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args, torch_function_used, is_generated_kernel_used
+from main.evaluation_utils import send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args
+from src.reward_hacking import is_generated_kernel_used, torch_function_used
 
 
 # RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
-RUN_NAME = "grpo_train_level1_Qwen2.5-7B-Instruct-SFT"
-EVAL_SERVER_HOST = "babel-11-21"
+RUN_NAME = "grpo_train_correct_Qwen2.5-Coder-7B-Instruct-SFT"
+EVAL_SERVER_HOST = "babel-15-32"
 EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"
@@ -27,13 +28,9 @@ os.makedirs(os.path.join(RUNS_DIR, RUN_NAME), exist_ok=True)
 # Define custom reward functions
 def reward_from_exec_result(level, problem, exec_result):
     if exec_result.correctness:
-        try:
-            baseline_results = fetch_baseline_results(level, problem, HARDWARE)
-            speedup = baseline_results["mean"] / exec_result.runtime
-            return 0.3 + float(speedup)
-        except Exception as e:
-            print(f"Error fetching baseline results for level {level} problem {problem}: {e}")
-            return 0.3
+        baseline_results = fetch_baseline_results(level, problem, HARDWARE)
+        speedup = baseline_results["mean"] / exec_result.runtime
+        return 0.3 + float(speedup)
     else:
         return 0.0
 
@@ -66,9 +63,10 @@ def compute_score_batch(data_sources, solution_strs, ground_truths, extra_infos,
         if kernel_src is not None:
             write_kernel_to_disk(run_dir, level, problem, sample_id, kernel_src) # for debugging
 
-            if (level == 1 and torch_function_used(kernel_src)): #or (level == 2 and not is_generated_kernel_used(kernel_src)):
-                rewards[f"{level}_{problem}_{sample_id}"] = (0.0, "Torch function used")
-                exec_result = KernelExecResult(correctness=False, compiled=False, metadata={"other_error": "Torch function used"})
+            # if (level == 1 and torch_function_used(kernel_src)) or (level == 2 and not is_generated_kernel_used(kernel_src)):
+            if not is_generated_kernel_used(kernel_src):
+                rewards[f"{level}_{problem}_{sample_id}"] = (0.0, "Kernel not used")
+                exec_result = KernelExecResult(correctness=False, compiled=False, metadata={"other_error": "Kernel not used"})
                 write_eval_result_to_separate_file(level, problem, sample_id, exec_result, run_dir)
                 continue
 
