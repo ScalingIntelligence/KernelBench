@@ -10,6 +10,8 @@ import json
 from datasets import Dataset
 import pandas as pd
 
+from src.reward_hacking import is_generated_kernel_used
+
 from src.utils import read_file
 from src.prompt_constructor import prompt_base, prompt_bare
 
@@ -223,12 +225,7 @@ def get_eval_dataset():
     # return [(1, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_1] + [(2, problem) for problem in range(1, 101) if problem not in TRAIN_PROBLEM_IDS_LEVEL_2] # for now use level 2 for evaluation
  
 
-def construct_dataset(train=True):
-    if train:
-        dataset = get_train_dataset()
-    else:
-        dataset = get_eval_dataset()
-
+def construct_dataset(dataset):
     qa_dataset = []
     for (level, problem) in dataset:
         ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
@@ -278,8 +275,10 @@ def make_map_fn(split):
 
 
 def process_dataset():
-    train_dataset = construct_dataset(train=True)
-    eval_dataset = construct_dataset(train=False)
+    trainset = get_train_dataset()
+    evalset = get_eval_dataset()
+    train_dataset = construct_dataset(trainset)
+    eval_dataset = construct_dataset(evalset)
     train_dataset = train_dataset.map(make_map_fn('train'))
     eval_dataset = eval_dataset.map(make_map_fn('eval'))
 
@@ -305,6 +304,12 @@ def search_for_best_kernels(k):
                     for sample_id, eval_result in samples.items():
                         if "metr" in directory and sample_id == "0": continue
                         if eval_result["correctness"]: # initial filter for correct
+                            # check if kernel is used 
+                            kernel_path = os.path.join(RUNS_DIR, directory, f"level_{level}_problem_{problem}_sample_{sample_id}_kernel.py")
+                            kernel_src = read_file(kernel_path)
+                            is_kernel_used = is_generated_kernel_used(kernel_src)
+                            if not is_kernel_used:
+                                continue
                             eval_result["run_name"] = directory
                             best_k_kernels[problem].append(eval_result)
         # sort by runtime
@@ -338,7 +343,7 @@ def process_dataset_for_sft(k=1):
                 ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
                 question = prompt_base(ref_arch_src)
                 answer = "```python\n" + kernel_src + "\n```"
-                # answer = reasoning + "\n" + answer
+                answer = reasoning + "\n" + answer
                 if int(problem) in TRAIN_SET:
                     sft_dataset.append((question, answer, level, problem))
                 else:
@@ -353,12 +358,41 @@ def process_dataset_for_sft(k=1):
     df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_eval.parquet"))
     print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_eval.parquet')}")
 
+def get_correct_problems(run_dir):
+    eval_file_path = os.path.join(run_dir, "eval_results.json")
+    with open(eval_file_path, "r") as f:
+        eval_results = json.load(f)
+    correct_problems = []
+    for level, problems in eval_results.items():
+        for problem, samples in problems.items():
+            for sample_id, eval_result in samples.items():
+                if eval_result["correctness"]:
+                    if (level, problem) not in correct_problems:
+                        correct_problems.append((level, problem))
+    return correct_problems
 
 if __name__ == "__main__":
-    search_for_best_kernels(k=16)
-    process_dataset_for_sft(k=16)
-    # process_dataset()
-    # process_dataset_for_sft(k=1)
-    # process_dataset_for_sft(k=2)
-    # process_dataset_for_sft(k=3)
-    # process_dataset_for_sft(k=4)
+    run_dir = "runs/best_of_n_level1_Qwen2.5-Coder-7B-Instruct-SFT"
+    correct_problems = get_correct_problems(run_dir)
+    print(len(correct_problems))
+    run_dir = "runs/best_of_n_level2_Qwen2.5-Coder-7B-Instruct-SFT"
+    correct_problems += get_correct_problems(run_dir)
+    print(len(correct_problems))
+
+    train_dataset = construct_dataset(correct_problems)
+    train_dataset = train_dataset.map(make_map_fn('train'))
+    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset_correct.parquet"))
+    print(f"Train dataset saved to {os.path.join(KERNEL_BENCH_PATH, 'train_dataset_correct.parquet')}")
+
+    incorrect_problems = []
+    for level in [1, 2]:
+        for problem in range(1, 101):
+            if (level, problem) not in correct_problems:
+                incorrect_problems.append((level, problem))
+    incorrect_dataset = construct_dataset(incorrect_problems)
+    incorrect_dataset = incorrect_dataset.map(make_map_fn('eval'))
+    incorrect_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset_incorrect.parquet"))
+    print(f"Incorrect dataset saved to {os.path.join(KERNEL_BENCH_PATH, 'eval_dataset_incorrect.parquet')}")
+
+
+    
