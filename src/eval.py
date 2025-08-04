@@ -15,7 +15,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 import sys
 
-from . import utils
+from src import utils
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(

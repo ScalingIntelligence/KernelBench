@@ -9,8 +9,8 @@ Manages the directory created during runs.
 import os
 import json
 
-from .utils import read_file
-from .eval import check_metadata_serializable_all_types
+from src.utils import read_file
+from src.eval import check_metadata_serializable_all_types
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -107,7 +107,10 @@ def fetch_baseline_results(level: int, problem_id: int, hardware: str):
     baseline_path = os.path.join(REPO_TOP_DIR, "results", "timing", hardware, "baseline_time_torch.json")
     with open(baseline_path, 'r') as f:
         baseline_results = json.load(f)[f"level{str(level)}"]
-    
+
+    if isinstance(problem_id, str):
+        problem_id = int(problem_id)
+     
     for prob_name, results in baseline_results.items():
         if int(prob_name.split("_")[0]) == problem_id:
             return results
@@ -129,6 +132,7 @@ def write_eval_result_to_separate_file(level, problem, sample_id, exec_result, r
 
     with open(eval_result_path, "w") as f:
         json.dump(eval_result, f)
+
 
 
 ################################################################################
