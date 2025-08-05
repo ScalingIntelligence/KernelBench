@@ -13,6 +13,7 @@ import logging
 import torch
 import multiprocessing as mp
 from tqdm import tqdm
+import time
 
 from configs import parse_eval_server_args, RUNS_DIR
 from evaluation_utils import evaluate_single_sample_in_separate_process, KernelExecResult, deserialize_work_args
@@ -210,6 +211,7 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
         # Auto-detect request type: if request has a 'batch' key, it's a batch request
         if 'batch' in request and isinstance(request['batch'], list):
             # Batch mode: request['batch'] is a list of job dicts
+            start_time = time.time()
             job_list = request.get('batch', [])
             logging.info(f"Processing batch request with {len(job_list)} jobs")
             results = [None] * len(job_list)
@@ -239,6 +241,8 @@ def handle_client(client_socket: socket.socket, configs, gpu_manager: 'GPUDevice
                     threads.append(t)
                 for t in threads:
                     t.join()
+            end_time = time.time()
+            logging.info(f"Batch request completed in {end_time - start_time:.2f} seconds")
             response_data = pickle.dumps(results)
             client_socket.sendall(response_data)
             client_socket.shutdown(socket.SHUT_WR)

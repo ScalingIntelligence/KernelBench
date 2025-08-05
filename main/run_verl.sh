@@ -1,13 +1,13 @@
 set -x
 
-RUN_NAME="grpo_train_correct_Qwen2.5-Coder-7B-Instruct-SFT"
+RUN_NAME="grpo_train_small_Qwen2.5-Coder-7B-Instruct-SFT"
 MODEL="gyeongwk/Qwen2.5-Coder-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     algorithm.norm_adv_by_std_in_grpo=False \
-    data.train_files=$HOME/KernelBench/KernelBench/train_dataset_correct.parquet \
-    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset_incorrect.parquet \
+    data.train_files=$HOME/KernelBench/KernelBench/train_dataset_small.parquet \
+    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset_small.parquet \
     data.train_batch_size=8 \
     data.max_prompt_length=8192 \
     data.max_response_length=16384 \
@@ -33,7 +33,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.max_model_len=8192 \
-    actor_rollout_ref.rollout.temperature=0.8 \
+    actor_rollout_ref.rollout.temperature=0.6 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
@@ -53,7 +53,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.val_before_train=True \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=10 \
-    trainer.test_freq=10 \
+    trainer.save_freq=20 \
+    trainer.test_freq=20 \
     trainer.val_before_train=False \
-    trainer.total_epochs=10 $@
+    trainer.total_epochs=20 $@

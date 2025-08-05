@@ -122,11 +122,11 @@ def torch_function_used(code: str) -> bool:
             if isinstance(value, ast.Name):
                 if value.id in self.torch_aliases and not self.torch_used:
                     if node.attr not in self.torch_module_names:
-                        print(f"torch_used: {node.attr}")
+                        # print(f"torch_used: {node.attr}")
                         self.torch_used = True
                 if value.id in self.nn_aliases and not self.nn_used:
                     if node.attr not in self.nn_module_names:
-                        print(f"nn_used: {node.attr}")
+                        # print(f"nn_used: {node.attr}")
                         self.nn_used = True
             self.generic_visit(node)
 
@@ -138,11 +138,11 @@ def torch_function_used(code: str) -> bool:
                 if isinstance(value, ast.Name):
                     if value.id in self.torch_aliases and not self.torch_used:
                         if func.attr not in self.torch_module_names:
-                            print(f"torch_used: {func.attr}")
+                            # print(f"torch_used: {func.attr}")
                             self.torch_used = True
                     if value.id in self.nn_aliases and not self.nn_used:
                         if func.attr not in self.nn_module_names:
-                            print(f"nn_used: {func.attr}")
+                            # print(f"nn_used: {func.attr}")
                             self.nn_used = True
             self.generic_visit(node)
 
