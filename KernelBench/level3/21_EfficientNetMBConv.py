@@ -65,7 +65,7 @@ stride = 2
 expand_ratio = 6
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, 224, 224)]
+    return [torch.rand(batch_size, in_channels, 224, 224)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, expand_ratio]

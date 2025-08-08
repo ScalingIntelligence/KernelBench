@@ -82,7 +82,7 @@ width = 512
 features = 64
 # Test code for UNet
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, features]

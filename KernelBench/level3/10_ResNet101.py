@@ -119,7 +119,7 @@ layers = [3, 4, 23, 3]
 num_classes = 1000
 
 def get_inputs():
-    return [torch.randn(batch_size, 3, height, width)]
+    return [torch.rand(batch_size, 3, height, width)]
 
 def get_init_inputs():
     return [layers, num_classes]

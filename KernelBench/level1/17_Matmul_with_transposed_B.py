@@ -21,13 +21,13 @@ class Model(nn.Module):
         """
         return torch.matmul(A, B.T)
 
-M = 1024
-K = 4096
-N = 2048
+M = 1024 * 2
+K = 4096 * 2
+N = 2048 * 2
 
 def get_inputs():
-    A = torch.randn(M, K)
-    B = torch.randn(N, K)
+    A = torch.rand(M, K)
+    B = torch.rand(N, K)
     return [A, B]
 
 def get_init_inputs():

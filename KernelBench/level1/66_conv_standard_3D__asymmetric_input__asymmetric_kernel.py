@@ -32,16 +32,16 @@ class Model(nn.Module):
         return self.conv3d(x)
 
 # Test code
-batch_size = 16
+batch_size = 8
 in_channels = 3
 out_channels = 64
 kernel_size = (3, 5, 7)  # Asymmetric kernel size
 depth = 16
-height = 256
-width = 256
+height = 128
+width = 128
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, depth, height, width)
+    x = torch.rand(batch_size, in_channels, depth, height, width)
     return [x]
 
 def get_init_inputs():

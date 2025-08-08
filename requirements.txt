@@ -16,3 +16,4 @@ archon-ai
 einops
 boto3
 wandb
+dotenv

@@ -27,13 +27,13 @@ class Model(nn.Module):
         """
         return self.inorm(x)
 
-batch_size = 16
+batch_size = 112  # heavier workload
 features = 64
-dim1 = 256
-dim2 = 256
+dim1 = 512
+dim2 = 512
 
 def get_inputs():
-    x = torch.randn(batch_size, features, dim1, dim2)
+    x = torch.rand(batch_size, features, dim1, dim2)
     return [x]
 
 def get_init_inputs():

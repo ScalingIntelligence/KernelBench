@@ -36,11 +36,11 @@ class Model(nn.Module):
         return self.conv2d(x)
 
 # Test code
-batch_size = 16
-in_channels = 3
-out_channels = in_channels
+batch_size = 32
+in_channels = 128
+out_channels = 128
 kernel_size_h = 3
-kernel_size_w = 5
+kernel_size_w = 7
 width = 256
 height = 128
 stride_h = 1
@@ -52,7 +52,7 @@ dilation_w = 1
 groups = in_channels
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, height, width)
+    x = torch.rand(batch_size, in_channels, height, width)
     return [x]
 
 def get_init_inputs():

@@ -21,11 +21,11 @@ class Model(nn.Module):
         """
         return A * s
 
-M = 16384
-N = 4096
+M = 16384 * 4
+N = 4096 * 4
 
 def get_inputs():
-    A = torch.randn(M, N)
+    A = torch.rand(M, N)
     s = 3.14
     return [A, s]
 

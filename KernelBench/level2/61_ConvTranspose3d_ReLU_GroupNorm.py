@@ -27,13 +27,13 @@ class Model(nn.Module):
 batch_size = 16
 in_channels = 64
 out_channels = 128
-D, H, W = 8, 16, 16
+D, H, W = 32, 32, 32
 kernel_size = 3
 groups = 8
 bias = False
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, D, H, W)]
+    return [torch.rand(batch_size, in_channels, D, H, W)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, groups, bias]

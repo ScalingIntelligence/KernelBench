@@ -21,7 +21,7 @@ class Model(nn.Module):
         x = self.gelu(x)
         return x
 
-batch_size = 128
+batch_size = 32
 in_channels = 32
 out_channels = 64
 depth, height, width = 16, 32, 32
@@ -34,7 +34,7 @@ norm_shape = (out_channels,)
 pool_kernel_size = (2, 2, 2)
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, depth, height, width)]
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, output_padding, sum_weight, norm_shape, pool_kernel_size]

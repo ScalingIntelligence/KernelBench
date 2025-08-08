@@ -19,14 +19,14 @@ class Model(nn.Module):
         return x
 
 batch_size = 128
-in_channels = 3
-out_channels = 16
-depth, height, width = 16, 32, 32
+in_channels = 8
+out_channels = 64
+depth, height, width = 16, 64, 64
 kernel_size = 3
 sum_tensor_shape = (out_channels, 1, 1, 1)
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, depth, height, width)]
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, sum_tensor_shape]

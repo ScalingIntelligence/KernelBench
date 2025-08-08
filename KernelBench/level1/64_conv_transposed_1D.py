@@ -32,14 +32,15 @@ class Model(nn.Module):
         return self.conv1d_transpose(x)
 
 # Test code
-batch_size = 16
-in_channels = 64
-out_channels = 3
+batch_size = 64
+in_channels = 128
+out_channels = 128
 kernel_size = 3
-length = 128
+# much larger signal length for heavier workload
+length = 65536
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, length)
+    x = torch.rand(batch_size, in_channels, length)
     return [x]
 
 def get_init_inputs():

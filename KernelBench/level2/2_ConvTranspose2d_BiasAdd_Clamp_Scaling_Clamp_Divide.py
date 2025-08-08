@@ -21,9 +21,9 @@ class Model(nn.Module):
         return x
 
 batch_size = 128
-in_channels = 3
-out_channels = 16
-height, width = 32, 32
+in_channels  = 64  
+out_channels = 64  
+height = width = 128 
 kernel_size = 3
 stride = 2
 padding = 1
@@ -32,7 +32,7 @@ bias_shape = (out_channels, 1, 1)
 scaling_factor = 2.0
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor]

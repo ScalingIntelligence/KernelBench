@@ -31,13 +31,13 @@ class Model(nn.Module):
         return self.network(x)
 
 # Test code
-batch_size = 1
-input_size = 1000
-layer_sizes = [400, 800]
-output_size = 500
+batch_size = 128
+input_size = 16384
+layer_sizes = [16384, 16384]
+output_size = 8192
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    return [torch.rand(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, layer_sizes, output_size]

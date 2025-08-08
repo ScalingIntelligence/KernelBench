@@ -24,8 +24,8 @@ class Model(nn.Module):
 M = 4096
 
 def get_inputs():
-    A = torch.randn(M, M)
-    B = torch.randn(M, M)
+    A = torch.rand(M, M)
+    B = torch.rand(M, M)
     A = torch.tril(A)
     B = torch.tril(B)
     return [A, B]

@@ -34,7 +34,7 @@ image_height = 128
 image_width = 128
 
 def get_inputs():
-    return [torch.randn(batch_size, num_channels, image_height, image_width)]
+    return [torch.rand(batch_size, num_channels, image_height, image_width)]
 
 def get_init_inputs():
     return [embed_dim, num_heads]

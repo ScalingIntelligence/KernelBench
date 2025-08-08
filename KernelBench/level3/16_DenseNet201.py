@@ -120,7 +120,7 @@ num_classes = 10
 height, width = 224, 224  # Standard input size for DenseNet
 
 def get_inputs():
-    return [torch.randn(batch_size, 3, height, width)]
+    return [torch.rand(batch_size, 3, height, width)]
 
 def get_init_inputs():
     return [32, num_classes]

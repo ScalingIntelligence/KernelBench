@@ -27,13 +27,13 @@ class Model(nn.Module):
         """
         return torch.argmin(x, dim=self.dim)
 
-batch_size = 16
-dim1 = 256
-dim2 = 256
+batch_size = 128
+dim1 = 4096
+dim2 = 4095
 dim = 1
 
 def get_inputs():
-    x = torch.randn(batch_size, dim1, dim2)
+    x = torch.rand(batch_size, dim1, dim2)
     return [x]
 
 def get_init_inputs():

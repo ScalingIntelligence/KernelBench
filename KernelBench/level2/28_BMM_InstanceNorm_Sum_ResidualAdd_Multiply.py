@@ -25,12 +25,12 @@ class Model(nn.Module):
         x = x * y
         return x
 
-batch_size = 128
-in_features = 64
-out_features = 128
+batch_size = 1024  # Increased batch size
+in_features = 8192  # Increased input features
+out_features = 8192  # Increased output features
 
 def get_inputs():
-    return [torch.randn(batch_size, in_features), torch.randn(batch_size, out_features)]
+    return [torch.rand(batch_size, in_features), torch.rand(batch_size, out_features)]
 
 def get_init_inputs():
     return [in_features, out_features]
