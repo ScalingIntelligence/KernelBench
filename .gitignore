@@ -2,6 +2,7 @@
 results/*
 !results/timing/
 runs/*
+runs_v0.0/*
 cache/*
 error_log.txt
 
