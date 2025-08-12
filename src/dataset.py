@@ -205,9 +205,9 @@ GOOD_PROBLEM_IDS_LEVEL_1 = [1, 7, 9, 11, 12, 17, 19, 20, 21, 28, 29, 30, 44, 45,
 GOOD_PROBLEM_IDS_LEVEL_2 = [4, 12, 16, 25, 31, 35, 40, 53, 54, 57, 64, 69, 70, 71, 76, 82, 90, 93, 98] 
 
 # Set Train and Test sets
-TRAIN_PROBLEM_IDS_LEVEL_1 = TRAIN_PROBLEM_IDS_LEVEL_1 # set to Kevin's train set
+TRAIN_PROBLEM_IDS_LEVEL_1 = KEVIN_TRAIN_PROBLEM_IDS_LEVEL_1 # set to Kevin's train set
 TEST_PROBLEM_IDS_LEVEL_1 = [i for i in range(1, 101) if i not in TRAIN_PROBLEM_IDS_LEVEL_1]
-TRAIN_PROBLEM_IDS_LEVEL_2 = TRAIN_PROBLEM_IDS_LEVEL_2 # set to Kevin's train set
+TRAIN_PROBLEM_IDS_LEVEL_2 = KEVIN_TRAIN_PROBLEM_IDS_LEVEL_2 # set to Kevin's train set
 TEST_PROBLEM_IDS_LEVEL_2 = [i for i in range(1, 101) if i not in TRAIN_PROBLEM_IDS_LEVEL_2]
 
 def check_in_train_dataset(level: int, problem_id: int) -> bool:
@@ -286,8 +286,8 @@ def process_dataset():
     train_dataset = train_dataset.map(make_map_fn('train'))
     eval_dataset = eval_dataset.map(make_map_fn('eval'))
 
-    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset.parquet"))
-    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset.parquet"))
+    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset_kevin.parquet"))
+    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset_kevin.parquet"))
 
 
 def search_for_best_kernels(k):
@@ -401,3 +401,4 @@ def process_correct_probems():
 if __name__ == "__main__":
     search_for_best_kernels(16)
     process_dataset_for_sft(16)
+    # process_dataset()
