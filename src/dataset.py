@@ -198,16 +198,16 @@ level3_representative_subset_problem_ids = [1, 5, 8, 11, 20, 33, 38, 43]
 TRAIN_PROBLEM_IDS_LEVEL_1 = [1, 4, 6, 8, 11, 12, 13, 15, 21, 22, 25, 27, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40, 46, 47, 49, 50, 52, 54, 56, 58, 59, 62, 63, 64, 65, 71, 72, 73, 74, 78, 79, 80, 81, 82, 83, 84, 85, 87, 91, 96]
 KEVIN_TRAIN_PROBLEM_IDS_LEVEL_1 = [1, 2, 3, 4, 5, 6, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 30, 31, 32, 33, 35, 36, 37, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
 
-TRAIN_PROBLEM_IDS_LEVEL_2 = [1, 6, 7, 8, 11, 14, 15, 20, 25, 26, 27, 33, 36, 38, 42, 43, 44, 45, 47, 49, 51, 53, 55, 58, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 79, 81, 84, 85, 88, 89, 90, 96, 98, 99]
+TRAIN_PROBLEM_IDS_LEVEL_2 = [1, 6, 7, 8, 12, 14, 15, 20, 25, 26, 27, 34, 36, 38, 42, 43, 44, 45, 47, 49, 51, 53, 55, 58, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 79, 81, 84, 85, 88, 89, 90, 96, 98, 99]
 KEVIN_TRAIN_PROBLEM_IDS_LEVEL_2 = [1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
 
 GOOD_PROBLEM_IDS_LEVEL_1 = [1, 7, 9, 11, 12, 17, 19, 20, 21, 28, 29, 30, 44, 45, 55, 88] 
 GOOD_PROBLEM_IDS_LEVEL_2 = [4, 12, 16, 25, 31, 35, 40, 53, 54, 57, 64, 69, 70, 71, 76, 82, 90, 93, 98] 
 
 # Set Train and Test sets
-TRAIN_PROBLEM_IDS_LEVEL_1 = GOOD_PROBLEM_IDS_LEVEL_1 # set to Kevin's train set
+TRAIN_PROBLEM_IDS_LEVEL_1 = TRAIN_PROBLEM_IDS_LEVEL_1 # set to Kevin's train set
 TEST_PROBLEM_IDS_LEVEL_1 = [i for i in range(1, 101) if i not in TRAIN_PROBLEM_IDS_LEVEL_1]
-TRAIN_PROBLEM_IDS_LEVEL_2 = GOOD_PROBLEM_IDS_LEVEL_2 # set to Kevin's train set
+TRAIN_PROBLEM_IDS_LEVEL_2 = TRAIN_PROBLEM_IDS_LEVEL_2 # set to Kevin's train set
 TEST_PROBLEM_IDS_LEVEL_2 = [i for i in range(1, 101) if i not in TRAIN_PROBLEM_IDS_LEVEL_2]
 
 def check_in_train_dataset(level: int, problem_id: int) -> bool:
@@ -286,8 +286,8 @@ def process_dataset():
     train_dataset = train_dataset.map(make_map_fn('train'))
     eval_dataset = eval_dataset.map(make_map_fn('eval'))
 
-    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset_small.parquet"))
-    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset_small.parquet"))
+    train_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "train_dataset.parquet"))
+    eval_dataset.to_parquet(os.path.join(KERNEL_BENCH_PATH, "eval_dataset.parquet"))
 
 
 def search_for_best_kernels(k):
@@ -330,7 +330,7 @@ def process_dataset_for_sft(k=1):
     sft_dataset = []
     sft_eval_dataset = []
     for level in [1, 2]:
-        TRAIN_SET = TRAIN_PROBLEM_IDS_LEVEL_1 if level == 1 else TRAIN_PROBLEM_IDS_LEVEL_2
+        TRAIN_SET = KEVIN_TRAIN_PROBLEM_IDS_LEVEL_1 if level == 1 else KEVIN_TRAIN_PROBLEM_IDS_LEVEL_2
         with open(os.path.join(KERNEL_BENCH_PATH, f"best_k_kernels_level{level}.json"), "r") as f:
             best_k_kernels = json.load(f)
         for problem, eval_results in best_k_kernels.items():
@@ -356,11 +356,11 @@ def process_dataset_for_sft(k=1):
     print(f"Collected {len(sft_dataset)} train samples and {len(sft_eval_dataset)} eval samples")
     
     df = Dataset.from_pandas(pd.DataFrame(sft_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_train.parquet"))
-    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_train.parquet')}")
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_train.parquet"))
+    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_train.parquet')}")
     df = Dataset.from_pandas(pd.DataFrame(sft_eval_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_best_{k}_eval.parquet"))
-    print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_best_{k}_eval.parquet')}")
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_eval.parquet"))
+    print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_eval.parquet')}")
 
 def get_correct_problems(run_dir):
     eval_file_path = os.path.join(run_dir, "eval_results.json")
@@ -399,4 +399,5 @@ def process_correct_probems():
     print(f"Incorrect dataset saved to {os.path.join(KERNEL_BENCH_PATH, 'eval_dataset_incorrect.parquet')}")
 
 if __name__ == "__main__":
-    process_dataset()
+    search_for_best_kernels(16)
+    process_dataset_for_sft(16)
