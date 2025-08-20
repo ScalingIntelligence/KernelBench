@@ -276,7 +276,7 @@ def prompt_main(ref_arch_src: str, config, triton=False) -> str:
             raise ValueError(f"Invalid prompt type: {config.prompt}")
 
 
-def exec_result_to_exeution_feedback(exec_result: dict) -> str:
+def exec_result_to_exeution_feedback(exec_result: dict, profiler_info=True) -> str:
     if isinstance(exec_result, KernelExecResult):
         metadata = exec_result.metadata
         correctness = exec_result.correctness
@@ -304,7 +304,7 @@ Here is your Evaluation Result:
 Your kernel executed successfully and produced the correct output.
 Here is your wall clock time: {runtime} milliseconds.
 
-{metadata["profiler_info"]}
+{metadata["profiler_info"] if profiler_info else ""}
 """
 
     return evaluation_feedback
