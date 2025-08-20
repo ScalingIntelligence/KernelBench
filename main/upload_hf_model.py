@@ -10,7 +10,7 @@ import os
 import argparse
 
 def main(model_name, source_dir, target_dir, hf_name):
-    tokenizer = AutoTokenizer.from_pretrained(source_dir, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(

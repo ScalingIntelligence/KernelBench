@@ -347,7 +347,7 @@ def process_dataset_for_sft(k=1):
                 ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(level, problem, "local")
                 question = prompt_base(ref_arch_src)
                 answer = "```python\n" + kernel_src + "\n```"
-                answer = reasoning + "\n" + answer
+                # answer = reasoning + "\n" + answer
                 if int(problem) in TRAIN_SET:
                     sft_dataset.append((question, answer, level, problem))
                 else:
@@ -356,11 +356,11 @@ def process_dataset_for_sft(k=1):
     print(f"Collected {len(sft_dataset)} train samples and {len(sft_eval_dataset)} eval samples")
     
     df = Dataset.from_pandas(pd.DataFrame(sft_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_train.parquet"))
-    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_train.parquet')}")
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_train_best_{k}.parquet"))
+    print(f"SFT dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_train_best_{k}.parquet')}")
     df = Dataset.from_pandas(pd.DataFrame(sft_eval_dataset, columns=["question", "answer", "level", "problem"]))
-    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_eval.parquet"))
-    print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_eval.parquet')}")
+    df.to_parquet(os.path.join(KERNEL_BENCH_PATH, f"sft_dataset_eval_best_{k}.parquet"))
+    print(f"SFT eval dataset saved to {os.path.join(KERNEL_BENCH_PATH, f'sft_dataset_eval_best_{k}.parquet')}")
 
 def get_correct_problems(run_dir):
     eval_file_path = os.path.join(run_dir, "eval_results.json")
@@ -399,6 +399,6 @@ def process_correct_probems():
     print(f"Incorrect dataset saved to {os.path.join(KERNEL_BENCH_PATH, 'eval_dataset_incorrect.parquet')}")
 
 if __name__ == "__main__":
-    search_for_best_kernels(16)
-    process_dataset_for_sft(16)
+
+    search_for_best_kernels(8)
     # process_dataset()
