@@ -19,8 +19,8 @@ from src.reward_hacking import is_generated_kernel_used, torch_function_used
 # TODO: change config before each run
 # RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
-RUN_NAME = "grpo_train_small_Qwen2.5-Coder-7B-Instruct-SFT"
-EVAL_SERVER_HOST = "babel-15-32"
+RUN_NAME = "grpo_single_correct_Qwen2.5-Coder-7B-Instruct-SFT"
+EVAL_SERVER_HOST = "babel-11-21"
 EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"

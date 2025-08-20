@@ -32,6 +32,7 @@ METHOD_TO_NAME = {
     "best_of_n": "Best-of-N",
     "IR": "Iterative Refinement",
     "metr": "METR",
+    "IR_no_profiler": "IR (No Profiler Info)",
 }
 
 

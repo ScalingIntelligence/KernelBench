@@ -17,9 +17,9 @@ from main.evaluation_utils import send_evaluation_request, EvaluationWorkArgs
 
 # RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
-RUN_NAME = "grpo_train_multi_turn_Qwen2.5-7B-Instruct-SFT"
-EVAL_SERVER_HOST = "shire-1-10"
-EVAL_SERVER_PORT = 8085
+RUN_NAME = "grpo_train_multi_turn_Qwen2.5-Coder-7B-Instruct-SFT"
+EVAL_SERVER_HOST = "babel-11-21"
+EVAL_SERVER_PORT = 8083
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"
 

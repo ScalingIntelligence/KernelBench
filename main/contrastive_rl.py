@@ -21,6 +21,7 @@ from src.utils import extract_last_code, read_file
 from src.eval import KernelExecResult
 from src.reward_hacking import is_generated_kernel_used, torch_function_used
 from src.dataset import fetch_ref_arch_from_level_problem_id
+from src.prompt_constructor import prompt_base
 
 from main.evaluation_utils import send_batch_evaluation_request, EvaluationWorkArgs, serialize_work_args
 
@@ -30,9 +31,9 @@ from main.evaluation_utils import send_batch_evaluation_request, EvaluationWorkA
 # TODO: change config before each run
 # RUNS_DIR = "/data/user_data/gyeongwk/KernelBench/grpo/runs"
 RUNS_DIR = os.path.join(REPO_ROOT, "runs")
-RUN_NAME = "contrastive_rl_Qwen2.5-Coder-7B-Instruct"
-EVAL_SERVER_HOST = "babel-15-32"
-EVAL_SERVER_PORT = 8083
+RUN_NAME = "grpo_contrastive_rl_correct_Qwen2.5-Coder-7B-Instruct-SFT"
+EVAL_SERVER_HOST = "babel-11-9"
+EVAL_SERVER_PORT = 8085
 NUM_GENERATIONS = 8
 HARDWARE = "A6000_babel"
 
@@ -43,33 +44,22 @@ DEP_RUNS_DIR = os.path.join(REPO_ROOT, "runs_v0.0")
 
 # Set up database of correct kernels
 def construct_database():
-    best_k_path = os.path.join(REPO_ROOT, "KernelBench", "best_k_kernels_level1.json")
     database = {"1": {}, "2": {}}
-    with open(best_k_path, "r") as f:
-        level1_kernels = json.load(f)
-        for prob_id, kernels in level1_kernels.items():
-            baseline_time = fetch_baseline_results(1, prob_id, HARDWARE)["mean"]
+    for level in [1, 2]:
+        best_k_path = os.path.join(REPO_ROOT, "KernelBench", f"best_k_kernels_level{level}.json")
+        with open(best_k_path, "r") as f:
+            level_kernels = json.load(f)
+        for prob_id, kernels in level_kernels.items():
+            baseline_time = fetch_baseline_results(level, prob_id, HARDWARE)["mean"]
             data = []
             for kernel in kernels:
-                kernel_path = os.path.join(DEP_RUNS_DIR, kernel["run_name"], f"level_1_problem_{prob_id}_sample_{kernel['sample_id']}_kernel.py")
+                kernel_path = os.path.join(DEP_RUNS_DIR, kernel["run_name"], f"level_{level}_problem_{prob_id}_sample_{kernel['sample_id']}_kernel.py")
                 kernel_src = read_file(kernel_path)
                 data.append({"speedup": baseline_time / kernel["runtime"], "kernel_src": kernel_src})
-            database["1"][prob_id] = data
+            database[str(level)][prob_id] = data
     
-    best_k_path = os.path.join(REPO_ROOT, "KernelBench", "best_k_kernels_level2.json")
-    with open(best_k_path, "r") as f:
-        level2_kernels = json.load(f)
-        for prob_id, kernels in level2_kernels.items():
-            baseline_time = fetch_baseline_results(2, prob_id, HARDWARE)["mean"]
-            data = []
-            for kernel in kernels:
-                kernel_path = os.path.join(DEP_RUNS_DIR, kernel["run_name"], f"level_2_problem_{prob_id}_sample_{kernel['sample_id']}_kernel.py")
-                kernel_src = read_file(kernel_path)
-                data.append({"speedup": baseline_time / kernel["runtime"], "kernel_src": kernel_src})
-            database["2"][prob_id] = data
-
     with open(DATABASE_PATH, "w") as f:
-        json.dump(database, f)
+        json.dump(database, f, indent=2)
 
 
 def sample_from_database(level, problem):
@@ -88,9 +78,17 @@ def sample_from_database(level, problem):
     else:
         weights = [s / total_speedup for s in speedups]
 
+    # Deal with edge cases
+    if len(kernels) == 0:
+        print(f"[DB] Problem {problem} has 0 correct kernels. Using reference.")
+        ref_kernel = fetch_ref_arch_from_level_problem_id(level, problem, "local")
+        return ref_kernel, 1.0, ref_kernel, 1.0
+
+    if len(kernels) == 1:
+        print(f"[DB] Problem {problem} has 1 correct kernel. Duplicating.")
+        return kernels[0]["kernel_src"], kernels[0]["speedup"], kernels[0]["kernel_src"], kernels[0]["speedup"]
+
     # Sample 2 distinct indices without replacement, weighted by speedup
-    if len(kernels) < 2:
-        raise ValueError("Not enough kernels in database to sample 2 distinct kernels.")
     indices = random.choices(range(len(kernels)), weights=weights, k=2)
     # Ensure distinctness
     while indices[0] == indices[1]:
