@@ -3,7 +3,7 @@ import os
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS_DIR = os.path.join(REPO_TOP_DIR, "runs")
-KERNEL_EVAL_BUILD_DIR = os.path.join(REPO_TOP_DIR, "cache")
+KERNEL_EVAL_BUILD_DIR = "/data/user_data/gyeongwk/KernelBench/cache"
 
 
 def add_inference_args(parser, rl_training=False):

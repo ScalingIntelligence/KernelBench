@@ -24,6 +24,7 @@ REPO_TOP_PATH = os.path.abspath(
     )
 )
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+KERNEL_EVAL_BUILD_DIR = "/data/user_data/gyeongwk/KernelBench/cache"
 
 
 def fetch_kernel_from_database(
@@ -107,11 +108,11 @@ def load_original_model_and_inputs(
         print(f"Failed to load model due to {e}. Trying to import from the file directly.")
         if "." in model_name:
             model_name = model_name.split(".")[0]
-        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_name}.py")
+        tmp_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, "tmp", f"model_{model_name}.py")
         os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
         with open(tmp_dir, "w") as f:
             f.write(model_original_src)
-        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
+        exec("import sys; sys.path.append('" + KERNEL_EVAL_BUILD_DIR + "/tmp')", context)
         exec(f"from model_{model_name} import Model, get_init_inputs, get_inputs", context)
         Model, get_init_inputs, get_inputs = context["Model"], context["get_init_inputs"], context["get_inputs"]
         print(f"Successfully loaded model from the file directly: {tmp_dir}") 
@@ -150,11 +151,11 @@ def load_custom_model(
         print(f"Failed to load model. Trying to import from the file directly.")
         if "." in model_custom_name:
             model_custom_name = model_custom_name.split(".")[0]
-        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_custom_name}.py")
+        tmp_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, "tmp", f"model_{model_custom_name}.py")
         os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
         with open(tmp_dir, "w") as f:
             f.write(model_custom_src)
-        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
+        exec("import sys; sys.path.append('" + KERNEL_EVAL_BUILD_DIR + "/tmp')", context)
         exec(f"from model_{model_custom_name} import ModelNew", context)
         ModelNew = context["ModelNew"]
         print(f"Successfully loaded model from the file directly: {tmp_dir}") 
