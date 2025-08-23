@@ -47,6 +47,7 @@ def patch(eval_results, dataset):
                 "runtime": -1.0, 
                 "runtime_stats": {}
             }
+        eval_results = dict(sorted(eval_results.items(), key=lambda x: int(x[0])))
     return eval_results
 
 def analyze_greedy_eval(run_name, hardware, baseline, level):
