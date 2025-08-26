@@ -124,7 +124,7 @@ def query_server(
         case "deepseek":
             client = OpenAI(
                 api_key=DEEPSEEK_KEY,
-                base_url="https://api.deepseek.com",
+                base_url="http://llms-se.baidu-int.com:8200",
                 timeout=10000000,
                 max_retries=3,
             )

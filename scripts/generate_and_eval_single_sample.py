@@ -39,11 +39,11 @@ class EvalConfig(Config):
         self.eval_mode = "local"
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
-        self.gpu_arch = ["Ada"]
+        self.gpu_arch = ["Hopper"]
 
         # Inference config
         self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
+        self.model_name = "deepseek-chat"
         self.max_tokens = 4096
         self.temperature = 0.0
 
@@ -89,6 +89,8 @@ def main(config: EvalConfig):
         
     # Problem Checks
     num_problems = len(curr_level_dataset)
+    print(f"Dataset: {curr_level_dataset}")
+    
     print(f"Number of problems in Level {config.level}: {num_problems}")
     print(f"Start Generation + Evaluation for Level {config.level} Problem {config.problem_id}")
 
@@ -135,6 +137,7 @@ def main(config: EvalConfig):
     # Query server with constructed prompt
     custom_cuda = inference_server(custom_cuda_prompt)
     custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    print(custom_cuda)
     # check LLM is able to generate custom CUDA code
     assert custom_cuda is not None, "Custom CUDA code generation failed"
     
