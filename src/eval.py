@@ -467,14 +467,13 @@ def eval_kernel_against_ref(
                 model_new = custom_model.cuda(device=device)
                 torch.cuda.synchronize(device=device)
 
-                elapsed_times, profiler_info = time_execution_with_cuda_event(
+                runtime_stats, profiler_info = time_execution_with_cuda_event(
                     model_new,
                     *inputs,
                     num_trials=num_perf_trials,
                     verbose=verbose,
                     device=device,
                 )
-                runtime_stats = get_timing_stats(elapsed_times, device=device)
 
                 if verbose:
                     print(f"[Eval] Performance Stats: {runtime_stats}")
@@ -555,14 +554,13 @@ def eval_reference_kernel(
         model = original_model.cuda(device=device)
         torch.cuda.synchronize(device=device)
 
-        elapsed_times, profiler_info = time_execution_with_cuda_event(
+        runtime_stats, profiler_info = time_execution_with_cuda_event(
             model,
             *inputs,
             num_trials=num_perf_trials,
             verbose=verbose,
             device=device,
         )
-        runtime_stats = get_timing_stats(elapsed_times, device=device)
 
         if verbose:
             print(f"[Eval] Performance Stats: {runtime_stats}")
@@ -655,20 +653,18 @@ def time_execution_with_cuda_event(
 
         # Calculate the elapsed time in milliseconds
         elapsed_time_ms = start_event.elapsed_time(end_event)
-        # if verbose:
-        #     print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
         elapsed_times.append(elapsed_time_ms)
+
+    runtime_stats = get_timing_stats(elapsed_times, device=device)
 
     # Record profiler information
     with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA], record_shapes=True) as prof:
         kernel_fn(*args)
-        torch.cuda.synchronize(device=device)
+    torch.cuda.synchronize(device=device)
 
-    profiler_info = prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10)
-    if verbose:
-        print(f"[Profiling] Profiler Info: \n{profiler_info}")
+    profiler_info = extract_profiler_info(prof, device=device, verbose=verbose)
 
-    return elapsed_times, profiler_info
+    return runtime_stats, profiler_info
 
 
 def run_and_check_correctness(
@@ -872,6 +868,19 @@ def fetch_baseline_time(
     problem_name = dataset[problem_id].split("/")[-1]
     baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
+
+
+def extract_profiler_info(prof: torch.profiler.profile, device: torch.device = None, verbose: bool = False) -> dict:
+    """
+    Extract timing statistics from a profiler
+    """
+    # Extract the total run time of each trial as a list of ints (milliseconds) for both CUDA and CPU
+    # Only steps after warmup are profiled, so we only need to process those steps
+
+    events = prof.key_averages()
+    max_event_key = max(events, key=lambda x: x.device_time_total).key
+    profiler_info = f"Function {max_event_key} took the most time."
+    return profiler_info
 
 
 def get_timing_stats(elapsed_times: list[float], device: torch.device = None) -> dict:

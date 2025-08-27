@@ -29,10 +29,14 @@ MODEL_TO_NAME = {
 
 METHOD_TO_NAME = {
     "base": "Base",
+    "base_rules": "Base (with rules)",
     "best_of_n": "Best-of-N",
+    "best_of_n_rules": "Best-of-N (with rules)",
     "IR": "Iterative Refinement",
+    "IR_rules": "Iterative Refinement (with rules)",
     "metr": "METR",
     "IR_no_profiler": "IR (No Profiler Info)",
+    "IR_profiler": "IR (simple profiler info)"
 }
 
 

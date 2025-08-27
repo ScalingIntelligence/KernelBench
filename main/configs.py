@@ -163,3 +163,18 @@ def parse_eval_server_args():
     args = parser.parse_args()
     args.method = "base"
     return args
+
+
+def parse_autorule_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--_tags", type=str, default="test_autorule")
+
+    parser.add_argument("--test", action="store_true")
+
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-7B-Instruct")
+    add_inference_args(parser)
+
+    add_logging_args(parser)
+
+    args = parser.parse_args()
+    return args

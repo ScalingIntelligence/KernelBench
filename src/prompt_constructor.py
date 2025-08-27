@@ -111,7 +111,7 @@ def prompt_bare(ref_arch_src: str, triton=False) -> str:
 
 
 def prompt_with_one_example(
-    arc_src: str, example_arch_src: str, example_new_arch_src: str, triton=False
+    arc_src: str, example_arch_src: str, example_new_arch_src: str, triton=False, include_rules=False
 ) -> str:
     prompt = get_problem_statement(triton)
 
@@ -133,11 +133,51 @@ def prompt_with_one_example(
 {arc_src}
 ```
     """
+    
+    if include_rules:
+        prompt += f"""Here are some good practices for writing CUDA kernels:
+- The kernel uses loop unrolling via #pragma unroll to reduce loop overhead and improve instruction-level parallelism.
+- The kernel omits boundary checks when input dimensions are multiples of tile size to reduce branch instructions.
+- The kernel specializes for specific data types to enable compiler optimizations rather than using templated dispatch.
+- The kernel optimizes tile sizes to balance data reuse and shared memory usage per block.
+- The kernel employs register blocking/sub-tiling to increase arithmetic intensity.
+- The kernel utilizes shared memory padding and transposed access patterns to avoid bank conflicts.
+- The kernel ensures coalesced global memory access patterns for efficient data loading/storing.
+- The kernel uses thread block configurations that optimize occupancy and resource utilization.
+- The kernel applies __restrict__ qualifiers to pointers to enable aggressive compiler optimizations.
+- The kernel increases per-thread workload through submatrix computation to reduce total threads needed.
+- The kernel is compiled with high optimization flags (-O3) and --use_fast_math for aggressive compiler optimizations.
+- The kernel structures grid dimensions to prioritize spatial locality and memory coalescing.
+- The kernel uses vectorized memory operations (e.g., float4) to maximize memory bus utilization.
+- The kernel minimizes global memory writes by accumulating results locally and writing once.
+- The kernel organizes shared memory access patterns to enable conflict-free indexing.
+- The kernel leverages hardware features like tensor cores and read-only data cache (__ldg).
+- The kernel avoids warp divergence through branchless operations and minimized conditional checks.
+- The kernel employs hierarchical reduction strategies using warp shuffles and shared memory.
+- The kernel maintains numerical stability through optimized mathematical approximations.
+- The kernel ensures tensor contiguity for optimal memory access patterns.
+- The kernel uses power-of-two thread block sizes aligned with warp size (32) for occupancy.
+- The kernel fuses multiple operations into single kernels to reduce launch overhead.
+- The kernel optimizes index calculations to avoid expensive division/modulo operations.
+- The kernel balances register usage and occupancy through workload distribution.
+- The kernel employs grid-stride loops to handle arbitrary input sizes efficiently.
+- The kernel uses shared memory tiling to reduce global memory accesses.
+- The kernel minimizes synchronization overhead through warp-centric programming.
+- The kernel processes multiple elements per thread to improve arithmetic intensity.
+- The kernel optimizes for L1/L2 cache utilization through memory access patterns.
+- The kernel employs constant propagation and precomputed values for runtime efficiency
+- The kernel uses hardware-optimized math functions (e.g., rsqrtf, __expf) with fast math flags.
+- The kernel avoids atomic operations through localized reductions and partial sums.
+- The kernel structures memory layouts to match execution patterns for spatial locality.
+- The kernel separates vectorized processing from edge cases to minimize branch divergence.
+- The kernel leverages compiler-driven optimizations through const qualifiers and inlinine.
+"""
+
     prompt += get_problem_instruction(triton)
     return prompt
 
 
-def prompt_base(ref_arch_src: str, triton=False) -> str:
+def prompt_base(ref_arch_src: str, triton=False, include_rules=False) -> str:
     """
     Using prompt example (an element-wise addition) for prompt templates
     The most basic form of example just to show LLM the task and the expected output format
@@ -170,7 +210,7 @@ def prompt_base(ref_arch_src: str, triton=False) -> str:
     example_arch = read_file(example_arch_path)
     example_new_arch = read_file(example_new_arch_path)
 
-    return prompt_with_one_example(arch, example_arch, example_new_arch, triton)
+    return prompt_with_one_example(arch, example_arch, example_new_arch, triton, include_rules=include_rules)
 
 
 def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu", triton=False) -> str:
@@ -269,7 +309,7 @@ Here is an example architecture:\n\n
 def prompt_main(ref_arch_src: str, config, triton=False) -> str:
     match config.prompt:
         case "regular":
-            return prompt_base(ref_arch_src, triton)
+            return prompt_base(ref_arch_src, triton, include_rules=("rules" in config.run_name))
         case "cot":
             return prompt_cot(ref_arch_src, cot_example="ex_fuse_gelu", triton=triton)
         case _:
@@ -327,8 +367,8 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     return prompt
 
 
-def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]], triton=False) -> str:
-    prompt = prompt_base(ref_arch_src, triton)
+def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]], triton=False, config=None) -> str:
+    prompt = prompt_base(ref_arch_src, triton, include_rules=("rules" in config.run_name))
 
     for kernel_src, exec_result in history:
 
@@ -397,7 +437,7 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: s
         history.append((kernel_src, exec_result))
     
     # Construct prompt
-    prompt = prompt_refinement_from_history(ref_arch_src, history, triton)
+    prompt = prompt_refinement_from_history(ref_arch_src, history, triton, config)
     
     return prompt
 
