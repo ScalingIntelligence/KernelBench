@@ -1,0 +1,112 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 12.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_mult_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_multiply_scalar_kernel(const float* input, float scalar, float* output, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        output[idx] = input[idx] * scalar;
+    }
+}
+
+torch::Tensor fused_multiply_scalar_cuda(torch::Tensor x, float scalar) {
+    auto output = torch::empty_like(x);
+    int num_elements = x.numel();
+    
+    const int threads_per_block = 256;
+    int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    fused_multiply_scalar_kernel<<<num_blocks, threads_per_block>>>(
+        x.data_ptr<float>(),
+        scalar,
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_mult_cpp_source = "torch::Tensor fused_multiply_scalar_cuda(torch::Tensor x, float scalar);"
+
+fused_mult = load_inline(
+    name='fused_mult',
+    cpp_sources=fused_mult_cpp_source,
+    cuda_sources=fused_mult_source,
+    functions=['fused_multiply_scalar_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.fused_mult = fused_mult
+
+    def forward(self, x: torch.Tensor, s: float) -> torch.Tensor:
+        return self.fused_mult.fused_multiply_scalar_cuda(x.contiguous(), s)
+```
+
+Kernel 2 (runtime: 12.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+scalar_mult_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void scalar_mult_kernel(const float* A, float s, float* C, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        C[idx] = A[idx] * s;
+    }
+}
+
+torch::Tensor scalar_mult_cuda(torch::Tensor A, float s) {
+    int64_t size = A.numel();
+    torch::Tensor C = torch::empty_like(A);
+    
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    
+    scalar_mult_kernel<<<num_blocks, block_size>>>(
+        A.data_ptr<float>(),
+        s,
+        C.data_ptr<float>(),
+        size
+    );
+    
+    return C;
+}
+"""
+
+scalar_mult_cpp_source = "torch::Tensor scalar_mult_cuda(torch::Tensor A, float s);"
+
+scalar_mult = load_inline(
+    name='scalar_mult',
+    cpp_sources=scalar_mult_cpp_source,
+    cuda_sources=scalar_mult_source,
+    functions=['scalar_mult_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.scalar_mult = scalar_mult
+
+    def forward(self, A: torch.Tensor, s: float) -> torch.Tensor:
+        return self.scalar_mult.scalar_mult_cuda(A.contiguous(), s)
+```

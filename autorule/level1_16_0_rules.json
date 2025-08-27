@@ -1,0 +1,5 @@
+[
+  "The kernel uses coalesced global memory access for loading matrix B into shared memory.",
+  "The kernel avoids non-coalesced global memory access patterns by ensuring consecutive threads access consecutive memory addresses during shared memory loading.",
+  "The kernel minimizes shared memory bank conflicts during computation by aligning thread access patterns with shared memory bank organization."
+]

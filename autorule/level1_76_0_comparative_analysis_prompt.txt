@@ -1,0 +1,282 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 725.0 ms):
+```
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.cpp_extension import load_inline
+import math
+
+# Custom Conv1D CUDA kernel implementation
+conv1d_cuda_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void conv1d_kernel(
+    const float* input,
+    const float* weight,
+    const float* bias,
+    float* output,
+    int batch_size,
+    int in_channels,
+    int out_channels,
+    int kernel_size,
+    int input_length,
+    int stride,
+    int dilation,
+    int output_length
+) {
+    const int batch = blockIdx.x;
+    const int out_c = blockIdx.y;
+    const int out_pos = threadIdx.x + blockDim.x * blockIdx.z;
+
+    if (batch >= batch_size || out_c >= out_channels || out_pos >= output_length) return;
+
+    float sum = 0.0f;
+    
+    for (int in_c = 0; in_c < in_channels; ++in_c) {
+        for (int k = 0; k < kernel_size; ++k) {
+            const int input_pos = out_pos * stride + k * dilation;
+            if (input_pos >= 0 && input_pos < input_length) {
+                const float* channel_input = input + batch * in_channels * input_length + in_c * input_length;
+                const float* channel_weight = weight + out_c * in_channels * kernel_size + in_c * kernel_size;
+                
+                sum += channel_input[input_pos] * channel_weight[k];
+            }
+        }
+    }
+
+    if (bias) sum += bias[out_c];
+    
+    output[batch * out_channels * output_length + out_c * output_length + out_pos] = sum;
+}
+
+torch::Tensor conv1d_forward(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int kernel_size,
+    int stride,
+    int dilation
+) {
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int input_length = input.size(2);
+    const int out_channels = weight.size(0);
+    
+    const int output_length = ((input_length - dilation * (kernel_size - 1) - 1) / stride) + 1;
+    auto output = torch::zeros({batch_size, out_channels, output_length}, input.options());
+
+    const int block_size = 256;
+    const dim3 grid(batch_size, out_channels, (output_length + block_size - 1) / block_size);
+
+    conv1d_kernel<<<grid, block_size>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        bias.defined() ? bias.data_ptr<float>() : nullptr,
+        output.data_ptr<float>(),
+        batch_size,
+        in_channels,
+        out_channels,
+        kernel_size,
+        input_length,
+        stride,
+        dilation,
+        output_length
+    );
+
+    return output;
+}
+"""
+
+conv1d_cpp_source = "torch::Tensor conv1d_forward(torch::Tensor, torch::Tensor, torch::Tensor, int, int, int);"
+
+conv1d_module = load_inline(
+    name='conv1d_cuda',
+    cpp_sources=conv1d_cpp_source,
+    cuda_sources=conv1d_cuda_source,
+    functions=['conv1d_forward'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, dilation: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.dilation = dilation
+
+        # Initialize weight and bias parameters
+        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return conv1d_module.conv1d_forward(
+            x,
+            self.weight,
+            self.bias if self.bias is not None else torch.Tensor(),
+            self.kernel_size,
+            self.stride,
+            self.dilation
+        )
+```
+
+Kernel 2 (runtime: 680.0 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+conv1d_cuda_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void conv1d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    const float* __restrict__ bias,
+    float* __restrict__ output,
+    int input_length,
+    int output_length,
+    int kernel_size,
+    int stride,
+    int dilation,
+    int in_channels,
+    int out_channels,
+    int batch_size
+) {
+    extern __shared__ float shared_weights[];
+    const int batch = blockIdx.x / out_channels;
+    const int out_chan = blockIdx.x % out_channels;
+    const int weight_size = in_channels * kernel_size;
+
+    // Load weights into shared memory
+    if (threadIdx.x < weight_size) {
+        shared_weights[threadIdx.x] = weight[out_chan * weight_size + threadIdx.x];
+    }
+    __syncthreads();
+
+    // Process consecutive out_pos for coalesced memory access
+    for (int out_pos_base = 0; out_pos_base < output_length; out_pos_base += blockDim.x) {
+        int out_pos = out_pos_base + threadIdx.x;
+        if (out_pos >= output_length) continue;
+
+        float sum = 0.0f;
+        for (int in_chan = 0; in_chan < in_channels; ++in_chan) {
+            #pragma unroll
+            for (int k = 0; k < kernel_size; ++k) {
+                const int input_pos = out_pos * stride + k * dilation;
+                if (input_pos < 0 || input_pos >= input_length) continue;
+
+                const int input_idx = batch * in_channels * input_length + in_chan * input_length + input_pos;
+                const float input_val = __ldg(&input[input_idx]);
+                const float weight_val = shared_weights[in_chan * kernel_size + k];
+                sum += input_val * weight_val;
+            }
+        }
+        // Add bias if present
+        if (bias != nullptr) {
+            sum += __ldg(&bias[out_chan]);
+        }
+        const int output_idx = batch * out_channels * output_length + out_chan * output_length + out_pos;
+        output[output_idx] = sum;
+    }
+}
+
+torch::Tensor conv1d_cuda_forward(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int stride,
+    int dilation
+) {
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int input_length = input.size(2);
+    const int out_channels = weight.size(0);
+    const int kernel_size = weight.size(2);
+
+    const int output_length = ((input_length - dilation*(kernel_size-1) -1) / stride) + 1;
+    auto output = torch::zeros({batch_size, out_channels, output_length}, input.options());
+
+    const int grid_size = batch_size * out_channels;
+    const int block_size = 512;
+    const int weight_size = in_channels * kernel_size;
+    const size_t shared_mem_size = weight_size * sizeof(float);
+
+    const float* bias_data = bias.defined() ? bias.data_ptr<float>() : nullptr;
+
+    conv1d_kernel<<<grid_size, block_size, shared_mem_size>>>(
+        input.contiguous().data_ptr<float>(),
+        weight.contiguous().data_ptr<float>(),
+        bias_data,
+        output.data_ptr<float>(),
+        input_length,
+        output_length,
+        kernel_size,
+        stride,
+        dilation,
+        in_channels,
+        out_channels,
+        batch_size
+    );
+
+    return output;
+}
+"""
+
+conv1d_cpp_source = "torch::Tensor conv1d_cuda_forward(torch::Tensor input, torch::Tensor weight, torch::Tensor bias, int stride, int dilation);"
+
+conv1d_cuda = load_inline(
+    name="conv1d_cuda",
+    cpp_sources=conv1d_cpp_source,
+    cuda_sources=conv1d_cuda_source,
+    functions=["conv1d_cuda_forward"],
+    verbose=True,
+    extra_cuda_cflags=['-use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, dilation: int = 1, bias: bool = False):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.dilation = dilation
+        
+        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        bias_tensor = self.bias if self.bias is not None else torch.Tensor()
+        return conv1d_cuda.conv1d_cuda_forward(x, self.weight, bias_tensor, self.stride, self.dilation)
+```

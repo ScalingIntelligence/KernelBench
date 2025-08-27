@@ -1,0 +1,48 @@
+{
+  "kernel1": {
+    "problem_id": 87,
+    "sample_id": 2,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nfused_subtract_mish_kernel(float const*, float*, flo...         0.00%       0.000us         0.00%       0.000us       0.000us       6.149ms        36.46%       6.149ms       6.149ms             1  \n                                             aten::add_         0.15%      26.080us         0.19%      34.791us      34.791us       6.141ms        36.41%       6.141ms       6.141ms             1  \nvoid at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       6.141ms        36.41%       6.141ms       6.141ms             1  \n                                aten::cudnn_convolution         0.57%     101.862us         6.06%       1.084ms       1.084ms       4.575ms        27.13%       9.150ms       9.150ms             1  \n                                           Unrecognized         5.26%     940.901us         5.26%     940.901us     940.901us       4.575ms        27.13%       4.575ms       4.575ms             1  \n       _5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1         0.00%       0.000us         0.00%       0.000us       0.000us       4.573ms        27.12%       4.573ms       4.573ms             1  \nvoid cask__5x_cudnn::computeOffsetsKernel<false, fal...         0.00%       0.000us         0.00%       0.000us       0.000us       1.952us         0.01%       1.952us       1.952us             1  \n                                           aten::conv2d         0.05%       9.350us         6.71%       1.201ms       1.201ms       0.000us         0.00%      15.291ms      15.291ms             1  \n                                      aten::convolution         0.18%      31.410us         6.66%       1.192ms       1.192ms       0.000us         0.00%      15.291ms      15.291ms             1  \n                                     aten::_convolution         0.19%      34.230us         6.48%       1.160ms       1.160ms       0.000us         0.00%      15.291ms      15.291ms             1  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 17.901ms\nSelf CUDA time total: 16.865ms\n"
+    },
+    "runtime": 17.0,
+    "runtime_stats": {
+      "mean": 17.0,
+      "std": 0.0265,
+      "min": 17.0,
+      "max": 17.2,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "best_of_n_level2_DeepSeek-R1"
+  },
+  "kernel2": {
+    "problem_id": 87,
+    "sample_id": 0,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nfused_sub_mish_kernel(float const*, float*, float, f...         0.00%       0.000us         0.00%       0.000us       0.000us       6.149ms        36.58%       6.149ms       6.149ms             1  \n                                             aten::add_         0.16%      30.283us         0.23%      43.273us      43.273us       6.140ms        36.52%       6.140ms       6.140ms             1  \nvoid at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       6.140ms        36.52%       6.140ms       6.140ms             1  \n                                aten::cudnn_convolution         0.77%     147.285us        11.99%       2.283ms       2.283ms       4.522ms        26.90%       9.045ms       9.045ms             1  \n                                           Unrecognized        10.93%       2.081ms        10.93%       2.081ms       2.081ms       4.522ms        26.90%       4.522ms       4.522ms             1  \n       _5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1         0.00%       0.000us         0.00%       0.000us       0.000us       4.521ms        26.89%       4.521ms       4.521ms             1  \nvoid cask__5x_cudnn::computeOffsetsKernel<false, fal...         0.00%       0.000us         0.00%       0.000us       0.000us       1.952us         0.01%       1.952us       1.952us             1  \n                                           aten::conv2d         0.10%      18.093us        12.89%       2.453ms       2.453ms       0.000us         0.00%      15.185ms      15.185ms             1  \n                                      aten::convolution         0.26%      49.166us        12.79%       2.435ms       2.435ms       0.000us         0.00%      15.185ms      15.185ms             1  \n                                     aten::_convolution         0.26%      50.405us        12.53%       2.386ms       2.386ms       0.000us         0.00%      15.185ms      15.185ms             1  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 19.037ms\nSelf CUDA time total: 16.812ms\n"
+    },
+    "runtime": 17.0,
+    "runtime_stats": {
+      "mean": 17.0,
+      "std": 0.0474,
+      "min": 17.0,
+      "max": 17.1,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "base_level2_Qwen2.5-Coder-7B-Instruct-SFT-old"
+  }
+}

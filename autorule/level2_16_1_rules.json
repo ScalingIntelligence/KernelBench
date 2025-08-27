@@ -1,0 +1,5 @@
+[
+  "The kernel uses single-precision math functions (e.g., logf, expf) instead of double-precision functions (e.g., log, exp) to avoid unnecessary type promotion and computational overhead.",
+  "The kernel avoids mixed-precision operations by ensuring all intermediate calculations use consistent single-precision floating-point types.",
+  "The kernel prioritizes the use of hardware-optimized single-precision operations to better utilize GPU capabilities for faster computation."
+]

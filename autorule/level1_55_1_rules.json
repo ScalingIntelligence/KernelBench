@@ -1,0 +1,6 @@
+[
+  "The kernel uses a thread block size that allows higher occupancy by enabling more concurrent blocks per streaming multiprocessor.",
+  "The kernel avoids redundant group convolution calculations (e.g., group indexing, bounds checks) when groups=1, reducing computational overhead.",
+  "The kernel assigns one output element per thread directly instead of using a grid-stride loop, eliminating loop control overhead for small/medium problem sizes.",
+  "The kernel reduces register pressure by omitting unnecessary variables or computations, improving occupancy."
+]

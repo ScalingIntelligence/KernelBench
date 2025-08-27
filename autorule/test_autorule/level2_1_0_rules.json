@@ -1,0 +1,5 @@
+[
+  "The kernel ensures input tensors are contiguous to enable coalesced memory access.",
+  "The kernel uses a thread block size of 512 to improve GPU occupancy.",
+  "The kernel computes channel indices via fused division/modulus operations (e.g., rem = idx % (C*H*W); c = rem/(H*W)) to reduce instruction count."
+]

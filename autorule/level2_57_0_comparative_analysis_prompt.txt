@@ -1,0 +1,140 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 4.21 ms):
+```
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.cpp_extension import load_inline
+
+fused_activation_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_relu_hardsigmoid_kernel(const float* input, float* output, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float x = input[idx];
+        float temp = max(x, 0.f);
+        float sum = temp + 3.f;
+        float val = sum / 6.f;
+        val = min(val, 1.f);
+        output[idx] = temp * val;
+    }
+}
+
+torch::Tensor fused_relu_hardsigmoid_cuda(torch::Tensor input) {
+    auto size = input.numel();
+    auto output = torch::empty_like(input);
+
+    const int block_size = 512;
+    const int num_blocks = (size + block_size - 1) / block_size;
+
+    fused_relu_hardsigmoid_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        size
+    );
+
+    return output;
+}
+"""
+
+fused_activation_cpp_source = "torch::Tensor fused_relu_hardsigmoid_cuda(torch::Tensor input);"
+
+# Compile the fused activation kernel with optimization flags
+fused_activation = load_inline(
+    name="fused_activation",
+    cpp_sources=fused_activation_cpp_source,
+    cuda_sources=fused_activation_source,
+    functions=["fused_relu_hardsigmoid_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.fused_activation = fused_activation
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fused_activation.fused_relu_hardsigmoid_cuda(x)
+        return x
+```
+
+Kernel 2 (runtime: 4.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused ReLU-HardSwish CUDA kernel
+fused_activation_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_relu_hardswish_kernel(const float* input, float* output, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float val = input[idx];
+        float relu_val = fmaxf(val, 0.0f);
+        float temp = (relu_val + 3.0f) / 6.0f;
+        temp = fminf(temp, 1.0f);
+        output[idx] = relu_val * temp;
+    }
+}
+
+torch::Tensor fused_relu_hardswish_cuda(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    const int block_size = 256;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+
+    fused_relu_hardswish_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+
+    return output;
+}
+"""
+
+activation_cpp_src = "torch::Tensor fused_relu_hardswish_cuda(torch::Tensor input);"
+
+# Load inline CUDA extension
+fused_activation = load_inline(
+    name='fused_activation',
+    cpp_sources=activation_cpp_src,
+    cuda_sources=fused_activation_source,
+    functions=['fused_relu_hardswish_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.fused_activation = fused_activation
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x.contiguous()  # Ensure contiguous memory layout
+        x = self.fused_activation.fused_relu_hardswish_cuda(x)
+        return x
+
+batch_size = 128
+in_channels = 8
+out_channels = 64
+height, width = 128, 128
+kernel_size = 3
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]
+```

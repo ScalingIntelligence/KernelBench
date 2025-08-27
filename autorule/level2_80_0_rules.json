@@ -1,0 +1,5 @@
+[
+  "The kernel avoids redundant memory initialization by using uninitialized memory for output when all elements will be overwritten.",
+  "The kernel omits unnecessary bounds checks when grid dimensions are guaranteed to match data dimensions.",
+  "The kernel is compiled with higher optimization levels (e.g., -O3) for CUDA code."
+]

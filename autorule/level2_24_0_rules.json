@@ -1,0 +1,5 @@
+[
+  "The kernel ensures input tensors are contiguous to enable coalesced memory access.",
+  "The kernel orders grid dimensions to prioritize larger spatial dimensions (e.g., W, H) in the x/y axes for higher occupancy.",
+  "The kernel avoids template abstractions for critical operations (e.g., using direct expf/fminf instead of templated functions) to allow compiler optimizations."
+]

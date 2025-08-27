@@ -1,0 +1,231 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 23.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused kernel with dynamic channel handling and memory optimizations
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_ops_kernel(const float* __restrict__ input, const float* __restrict__ bias,
+                                float* __restrict__ output, int N, int C, int D, int H, int W) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N * D * H * W) return;
+
+    const int spatial_size = D * H * W;
+    const int n = idx / spatial_size;
+    const int spatial_idx = idx % spatial_size;
+    
+    const int d = spatial_idx / (H * W);
+    const int hw = spatial_idx % (H * W);
+    const int h = hw / W;
+    const int w = hw % W;
+
+    const int base_offset = n * C * spatial_size + d * H * W + h * W + w;
+    const int step = spatial_size;
+
+    float current_max = -INFINITY;
+    float sum_exp = 0.0f;
+
+    for (int c = 0; c < C; ++c) {
+        const float val = input[base_offset + c * step];
+        if (val > current_max) {
+            if (current_max != -INFINITY) {
+                sum_exp *= __expf(current_max - val);
+            }
+            current_max = val;
+            sum_exp = 1.0f + sum_exp * __expf(current_max - val);
+        } else {
+            sum_exp += __expf(val - current_max);
+        }
+    }
+
+    const float logsumexp = __logf(sum_exp) + current_max;
+    
+    // Optimized HardSwish approximation
+    const float x = logsumexp;
+    const float sigmoid = 1.0f / (1.0f + __expf(-(x + 3.0f)));
+    float result = x * sigmoid * 0.16666667f;
+    
+    // Bias subtraction and clamp
+    result -= __ldg(bias);
+    result = fmaxf(fminf(result, 1.0f), -1.0f);
+
+    output[n * spatial_size + spatial_idx] = result;
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor bias) {
+    const auto N = input.size(0);
+    const auto C = input.size(1);
+    const auto D = input.size(2);
+    const auto H = input.size(3);
+    const auto W = input.size(4);
+
+    auto output = torch::empty({N, 1, D, H, W}, input.options());
+
+    const int total_elements = N * D * H * W;
+    const int block_size = 256;
+    const int grid_size = (total_elements + block_size - 1) / block_size;
+
+    fused_ops_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, D, H, W
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor bias);"
+
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=["fused_ops_cuda"],
+    verbose=True,
+    extra_cuda_cflags=['-use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding
+        )
+        self.bias = nn.Parameter(torch.randn(*bias_shape))
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = x.contiguous()  # Ensure contiguous memory layout
+        return self.fused_ops.fused_ops_cuda(x, self.bias)
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, depth, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, bias_shape]
+```
+
+Kernel 2 (runtime: 23.3 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused LogSumExp, HardSwish, bias subtraction, and clamp
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <cmath>
+
+__global__ void fused_ops_kernel(const float* input, const float* bias, float* output, 
+                               int batch_size, int channels, 
+                               int depth, int height, int width) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int spatial_size = depth * height * width;
+    int total_elements = batch_size * spatial_size;
+    
+    if (idx >= total_elements) return;
+
+    int batch = idx / spatial_size;
+    int spatial_idx = idx % spatial_size;
+    
+    int d = spatial_idx / (height * width);
+    int h = (spatial_idx / width) % height;
+    int w = spatial_idx % width;
+
+    // LogSumExp reduction
+    float max_val = -INFINITY;
+    for (int c = 0; c < channels; ++c) {
+        int input_idx = ((batch * channels + c) * depth + d) * height * width + h * width + w;
+        max_val = fmaxf(max_val, input[input_idx]);
+    }
+
+    float sum_exp = 0.0f;
+    for (int c = 0; c < channels; ++c) {
+        int input_idx = ((batch * channels + c) * depth + d) * height * width + h * width + w;
+        sum_exp += expf(input[input_idx] - max_val);
+    }
+    float logsumexp = max_val + logf(sum_exp);
+
+    // HardSwish: x * sigmoid(x + 3) / 6
+    float swish_input = logsumexp + 3.0f;
+    float sigmoid = 1.0f / (1.0f + expf(-swish_input));
+    float hardswish = logsumexp * sigmoid / 6.0f;
+
+    // Bias subtraction and clamp
+    float result = hardswish - *bias;
+    result = fmaxf(fminf(result, 1.0f), -1.0f);
+
+    // Write output (channel dimension collapsed to 1)
+    int output_idx = ((batch * 1 + 0) * depth + d) * height * width + h * width + w;
+    output[output_idx] = result;
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor bias) {
+    auto input_sizes = input.sizes();
+    int batch_size = input_sizes[0];
+    int channels = input_sizes[1];
+    int depth = input_sizes[2];
+    int height = input_sizes[3];
+    int width = input_sizes[4];
+    
+    auto output = torch::empty({batch_size, 1, depth, height, width}, input.options());
+    
+    int total_elements = batch_size * depth * height * width;
+    const int block_size = 256;
+    int num_blocks = (total_elements + block_size - 1) / block_size;
+    
+    fused_ops_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        depth,
+        height,
+        width
+    );
+    
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor bias);"
+
+# Compile the fused operations
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=["fused_ops_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[""]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding
+        )
+        self.bias = nn.Parameter(torch.randn(*bias_shape))
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = fused_ops.fused_ops_cuda(x, self.bias)
+        return x
+```

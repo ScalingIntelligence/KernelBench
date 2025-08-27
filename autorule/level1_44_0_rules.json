@@ -1,0 +1,6 @@
+[
+  "The kernel uses explicit loop unrolling with a specified factor (e.g., 4 or 2) to reduce loop overhead and improve instruction-level parallelism.",
+  "The kernel avoids using explicit __ldg intrinsic for read-only memory access when the compiler can automatically optimize for read-only cache usage via qualifiers like const __restrict__.",
+  "The kernel applies loop unrolling to both full-window and partial-window cases to reduce branch overhead and improve memory access patterns.",
+  "The kernel uses pragma unroll directives with specific unroll factors tailored to the loop structure (e.g., full-window vs. partial-window) for optimal performance."
+]

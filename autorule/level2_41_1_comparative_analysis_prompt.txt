@@ -1,0 +1,274 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 30.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom kernels for fused operations
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+// Fused BatchNorm+GELU+ReLU kernel for inference
+__global__ void fused_bn_gelu_relu_kernel(
+    const float* input,
+    const float* scale,
+    const float* shift,
+    float* output,
+    int batch_size,
+    int out_features
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = batch_size * out_features;
+    if (idx < total_elements) {
+        int j = idx % out_features;
+        float x = input[idx] * scale[j] + shift[j];
+        const float cdf = 0.5f * (1.0f + erff(x * 0.7071067811865475f));
+        x *= cdf;
+        output[idx] = fmaxf(0.0f, x);
+    }
+}
+
+torch::Tensor fused_bn_gelu_relu(torch::Tensor input, torch::Tensor scale, torch::Tensor shift) {
+    auto output = torch::empty_like(input);
+    int batch_size = input.size(0);
+    int out_features = input.size(1);
+    int total_elements = batch_size * out_features;
+
+    const int threads = 256;
+    const int blocks = (total_elements + threads - 1) / threads;
+
+    fused_bn_gelu_relu_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        scale.data_ptr<float>(),
+        shift.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        out_features
+    );
+
+    return output;
+}
+
+// Fused GELU+ReLU kernel for training
+__global__ void gelu_relu_kernel(const float* input, float* output, int size) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        const float x = input[idx];
+        const float cdf = 0.5f * (1.0f + erff(x * 0.7071067811865475f));
+        const float gelu = x * cdf;
+        output[idx] = fmaxf(0.0f, gelu);
+    }
+}
+
+torch::Tensor fused_gelu_relu(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    
+    const int threads = 256;
+    const int blocks = (num_elements + threads - 1) / threads;
+    
+    gelu_relu_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+# Load the custom CUDA kernels
+fused_activation = load_inline(
+    name='fused_activation',
+    cpp_sources="""
+        torch::Tensor fused_bn_gelu_relu(torch::Tensor input, torch::Tensor scale, torch::Tensor shift);
+        torch::Tensor fused_gelu_relu(torch::Tensor input);
+    """,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_bn_gelu_relu', 'fused_gelu_relu'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.bn = nn.BatchNorm1d(out_features)
+        
+        # Register buffers for fused parameters
+        self.register_buffer('scale', torch.empty(out_features))
+        self.register_buffer('shift', torch.empty(out_features))
+        self._update_scale_shift()
+
+    def _update_scale_shift(self):
+        with torch.no_grad():
+            gamma = self.bn.weight
+            beta = self.bn.bias
+            running_mean = self.bn.running_mean
+            running_var = self.bn.running_var
+            eps = self.bn.eps
+            
+            scale = gamma / torch.sqrt(running_var + eps)
+            shift = beta - running_mean * scale
+            
+            self.scale.copy_(scale)
+            self.shift.copy_(shift)
+
+    def train(self, mode=True):
+        if not mode:
+            # Update scale/shift when switching to eval mode
+            self._update_scale_shift()
+        return super().train(mode)
+
+    def forward(self, x):
+        x = self.gemm(x)
+        
+        if self.training:
+            # Original sequence with fused GELU+ReLU
+            x = self.bn(x)
+            x = fused_activation.fused_gelu_relu(x)
+        else:
+            # Fused kernel for inference
+            x = fused_activation.fused_bn_gelu_relu(x, self.scale, self.shift)
+            
+        return x
+```
+
+Kernel 2 (runtime: 30.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused BatchNorm+GELU+ReLU kernel with training/inference support
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_bn_gelu_relu_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ scale,
+    const float* __restrict__ shift,
+    float* __restrict__ output,
+    int total_elements,
+    int out_features) {
+
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+
+    const int feature_idx = idx % out_features;
+    const float x = input[idx];
+    
+    // Fused BatchNorm transformation: y = x * scale + shift
+    const float normalized = x * scale[feature_idx] + shift[feature_idx];
+    
+    // High-precision GELU approximation matching PyTorch's implementation
+    const float cdf = 0.5f * (1.0f + erff(normalized * 0.7071067811865475f));
+    const float gelu = normalized * cdf;
+    
+    // Fused ReLU with branchless implementation
+    output[idx] = fmaxf(gelu, 0.0f);
+}
+
+torch::Tensor fused_bn_gelu_relu_cuda(
+    torch::Tensor input,
+    torch::Tensor scale,
+    torch::Tensor shift,
+    int batch_size,
+    int out_features) {
+    
+    auto output = torch::empty_like(input);
+    const int total_elements = input.numel();
+    
+    constexpr int block_size = 256;
+    const int grid_size = (total_elements + block_size - 1) / block_size;
+    
+    fused_bn_gelu_relu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        scale.data_ptr<float>(),
+        shift.data_ptr<float>(),
+        output.data_ptr<float>(),
+        total_elements,
+        out_features
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp_source = """
+torch::Tensor fused_bn_gelu_relu_cuda(
+    torch::Tensor input,
+    torch::Tensor scale,
+    torch::Tensor shift,
+    int batch_size,
+    int out_features);
+"""
+
+# Load the optimized fused kernel with fast math optimizations
+fused_kernel = load_inline(
+    name='fused_bn_gelu_relu',
+    cpp_sources=fused_kernel_cpp_source,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_bn_gelu_relu_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_cuda_cflags=['-O3', '--use_fast_math'],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.bn = nn.BatchNorm1d(out_features)
+        self.bn.momentum = 0.1  # Match PyTorch's default
+
+    def forward(self, x):
+        x = self.gemm(x)
+        batch_size, out_dim = x.shape
+
+        if self.training:
+            # Compute batch statistics using optimized PyTorch ops
+            mean = x.mean(dim=0)
+            var = x.var(dim=0, unbiased=False)
+            
+            # Update running statistics with proper in-place operations
+            with torch.no_grad():
+                self.bn.running_mean *= (1 - self.bn.momentum)
+                self.bn.running_mean.add_(mean, alpha=self.bn.momentum)
+                
+                self.bn.running_var *= (1 - self.bn.momentum)
+                self.bn.running_var.add_(var, alpha=self.bn.momentum)
+        else:
+            # Use pre-computed running statistics
+            mean = self.bn.running_mean
+            var = self.bn.running_var
+
+        # Compute scale and shift parameters with numerical stability
+        inv_std = 1.0 / torch.sqrt(var + self.bn.eps)
+        scale = self.bn.weight * inv_std
+        shift = self.bn.bias - mean * scale
+
+        return fused_kernel.fused_bn_gelu_relu_cuda(
+            x, 
+            scale, 
+            shift,
+            batch_size,
+            out_dim
+        )
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]
+
+batch_size = 16384
+in_features = 4096
+out_features = 4096
+```

@@ -1,0 +1,359 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 26.5 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+# Custom 3D convolution CUDA kernel implementation
+conv3d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+template <typename scalar_t>
+__global__ void conv3d_kernel(
+    const scalar_t* input, const scalar_t* weight, const scalar_t* bias,
+    scalar_t* output,
+    int batch_size, int in_channels, int out_channels,
+    int input_depth, int input_height, int input_width,
+    int kernel_size, int stride, int padding,
+    int output_depth, int output_height, int output_width,
+    bool has_bias
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int output_numel = batch_size * out_channels * output_depth * output_height * output_width;
+    if (idx >= output_numel) return;
+
+    // Decompose index into output dimensions
+    int n = idx / (out_channels * output_depth * output_height * output_width);
+    int remainder = idx % (out_channels * output_depth * output_height * output_width);
+    int o = remainder / (output_depth * output_height * output_width);
+    remainder %= (output_depth * output_height * output_width);
+    int d = remainder / (output_height * output_width);
+    remainder %= (output_height * output_width);
+    int h = remainder / output_width;
+    int w = remainder % output_width;
+
+    scalar_t sum = 0.0;
+
+    for (int c = 0; c < in_channels; ++c) {
+        for (int kd = 0; kd < kernel_size; ++kd) {
+            int input_d = d * stride - padding + kd;
+            if (input_d < 0 || input_d >= input_depth) continue;
+            
+            for (int kh = 0; kh < kernel_size; ++kh) {
+                int input_h = h * stride - padding + kh;
+                if (input_h < 0 || input_h >= input_height) continue;
+                
+                for (int kw = 0; kw < kernel_size; ++kw) {
+                    int input_w = w * stride - padding + kw;
+                    if (input_w < 0 || input_w >= input_width) continue;
+
+                    // Calculate input and weight indices
+                    int input_idx = n * (in_channels * input_depth * input_height * input_width) +
+                                    c * (input_depth * input_height * input_width) +
+                                    input_d * (input_height * input_width) +
+                                    input_h * input_width +
+                                    input_w;
+
+                    int weight_idx = o * (in_channels * kernel_size * kernel_size * kernel_size) +
+                                    c * (kernel_size * kernel_size * kernel_size) +
+                                    kd * (kernel_size * kernel_size) +
+                                    kh * kernel_size +
+                                    kw;
+
+                    sum += input[input_idx] * weight[weight_idx];
+                }
+            }
+        }
+    }
+
+    if (has_bias) sum += bias[o];
+    output[idx] = sum;
+}
+
+torch::Tensor conv3d_cuda_forward(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int kernel_size,
+    int stride,
+    int padding,
+    bool has_bias
+) {
+    // Dimension checks
+    TORCH_CHECK(input.dim() == 5, "Input must be 5D");
+    TORCH_CHECK(weight.dim() == 5, "Weight must be 5D");
+    
+    // Calculate output dimensions
+    int batch_size = input.size(0);
+    int in_channels = input.size(1);
+    int input_depth = input.size(2);
+    int input_height = input.size(3);
+    int input_width = input.size(4);
+    int out_channels = weight.size(0);
+
+    int output_depth = (input_depth + 2*padding - kernel_size)/stride + 1;
+    int output_height = (input_height + 2*padding - kernel_size)/stride + 1;
+    int output_width = (input_width + 2*padding - kernel_size)/stride + 1;
+
+    auto output = torch::zeros({batch_size, out_channels, output_depth, output_height, output_width}, input.options());
+
+    // Kernel launch parameters
+    int output_numel = output.numel();
+    const int block_size = 256;
+    int grid_size = (output_numel + block_size - 1) / block_size;
+
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "conv3d_forward", ([&] {
+        conv3d_kernel<scalar_t><<<grid_size, block_size>>>(
+            input.data_ptr<scalar_t>(),
+            weight.data_ptr<scalar_t>(),
+            has_bias ? bias.data_ptr<scalar_t>() : nullptr,
+            output.data_ptr<scalar_t>(),
+            batch_size, in_channels, out_channels,
+            input_depth, input_height, input_width,
+            kernel_size, stride, padding,
+            output_depth, output_height, output_width,
+            has_bias
+        );
+    }));
+
+    return output;
+}
+"""
+
+conv3d_cpp_source = "torch::Tensor conv3d_cuda_forward(torch::Tensor input, torch::Tensor weight, torch::Tensor bias, int kernel_size, int stride, int padding, bool has_bias);"
+
+# Load the custom CUDA extension
+conv3d_ext = load_inline(
+    name='conv3d_ext',
+    cpp_sources=conv3d_cpp_source,
+    cuda_sources=conv3d_source,
+    functions=['conv3d_cuda_forward'],
+    verbose=True,
+    extra_cuda_cflags=['-O2']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        if groups != 1 or dilation != 1:
+            raise NotImplementedError("Custom kernel only supports groups=1 and dilation=1")
+            
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.has_bias = bias
+
+        # Initialize parameters
+        self.weight = nn.Parameter(torch.Tensor(
+            out_channels, 
+            in_channels, 
+            kernel_size, 
+            kernel_size, 
+            kernel_size
+        ))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return conv3d_ext.conv3d_cuda_forward(
+            x, 
+            self.weight,
+            self.bias if self.has_bias else torch.zeros(0, device=x.device),  # Handle no-bias case
+            self.kernel_size,
+            self.stride,
+            self.padding,
+            self.has_bias
+        )
+```
+
+Kernel 2 (runtime: 19.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+import math
+
+# Optimized 3D convolution CUDA kernel with memory coalescing and loop unrolling
+conv3d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+#define KERNEL_SIZE 3
+#define BLOCK_SIZE 256
+
+__global__ void conv3d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    float* __restrict__ output,
+    const int batch_size, const int in_channels, const int out_channels,
+    const int depth, const int height, const int width,
+    const int stride, const int padding,
+    const int out_depth, const int out_height, const int out_width,
+    const int total_output_elements
+) {
+    const int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (idx >= total_output_elements) return;
+
+    // Precompute dimension strides for coalesced memory access
+    const int output_channel_stride = out_depth * out_height * out_width;
+    const int output_spatial_stride = out_height * out_width;
+
+    // Fused output index calculation
+    const int n = idx / (out_channels * output_channel_stride);
+    const int oc = (idx % (out_channels * output_channel_stride)) / output_channel_stride;
+    const int spatial_idx = idx % output_channel_stride;
+    const int od = spatial_idx / output_spatial_stride;
+    const int oh = (spatial_idx % output_spatial_stride) / out_width;
+    const int ow = spatial_idx % out_width;
+
+    float sum = 0.0f;
+
+    // Precompute kernel application base positions
+    const int base_d = od * stride - padding;
+    const int base_h = oh * stride - padding;
+    const int base_w = ow * stride - padding;
+
+    for (int ic = 0; ic < in_channels; ++ic) {
+        // Get coalesced pointers to input/weight tensors
+        const float* input_channel = input + ((n * in_channels + ic) * depth * height * width);
+        const float* weight_channel = weight + ((oc * in_channels + ic) * KERNEL_SIZE * KERNEL_SIZE * KERNEL_SIZE);
+
+        // Fully unrolled kernel loops
+        #pragma unroll
+        for (int kd = 0; kd < KERNEL_SIZE; ++kd) {
+            const int id = base_d + kd;
+            if (id < 0 || id >= depth) continue;
+
+            #pragma unroll
+            for (int kh = 0; kh < KERNEL_SIZE; ++kh) {
+                const int ih = base_h + kh;
+                if (ih < 0 || ih >= height) continue;
+
+                #pragma unroll
+                for (int kw = 0; kw < KERNEL_SIZE; ++kw) {
+                    const int iw = base_w + kw;
+                    if (iw < 0 || iw >= width) continue;
+
+                    // Coalesced memory access patterns
+                    const int input_idx = (id * height + ih) * width + iw;
+                    const int weight_idx = (kd * KERNEL_SIZE + kh) * KERNEL_SIZE + kw;
+                    
+                    sum += input_channel[input_idx] * weight_channel[weight_idx];
+                }
+            }
+        }
+    }
+
+    // Coalesced output write with optimized index calculation
+    output[n * out_channels * output_channel_stride + oc * output_channel_stride + od * output_spatial_stride + oh * out_width + ow] = sum;
+}
+
+torch::Tensor conv3d_cuda(torch::Tensor input, torch::Tensor weight, int stride, int padding) {
+    TORCH_CHECK(weight.size(2) == KERNEL_SIZE, "Kernel size must be 3");
+
+    // Input dimensions
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int depth = input.size(2);
+    const int height = input.size(3);
+    const int width = input.size(4);
+    
+    // Weight dimensions
+    const int out_channels = weight.size(0);
+    
+    // Output dimensions
+    const int out_depth = (depth + 2*padding - KERNEL_SIZE) / stride + 1;
+    const int out_height = (height + 2*padding - KERNEL_SIZE) / stride + 1;
+    const int out_width = (width + 2*padding - KERNEL_SIZE) / stride + 1;
+    
+    auto output = torch::zeros({batch_size, out_channels, out_depth, out_height, out_width}, input.options());
+    
+    // Kernel launch configuration
+    const int total_elements = batch_size * out_channels * out_depth * out_height * out_width;
+    const int grid_size = (total_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    
+    conv3d_kernel<<<grid_size, BLOCK_SIZE>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size, in_channels, out_channels,
+        depth, height, width,
+        stride, padding,
+        out_depth, out_height, out_width,
+        total_elements
+    );
+    
+    return output;
+}
+"""
+
+conv3d_cpp_source = "torch::Tensor conv3d_cuda(torch::Tensor input, torch::Tensor weight, int stride, int padding);"
+
+# Load the optimized CUDA extension with aggressive optimizations
+conv3d_extension = load_inline(
+    name='conv3d_extension',
+    cpp_sources=conv3d_cpp_source,
+    cuda_sources=conv3d_source,
+    functions=['conv3d_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_cuda_cflags=['-O3', '-use_fast_math'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, 
+                 stride: int = 1, padding: int = 0, dilation: int = 1, 
+                 groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        if groups != 1 or dilation != 1 or kernel_size != 3:
+            raise NotImplementedError("Only groups=1, dilation=1 and kernel_size=3 are supported")
+            
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        # Initialize weight parameters with proper tensor shape
+        self.weight = nn.Parameter(torch.Tensor(
+            out_channels, in_channels,
+            kernel_size, kernel_size, kernel_size
+        ))
+        
+        # Initialize bias if required
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        # Kaiming initialization with correct fan calculation
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Execute optimized convolution
+        x = conv3d_extension.conv3d_cuda(x, self.weight, self.stride, self.padding)
+        
+        # Add bias if required
+        if self.bias is not None:
+            x += self.bias.view(1, -1, 1, 1, 1)
+        return x
+```

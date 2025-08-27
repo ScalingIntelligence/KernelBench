@@ -1,0 +1,6 @@
+[
+  "The kernel uses a strided memory access pattern with a stride equal to the block dimension to enable coalesced memory accesses.",
+  "The kernel avoids non-coalesced memory accesses by ensuring consecutive threads access consecutive memory locations during data loading.",
+  "The kernel performs block-level parallel reductions using shared memory and explicit synchronization (__syncthreads()).",
+  "The kernel prioritizes coalesced memory access over contiguous per-thread access patterns to improve memory throughput."
+]

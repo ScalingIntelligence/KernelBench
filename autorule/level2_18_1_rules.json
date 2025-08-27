@@ -1,0 +1,6 @@
+[
+  "The kernel uses loop unrolling via #pragma unroll to reduce branch instructions and improve instruction-level parallelism.",
+  "The kernel handles remaining elements after vectorized processing with a secondary loop, avoiding branching in the main loop.",
+  "The kernel reduces control flow overhead by eliminating per-iteration condition checks in unrolled loops.",
+  "The kernel optimizes memory access scheduling by interleaving load/store operations with arithmetic instructions through loop unrolling."
+]

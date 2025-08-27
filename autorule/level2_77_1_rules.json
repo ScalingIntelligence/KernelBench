@@ -1,0 +1,6 @@
+[
+  "The kernel uses shared memory reduction within a thread block to avoid atomic operations on global memory.",
+  "The kernel avoids atomic operations by aggregating partial sums in shared memory before a single write to global memory.",
+  "The kernel pre-fuses parameters (e.g., scale factors) into preceding operations (e.g., convolution weights) to reduce computational steps during execution.",
+  "The kernel prioritizes block-level shared memory reductions over warp-level reductions followed by atomic operations for global memory writes."
+]

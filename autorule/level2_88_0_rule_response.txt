@@ -1,0 +1,54 @@
+REASONING TRACE:
+Okay, let's break down the reasoning provided and extract the rule-like statements. The user wants these rules to be general enough for various CUDA kernels and objectively verifiable.
+
+First, the main points from the reasoning are:
+
+1. **Kernel Fusion**: Kernel 1 combines multiple operations (GroupNorm, Swish, Multiply, Swish) into a single kernel, reducing the number of kernel launches. This is a clear rule about operator fusion.
+
+2. **Shared Memory for Reductions**: The use of shared memory in GroupNorm's mean and variance calculations. This points to using shared memory tiling for reductions, which is a known optimization.
+
+3. **Memory Locality**: Keeping intermediate results in registers or shared memory instead of global memory. This relates to minimizing global memory access by leveraging faster memory types.
+
+4. **Block/Grid Configuration**: Kernel 1 uses a 2D grid with smaller thread blocks (32 threads), which can improve occupancy. The example given mentions multiples of warp size, so this fits a general rule about thread block sizes.
+
+5. **Compiler Flags**: Using flags like --use_fast_math and -O3. These are specific optimizations that can be applied generally.
+
+6. **Avoiding Intermediate Global Memory Transactions**: By fusing operations, Kernel 1 skips writing and reading from global memory between steps. This is a form of optimizing memory access patterns.
+
+Now, translating these into rule-like statements:
+
+- **Fusion of multiple operations into a single kernel** is covered in the examples, so similar phrasing.
+- **Using shared memory for parallel reductions** is a specific case of shared memory tiling.
+- **Maintaining intermediate results in registers or shared memory** is about memory locality.
+- **Thread block sizes set to match features per group (e.g., 32)** relates to warp size multiples if 32 is the warp size. But the reasoning mentions 32 threads per block, which is exactly the warp size. So this can be a rule about thread block sizes being multiples of warp size.
+- **Compiler optimizations like --use_fast_math and -O3** are specific flags that can be generalized as using fast math compilation flags.
+- **Grid configuration with 2D structure for higher parallelism** could be a rule about grid dimensions optimizing occupancy.
+
+But need to ensure the rules are objective and deterministic. For example, "using shared memory for reductions" is a clear rule. Similarly, "compiling with fast math flags" is a specific action.
+
+So the extracted rules would be:
+
+1. The kernel fuses multiple operations (e.g., group normalization, activation functions) into a single kernel launch.
+2. The kernel uses shared memory for parallel reductions to compute statistics (e.g., mean, variance).
+3. The kernel maintains intermediate results in registers or shared memory to minimize global memory access.
+4. The kernel uses thread block sizes that match the warp size (32 threads) to improve occupancy.
+5. The kernel is compiled with fast math compiler flags (e.g., --use_fast_math) to enable approximate mathematical optimizations.
+6. The kernel employs a 2D grid configuration to increase parallelism and better utilize GPU resources.
+
+Each of these can be checked objectively. For example, checking if the kernel combines multiple operations, uses shared memory for reductions, block size is 32, compiler flags include --use_fast_math, etc.
+
+
+ANSWER:
+
+
+[
+    "The kernel performs operator fusion between multiple operations.",
+    "The kernel uses shared memory tiling to reduce global memory access.",
+    "The kernel uses thread block sizes that are multiples of warp size (32).",
+    "The kernel maintains intermediate results in registers or shared memory to avoid global memory transactions.",
+    "The kernel is compiled with fast math compiler flags to enable approximate mathematical optimizations.",
+    "The kernel employs a grid configuration that maximizes GPU occupancy through a higher number of smaller thread blocks."
+]
+
+Usage:
+{'inputTokens': 2226, 'outputTokens': 800, 'totalTokens': 3026}

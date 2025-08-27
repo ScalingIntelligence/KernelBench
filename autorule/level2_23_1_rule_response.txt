@@ -1,0 +1,39 @@
+REASONING TRACE:
+Okay, let me parse through the reasoning provided to extract the rule-like statements. The user wants these rules to be general enough for various CUDA kernels and objectively verifiable.
+
+First, the reasoning mentions that Kernel 2 flattens spatial dimensions into DHW, leading to contiguous memory access. This suggests a rule about flattening dimensions for coalescing. So: "The kernel flattens multiple spatial dimensions into a single dimension to enable contiguous memory access."
+
+Next, the index calculation in Kernel 2 is simpler, using division and modulo once instead of multiple times. The rule here would be about reducing arithmetic operations for indices: "The kernel minimizes the number of division and modulo operations for index calculations."
+
+Kernel 2 uses a larger thread block size (512 vs 256). The example given in the problem includes thread block sizes as a rule. So: "The kernel uses larger thread block sizes (e.g., 512 threads per block) to improve SM occupancy."
+
+Fewer parameters in Kernel 2 reduce register usage. This leads to: "The kernel reduces the number of parameters passed to decrease register pressure."
+
+Eliminating redundant calculations by precomputing DHW. So: "The kernel precomputes combined dimensions (e.g., DHW) to avoid redundant calculations during index computation."
+
+Simpler address calculation helps the compiler optimize. But this might be too vague. However, the precomputing part is more concrete. So the previous point covers that.
+
+Checking the examples given, these rules fit the format. They are specific, objective, and applicable to other kernels. I need to ensure each rule is a separate statement and doesn't overlap. Let me list them out:
+
+1. The kernel flattens multiple spatial dimensions into a single dimension to enable contiguous memory access.
+2. The kernel minimizes the number of division and modulo operations for index calculations.
+3. The kernel uses larger thread block sizes (e.g., 512 threads per block) to improve SM occupancy.
+4. The kernel reduces the number of parameters passed to decrease register pressure.
+5. The kernel precomputes combined dimensions (e.g., DHW) to avoid redundant calculations during index computation.
+
+These all seem to fit the criteria. Let me verify against the reasoning text to ensure I didn't miss any. The key points were memory coalescing via flattening, simpler index math, larger block size, fewer parameters, and precomputed dimensions. Yes, these five rules cover those points.
+
+
+ANSWER:
+
+
+[
+    "The kernel flattens multiple spatial dimensions into a single dimension to enable contiguous memory access.",
+    "The kernel minimizes the number of division and modulo operations for index calculations.",
+    "The kernel uses larger thread block sizes (e.g., 512 threads per block) to improve SM occupancy.",
+    "The kernel reduces the number of parameters passed to decrease register pressure.",
+    "The kernel precomputes combined dimensions (e.g., DHW) to avoid redundant calculations during index computation."
+]
+
+Usage:
+{'inputTokens': 1450, 'outputTokens': 604, 'totalTokens': 2054}

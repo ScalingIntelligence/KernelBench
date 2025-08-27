@@ -1,0 +1,244 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 15.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized fused CUDA kernel with shared memory and vectorized operations
+elementwise_mult_act_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_fp16.h>
+
+__global__ void elementwise_mult_act_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ multiplier,
+    float* __restrict__ output,
+    int H, int W,
+    int C,
+    float negative_slope
+) {
+    __shared__ float shared_mult;
+    
+    const int n = blockIdx.z;
+    const int c = blockIdx.y;
+    const int tid = threadIdx.x;
+    const int hw_start = blockIdx.x * blockDim.x * 4 + tid;
+    
+    // Load multiplier to shared memory once per block
+    if (tid == 0) {
+        shared_mult = multiplier[c];
+    }
+    __syncthreads();
+
+    const float m = shared_mult;
+    const int elements_per_channel = H * W;
+    const int stride = blockDim.x * gridDim.x * 4;
+
+    // Process 4 elements per thread for better memory throughput
+    for (int idx = hw_start; idx < elements_per_channel; idx += stride) {
+        const int idx0 = idx;
+        const int idx1 = idx + blockDim.x;
+        const int idx2 = idx + 2*blockDim.x;
+        const int idx3 = idx + 3*blockDim.x;
+
+        // Process 4 elements with bounds checking
+        if (idx0 < elements_per_channel) {
+            const int h = idx0 / W;
+            const int w = idx0 % W;
+            const int input_idx = n * C * H * W + c * H * W + h * W + w;
+            float x = input[input_idx] * m;
+            x = fmaxf(x, x * negative_slope);
+            output[input_idx] = 0.5f * x * (1.0f + tanhf(0.7978845608f * (x + 0.044715f * x * x * x)));
+        }
+        if (idx1 < elements_per_channel) {
+            const int h = idx1 / W;
+            const int w = idx1 % W;
+            const int input_idx = n * C * H * W + c * H * W + h * W + w;
+            float x = input[input_idx] * m;
+            x = fmaxf(x, x * negative_slope);
+            output[input_idx] = 0.5f * x * (1.0f + tanhf(0.7978845608f * (x + 0.044715f * x * x * x)));
+        }
+        if (idx2 < elements_per_channel) {
+            const int h = idx2 / W;
+            const int w = idx2 % W;
+            const int input_idx = n * C * H * W + c * H * W + h * W + w;
+            float x = input[input_idx] * m;
+            x = fmaxf(x, x * negative_slope);
+            output[input_idx] = 0.5f * x * (1.0f + tanhf(0.7978845608f * (x + 0.044715f * x * x * x)));
+        }
+        if (idx3 < elements_per_channel) {
+            const int h = idx3 / W;
+            const int w = idx3 % W;
+            const int input_idx = n * C * H * W + c * H * W + h * W + w;
+            float x = input[input_idx] * m;
+            x = fmaxf(x, x * negative_slope);
+            output[input_idx] = 0.5f * x * (1.0f + tanhf(0.7978845608f * (x + 0.044715f * x * x * x)));
+        }
+    }
+}
+
+torch::Tensor elementwise_mult_act_cuda(torch::Tensor input, torch::Tensor multiplier, float negative_slope) {
+    multiplier = multiplier.contiguous();
+
+    TORCH_CHECK(input.device().is_cuda(), "input must be a CUDA tensor");
+    TORCH_CHECK(multiplier.sizes() == torch::IntArrayRef({input.size(1), 1, 1}), 
+                "multiplier must have shape (C, 1, 1)");
+
+    auto output = torch::empty_like(input);
+    const int batch_size = input.size(0);
+    const int C = input.size(1);
+    const int H = input.size(2);
+    const int W = input.size(3);
+
+    // Optimized grid configuration with 4x vectorization
+    const int hw_elements = H * W;
+    const int block_size = 256;
+    const dim3 grid(
+        (hw_elements + block_size * 4 - 1) / (block_size * 4),  // X dim for vectorized spatial
+        C,                                                       // Y dim for channels
+        batch_size                                               // Z dim for batches
+    );
+    const dim3 block(block_size);
+
+    elementwise_mult_act_kernel<<<grid, block>>>(
+        input.data_ptr<float>(),
+        multiplier.data_ptr<float>(),
+        output.data_ptr<float>(),
+        H, W,
+        C,
+        negative_slope
+    );
+
+    return output;
+}
+"""
+
+elementwise_mult_act_cpp_source = "torch::Tensor elementwise_mult_act_cuda(torch::Tensor input, torch::Tensor multiplier, float negative_slope);"
+
+# Compile with aggressive optimizations
+elementwise_mult_act = load_inline(
+    name="elementwise_mult_act",
+    cpp_sources=elementwise_mult_act_cpp_source,
+    cuda_sources=elementwise_mult_act_source,
+    functions=["elementwise_mult_act_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-use_fast_math", "-Xptxas -O3, -maxrregcount=32"]
+)
+
+class ModelNew(nn.Module):
+    """
+    Final optimized model with:
+    1. Fused multiply+LeakyReLU+GELU kernel
+    2. Shared memory for multiplier values
+    3. Vectorized memory access (4 elements per thread)
+    4. Optimized grid configuration for maximum occupancy
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=0)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.negative_slope = 0.01
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = elementwise_mult_act.elementwise_mult_act_cuda(x, self.multiplier, self.negative_slope)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, multiplier_shape]
+```
+
+Kernel 2 (runtime: 15.9 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__device__ float gelu(float x) {
+    return 0.5f * x * (1.0f + tanhf(0.7978845608028654f * (x + 0.044715f * x*x*x)));
+}
+
+__global__ void fused_mult_leaky_gelu_kernel(
+    const float* input, const float* multiplier, float* output,
+    int N, int C, int H, int W, float negative_slope) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N*C*H*W) return;
+
+    int w = idx % W;
+    int rem = idx / W;
+    int h = rem % H;
+    rem /= H;
+    int c = rem % C;
+    int n = rem / C;
+
+    float val = input[n*C*H*W + c*H*W + h*W + w];
+    val *= multiplier[c];
+
+    if (val < 0.0f) {
+        val *= negative_slope;
+    }
+
+    output[idx] = gelu(val);
+}
+
+torch::Tensor fused_mult_leaky_gelu_cuda(
+    torch::Tensor input, torch::Tensor multiplier, float negative_slope) {
+
+    int N = input.size(0);
+    int C = input.size(1);
+    int H = input.size(2);
+    int W = input.size(3);
+
+    auto output = torch::empty_like(input);
+
+    int total_elements = N * C * H * W;
+    const int threads_per_block = 256;
+    int blocks_per_grid = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    fused_mult_leaky_gelu_kernel<<<blocks_per_grid, threads_per_block>>>(
+        input.data_ptr<float>(),
+        multiplier.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, H, W,
+        negative_slope
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_mult_leaky_gelu_cuda(torch::Tensor input, torch::Tensor multiplier, float negative_slope);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=['fused_mult_leaky_gelu_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.negative_slope = 0.01
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_ops.fused_mult_leaky_gelu_cuda(x, self.multiplier, self.negative_slope)
+        return x
+```

@@ -1,0 +1,314 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 162.0 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+conv1d_cuda_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void conv1d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    const float* __restrict__ bias,
+    float* __restrict__ output,
+    int batch_size,
+    int in_channels,
+    int out_channels,
+    int kernel_size,
+    int input_length,
+    int output_length,
+    int stride,
+    int padding,
+    int dilation,
+    int groups,
+    int in_channels_per_group,
+    int out_channels_per_group
+) {
+    extern __shared__ float s_weight[];
+    
+    const int oc = blockIdx.x;
+    const int index = blockIdx.y * blockDim.x + threadIdx.x;
+    const int total_elements = batch_size * output_length;
+    if (index >= total_elements) return;
+
+    const int b = index / output_length;
+    const int out_pos = index % output_length;
+
+    // Load weights into shared memory with coalesced access
+    const int weight_size = in_channels_per_group * kernel_size;
+    for (int i = threadIdx.x; i < weight_size; i += blockDim.x) {
+        s_weight[i] = __ldg(&weight[oc * weight_size + i]);
+    }
+    __syncthreads();
+
+    const int group_id = oc / out_channels_per_group;
+    const int in_start = group_id * in_channels_per_group;
+    float sum = 0.0f;
+
+    // Optimized memory access pattern for input tensor
+    for (int ic = in_start; ic < in_start + in_channels_per_group; ++ic) {
+        const float* input_ptr = &input[(b * in_channels + ic) * input_length];
+        for (int k = 0; k < kernel_size; ++k) {
+            const int input_pos = out_pos * stride + k * dilation - padding;
+            if (input_pos >= 0 && input_pos < input_length) {
+                sum += input_ptr[input_pos] * s_weight[(ic - in_start) * kernel_size + k];
+            }
+        }
+    }
+
+    if (bias) sum += __ldg(&bias[oc]);
+    output[(b * out_channels + oc) * output_length + out_pos] = sum;
+}
+
+torch::Tensor conv1d_forward(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int stride,
+    int padding,
+    int dilation,
+    int groups
+) {
+    // Ensure tensors are contiguous
+    input = input.contiguous();
+    weight = weight.contiguous();
+    if (bias.defined()) bias = bias.contiguous();
+
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int input_length = input.size(2);
+    const int out_channels = weight.size(0);
+    const int kernel_size = weight.size(2);
+
+    const int output_length = ((input_length + 2 * padding - dilation * (kernel_size - 1) - 1) / stride) + 1;
+    auto output = torch::zeros({batch_size, out_channels, output_length}, input.options());
+
+    const int total_elements = batch_size * output_length;
+    const int block_size = 256;  // Optimized for modern GPU architectures
+    const int weight_size = (in_channels / groups) * kernel_size;
+    const dim3 grid(out_channels, (total_elements + block_size - 1) / block_size);
+
+    conv1d_kernel<<<grid, block_size, weight_size * sizeof(float)>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        bias.defined() ? bias.data_ptr<float>() : nullptr,
+        output.data_ptr<float>(),
+        batch_size,
+        in_channels,
+        out_channels,
+        kernel_size,
+        input_length,
+        output_length,
+        stride,
+        padding,
+        dilation,
+        groups,
+        in_channels / groups,
+        out_channels / groups
+    );
+
+    return output;
+}
+"""
+
+conv1d_cpp_source = "torch::Tensor conv1d_forward(torch::Tensor, torch::Tensor, torch::Tensor, int, int, int, int);"
+
+conv1d_ext = load_inline(
+    name='conv1d_ext',
+    cpp_sources=conv1d_cpp_source,
+    cuda_sources=conv1d_cuda_source,
+    functions=['conv1d_forward'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '-use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, groups: int = 1, bias: bool = False):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+
+        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels // groups, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        bias = self.bias if self.bias is not None else torch.empty(0, dtype=x.dtype, device=x.device)
+        return conv1d_ext.conv1d_forward(
+            x,
+            self.weight,
+            bias,
+            self.stride,
+            self.padding,
+            self.dilation,
+            self.groups
+        )
+```
+
+Kernel 2 (runtime: 202.0 ms):
+```
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
+from torch.utils.cpp_extension import load_inline
+
+conv1d_cuda_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template <int KERNEL_SIZE>
+__global__ void conv1d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    const float* __restrict__ bias,
+    float* __restrict__ output,
+    int batch_size, int in_channels, int out_channels,
+    int input_length, int stride, int padding, int dilation,
+    int output_length) {
+
+    int out_pos = blockIdx.x * blockDim.x + threadIdx.x;
+    int out_c = blockIdx.y * blockDim.y + threadIdx.y;
+    int b = blockIdx.z;
+
+    if (out_pos >= output_length || out_c >= out_channels || b >= batch_size) return;
+
+    float sum = 0.0f;
+
+    for (int in_c = 0; in_c < in_channels; ++in_c) {
+        #pragma unroll
+        for (int k = 0; k < KERNEL_SIZE; ++k) {
+            int input_pos = out_pos * stride - padding + k * dilation;
+            if (input_pos >= 0 && input_pos < input_length) {
+                float input_val = input[b * in_channels * input_length + in_c * input_length + input_pos];
+                float weight_val = weight[out_c * in_channels * KERNEL_SIZE + in_c * KERNEL_SIZE + k];
+                sum += input_val * weight_val;
+            }
+        }
+    }
+
+    if (bias != nullptr) {
+        sum += bias[out_c];
+    }
+
+    output[b * out_channels * output_length + out_c * output_length + out_pos] = sum;
+}
+
+torch::Tensor conv1d_cuda_forward(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int stride,
+    int padding,
+    int dilation,
+    int groups) {
+
+    int batch_size = input.size(0);
+    int in_channels = input.size(1);
+    int input_length = input.size(2);
+    int out_channels = weight.size(0);
+    int kernel_size = weight.size(2);
+
+    int output_length = (input_length + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1;
+
+    auto output = torch::zeros({batch_size, out_channels, output_length}, input.options());
+
+    dim3 block(256, 1);
+    dim3 grid(
+        (output_length + block.x - 1) / block.x,
+        out_channels,
+        batch_size
+    );
+
+    if (groups != 1) {
+        AT_ERROR("Groups != 1 not supported in custom kernel");
+    }
+
+    switch(kernel_size) {
+        case 3:
+            conv1d_kernel<3><<<grid, block>>>(
+                input.data_ptr<float>(),
+                weight.data_ptr<float>(),
+                bias.defined() ? bias.data_ptr<float>() : nullptr,
+                output.data_ptr<float>(),
+                batch_size, in_channels, out_channels,
+                input_length, stride, padding, dilation,
+                output_length
+            );
+            break;
+        default:
+            AT_ERROR("Unsupported kernel size in custom kernel");
+    }
+
+    return output;
+}
+"""
+
+conv1d_cpp_source = "torch::Tensor conv1d_cuda_forward(torch::Tensor input, torch::Tensor weight, torch::Tensor bias, int stride, int padding, int dilation, int groups);"
+
+conv1d_extension = load_inline(
+    name='conv1d_extension',
+    cpp_sources=conv1d_cpp_source,
+    cuda_sources=conv1d_cuda_source,
+    functions=['conv1d_cuda_forward'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, 
+                 stride: int = 1, padding: int = 0, dilation: int = 1, 
+                 groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+
+        self.weight = nn.Parameter(torch.empty(out_channels, in_channels // groups, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        # Initialize parameters
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.groups != 1 or self.kernel_size not in [3]:
+            return F.conv1d(x, self.weight, self.bias, self.stride, 
+                            self.padding, self.dilation, self.groups)
+                            
+        return conv1d_extension.conv1d_cuda_forward(
+            x, self.weight, self.bias if self.bias is not None else torch.Tensor(),
+            self.stride, self.padding, self.dilation, self.groups
+        )
+```

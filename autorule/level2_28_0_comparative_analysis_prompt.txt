@@ -1,0 +1,205 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.33 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused add-multiply kernel with coalesced memory access
+fused_kernel_source = """
+#include <torch/extension.h>
+
+__global__ void fused_add_mult_kernel(const float* a, const float* b, float* out, int size) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int stride = blockDim.x * gridDim.x;
+    
+    for (int i = idx; i < size; i += stride) {
+        const float a_val = a[i];
+        const float b_val = b[i];
+        out[i] = (a_val + b_val) * b_val;
+    }
+}
+
+torch::Tensor fused_add_mult_cuda(torch::Tensor a, torch::Tensor b) {
+    auto out = torch::empty_like(a);
+    const int size = a.numel();
+    
+    // Optimized launch configuration
+    const int block_size = 256;
+    const int max_blocks = 1024;
+    const int num_blocks = min((size + block_size - 1) / block_size, max_blocks);
+    
+    fused_add_mult_kernel<<<num_blocks, block_size>>>(
+        a.data_ptr<float>(),
+        b.data_ptr<float>(),
+        out.data_ptr<float>(),
+        size
+    );
+    
+    return out;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_add_mult_cuda(torch::Tensor a, torch::Tensor b);"
+
+# Load custom CUDA operations with proper error handling
+try:
+    fused_ops = load_inline(
+        name='fused_ops',
+        cpp_sources=fused_kernel_cpp,
+        cuda_sources=fused_kernel_source,
+        functions=['fused_add_mult_cuda'],
+        verbose=False,
+        extra_cuda_cflags=["-O3"]
+    )
+except Exception as e:
+    print(f"Error loading CUDA extension: {e}")
+    fused_ops = None
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, eps=1e-5, momentum=0.1):
+        super().__init__()
+        self.bmm = nn.Linear(in_features, out_features)
+        self.layer_norm = nn.LayerNorm(out_features, eps=eps)
+        if fused_ops:
+            self.fused_add_mult = fused_ops.fused_add_mult_cuda
+        else:
+            # Fallback to PyTorch implementation if CUDA extension fails
+            self.fused_add_mult = lambda x, y: (x + y) * y
+
+    def forward(self, x, y):
+        x = self.bmm(x)
+        x = self.layer_norm(x)
+        return self.fused_add_mult(x, y)
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features), torch.rand(batch_size, out_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+```
+
+Kernel 2 (runtime: 7.26 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom fused kernel for instance norm + add + multiply
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template<typename scalar_t>
+__global__ void fused_instance_norm_add_mul_kernel(
+    const scalar_t* input, const scalar_t* y, scalar_t* output,
+    int batch_size, int features, float eps) {
+    
+    extern __shared__ __align__(sizeof(scalar_t)) unsigned char shared_mem[];
+    scalar_t* shared_sum = reinterpret_cast<scalar_t*>(shared_mem);
+    scalar_t* shared_sum_sq = &shared_sum[blockDim.x];
+
+    const int batch_idx = blockIdx.x;
+    const int tid = threadIdx.x;
+    
+    scalar_t sum = 0;
+    scalar_t sum_sq = 0;
+    
+    // Parallel reduction for sum and sum of squares
+    for(int i = tid; i < features; i += blockDim.x) {
+        const scalar_t val = input[batch_idx * features + i];
+        sum += val;
+        sum_sq += val * val;
+    }
+    
+    shared_sum[tid] = sum;
+    shared_sum_sq[tid] = sum_sq;
+    __syncthreads();
+    
+    // Tree reduction
+    for(int stride = blockDim.x/2; stride > 0; stride >>= 1) {
+        if(tid < stride) {
+            shared_sum[tid] += shared_sum[tid + stride];
+            shared_sum_sq[tid] += shared_sum_sq[tid + stride];
+        }
+        __syncthreads();
+    }
+    
+    // Compute mean and variance
+    if(tid == 0) {
+        const scalar_t mean = shared_sum[0] / features;
+        const scalar_t var = (shared_sum_sq[0] / features) - (mean * mean);
+        shared_sum[0] = mean;
+        shared_sum[1] = var;
+    }
+    __syncthreads();
+    
+    const scalar_t mean = shared_sum[0];
+    const scalar_t var = shared_sum[1];
+    
+    // Apply normalization and elementwise operations
+    for(int i = tid; i < features; i += blockDim.x) {
+        const int idx = batch_idx * features + i;
+        const scalar_t normalized = (input[idx] - mean) / sqrt(var + eps);
+        output[idx] = (normalized + y[idx]) * y[idx];
+    }
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor y, float eps) {
+    auto output = torch::empty_like(input);
+    const int batch_size = input.size(0);
+    const int features = input.size(1);
+    
+    const int threads = 1024;
+    const int shared_mem = 2 * threads * sizeof(float);
+    
+    fused_instance_norm_add_mul_kernel<float><<<batch_size, threads, shared_mem>>>(
+        input.data_ptr<float>(),
+        y.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        features,
+        eps
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor y, float eps);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_ops_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, eps=1e-5, momentum=0.1):
+        super().__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.eps = eps
+
+    def forward(self, x, y):
+        x = self.linear(x)
+        x = fused_ops.fused_ops_cuda(x, y, self.eps)
+        return x
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda(), torch.rand(batch_size, out_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features]
+```

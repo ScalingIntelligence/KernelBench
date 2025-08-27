@@ -1,0 +1,123 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the custom CUDA kernel for ReLU
+relu_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void relu_kernel(const float* input, float* output, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        output[idx] = fmaxf(input[idx], 0.0f);
+    }
+}
+
+torch::Tensor relu_cuda(torch::Tensor input) {
+    auto size = input.numel();
+    auto output = torch::empty_like(input);
+
+    const int block_size = 256;
+    const int num_blocks = (size + block_size - 1) / block_size;
+
+    relu_kernel<<<num_blocks, block_size>>>(input.data_ptr<float>(), output.data_ptr<float>(), size);
+
+    return output;
+}
+"""
+
+relu_cpp_source = (
+    "torch::Tensor relu_cuda(torch::Tensor input);"
+)
+
+# Compile the inline CUDA code for ReLU
+relu_op = load_inline(
+    name="relu_op",
+    cpp_sources=relu_cpp_source,
+    cuda_sources=relu_source,
+    functions=["relu_cuda"],
+    verbose=True,
+    extra_cflags=[""],
+    extra_ldflags=[""],
+)
+
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return relu_op.relu_cuda(x)
+
+# Example usage
+if __name__ == "__main__":
+    batch_size = 4096
+    dim = 393216
+
+    model = ModelNew().cuda()
+    x = torch.rand(batch_size, dim).cuda()
+
+    output = model(x)
+    print(output.shape)
+```
+
+Kernel 2 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom ReLU CUDA kernel
+relu_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void relu_kernel(const float* input, float* output, int num_elements) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < num_elements) {
+        output[index] = fmaxf(0.0f, input[index]);
+    }
+}
+
+torch::Tensor relu_cuda(torch::Tensor input) {
+    torch::Tensor output = torch::empty_like(input);
+    
+    const int num_elements = input.numel();
+    const int block_size = 256;
+    const int grid_size = (num_elements + block_size - 1) / block_size;
+    
+    relu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+relu_cpp_source = "torch::Tensor relu_cuda(torch::Tensor input);"
+
+# Compile the inline CUDA code
+relu_extension = load_inline(
+    name="relu_extension",
+    cpp_sources=relu_cpp_source,
+    cuda_sources=relu_kernel_source,
+    functions=["relu_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.relu_op = relu_extension
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.relu_op.relu_cuda(x)
+```

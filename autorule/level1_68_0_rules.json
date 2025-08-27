@@ -1,0 +1,9 @@
+[
+  "The kernel uses a grid-stride loop pattern to improve GPU utilization and handle cases where the total number of elements exceeds the grid size.",
+  "The kernel leverages the read-only data cache via the __ldg() intrinsic for frequently accessed data like weights and inputs.",
+  "The kernel unrolls inner loops using pragma directives (e.g., #pragma unroll) to reduce loop overhead and improve instruction-level parallelism.",
+  "The kernel employs __restrict__ qualifiers on pointers to enable compiler optimizations by guaranteeing no pointer aliasing.",
+  "The kernel structures weight tensor memory layout to enable sequential access patterns during critical loops (e.g., grouping dimensions to promote coalesced access).",
+  "The kernel reorganizes loop order and indexing to ensure contiguous memory access for adjacent threads, particularly in inner loops over input/output channels.",
+  "The kernel aligns tensor dimensions and access strides with thread execution patterns to minimize non-coalesced global memory accesses."
+]

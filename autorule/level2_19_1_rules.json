@@ -1,0 +1,5 @@
+[
+  "The kernel avoids redundant integer division and modulo operations in index calculation.",
+  "The kernel uses direct index computation without decomposing variables into subcomponents when possible.",
+  "The kernel reduces per-element arithmetic operations by eliminating unnecessary intermediate calculations."
+]

@@ -1,0 +1,5 @@
+[
+  "The kernel uses loop unrolling via #pragma unroll directives for nested loops to improve instruction-level parallelism.",
+  "The kernel accesses input and weight tensors with contiguous memory patterns by iterating over channels (ic) in the innermost loop, ensuring coalesced memory operations.",
+  "The kernel organizes output computations to ensure coalesced writes by mapping threads to contiguous output channel elements within spatial positions."
+]

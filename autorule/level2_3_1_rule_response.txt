@@ -1,0 +1,29 @@
+REASONING TRACE:
+[
+    "The kernel fuses element-wise operations (e.g., Add) with normalization operations (e.g., LayerNorm) into a single kernel.",
+    "The kernel uses shared memory and block-level parallel reductions for efficient computation of statistics (e.g., mean, variance).",
+    "The kernel accesses contiguous memory regions along a specific dimension (e.g., W) to enable coalesced global memory accesses.",
+    "The kernel minimizes complex index calculations (e.g., modulo/division operations) by directly mapping thread/block indices to problem dimensions.",
+    "The kernel delegates compute-heavy operations (e.g., AvgPool, GELU) to highly optimized library implementations (e.g., cuDNN/cuBLAS) instead of custom implementations.",
+    "The kernel avoids strided or scattered memory access patterns (e.g., non-coalesced accesses from 2x2x2 windows) that reduce memory throughput.",
+    "The kernel uses thread block configurations that align with the problem's dimensionality (e.g., threads per block matching the W dimension) for efficient reductions."
+]
+
+
+ANSWER:
+
+
+Here is the JSON array of rule-like statements derived from the reasoning:
+
+[
+    "The kernel fuses element-wise operations (e.g., Add) with normalization operations (e.g., LayerNorm) into a single kernel.",
+    "The kernel uses shared memory and block-level parallel reductions for efficient computation of statistics (e.g., mean, variance).",
+    "The kernel accesses contiguous memory regions along a specific dimension (e.g., W) to enable coalesced global memory accesses.",
+    "The kernel minimizes complex index calculations (e.g., modulo/division operations) by directly mapping thread/block indices to problem dimensions.",
+    "The kernel delegates compute-heavy operations (e.g., AvgPool, GELU) to highly optimized library implementations (e.g., cuDNN/cuBLAS) instead of custom implementations.",
+    "The kernel avoids strided or scattered memory access patterns (e.g., non-coalesced accesses from 2x2x2 windows) that reduce memory throughput.",
+    "The kernel uses thread block configurations that align with the problem's dimensionality (e.g., threads per block matching the W dimension) for efficient reductions."
+]
+
+Usage:
+{'inputTokens': 2605, 'outputTokens': 456, 'totalTokens': 3061}

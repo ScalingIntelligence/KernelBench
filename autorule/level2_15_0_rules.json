@@ -1,0 +1,7 @@
+[
+  "The kernel uses in-place operations to reduce global memory traffic.",
+  "The kernel flattens multiple dimensions into a single contiguous dimension to enable coalesced memory access.",
+  "The kernel simplifies index calculations by precomputing aggregated dimensions to reduce arithmetic operations.",
+  "The kernel enforces tensor contiguity and data type constraints to ensure optimal memory layout.",
+  "The kernel avoids strided memory accesses by restructuring multidimensional indices into contiguous flattened indices."
+]

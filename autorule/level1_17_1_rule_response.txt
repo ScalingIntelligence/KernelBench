@@ -1,0 +1,72 @@
+REASONING TRACE:
+Okay, let's start by reading through the reasoning provided. The user wants me to extract rule-like statements from the reasoning about why Kernel 2 is faster than Kernel 1. The rules should be general, objective, and applicable to various CUDA kernels.
+
+First, the reasoning mentions that Kernel 2 uses tensor cores via cuBLAS. That's a specific optimization. So a rule here could be about leveraging tensor cores for matrix operations. The example given in the problem includes using shared memory tiling, so this is similar but for tensor cores.
+
+Next, the reasoning points out that cuBLAS is a highly optimized library. The key here is using optimized libraries that are tuned for the hardware. So a rule could be about utilizing such libraries for better performance.
+
+Another point is memory hierarchy optimization. The reasoning says cuBLAS automatically selects optimal tile sizes and uses hardware-accelerated memory coalescing. So a rule here might involve automatic selection of tile sizes based on GPU architecture.
+
+The reasoning also mentions algorithmic optimizations like automatic kernel selection from multiple variants, hardware-aware double-buffering, and advanced instruction-level parallelism. These can be translated into rules about using multiple optimized kernel variants or employing techniques like double-buffering.
+
+Additionally, the manual kernel (Kernel 1) has fixed parameters, while cuBLAS adjusts parameters automatically. So a rule about automatic parameter tuning for different GPU architectures would fit.
+
+Looking at the examples provided, the rules are concise and general. For instance, "The kernel uses shared memory tiling to reduce global memory access." So I need to phrase each point in a similar manner.
+
+Now, let's list out possible rules:
+
+1. Use of tensor cores for mixed-precision matrix operations. (From Tensor Core Utilization)
+2. Utilization of highly optimized libraries (like cuBLAS) tailored for specific hardware. (From Highly Optimized Library)
+3. Automatic selection of tile sizes based on GPU architecture. (From Memory Hierarchy Optimization)
+4. Implementation of hardware-accelerated memory coalescing patterns. (From Memory Hierarchy Optimization)
+5. Use of multiple optimized kernel variants selected automatically. (From Algorithmic Optimizations)
+6. Application of hardware-aware double-buffering for memory transfers. (From Algorithmic Optimizations)
+7. Employment of advanced instruction-level parallelism. (From Algorithmic Optimizations)
+8. Automatic tuning of parameters like loop unrolling factors. (From Algorithmic Optimizations)
+9. Minimization of synchronization overhead between warps. (From Memory Hierarchy Optimization)
+10. Handling transpositions with zero-copy operations. (From Algorithmic Optimizations)
+
+I need to check if these are general enough and not too specific. For example, "Use of tensor cores" is a general optimization technique applicable to any CUDA kernel that can benefit from tensor cores. Similarly, "automatic selection of tile sizes" is a general rule.
+
+Some points from the reasoning might be too specific, like "hardware-optimized 16x16x16 matrix tiles" but the rule should avoid specific numbers and be general. Instead, the rule would be about using tensor cores without specifying tile sizes.
+
+Also, the reasoning mentions "minimizes synchronization overhead", which is a general optimization strategy. So that's a valid rule.
+
+Now, compiling these into the required JSON array. Each rule should be a string in the array, phrased as a general statement. Let me structure them:
+
+- The kernel leverages tensor cores for mixed-precision matrix operations.
+- The kernel utilizes highly optimized libraries tailored for specific GPU architectures.
+- The kernel automatically selects optimal tile sizes based on the GPU architecture.
+- The kernel implements hardware-accelerated memory coalescing patterns.
+- The kernel employs multiple optimized variants selected automatically for the operation.
+- The kernel uses hardware-aware double-buffering for memory transfers.
+- The kernel utilizes advanced instruction-level parallelism.
+- The kernel automatically tunes parameters such as loop unrolling factors.
+- The kernel minimizes synchronization overhead between warps.
+- The kernel handles matrix transpositions with zero-copy operations.
+
+I need to ensure each statement is a rule that can be applied to various CUDA kernels and is objectively verifiable. For example, checking if a kernel uses tensor cores can be determined by the use of specific APIs or directives. Using a library like cuBLAS is a clear indicator. Automatic parameter tuning can be observed if the kernel doesn't hardcode sizes but instead selects them based on the GPU's specs.
+
+Double-checking against the examples given: the examples are concise and don't include specifics. The rules I've listed follow that pattern. For instance, "The kernel uses shared memory tiling to reduce global memory access" is similar to "The kernel implements hardware-accelerated memory coalescing patterns."
+
+I think these rules are correctly extracted. Now, format them as a JSON array of strings without using markdown.
+
+
+ANSWER:
+
+
+[
+    "The kernel leverages tensor cores for mixed-precision matrix operations.",
+    "The kernel utilizes highly optimized libraries tailored for specific GPU architectures.",
+    "The kernel automatically selects optimal tile sizes based on the GPU architecture.",
+    "The kernel implements hardware-accelerated memory coalescing patterns.",
+    "The kernel employs multiple optimized variants selected automatically for the operation.",
+    "The kernel uses hardware-aware double-buffering for memory transfers.",
+    "The kernel utilizes advanced instruction-level parallelism.",
+    "The kernel automatically tunes parameters such as loop unrolling factors.",
+    "The kernel minimizes synchronization overhead between warps.",
+    "The kernel handles matrix transpositions with zero-copy operations."
+]
+
+Usage:
+{'inputTokens': 1511, 'outputTokens': 1123, 'totalTokens': 2634}

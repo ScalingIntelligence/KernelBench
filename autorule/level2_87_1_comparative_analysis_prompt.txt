@@ -1,0 +1,125 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 17.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused subtract and Mish activation CUDA kernel
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_subtract_mish_kernel(const float* input, float* output, float subtract_val, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        // Fused subtract and Mish activation
+        float x = input[idx] - subtract_val;
+        float sp = logf(1.0f + expf(x));  // softplus
+        float tanh_sp = tanhf(sp);
+        output[idx] = x * tanh_sp;
+    }
+}
+
+torch::Tensor fused_subtract_mish_cuda(torch::Tensor input, float subtract_val) {
+    auto num_elements = input.numel();
+    auto output = torch::empty_like(input);
+
+    const int block_size = 256;
+    const int grid_size = (num_elements + block_size - 1) / block_size;
+
+    fused_subtract_mish_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        subtract_val,
+        num_elements
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_subtract_mish_cuda(torch::Tensor input, float subtract_val);"
+
+# Load the custom CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_subtract_mish_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, subtract_value_1, subtract_value_2):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.subtract_sum = subtract_value_1 + subtract_value_2  # Fuse subtraction values
+
+    def forward(self, x):
+        x = self.conv(x)
+        # Single fused kernel replaces two subtractions and Mish activation
+        return fused_ops.fused_subtract_mish_cuda(x, self.subtract_sum)
+```
+
+Kernel 2 (runtime: 17.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_sub_mish_source = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_sub_mish_kernel(const float* input, float* output, float val1, float val2, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float x = input[idx] - val1 - val2;
+        float sp_x = log(1.0f + exp(x));
+        output[idx] = x * tanhf(sp_x);
+    }
+}
+
+torch::Tensor fused_sub_mish_cuda(torch::Tensor input, float val1, float val2) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    
+    const int threads_per_block = 256;
+    int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    fused_sub_mish_kernel<<<num_blocks, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        val1,
+        val2,
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_sub_mish_cpp = "torch::Tensor fused_sub_mish_cuda(torch::Tensor input, float val1, float val2);"
+
+fused_op = load_inline(
+    name='fused_sub_mish',
+    cpp_sources=fused_sub_mish_cpp,
+    cuda_sources=fused_sub_mish_source,
+    functions=['fused_sub_mish_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, subtract_value_1, subtract_value_2):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.val1 = subtract_value_1
+        self.val2 = subtract_value_2
+
+    def forward(self, x):
+        x = self.conv(x)
+        return fused_op.fused_sub_mish_cuda(x, self.val1, self.val2)
+```

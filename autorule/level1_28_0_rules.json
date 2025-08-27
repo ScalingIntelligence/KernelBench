@@ -1,0 +1,4 @@
+[
+  "The kernel orders clamp operations as fmaxf(fminf(...)) to allow compiler optimization into a single instruction.",
+  "The kernel uses the canonical order of min followed by max for clamp operations to enable compiler recognition and optimization."
+]

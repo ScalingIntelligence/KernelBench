@@ -1,0 +1,240 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 0.0866 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel with tensor-based bias and improved grid configuration
+fused_operations_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_ops_kernel(
+    const float* input,
+    const float* weights,
+    const float* bias,
+    float* output,
+    int batch_size,
+    int in_features
+) {
+    const int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    const int tid = threadIdx.x;
+    const int stride = blockDim.x;
+    const int vec_size = 4;
+    const int num_vecs = in_features / vec_size;
+
+    float sum = 0.0f;
+
+    // Vectorized memory access with 128-bit loads
+    for (int i = tid; i < num_vecs; i += stride) {
+        const int input_offset = batch_idx * in_features + i * vec_size;
+        const int weight_offset = i * vec_size;
+        
+        const float4 input_vec = *reinterpret_cast<const float4*>(input + input_offset);
+        const float4 weight_vec = *reinterpret_cast<const float4*>(weights + weight_offset);
+
+        sum += input_vec.x * weight_vec.x;
+        sum += input_vec.y * weight_vec.y;
+        sum += input_vec.z * weight_vec.z;
+        sum += input_vec.w * weight_vec.w;
+    }
+
+    // Efficient parallel reduction using shared memory
+    __shared__ float shared[256];
+    shared[tid] = sum;
+    __syncthreads();
+
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared[tid] += shared[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[batch_idx] = shared[0] + __ldg(bias);
+    }
+}
+
+torch::Tensor fused_operations_cuda(
+    torch::Tensor input,
+    torch::Tensor weights,
+    torch::Tensor bias
+) {
+    const int batch_size = input.size(0);
+    const int in_features = input.size(1);
+    auto output = torch::zeros({batch_size, 1}, input.options());
+
+    const int block_size = 256;
+    const dim3 grid(batch_size);
+    
+    fused_ops_kernel<<<grid, block_size>>>(
+        input.data_ptr<float>(),
+        weights.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        in_features
+    );
+
+    return output;
+}
+"""
+
+fused_operations_cpp_source = "torch::Tensor fused_operations_cuda(torch::Tensor input, torch::Tensor weights, torch::Tensor bias);"
+
+# Compile the optimized kernel
+fused_operations = load_inline(
+    name="fused_operations",
+    cpp_sources=fused_operations_cpp_source,
+    cuda_sources=fused_operations_source,
+    functions=["fused_operations_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        
+        # Precompute reduced parameters with proper tensor shapes
+        self.register_buffer("sum_weights", torch.sum(self.linear.weight, dim=0))
+        self.register_buffer("sum_bias", torch.sum(self.linear.bias).view(1))
+
+    def forward(self, x):
+        # Single kernel call with tensor-based parameters
+        return fused_operations.fused_operations_cuda(
+            x, 
+            self.sum_weights,
+            self.sum_bias
+        )
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features]
+```
+
+Kernel 2 (runtime: 0.066 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernel for fused matmul + sum
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_matmul_sum_kernel(
+    const float* input,
+    const float* weights,
+    float bias_sum,
+    float* output,
+    int batch_size,
+    int in_features
+) {
+    const int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    extern __shared__ float shared_mem[];
+    
+    const int tid = threadIdx.x;
+    const int stride = blockDim.x;
+    float thread_sum = 0.0f;
+
+    // Each thread computes partial dot product
+    for (int i = tid; i < in_features; i += stride) {
+        thread_sum += input[batch_idx * in_features + i] * weights[i];
+    }
+
+    shared_mem[tid] = thread_sum;
+    __syncthreads();
+
+    // Parallel reduction within block
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_mem[tid] += shared_mem[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[batch_idx] = shared_mem[0] + bias_sum;
+    }
+}
+
+torch::Tensor fused_matmul_sum_cuda(
+    torch::Tensor input,
+    torch::Tensor weights,
+    float bias_sum
+) {
+    const int batch_size = input.size(0);
+    const int in_features = input.size(1);
+    auto output = torch::zeros({batch_size, 1}, input.options());
+
+    const int block_size = 256;
+    const int grid_size = batch_size;
+
+    fused_matmul_sum_kernel<<<grid_size, block_size, block_size * sizeof(float)>>>(
+        input.data_ptr<float>(),
+        weights.data_ptr<float>(),
+        bias_sum,
+        output.data_ptr<float>(),
+        batch_size,
+        in_features
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_matmul_sum_cuda(torch::Tensor, torch::Tensor, float);"
+
+# Compile the CUDA kernel
+fused_op = load_inline(
+    name="fused_op",
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=["fused_matmul_sum_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        # Maintain original layer to access parameters
+        self.linear = nn.Linear(in_features, out_features)
+        
+        # Precompute fused parameters
+        with torch.no_grad():
+            self.sum_W = self.linear.weight.sum(dim=0)  # Sum across output features
+            self.sum_b = self.linear.bias.sum().item()
+        
+        # Register buffers for CUDA
+        self.register_buffer('sum_W_buf', self.sum_W)
+        self.register_buffer('sum_b_buf', torch.tensor(self.sum_b))
+
+    def forward(self, x):
+        # Directly compute fused matmul + sum
+        x = fused_op.fused_matmul_sum_cuda(
+            x, 
+            self.sum_W_buf,
+            self.sum_b
+        )
+        
+        # Subsequent operations are identity ops on (B,1) tensor
+        return x
+```

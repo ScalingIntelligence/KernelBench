@@ -1,0 +1,298 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 36.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+log_softmax_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void log_softmax_kernel(const float* input, float* output, int dim_size) {
+    extern __shared__ float shared[];
+    const int num_warps = blockDim.x / 32;
+    float* max_shared = shared;
+    float* sum_shared = shared + num_warps;
+
+    int batch_idx = blockIdx.x;
+    int tid = threadIdx.x;
+    int warp_id = tid / 32;
+    int lane_id = tid % 32;
+
+    const float* batch_input = input + batch_idx * dim_size;
+    float* batch_output = output + batch_idx * dim_size;
+
+    // Vectorized max reduction
+    float max_val = -INFINITY;
+    const int vec_size = dim_size / 4;
+    const int remainder = dim_size % 4;
+    const float4* input_vec = reinterpret_cast<const float4*>(batch_input);
+    
+    // Process vectorized elements
+    for (int i = tid; i < vec_size; i += blockDim.x) {
+        float4 chunk = input_vec[i];
+        max_val = fmaxf(max_val, chunk.x);
+        max_val = fmaxf(max_val, chunk.y);
+        max_val = fmaxf(max_val, chunk.z);
+        max_val = fmaxf(max_val, chunk.w);
+    }
+
+    // Process remaining elements
+    int remaining_start = vec_size * 4;
+    for (int i = remaining_start + tid; i < dim_size; i += blockDim.x) {
+        max_val = fmaxf(max_val, batch_input[i]);
+    }
+
+    // Warp-level max reduction
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        max_val = fmaxf(max_val, __shfl_down_sync(0xffffffff, max_val, offset));
+    }
+
+    if (lane_id == 0) {
+        max_shared[warp_id] = max_val;
+    }
+    __syncthreads();
+
+    // First warp reduces max_shared
+    if (warp_id == 0) {
+        float val = lane_id < num_warps ? max_shared[lane_id] : -INFINITY;
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            val = fmaxf(val, __shfl_down_sync(0xffffffff, val, offset));
+        }
+        if (lane_id == 0) {
+            max_shared[0] = val;
+        }
+    }
+    __syncthreads();
+
+    float global_max = max_shared[0];
+
+    // Vectorized sum reduction
+    float sum_exp = 0.0f;
+    for (int i = tid; i < vec_size; i += blockDim.x) {
+        float4 chunk = input_vec[i];
+        sum_exp += expf(chunk.x - global_max);
+        sum_exp += expf(chunk.y - global_max);
+        sum_exp += expf(chunk.z - global_max);
+        sum_exp += expf(chunk.w - global_max);
+    }
+
+    // Process remaining elements for sum
+    for (int i = remaining_start + tid; i < dim_size; i += blockDim.x) {
+        sum_exp += expf(batch_input[i] - global_max);
+    }
+
+    // Warp-level sum reduction
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        sum_exp += __shfl_down_sync(0xffffffff, sum_exp, offset);
+    }
+
+    if (lane_id == 0) {
+        sum_shared[warp_id] = sum_exp;
+    }
+    __syncthreads();
+
+    // First warp reduces sum_shared
+    if (warp_id == 0) {
+        float val = lane_id < num_warps ? sum_shared[lane_id] : 0.0f;
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            val += __shfl_down_sync(0xffffffff, val, offset);
+        }
+        if (lane_id == 0) {
+            sum_shared[0] = val;
+        }
+    }
+    __syncthreads();
+
+    float log_sum = logf(sum_shared[0] + 1e-12f);  // Add epsilon for numerical stability
+
+    // Vectorized store
+    float4* output_vec = reinterpret_cast<float4*>(batch_output);
+    for (int i = tid; i < vec_size; i += blockDim.x) {
+        float4 chunk = input_vec[i];
+        float4 out_chunk;
+        out_chunk.x = chunk.x - global_max - log_sum;
+        out_chunk.y = chunk.y - global_max - log_sum;
+        out_chunk.z = chunk.z - global_max - log_sum;
+        out_chunk.w = chunk.w - global_max - log_sum;
+        output_vec[i] = out_chunk;
+    }
+
+    // Process remaining elements for output
+    for (int i = remaining_start + tid; i < dim_size; i += blockDim.x) {
+        batch_output[i] = batch_input[i] - global_max - log_sum;
+    }
+}
+
+torch::Tensor log_softmax_cuda(torch::Tensor input, int dim) {
+    TORCH_CHECK(dim == 1, "Only dim=1 is supported");
+    auto output = torch::empty_like(input);
+    int batch_size = input.size(0);
+    int dim_size = input.size(1);
+
+    const int threads_per_block = 1024;
+    int num_warps = threads_per_block / 32;
+    int shared_mem_size = 2 * num_warps * sizeof(float);
+
+    log_softmax_kernel<<<batch_size, threads_per_block, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        dim_size
+    );
+
+    return output;
+}
+"""
+
+log_softmax_cpp_source = "torch::Tensor log_softmax_cuda(torch::Tensor input, int dim);"
+
+log_softmax_ext = load_inline(
+    name="log_softmax",
+    cpp_sources=log_softmax_cpp_source,
+    cuda_sources=log_softmax_source,
+    functions=["log_softmax_cuda"],
+    verbose=True,
+    extra_cuda_cflags=['-use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int = 1):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+        self.log_softmax = log_softmax_ext.log_softmax_cuda
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.log_softmax(x, self.dim)
+```
+
+Kernel 2 (runtime: 37.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+log_softmax_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+template <int VEC_SIZE>
+__global__ void log_softmax_kernel(const float* input, float* output, int dim) {
+    extern __shared__ float smem[];
+    int row = blockIdx.x;
+    int tid = threadIdx.x;
+    int num_threads = blockDim.x;
+
+    float max_val = -INFINITY;
+
+    // Vectorized max reduction
+    const int num_vectors = dim / VEC_SIZE;
+    for (int i = tid; i < num_vectors; i += num_threads) {
+        float4 vec = reinterpret_cast<const float4*>(input + row * dim + i * VEC_SIZE)[0];
+        max_val = fmaxf(max_val, vec.x);
+        max_val = fmaxf(max_val, vec.y);
+        max_val = fmaxf(max_val, vec.z);
+        max_val = fmaxf(max_val, vec.w);
+    }
+
+    // Block-wide max reduction
+    volatile float* vsmem = smem;
+    vsmem[tid] = max_val;
+    __syncthreads();
+
+    for (int s = num_threads/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            if (vsmem[tid] < vsmem[tid + s]) {
+                vsmem[tid] = vsmem[tid + s];
+            }
+        }
+        __syncthreads();
+    }
+    max_val = vsmem[0];
+    __syncthreads();
+
+    // Vectorized sum_exp computation
+    float sum_exp = 0.0f;
+    for (int i = tid; i < num_vectors; i += num_threads) {
+        float4 vec = reinterpret_cast<const float4*>(input + row * dim + i * VEC_SIZE)[0];
+        sum_exp += expf(vec.x - max_val);
+        sum_exp += expf(vec.y - max_val);
+        sum_exp += expf(vec.z - max_val);
+        sum_exp += expf(vec.w - max_val);
+    }
+
+    // Block-wide sum reduction
+    vsmem[tid] = sum_exp;
+    __syncthreads();
+
+    for (int s = num_threads/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            vsmem[tid] += vsmem[tid + s];
+        }
+        __syncthreads();
+    }
+    sum_exp = vsmem[0];
+    __syncthreads();
+
+    float log_sum = logf(sum_exp);
+
+    // Write results with vectorized stores
+    for (int i = tid; i < num_vectors; i += num_threads) {
+        float4 vec = reinterpret_cast<const float4*>(input + row * dim + i * VEC_SIZE)[0];
+        float4 out_vec;
+        out_vec.x = vec.x - max_val - log_sum;
+        out_vec.y = vec.y - max_val - log_sum;
+        out_vec.z = vec.z - max_val - log_sum;
+        out_vec.w = vec.w - max_val - log_sum;
+        reinterpret_cast<float4*>(output + row * dim + i * VEC_SIZE)[0] = out_vec;
+    }
+}
+
+torch::Tensor log_softmax_cuda(torch::Tensor input, int dim) {
+    TORCH_CHECK(input.dim() == 2, "Input must be 2D");
+    TORCH_CHECK(dim == 1, "Only dim=1 supported");
+    const int feature_size = input.size(1);
+    TORCH_CHECK(feature_size % 4 == 0, "Feature size must be divisible by 4");
+
+    auto output = torch::empty_like(input);
+    const int batch_size = input.size(0);
+    const int vec_size = 4;
+    const int num_threads = 1024;
+
+    dim3 grid(batch_size);
+    dim3 block(num_threads);
+    size_t smem = num_threads * sizeof(float);
+
+    log_softmax_kernel<vec_size><<<grid, block, smem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        feature_size
+    );
+
+    return output;
+}
+"""
+
+log_softmax_cpp = "torch::Tensor log_softmax_cuda(torch::Tensor input, int dim);"
+
+log_softmax_ext = load_inline(
+    name='log_softmax_ext',
+    cpp_sources=log_softmax_cpp,
+    cuda_sources=log_softmax_source,
+    functions=['log_softmax_cuda'],
+    extra_cuda_cflags=['-O3'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int = 1):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return log_softmax_ext.log_softmax_cuda(x, self.dim)
+```

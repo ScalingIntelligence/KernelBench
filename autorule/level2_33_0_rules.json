@@ -1,0 +1,6 @@
+[
+  "The kernel uses standard arithmetic operators instead of precise CUDA intrinsics to allow compiler optimizations with --use_fast_math.",
+  "The kernel conditionally initializes reduction variables only when needed, avoiding redundant shared memory operations.",
+  "The kernel uses rsqrtf() for fast reciprocal square root approximation instead of precise intrinsics like __frsqrt_rn().",
+  "The kernel avoids explicit rounding mode intrinsics (e.g., __fmul_rn, __fadd_rn) to enable fused multiply-add optimizations."
+]

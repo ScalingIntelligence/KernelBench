@@ -1,0 +1,5 @@
+[
+  "The kernel avoids passing unused parameters to reduce register pressure.",
+  "The kernel uses fewer parameters to improve register utilization and occupancy.",
+  "The kernel omits redundant parameters that are not utilized in computations."
+]

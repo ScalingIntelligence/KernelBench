@@ -1,0 +1,12 @@
+[
+  "The kernel performs operator fusion between multiple operations.",
+  "The kernel uses vectorized memory accesses (e.g., float2) to improve memory throughput.",
+  "The kernel organizes thread blocks in dimensions that align with the data's spatial structure (e.g., 2D blocks for 2D data).",
+  "The kernel employs __restrict__ qualifiers to enable compiler optimizations for non-aliased pointers.",
+  "The kernel utilizes loop unrolling to reduce instruction overhead.",
+  "The kernel configures grid dimensions to combine batch and channel dimensions for improved memory locality.",
+  "The kernel avoids intermediate global memory writes by retaining data in registers across fused operations.",
+  "The kernel uses grid-stride loops that match tensor dimensions for coalesced memory access patterns.",
+  "The kernel processes multiple elements per thread through vectorized conditional loads where possible.",
+  "The kernel employs thread block sizes that maintain spatial locality for pooling window operations."
+]

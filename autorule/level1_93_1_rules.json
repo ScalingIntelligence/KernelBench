@@ -1,0 +1,7 @@
+[
+  "The kernel uses vectorized data types (e.g., uchar4) for direct component access to reduce bitwise operations during mask processing.",
+  "The kernel avoids bitwise operations for mask value extraction by leveraging structured vector data types.",
+  "The kernel supports arbitrary tensor dimensions and memory layouts, including both contiguous and non-contiguous cases.",
+  "The kernel includes conditional handling for non-vectorized paths to process remaining elements when dimensions are not multiples of the vector size.",
+  "The kernel imposes fewer constraints on input tensor dimensions (e.g., no requirement for divisibility by a specific vector size)."
+]

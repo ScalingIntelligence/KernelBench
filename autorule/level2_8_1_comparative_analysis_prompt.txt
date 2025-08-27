@@ -1,0 +1,241 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 6.66 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom Global Average Pool 3D
+global_avg_pool_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void global_avg_pool_kernel(const float* input, float* output, int batch_size, int channels, int d, int h, int w) {
+    int batch = blockIdx.x;
+    int channel = blockIdx.y;
+    int elements = d * h * w;
+    float sum = 0.0f;
+
+    for (int i = threadIdx.x; i < elements; i += blockDim.x) {
+        int idx = batch * channels * d * h * w + channel * d * h * w + i;
+        sum += input[idx];
+    }
+
+    __shared__ float sdata[256];
+    sdata[threadIdx.x] = sum;
+    __syncthreads();
+
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        output[batch * channels + channel] = sdata[0] / elements;
+    }
+}
+
+torch::Tensor global_avg_pool_cuda(torch::Tensor input) {
+    auto sizes = input.sizes();
+    int batch_size = sizes[0];
+    int channels = sizes[1];
+    int d = sizes[2];
+    int h = sizes[3];
+    int w = sizes[4];
+    
+    auto output = torch::zeros({batch_size, channels}, input.options().dtype(torch::kFloat32));
+    
+    dim3 grid(batch_size, channels);
+    int block_size = 256;
+    global_avg_pool_kernel<<<grid, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        d, h, w
+    );
+    
+    return output.view({batch_size, channels, 1, 1, 1});
+}
+"""
+
+global_avg_pool_cpp = "torch::Tensor global_avg_pool_cuda(torch::Tensor input);"
+
+# Fused Add Bias and Sum
+add_bias_sum_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void add_bias_sum_kernel(const float* input, const float* bias, float* output, int batch_size, int channels) {
+    int batch = blockIdx.x * blockDim.x + threadIdx.x;
+    if (batch >= batch_size) return;
+
+    float sum = 0.0f;
+    for (int c = 0; c < channels; ++c) {
+        sum += input[batch * channels + c] + bias[c];
+    }
+    output[batch] = sum;
+}
+
+torch::Tensor add_bias_sum_cuda(torch::Tensor input, torch::Tensor bias) {
+    auto sizes = input.sizes();
+    int batch_size = sizes[0];
+    int channels = sizes[1];
+    
+    auto output = torch::zeros({batch_size, 1, 1, 1}, input.options());
+    
+    const int block_size = 256;
+    int num_blocks = (batch_size + block_size - 1) / block_size;
+    
+    add_bias_sum_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels
+    );
+    
+    return output;
+}
+"""
+
+add_bias_sum_cpp = "torch::Tensor add_bias_sum_cuda(torch::Tensor input, torch::Tensor bias);"
+
+# Load extensions
+global_avg_pool = load_inline(
+    name="global_avg_pool",
+    cpp_sources=global_avg_pool_cpp,
+    cuda_sources=global_avg_pool_source,
+    functions=["global_avg_pool_cuda"],
+    verbose=True
+)
+
+add_bias_sum = load_inline(
+    name="add_bias_sum",
+    cpp_sources=add_bias_sum_cpp,
+    cuda_sources=add_bias_sum_source,
+    functions=["add_bias_sum_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, divisor, pool_size, bias_shape, sum_dim):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.conv.weight.data /= divisor
+        self.conv.bias.data /= divisor
+        self.max_pool = nn.MaxPool3d(pool_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.sum_dim = sum_dim
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.max_pool(x)
+        
+        # Custom Global Average Pool
+        x = global_avg_pool.global_avg_pool_cuda(x)
+        
+        # Fused Add Bias and Sum
+        x = add_bias_sum.add_bias_sum_cuda(x, self.bias)
+        
+        return x
+```
+
+Kernel 2 (runtime: 6.64 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused Global Average Pool + Add Bias + Sum kernel
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_avg_bias_sum_kernel(const float* input, const float* bias, float* output, 
+                                         int batch_size, int channels, int d, int h, int w) {
+    extern __shared__ float sdata[];
+
+    int batch = blockIdx.x;
+    int channel = blockIdx.y;
+    int tid = threadIdx.x;
+    int elements = d * h * w;
+
+    // Parallel spatial reduction
+    float sum_spatial = 0.0f;
+    for (int i = tid; i < elements; i += blockDim.x) {
+        sum_spatial += input[batch * channels * elements + channel * elements + i];
+    }
+
+    sdata[tid] = sum_spatial;
+    __syncthreads();
+
+    // Block reduction for spatial sum
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        float avg = sdata[0] / elements;
+        atomicAdd(&output[batch], avg + bias[channel]);
+    }
+}
+
+torch::Tensor fused_avg_bias_sum_cuda(torch::Tensor input, torch::Tensor bias) {
+    auto sizes = input.sizes();
+    int batch_size = sizes[0];
+    int channels = sizes[1];
+    int d = sizes[2];
+    int h = sizes[3];
+    int w = sizes[4];
+    
+    auto output = torch::zeros({batch_size, 1, 1, 1}, input.options());
+    
+    dim3 grid(batch_size, channels);
+    int block_size = 256;
+    int shared_mem_size = block_size * sizeof(float);
+    
+    fused_avg_bias_sum_kernel<<<grid, block_size, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        d, h, w
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_avg_bias_sum_cuda(torch::Tensor input, torch::Tensor bias);"
+
+# Load fused kernel
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=["fused_avg_bias_sum_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, divisor, pool_size, bias_shape, sum_dim):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.conv.weight.data /= divisor
+        self.conv.bias.data /= divisor
+        self.max_pool = nn.MaxPool3d(pool_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.max_pool(x)
+        x = fused_ops.fused_avg_bias_sum_cuda(x, self.bias)
+        return x
+```

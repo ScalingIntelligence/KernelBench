@@ -1,0 +1,8 @@
+[
+  "The kernel avoids vectorized memory accesses when alignment or edge case handling introduces warp divergence.",
+  "The kernel uses 1D grid and block configurations for simpler thread scheduling and better GPU occupancy.",
+  "The kernel avoids shared memory tiling for small pooling windows to reduce synchronization and data staging overhead.",
+  "The kernel uses branch-free operations (e.g., fminf/fmaxf) instead of conditional checks to prevent warp divergence.",
+  "The kernel selects thread block sizes that balance register usage and occupancy (e.g., 256 threads per block).",
+  "The kernel prioritizes coalesced global memory access patterns over shared memory for small data windows."
+]

@@ -1,0 +1,8 @@
+[
+  "The kernel assigns one thread per output element to maximize parallelism.",
+  "The kernel uses larger thread block sizes (e.g., 256 threads) to achieve higher GPU occupancy.",
+  "The kernel employs a 1D grid configuration to ensure efficient coverage of output elements and minimize wasted threads.",
+  "The kernel avoids nested loops over output channels within individual threads to reduce per-thread workload and control flow complexity.",
+  "The kernel optimizes memory access patterns to enable coalesced global memory accesses.",
+  "The kernel minimizes divergent branching within warps by structuring threads to follow similar code paths for adjacent outputs."
+]

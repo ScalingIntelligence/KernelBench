@@ -1,0 +1,241 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 14.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused GELU + Global Average Pooling kernel with vectorized loads and efficient reduction
+fused_gelu_pool_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__inline__ __device__ float gelu_fast(float x) {
+    const float a = 0.7978845608f;  // sqrt(2/pi)
+    const float b = 0.044715f;
+    return 0.5f * x * (1.0f + tanhf(a * (x + b * x * x * x)));
+}
+
+__global__ void fused_gelu_pool_kernel(const float* __restrict__ conv_out, 
+                                      float* __restrict__ output,
+                                      int batch_size, int channels,
+                                      int H, int W) {
+    const int batch = blockIdx.x;
+    const int channel = blockIdx.y;
+    
+    if (batch >= batch_size || channel >= channels) return;
+
+    const int elements = H * W;
+    const int tid = threadIdx.x;
+    const int block_threads = blockDim.x;
+    const int vec_size = 4;
+
+    float thread_sum = 0.0f;
+
+    // Vectorized processing of 4 elements at a time
+    const int num_vectors = elements / vec_size;
+    for (int vec_idx = tid; vec_idx < num_vectors; vec_idx += block_threads) {
+        const int linear_idx = ((batch * channels + channel) * H * W) + vec_idx * vec_size;
+        const float4 vals = *reinterpret_cast<const float4*>(&conv_out[linear_idx]);
+        thread_sum += gelu_fast(vals.x) + gelu_fast(vals.y) + gelu_fast(vals.z) + gelu_fast(vals.w);
+    }
+
+    // Process remaining elements (if any)
+    const int remaining_start = num_vectors * vec_size;
+    for (int i = remaining_start + tid; i < elements; i += block_threads) {
+        const int linear_idx = ((batch * channels + channel) * H * W) + i;
+        thread_sum += gelu_fast(conv_out[linear_idx]);
+    }
+
+    // Block reduction using shared memory
+    __shared__ float shared_data[256];
+    shared_data[tid] = thread_sum;
+    __syncthreads();
+
+    for (int stride = 128; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            shared_data[tid] += shared_data[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // Write final averaged result
+    if (tid == 0) {
+        output[batch * channels + channel] = shared_data[0] / elements;
+    }
+}
+
+torch::Tensor fused_gelu_pool_cuda(torch::Tensor conv_out) {
+    const auto sizes = conv_out.sizes();
+    const int batch_size = sizes[0];
+    const int channels = sizes[1];
+    const int H = sizes[2];
+    const int W = sizes[3];
+
+    auto output = torch::zeros({batch_size, channels}, 
+                              torch::device(torch::kCUDA).dtype(torch::kFloat32));
+
+    const dim3 grid(batch_size, channels);
+    const int threads = 256;
+
+    fused_gelu_pool_kernel<<<grid, threads>>>(
+        conv_out.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        H,
+        W
+    );
+
+    return output;
+}
+"""
+
+fused_gelu_pool_cpp = "torch::Tensor fused_gelu_pool_cuda(torch::Tensor conv_out);"
+
+# Compile with corrected fast math flag and optimizations
+fused_gelu_pool = load_inline(
+    name='fused_gelu_pool',
+    cpp_sources=fused_gelu_pool_cpp,
+    cuda_sources=fused_gelu_pool_source,
+    functions=['fused_gelu_pool_cuda'],
+    verbose=True,
+    extra_cflags=["-O3", "-use_fast_math"],
+    extra_ldflags=[""]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.fused_gelu_pool = fused_gelu_pool
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x.contiguous()  # Ensure contiguous memory for vectorized access
+        x = self.fused_gelu_pool.fused_gelu_pool_cuda(x)
+        return x
+```
+
+Kernel 2 (runtime: 14.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused GELU + Global Average Pooling kernel with vectorization
+fused_gelu_pool_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__inline__ __device__ float gelu_fast(float x) {
+    const float a = 0.7978845608f;  // sqrt(2/pi)
+    const float b = 0.044715f;
+    return 0.5f * x * (1.0f + tanhf(a * (x + b * x * x * x)));
+}
+
+__global__ void fused_gelu_pool_kernel(const float* __restrict__ conv_out, 
+                                      float* __restrict__ output,
+                                      int batch_size, int channels,
+                                      int H, int W) {
+    const int batch = blockIdx.x;
+    const int channel = blockIdx.y;
+    
+    if (batch >= batch_size || channel >= channels) return;
+
+    const int elements = H * W;
+    const int tid = threadIdx.x;
+    const int block_threads = blockDim.x;
+    const int vec_size = 4;
+
+    float thread_sum = 0.0f;
+
+    // Vectorized processing with float4
+    for (int i = tid * vec_size; i < elements; i += block_threads * vec_size) {
+        if (i + vec_size <= elements) {
+            const int h = i / W;
+            const int w = i % W;
+            const int idx = ((batch * channels + channel) * H + h) * W + w;
+            
+            // Load 4 elements at once
+            const float4 vals = *reinterpret_cast<const float4*>(&conv_out[idx]);
+            
+            // Process vector elements
+            thread_sum += gelu_fast(vals.x) 
+                        + gelu_fast(vals.y) 
+                        + gelu_fast(vals.z) 
+                        + gelu_fast(vals.w);
+        }
+    }
+
+    // Block reduction using warp shuffles
+    __shared__ float shared_data[256];
+    shared_data[tid] = thread_sum;
+    __syncthreads();
+
+    // Optimized reduction for 256 threads
+    for (int stride = 128; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            shared_data[tid] += shared_data[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // Write final result
+    if (tid == 0) {
+        output[batch * channels + channel] = shared_data[0] / elements;
+    }
+}
+
+torch::Tensor fused_gelu_pool_cuda(torch::Tensor conv_out) {
+    const auto sizes = conv_out.sizes();
+    const int batch_size = sizes[0];
+    const int channels = sizes[1];
+    const int H = sizes[2];
+    const int W = sizes[3];
+
+    auto output = torch::zeros({batch_size, channels}, 
+                              torch::device(torch::kCUDA).dtype(torch::kFloat32));
+
+    const dim3 grid(batch_size, channels);
+    const int threads = 256;  // Better for occupancy
+
+    fused_gelu_pool_kernel<<<grid, threads>>>(
+        conv_out.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        H,
+        W
+    );
+
+    return output;
+}
+"""
+
+fused_gelu_pool_cpp = "torch::Tensor fused_gelu_pool_cuda(torch::Tensor conv_out);"
+
+# Compile the optimized CUDA extension
+fused_gelu_pool = load_inline(
+    name='fused_gelu_pool',
+    cpp_sources=fused_gelu_pool_cpp,
+    cuda_sources=fused_gelu_pool_source,
+    functions=['fused_gelu_pool_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.fused_gelu_pool = fused_gelu_pool
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fused_gelu_pool.fused_gelu_pool_cuda(x)
+        return x
+```

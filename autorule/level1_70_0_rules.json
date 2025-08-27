@@ -1,0 +1,8 @@
+[
+  "The kernel reorders loops to place channel iteration outside spatial kernel loops for better memory coalescing.",
+  "The kernel precomputes base indices outside inner loops to reduce redundant calculations.",
+  "The kernel uses __restrict__ qualifiers on pointers to enable compiler optimizations.",
+  "The kernel uses thread block sizes that are multiples of 32 (e.g., 512) for better GPU occupancy.",
+  "The kernel precomputes validity flags once per iteration to avoid redundant conditional checks.",
+  "The kernel groups channel iterations to improve spatial locality and cache hit rates."
+]

@@ -1,0 +1,4 @@
+[
+  "The kernel orders clamp operations as fmaxf(fminf(x, upper), lower) which may be optimized by the compiler into a single clamp instruction.",
+  "The kernel uses const qualifiers for intermediate variables to enable better register allocation and instruction scheduling."
+]

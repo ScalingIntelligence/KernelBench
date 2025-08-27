@@ -1,0 +1,249 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the fused maxpool and sum kernel
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_maxpool2_sum_kernel(const float* input, float* output, 
+                                        int batch_size, int channels,
+                                        int D1, int H1, int W1,
+                                        int D2, int H2, int W2) {
+    int output_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (output_idx >= batch_size * D2 * H2 * W2) return;
+
+    int batch = output_idx / (D2 * H2 * W2);
+    int remainder = output_idx % (D2 * H2 * W2);
+    int d2 = remainder / (H2 * W2);
+    remainder = remainder % (H2 * W2);
+    int h2 = remainder / W2;
+    int w2 = remainder % W2;
+
+    float sum = 0.0f;
+    for(int c = 0; c < channels; ++c) {
+        float max_val = -INFINITY;
+        for(int dd = 0; dd < 3; ++dd) {
+            int d1 = d2 * 3 + dd;
+            if(d1 >= D1) break;
+            for(int dh = 0; dh < 3; ++dh) {
+                int h1 = h2 * 3 + dh;
+                if(h1 >= H1) break;
+                for(int dw = 0; dw < 3; ++dw) {
+                    int w1 = w2 * 3 + dw;
+                    if(w1 >= W1) break;
+                    
+                    int input_idx = ((batch * channels + c) * D1 + d1) * H1 * W1 
+                                  + h1 * W1 + w1;
+                    float val = input[input_idx];
+                    if(val > max_val) max_val = val;
+                }
+            }
+        }
+        sum += max_val;
+    }
+    output[output_idx] = sum;
+}
+
+torch::Tensor fused_maxpool2_sum_cuda(torch::Tensor input) {
+    int batch_size = input.size(0);
+    int channels = input.size(1);
+    int D1 = input.size(2);
+    int H1 = input.size(3);
+    int W1 = input.size(4);
+    
+    int D2 = D1 / 3;
+    int H2 = H1 / 3;
+    int W2 = W1 / 3;
+    
+    auto output = torch::zeros({batch_size, 1, D2, H2, W2}, input.options());
+    int num_elements = batch_size * D2 * H2 * W2;
+    
+    const int block_size = 256;
+    int num_blocks = (num_elements + block_size - 1) / block_size;
+    
+    fused_maxpool2_sum_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        D1, H1, W1,
+        D2, H2, W2
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_maxpool2_sum_cuda(torch::Tensor input);"
+
+# Load the custom CUDA kernel
+fused_op = load_inline(
+    name='fused_maxpool2_sum',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_maxpool2_sum_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, 
+                                                kernel_size, stride=stride, 
+                                                padding=padding)
+        self.max_pool1 = nn.MaxPool3d(kernel_size=2)
+        self.fused_op = fused_op
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.max_pool1(x)
+        x = self.fused_op.fused_maxpool2_sum_cuda(x)
+        return x
+```
+
+Kernel 2 (runtime: 17.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused max pooling and sum with optimized unrolling
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template <typename scalar_t>
+__global__ void fused_maxpool_sum_kernel(
+    const scalar_t* __restrict__ input,
+    scalar_t* __restrict__ output,
+    const int batch_size,
+    const int channels,
+    const int depth,
+    const int height,
+    const int width,
+    const int output_depth,
+    const int output_height,
+    const int output_width
+) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int total_output_elements = batch_size * output_depth * output_height * output_width;
+    if (tid >= total_output_elements) return;
+
+    // Calculate output indices
+    const int b = tid / (output_depth * output_height * output_width);
+    const int remaining = tid % (output_depth * output_height * output_width);
+    const int d_out = remaining / (output_height * output_width);
+    const int remaining2 = remaining % (output_height * output_width);
+    const int h_out = remaining2 / output_width;
+    const int w_out = remaining2 % output_width;
+
+    const int input_stride_c = depth * height * width;
+    const int input_stride_d = height * width;
+    const int input_stride_h = width;
+
+    scalar_t sum = 0.0;
+
+    const int d_start = d_out * 6;
+    const int h_start = h_out * 6;
+    const int w_start = w_out * 6;
+
+    for (int c = 0; c < channels; ++c) {
+        scalar_t channel_max = -INFINITY;
+
+        #pragma unroll
+        for (int di = 0; di < 6; ++di) {
+            const int d = d_start + di;
+            if (d >= depth) continue;
+            #pragma unroll
+            for (int dj = 0; dj < 6; ++dj) {
+                const int h = h_start + dj;
+                if (h >= height) continue;
+                #pragma unroll
+                for (int dk = 0; dk < 6; ++dk) {
+                    const int w = w_start + dk;
+                    if (w >= width) continue;
+
+                    const int idx = b * channels * input_stride_c 
+                                 + c * input_stride_c 
+                                 + d * input_stride_d 
+                                 + h * input_stride_h 
+                                 + w;
+                    channel_max = max(channel_max, input[idx]);
+                }
+            }
+        }
+        sum += channel_max;
+    }
+
+    const int out_idx = b * output_depth * output_height * output_width 
+                      + d_out * output_height * output_width 
+                      + h_out * output_width 
+                      + w_out;
+    output[out_idx] = sum;
+}
+
+torch::Tensor fused_maxpool_sum_cuda(torch::Tensor input) {
+    const int batch_size = input.size(0);
+    const int channels = input.size(1);
+    const int depth = input.size(2);
+    const int height = input.size(3);
+    const int width = input.size(4);
+
+    const int output_depth = depth / 6;
+    const int output_height = height / 6;
+    const int output_width = width / 6;
+
+    auto output = torch::zeros({batch_size, 1, output_depth, output_height, output_width}, input.options());
+
+    const int total_output_elements = batch_size * output_depth * output_height * output_width;
+    const int block_size = 256;
+    const int grid_size = (total_output_elements + block_size - 1) / block_size;
+
+    fused_maxpool_sum_kernel<float><<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        depth,
+        height,
+        width,
+        output_depth,
+        output_height,
+        output_width
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = """
+torch::Tensor fused_maxpool_sum_cuda(torch::Tensor input);
+"""
+
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_maxpool_sum_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding
+        )
+        
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = fused_op.fused_maxpool_sum_cuda(x)
+        return x
+```

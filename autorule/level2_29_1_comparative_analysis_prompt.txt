@@ -1,0 +1,144 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.19 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused Mish-Mish CUDA kernel
+mish_mish_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void mish_mish_kernel(const float* input, float* output, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float x = input[idx];
+        // First Mish
+        float sp = logf(1.0f + expf(x));
+        float y = x * tanhf(sp);
+        // Second Mish
+        float sp2 = logf(1.0f + expf(y));
+        output[idx] = y * tanhf(sp2);
+    }
+}
+
+torch::Tensor mish_mish_cuda(torch::Tensor input) {
+    auto size = input.numel();
+    auto output = torch::empty_like(input);
+
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    mish_mish_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        size
+    );
+
+    return output;
+}
+"""
+
+mish_mish_cpp_source = "torch::Tensor mish_mish_cuda(torch::Tensor input);"
+
+# Load the fused Mish-Mish CUDA operation
+mish_mish = load_inline(
+    name='mish_mish',
+    cpp_sources=mish_mish_cpp_source,
+    cuda_sources=mish_mish_source,
+    functions=['mish_mish_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.mish_mish = mish_mish
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.mish_mish.mish_mish_cuda(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features]
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+```
+
+Kernel 2 (runtime: 7.21 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_mish_source = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_mish_mish_kernel(const float* input, float* output, int64_t num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float x = input[idx];
+        
+        // First Mish activation
+        float x_exp = expf(x);
+        float x_sp = log1pf(x_exp);
+        float y = x * tanhf(x_sp);
+        
+        // Second Mish activation
+        float y_exp = expf(y);
+        float y_sp = log1pf(y_exp);
+        output[idx] = y * tanhf(y_sp);
+    }
+}
+
+torch::Tensor fused_mish_mish_cuda(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int64_t num_elements = input.numel();
+    
+    const int threads_per_block = 1024;
+    int blocks_per_grid = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    fused_mish_mish_kernel<<<blocks_per_grid, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_mish_cpp_source = "torch::Tensor fused_mish_mish_cuda(torch::Tensor input);"
+
+fused_mish = load_inline(
+    name='fused_mish',
+    cpp_sources=fused_mish_cpp_source,
+    cuda_sources=fused_mish_source,
+    functions=['fused_mish_mish_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.fused_mish_mish = fused_mish
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_mish_mish.fused_mish_mish_cuda(x)
+        return x
+```

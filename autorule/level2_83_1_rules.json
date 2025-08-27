@@ -1,0 +1,14 @@
+[
+  "The kernel performs operator fusion between multiple operations to reduce kernel launches and global memory accesses.",
+  "The kernel uses warp/block-level reductions with warp shuffles (e.g., __shfl_down_sync) for efficient statistics calculation.",
+  "The kernel stores intermediate normalization parameters (mean/variance) in shared memory for group-wise access.",
+  "The kernel utilizes memory coalescing through grouped channel processing for efficient memory access patterns.",
+  "The kernel employs __restrict__ qualifiers to enable compiler optimizations for pointer aliasing.",
+  "The kernel uses optimized RNG libraries (e.g., curand) instead of hash-based random number generation.",
+  "The kernel processes multiple elements per thread using stride loop patterns to improve thread utilization.",
+  "The kernel employs 3D block/grid configurations optimized for channel group and batch dimensions.",
+  "The kernel uses fast math compiler flags (--use_fast_math) for accelerated mathematical operations.",
+  "The kernel maintains intermediate values in registers during computation to reduce global memory traffic.",
+  "The kernel combines multiple transformations in a single memory access pattern to minimize data passes.",
+  "The kernel uses template-based reduction utilities for optimized warp/block-level operations."
+]

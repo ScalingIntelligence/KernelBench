@@ -1,0 +1,7 @@
+[
+  "The kernel uses a 1D grid configuration to maximize occupancy by allowing more concurrent blocks per streaming multiprocessor (SM).",
+  "The kernel avoids shared memory usage to prevent shared memory pressure and loading overhead, especially when the data size is large.",
+  "The kernel uses a thread block size of 256 threads, which is a common choice for balancing occupancy and resource utilization.",
+  "The kernel prioritizes higher occupancy over complex memory access optimizations, compensating for non-coalesced global memory accesses with simpler execution patterns.",
+  "The kernel minimizes register pressure by using straightforward per-thread loops, enabling more concurrent threads on the SM."
+]

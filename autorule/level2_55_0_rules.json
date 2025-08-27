@@ -1,0 +1,7 @@
+[
+  "The kernel processes multiple elements per loop iteration to increase instruction-level parallelism (ILP).",
+  "The kernel unrolls warp reduction steps using template conditions instead of a loop, reducing loop overhead.",
+  "The kernel uses compiler flags to limit register usage (e.g., --maxrregcount) to improve occupancy.",
+  "The kernel employs loop unrolling to reduce the number of loop iterations and associated control overhead.",
+  "The kernel structures memory access patterns to process multiple elements (e.g., via float2) per iteration for better memory bandwidth utilization."
+]

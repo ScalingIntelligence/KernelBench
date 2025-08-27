@@ -1,0 +1,137 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom HardTanh CUDA kernel
+hardtanh_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void hardtanh_kernel(const float* x, float* out, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float val = x[idx];
+        out[idx] = fminf(fmaxf(val, -1.0f), 1.0f);
+    }
+}
+
+torch::Tensor hardtanh_cuda(torch::Tensor x) {
+    auto out = torch::empty_like(x);
+    int size = x.numel();
+    
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    
+    hardtanh_kernel<<<num_blocks, block_size>>>(
+        x.data_ptr<float>(),
+        out.data_ptr<float>(),
+        size
+    );
+    
+    return out;
+}
+"""
+
+hardtanh_cpp_source = "torch::Tensor hardtanh_cuda(torch::Tensor x);"
+
+# Compile the inline CUDA code
+hardtanh_extension = load_inline(
+    name="hardtanh_extension",
+    cpp_sources=hardtanh_cpp_source,
+    cuda_sources=hardtanh_source,
+    functions=["hardtanh_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return hardtanh_extension.hardtanh_cuda(x.cuda())
+
+batch_size = 4096
+dim = 393216
+
+def get_inputs():
+    x = torch.rand(batch_size, dim).cuda()
+    return [x]
+
+def get_init_inputs():
+    return []
+```
+
+Kernel 2 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernel for HardTanh activation
+hardtanh_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void hardtanh_kernel(const float* x, float* out, int size, float min_val, float max_val) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        out[idx] = fminf(fmaxf(x[idx], min_val), max_val);
+    }
+}
+
+torch::Tensor hardtanh_cuda(torch::Tensor x, float min_val, float max_val) {
+    auto out = torch::empty_like(x);
+    int size = x.numel();
+    
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    
+    hardtanh_kernel<<<num_blocks, block_size>>>(
+        x.data_ptr<float>(),
+        out.data_ptr<float>(),
+        size,
+        min_val,
+        max_val
+    );
+    
+    return out;
+}
+"""
+
+hardtanh_cpp_source = "torch::Tensor hardtanh_cuda(torch::Tensor x, float min_val, float max_val);"
+
+# Compile the inline CUDA code
+hardtanh_extension = load_inline(
+    name="hardtanh_extension",
+    cpp_sources=hardtanh_cpp_source,
+    cuda_sources=hardtanh_source,
+    functions=["hardtanh_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.min_val = -1.0
+        self.max_val = 1.0
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return hardtanh_extension.hardtanh_cuda(x, self.min_val, self.max_val)
+
+batch_size = 4096
+dim = 393216
+
+def get_inputs():
+    x = torch.rand(batch_size, dim).cuda()  # Move to CUDA for GPU processing
+    return [x]
+
+def get_init_inputs():
+    return []
+```

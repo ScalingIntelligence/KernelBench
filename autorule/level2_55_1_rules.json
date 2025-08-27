@@ -1,0 +1,6 @@
+[
+  "The kernel uses a grid-stride loop pattern to process elements, reducing register pressure and improving occupancy.",
+  "The kernel performs the final reduction across warps using a direct assignment to shared memory followed by a single warp-wide shuffle reduction, avoiding loop overhead.",
+  "The kernel omits redundant boundary checks (e.g., batch index validation) to reduce branch divergence and instruction overhead.",
+  "The kernel uses a warp-level reduction pattern that directly assigns partial sums to shared memory via lane IDs instead of thread ID calculations."
+]

@@ -1,0 +1,8 @@
+[
+  "The kernel uses a block size that maximizes occupancy (e.g., 1024 threads per block).",
+  "The kernel employs a grid-stride loop pattern for memory access without explicit vectorization phases.",
+  "The kernel prioritizes warp-level reductions using warp shuffle intrinsics before block-level shared memory reductions.",
+  "The kernel limits the grid size to reduce the number of atomic operations on global memory.",
+  "The kernel enables compiler optimizations for fast math operations (e.g., --use_fast_math).",
+  "The kernel minimizes shared memory usage during reductions to avoid bank conflicts and synchronization overhead."
+]

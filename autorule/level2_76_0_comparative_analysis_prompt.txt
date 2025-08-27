@@ -1,0 +1,194 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.04 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the optimized fused bias + ReLU CUDA kernel with vectorized loads
+fused_bias_relu_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_fp16.h>
+
+__global__ void fused_bias_relu_kernel(const float* input, const float* bias, float* output, int rows, int cols) {
+    const int cols_mask = cols - 1;  // cols is power of two
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int element_idx = idx * 4;
+    
+    if (element_idx + 3 < rows * cols) {
+        // Vectorized load for 4 elements
+        float4 in = *reinterpret_cast<const float4*>(input + element_idx);
+        float4 out;
+        
+        // Calculate column indices using bitwise AND
+        int c0 = (element_idx) & cols_mask;
+        int c1 = (element_idx + 1) & cols_mask;
+        int c2 = (element_idx + 2) & cols_mask;
+        int c3 = (element_idx + 3) & cols_mask;
+        
+        // Fused bias add and ReLU
+        out.x = fmaxf(in.x + bias[c0], 0.0f);
+        out.y = fmaxf(in.y + bias[c1], 0.0f);
+        out.z = fmaxf(in.z + bias[c2], 0.0f);
+        out.w = fmaxf(in.w + bias[c3], 0.0f);
+        
+        // Vectorized store
+        *reinterpret_cast<float4*>(output + element_idx) = out;
+    } else {
+        // Handle remaining elements
+        for (int i = 0; i < 4; ++i) {
+            int e = element_idx + i;
+            if (e >= rows * cols) break;
+            int c = e & cols_mask;
+            output[e] = fmaxf(input[e] + bias[c], 0.0f);
+        }
+    }
+}
+
+torch::Tensor fused_bias_relu_cuda(torch::Tensor input, torch::Tensor bias) {
+    TORCH_CHECK(input.device().is_cuda(), "input must be CUDA tensor");
+    TORCH_CHECK(bias.device().is_cuda(), "bias must be CUDA tensor");
+    TORCH_CHECK(input.size(1) == bias.size(0), "Incompatible dimensions");
+    
+    int rows = input.size(0);
+    int cols = input.size(1);
+    auto output = torch::empty_like(input);
+    
+    // Use 256 threads per block, each handling 4 elements via float4
+    const int block_size = 256;
+    int grid_size = (rows * cols / 4 + block_size - 1) / block_size;
+    
+    fused_bias_relu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        rows,
+        cols
+    );
+    
+    return output;
+}
+"""
+
+fused_bias_relu_cpp_source = "torch::Tensor fused_bias_relu_cuda(torch::Tensor input, torch::Tensor bias);"
+
+# Compile the optimized kernel
+fused_bias_relu = load_inline(
+    name='fused_bias_relu',
+    cpp_sources=fused_bias_relu_cpp_source,
+    cuda_sources=fused_bias_relu_source,
+    functions=['fused_bias_relu_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bias_shape):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features, bias=False)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_op = fused_bias_relu
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = self.fused_op.fused_bias_relu_cuda(x, self.bias)
+        return x
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+bias_shape = (out_features,)
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features, bias_shape]
+```
+
+Kernel 2 (runtime: 7.05 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused Add + ReLU CUDA kernel implementation
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_add_relu_kernel(
+    const float* input,
+    const float* bias,
+    float* output,
+    int num_elements,
+    int cols
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        int col_idx = idx % cols;
+        float val = input[idx] + bias[col_idx];
+        output[idx] = val > 0.0f ? val : 0.0f;
+    }
+}
+
+torch::Tensor fused_add_relu_cuda(
+    torch::Tensor input,
+    torch::Tensor bias
+) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    int cols = input.size(1);
+    
+    const int block_size = 256;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+    
+    fused_add_relu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements,
+        cols
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_add_relu_cuda(torch::Tensor input, torch::Tensor bias);"
+
+# Load the custom CUDA operation
+fused_op = load_inline(
+    name="fused_add_relu",
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=["fused_add_relu_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bias_shape):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features, bias=False)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_add_relu = fused_op
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = self.fused_add_relu.fused_add_relu_cuda(x, self.bias)
+        return x
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+bias_shape = (out_features,)
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, bias_shape]
+```

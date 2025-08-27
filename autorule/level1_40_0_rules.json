@@ -1,0 +1,9 @@
+[
+  "The kernel uses vectorized memory accesses (e.g., float4) for both input and output tensors.",
+  "The kernel reduces the number of memory transactions by processing multiple elements per instruction through vectorization.",
+  "The kernel minimizes per-element conditional checks in inner loops to reduce branch divergence.",
+  "The kernel fuses operations to keep data in vector registers longer, reducing intermediate memory accesses.",
+  "The kernel ensures memory coalescing by using aligned contiguous vector accesses for all tensors.",
+  "The kernel avoids scalar memory accesses for parameters (e.g., gamma, beta) by using vectorized loads and stores.",
+  "The kernel reduces register pressure by maintaining data in vector format during computations."
+]

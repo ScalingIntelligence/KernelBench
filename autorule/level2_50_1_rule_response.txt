@@ -1,0 +1,21 @@
+REASONING TRACE:
+[
+    "The kernel applies scaling factors during accumulation to leverage fused multiply-add (FMA) instructions.",
+    "The kernel avoids redundant memory layout checks by assuming input tensors are contiguous.",
+    "The kernel reduces dynamic instruction count by fusing multiplication with addition in critical loops.",
+    "The kernel minimizes post-loop operations by integrating scaling directly within accumulation phases."
+]
+
+
+ANSWER:
+
+
+[
+    "The kernel applies scaling factors during accumulation to leverage fused multiply-add (FMA) instructions.",
+    "The kernel avoids redundant memory layout checks by assuming input tensors are contiguous.",
+    "The kernel reduces dynamic instruction count by fusing multiplication with addition in critical loops.",
+    "The kernel minimizes post-loop operations by integrating scaling directly within accumulation phases."
+]
+
+Usage:
+{'inputTokens': 7526, 'outputTokens': 150, 'totalTokens': 7676}

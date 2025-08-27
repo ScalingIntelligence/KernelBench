@@ -1,0 +1,8 @@
+[
+  "The kernel uses warp-level shuffle instructions for reductions instead of shared memory.",
+  "The kernel employs a custom random number generator without per-thread state initialization.",
+  "The kernel's loop structure ensures consecutive threads access consecutive memory addresses for better coalescing.",
+  "The kernel is compiled with compiler flags enabling fast math optimizations.",
+  "The kernel avoids using shared memory for reductions to improve occupancy.",
+  "The kernel uses a deterministic per-element seed for random number generation to enable recomputation without state storage."
+]

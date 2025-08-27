@@ -1,0 +1,5 @@
+[
+  "The kernel precomputes repeated expressions on the host and passes them as parameters to reduce per-thread arithmetic operations.",
+  "The kernel inlines intermediate computations to minimize the use of temporary variables and reduce register pressure.",
+  "The kernel minimizes the number of parameters passed to reduce register usage and simplify the kernel interface."
+]

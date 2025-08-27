@@ -1,0 +1,339 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 1.31 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized LayerNorm CUDA kernel with vectorized memory access and warp reduction
+layer_norm_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template <typename T>
+__inline__ __device__ T warpReduceSum(T val) {
+    for (int offset = 16; offset > 0; offset /= 2)
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__global__ void layer_norm_kernel(
+    const float* input,
+    const float* gamma,
+    const float* beta,
+    float* output,
+    int batch_size,
+    int features, int dim1, int dim2,
+    float epsilon) {
+
+    int b = blockIdx.x;
+    if (b >= batch_size) return;
+
+    const int num_elements = features * dim1 * dim2;
+    const int num_elements4 = num_elements / 4;
+
+    const float4* input4 = reinterpret_cast<const float4*>(input + b * num_elements);
+    const float4* gamma4 = reinterpret_cast<const float4*>(gamma);
+    const float4* beta4 = reinterpret_cast<const float4*>(beta);
+    float4* output4 = reinterpret_cast<float4*>(output + b * num_elements);
+
+    const int elements_per_thread = (num_elements4 + blockDim.x - 1) / blockDim.x;
+
+    float sum = 0.0f;
+    float sum_sq = 0.0f;
+
+    // Phase 1: Vectorized accumulation with bounds checking
+    for (int i = 0; i < elements_per_thread; ++i) {
+        const int idx4 = threadIdx.x + i * blockDim.x;
+        if (idx4 >= num_elements4) continue;
+
+        const float4 val4 = input4[idx4];
+        sum += val4.x + val4.y + val4.z + val4.w;
+        sum_sq += val4.x*val4.x + val4.y*val4.y + val4.z*val4.z + val4.w*val4.w;
+    }
+
+    // Warp-level reduction
+    sum = warpReduceSum(sum);
+    sum_sq = warpReduceSum(sum_sq);
+
+    __shared__ float s_sum[32];
+    __shared__ float s_sum_sq[32];
+    const int warp_id = threadIdx.x / 32;
+    const int lane_id = threadIdx.x % 32;
+
+    if (lane_id == 0) {
+        s_sum[warp_id] = sum;
+        s_sum_sq[warp_id] = sum_sq;
+    }
+    __syncthreads();
+
+    // Final reduction by first warp
+    if (warp_id == 0) {
+        sum = (lane_id < (blockDim.x + 31) / 32) ? s_sum[lane_id] : 0.0f;
+        sum_sq = (lane_id < (blockDim.x + 31) / 32) ? s_sum_sq[lane_id] : 0.0f;
+
+        sum = warpReduceSum(sum);
+        sum_sq = warpReduceSum(sum_sq);
+
+        if (lane_id == 0) {
+            const float mean = sum / num_elements;
+            const float variance = sum_sq / num_elements - mean * mean;
+            s_sum[0] = mean;
+            s_sum_sq[0] = rsqrtf(variance + epsilon);
+        }
+    }
+    __syncthreads();
+
+    const float mean = s_sum[0];
+    const float inv_std = s_sum_sq[0];
+
+    // Phase 2: Vectorized normalization with fused affine transform
+    for (int i = 0; i < elements_per_thread; ++i) {
+        const int idx4 = threadIdx.x + i * blockDim.x;
+        if (idx4 >= num_elements4) continue;
+
+        const float4 val4 = input4[idx4];
+        const float4 gamma4_val = gamma4[idx4];
+        const float4 beta4_val = beta4[idx4];
+
+        float4 normalized;
+        normalized.x = (val4.x - mean) * inv_std * gamma4_val.x + beta4_val.x;
+        normalized.y = (val4.y - mean) * inv_std * gamma4_val.y + beta4_val.y;
+        normalized.z = (val4.z - mean) * inv_std * gamma4_val.z + beta4_val.z;
+        normalized.w = (val4.w - mean) * inv_std * gamma4_val.w + beta4_val.w;
+
+        output4[idx4] = normalized;
+    }
+}
+
+torch::Tensor layer_norm_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    float epsilon) {
+
+    const int batch_size = input.size(0);
+    const int features = input.size(1);
+    const int dim1 = input.size(2);
+    const int dim2 = input.size(3);
+
+    auto output = torch::empty_like(input);
+
+    const int threads_per_block = 1024;
+    dim3 grid(batch_size);
+    dim3 block(threads_per_block);
+
+    layer_norm_kernel<<<grid, block>>>(
+        input.data_ptr<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        features, dim1, dim2,
+        epsilon);
+
+    return output;
+}
+"""
+
+layer_norm_cpp_source = "torch::Tensor layer_norm_cuda(torch::Tensor input, torch::Tensor gamma, torch::Tensor beta, float epsilon);"
+
+# Compile the optimized CUDA extension
+layer_norm_ext = load_inline(
+    name="layer_norm_ext",
+    cpp_sources=layer_norm_cpp_source,
+    cuda_sources=layer_norm_source,
+    functions=["layer_norm_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, normalized_shape: tuple):
+        super(ModelNew, self).__init__()
+        self.normalized_shape = normalized_shape
+        self.gamma = nn.Parameter(torch.ones(normalized_shape))
+        self.beta = nn.Parameter(torch.zeros(normalized_shape))
+        self.epsilon = 1e-5
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        gamma = self.gamma.contiguous()
+        beta = self.beta.contiguous()
+        return layer_norm_ext.layer_norm_cuda(x, gamma, beta, self.epsilon)
+```
+
+Kernel 2 (runtime: 2.28 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized LayerNorm CUDA kernel with vectorized loads and bounds checking
+layer_norm_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template <typename T>
+__inline__ __device__ T warpReduceSum(T val) {
+    for (int offset = 16; offset > 0; offset /= 2)
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__global__ void layer_norm_kernel(
+    const float* input,
+    const float* gamma,
+    const float* beta,
+    float* output,
+    int batch_size,
+    int features, int dim1, int dim2,
+    float epsilon) {
+
+    int b = blockIdx.x;
+    if (b >= batch_size) return;
+
+    const int num_elements = features * dim1 * dim2;
+    const int num_elements4 = (num_elements + 3) / 4;
+
+    const float4* input4 = reinterpret_cast<const float4*>(input + b * num_elements);
+    float* output_batch = output + b * num_elements;
+
+    const int elements_per_thread = (num_elements4 + blockDim.x - 1) / blockDim.x;
+
+    float sum = 0.0f;
+    float sum_sq = 0.0f;
+
+    // Phase 1: Vectorized accumulation with bounds checking
+    for (int i = 0; i < elements_per_thread; ++i) {
+        const int idx4 = threadIdx.x + i * blockDim.x;
+        if (idx4 >= num_elements4) continue;
+
+        const float4 val4 = input4[idx4];
+        const int base_idx = idx4 * 4;
+
+        for (int j = 0; j < 4; ++j) {
+            const int element_idx = base_idx + j;
+            if (element_idx >= num_elements) break;
+
+            const float val = (&val4.x)[j];
+            sum += val;
+            sum_sq += val * val;
+        }
+    }
+
+    // Warp-level reduction
+    sum = warpReduceSum(sum);
+    sum_sq = warpReduceSum(sum_sq);
+
+    __shared__ float s_sum[32];
+    __shared__ float s_sum_sq[32];
+    const int warp_id = threadIdx.x / 32;
+    const int lane_id = threadIdx.x % 32;
+
+    if (lane_id == 0) {
+        s_sum[warp_id] = sum;
+        s_sum_sq[warp_id] = sum_sq;
+    }
+    __syncthreads();
+
+    // Final reduction by first warp
+    if (warp_id == 0) {
+        sum = (lane_id < (blockDim.x + 31) / 32) ? s_sum[lane_id] : 0.0f;
+        sum_sq = (lane_id < (blockDim.x + 31) / 32) ? s_sum_sq[lane_id] : 0.0f;
+
+        sum = warpReduceSum(sum);
+        sum_sq = warpReduceSum(sum_sq);
+
+        if (lane_id == 0) {
+            const float mean = sum / num_elements;
+            const float variance = sum_sq / num_elements - mean * mean;
+            s_sum[0] = mean;
+            s_sum_sq[0] = rsqrtf(variance + epsilon);
+        }
+    }
+    __syncthreads();
+
+    const float mean = s_sum[0];
+    const float inv_std = s_sum_sq[0];
+
+    // Phase 2: Scalar processing with vectorized loads
+    for (int i = 0; i < elements_per_thread; ++i) {
+        const int idx4 = threadIdx.x + i * blockDim.x;
+        if (idx4 >= num_elements4) continue;
+
+        const float4 val4 = input4[idx4];
+        const int base_idx = idx4 * 4;
+
+        for (int j = 0; j < 4; ++j) {
+            const int element_idx = base_idx + j;
+            if (element_idx >= num_elements) break;
+
+            const float val = (&val4.x)[j];
+            const float gamma_val = gamma[element_idx];
+            const float beta_val = beta[element_idx];
+
+            const float normalized = (val - mean) * inv_std;
+            output_batch[element_idx] = normalized * gamma_val + beta_val;
+        }
+    }
+}
+
+torch::Tensor layer_norm_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    float epsilon) {
+
+    const int batch_size = input.size(0);
+    const int features = input.size(1);
+    const int dim1 = input.size(2);
+    const int dim2 = input.size(3);
+
+    auto output = torch::empty_like(input);
+
+    const int threads_per_block = 1024;
+    dim3 grid(batch_size);
+    dim3 block(threads_per_block);
+
+    layer_norm_kernel<<<grid, block>>>(
+        input.data_ptr<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        features, dim1, dim2,
+        epsilon);
+
+    return output;
+}
+"""
+
+layer_norm_cpp_source = "torch::Tensor layer_norm_cuda(torch::Tensor input, torch::Tensor gamma, torch::Tensor beta, float epsilon);"
+
+# Compile the optimized CUDA extension
+layer_norm_ext = load_inline(
+    name="layer_norm_ext",
+    cpp_sources=layer_norm_cpp_source,
+    cuda_sources=layer_norm_source,
+    functions=["layer_norm_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, normalized_shape: tuple):
+        super(ModelNew, self).__init__()
+        self.normalized_shape = normalized_shape
+        self.gamma = nn.Parameter(torch.ones(normalized_shape))
+        self.beta = nn.Parameter(torch.zeros(normalized_shape))
+        self.epsilon = 1e-5
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        gamma = self.gamma.contiguous()
+        beta = self.beta.contiguous()
+        return layer_norm_ext.layer_norm_cuda(x, gamma, beta, self.epsilon)
+```

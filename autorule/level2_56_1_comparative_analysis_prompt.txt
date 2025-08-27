@@ -1,0 +1,197 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 16.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the optimized fused sigmoid + sum reduction CUDA kernel
+sigmoid_sum_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+inline __device__ float warpReduceSum(float val) {
+    for (int offset = 16; offset > 0; offset >>= 1) 
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__global__ void sigmoid_sum_kernel(const float* __restrict__ input, float* __restrict__ output, int hidden_size) {
+    extern __shared__ float sdata[];
+    
+    const int row = blockIdx.x;
+    const int tid = threadIdx.x;
+    const int warp_id = tid / 32;
+    const int num_warps = blockDim.x / 32;
+
+    const int elements_per_thread = hidden_size / blockDim.x;
+    const float* row_ptr = input + row * hidden_size;
+
+    float sum = 0.0f;
+
+    // Process elements with contiguous memory access
+    for (int i = 0; i < elements_per_thread; i++) {
+        int idx = tid * elements_per_thread + i;
+        sum += 1.0f / (1.0f + expf(-row_ptr[idx]));
+    }
+
+    // Warp-level reduction
+    sum = warpReduceSum(sum);
+
+    // Store warp sums in shared memory
+    if (tid % 32 == 0) {
+        sdata[warp_id] = sum;
+    }
+    __syncthreads();
+
+    // Final reduction for first warp
+    if (tid < num_warps) {
+        sum = sdata[tid];
+    } else {
+        sum = 0.0f;
+    }
+    sum = warpReduceSum(sum);
+
+    // Write final result
+    if (tid == 0) {
+        output[row] = sum;
+    }
+}
+
+torch::Tensor sigmoid_sum_cuda(torch::Tensor input) {
+    int batch_size = input.size(0);
+    int hidden_size = input.size(1);
+    auto output = torch::zeros({batch_size, 1}, input.options());
+
+    const int threads = 256;
+    const int num_warps = threads / 32;
+    const int shared_mem_size = num_warps * sizeof(float);
+
+    sigmoid_sum_kernel<<<batch_size, threads, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        hidden_size
+    );
+
+    return output;
+}
+"""
+
+sigmoid_sum_cpp_source = "torch::Tensor sigmoid_sum_cuda(torch::Tensor input);"
+
+# Compile with fast math optimizations
+sigmoid_sum = load_inline(
+    name='sigmoid_sum',
+    cpp_sources=sigmoid_sum_cpp_source,
+    cuda_sources=sigmoid_sum_source,
+    functions=['sigmoid_sum_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(input_size, hidden_size)  # PyTorch's optimized linear
+        self.sigmoid_sum = sigmoid_sum  # Custom fused kernel
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.sigmoid_sum.sigmoid_sum_cuda(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(128, 32768).cuda()]
+
+def get_init_inputs():
+    return [32768, 32768]
+```
+
+Kernel 2 (runtime: 16.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the fused sigmoid + sum reduction CUDA kernel
+sigmoid_sum_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void sigmoid_sum_kernel(const float* input, float* output, int hidden_size) {
+    extern __shared__ float sdata[];
+
+    int row = blockIdx.x;
+    int tid = threadIdx.x;
+    int stride = blockDim.x;
+
+    float sum = 0.0f;
+    for (int i = tid; i < hidden_size; i += stride) {
+        float val = input[row * hidden_size + i];
+        sum += 1.0f / (1.0f + expf(-val));  // Sigmoid + accumulate
+    }
+
+    sdata[tid] = sum;
+    __syncthreads();
+
+    // Parallel reduction within the block
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[row] = sdata[0];
+    }
+}
+
+torch::Tensor sigmoid_sum_cuda(torch::Tensor input) {
+    int batch_size = input.size(0);
+    int hidden_size = input.size(1);
+    auto output = torch::zeros({batch_size, 1}, input.options());
+
+    const int threads = 256;
+    int shared_mem_size = threads * sizeof(float);
+
+    sigmoid_sum_kernel<<<batch_size, threads, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        hidden_size
+    );
+
+    return output;
+}
+"""
+
+sigmoid_sum_cpp_source = "torch::Tensor sigmoid_sum_cuda(torch::Tensor input);"
+
+# Compile the inline CUDA code
+sigmoid_sum = load_inline(
+    name='sigmoid_sum',
+    cpp_sources=sigmoid_sum_cpp_source,
+    cuda_sources=sigmoid_sum_source,
+    functions=['sigmoid_sum_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(input_size, hidden_size)  # Kept as optimized PyTorch linear
+        self.sigmoid_sum = sigmoid_sum  # Custom fused kernel
+
+    def forward(self, x):
+        x = self.linear(x)  # (batch_size, hidden_size)
+        x = self.sigmoid_sum.sigmoid_sum_cuda(x)  # Fused sigmoid + sum
+        return x
+
+def get_inputs():
+    return [torch.rand(128, 32768).cuda()]
+
+def get_init_inputs():
+    return [32768, 32768]
+```

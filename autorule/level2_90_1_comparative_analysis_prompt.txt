@@ -1,0 +1,183 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 24.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused kernel for LeakyReLU, Add, Clamp, and GELU operations
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_ops_kernel(const float* conv_out, const float* sum_tensor, float* out, 
+                               int num_elements, int channels, int depth, int height, int width) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+
+    // Calculate channel index (sum_tensor is shape [C,1,1,1])
+    int c = (idx / (depth * height * width)) % channels;
+
+    float val = conv_out[idx];
+    
+    // LeakyReLU (slope 0.2)
+    val = val > 0 ? val : 0.2f * val;
+    
+    // Add sum tensor (broadcasted)
+    val += sum_tensor[c];
+    
+    // Clamp between [-1, 1]
+    val = fmaxf(fminf(val, 1.0f), -1.0f);
+    
+    // GELU approximation
+    const float sqrt_2_over_pi = 0.7978845608f;
+    const float gelu_coeff = 0.044715f;
+    float cube = val * val * val;
+    out[idx] = 0.5f * val * (1.0f + tanhf(sqrt_2_over_pi * (val + gelu_coeff * cube)));
+
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor conv_out, torch::Tensor sum_tensor) {
+    auto out = torch::empty_like(conv_out);
+    int num_elements = conv_out.numel();
+    auto sizes = conv_out.sizes();
+    
+    // Extract dimensions
+    int channels = sizes[1];
+    int depth = sizes[2];
+    int height = sizes[3];
+    int width = sizes[4];
+
+    const int block_size = 256;
+    int num_blocks = (num_elements + block_size - 1) / block_size;
+    
+    fused_ops_kernel<<<num_blocks, block_size>>>(
+        conv_out.data_ptr<float>(),
+        sum_tensor.data_ptr<float>(),
+        out.data_ptr<float>(),
+        num_elements,
+        channels,
+        depth,
+        height,
+        width
+    );
+    
+    return out;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_ops_cuda(torch::Tensor conv_out, torch::Tensor sum_tensor);"
+
+# Load the fused operations kernel
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=["fused_ops_cuda"],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    """
+    Optimized model using fused CUDA kernel for post-convolution operations
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, sum_tensor_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.sum_tensor = nn.Parameter(torch.randn(sum_tensor_shape))
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fused_ops.fused_ops_cuda(x, self.sum_tensor)
+        return x
+```
+
+Kernel 2 (runtime: 24.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_operations_kernel(
+    const float* x,
+    const float* sum,
+    float* output,
+    int total_elements,
+    int channels,
+    int hw_d
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+
+    int c = (idx / hw_d) % channels; // Correctly calculate channel index
+    float val = x[idx];
+
+    // Apply LeakyReLU
+    val = val > 0 ? val : val * 0.2f;
+
+    // Add sum for current channel
+    val += sum[c];
+
+    // Clamp between -1 and 1
+    val = fmaxf(fminf(val, 1.0f), -1.0f);
+
+    // Compute GELU approximation
+    float y = val * 0.5f * (1.0f + tanhf(0.7978845608f * (val + 0.044715f * val * val * val)));
+    output[idx] = y;
+}
+
+torch::Tensor fused_operations_cuda(torch::Tensor x, torch::Tensor sum) {
+    auto output = torch::empty_like(x);
+    int total_elements = x.numel();
+    int channels = x.size(1);
+    int hw_d = x.size(2) * x.size(3) * x.size(4);
+
+    const int block_size = 256;
+    int grid_size = (total_elements + block_size - 1) / block_size;
+
+    fused_operations_kernel<<<grid_size, block_size>>>(
+        x.data_ptr<float>(),
+        sum.data_ptr<float>(),
+        output.data_ptr<float>(),
+        total_elements,
+        channels,
+        hw_d
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp = "torch::Tensor fused_operations_cuda(torch::Tensor x, torch::Tensor sum);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp,
+    cuda_sources=fused_ops_source,
+    functions=['fused_operations_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, sum_tensor_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.sum_tensor = nn.Parameter(torch.randn(sum_tensor_shape))
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fused_ops.fused_operations_cuda(x, self.sum_tensor)
+        return x
+```

@@ -1,0 +1,206 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 46.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+matmul_symmetric_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 32
+
+template<typename scalar_t>
+__global__ void matmul_symmetric_kernel(
+    const scalar_t* __restrict__ A,
+    const scalar_t* __restrict__ B,
+    scalar_t* __restrict__ C,
+    const int N) {
+
+    __shared__ scalar_t As[TILE_SIZE][TILE_SIZE];
+    __shared__ scalar_t Bs[TILE_SIZE][TILE_SIZE];
+
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    scalar_t sum = static_cast<scalar_t>(0.0f);
+
+    for (int k_block = 0; k_block < (N + TILE_SIZE - 1) / TILE_SIZE; ++k_block) {
+        // Load A tile
+        int a_row = by * TILE_SIZE + ty;
+        int a_col = k_block * TILE_SIZE + tx;
+        As[ty][tx] = (a_row < N && a_col < N) ? A[a_row * N + a_col] : static_cast<scalar_t>(0.0f);
+
+        // Load B tile
+        int b_row = k_block * TILE_SIZE + ty;
+        int b_col = bx * TILE_SIZE + tx;
+        Bs[ty][tx] = (b_row < N && b_col < N) ? B[b_row * N + b_col] : static_cast<scalar_t>(0.0f);
+
+        __syncthreads();
+
+        // Compute partial sum
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            sum += As[ty][i] * Bs[i][tx];
+        }
+
+        __syncthreads();
+    }
+
+    if (row < N && col < N) {
+        C[row * N + col] = sum;
+    }
+}
+
+torch::Tensor matmul_symmetric_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.is_contiguous() && B.is_contiguous(), "Inputs must be contiguous");
+    TORCH_CHECK(A.sizes().size() == 2 && A.size(0) == A.size(1), "A must be square matrix");
+    TORCH_CHECK(B.sizes().size() == 2 && B.size(0) == B.size(1), "B must be square matrix");
+
+    auto N = A.size(0);
+    dim3 threadsPerBlock(TILE_SIZE, TILE_SIZE);
+    dim3 blocksPerGrid((N + TILE_SIZE - 1) / TILE_SIZE, (N + TILE_SIZE - 1) / TILE_SIZE);
+
+    auto C = torch::empty({N, N}, A.options());
+
+    AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "matmul_symmetric", ([&] {
+        matmul_symmetric_kernel<scalar_t><<<blocksPerGrid, threadsPerBlock>>>(
+            A.data_ptr<scalar_t>(),
+            B.data_ptr<scalar_t>(),
+            C.data_ptr<scalar_t>(),
+            N);
+    }));
+
+    return C;
+}
+"""
+
+matmul_symmetric_header = """
+torch::Tensor matmul_symmetric_cuda(torch::Tensor A, torch::Tensor B);
+"""
+
+matmul_symmetric_ext = load_inline(
+    name='matmul_symmetric',
+    cpp_sources=[matmul_symmetric_header],
+    cuda_sources=[matmul_symmetric_source],
+    functions=['matmul_symmetric_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.matmul_symmetric = matmul_symmetric_ext.matmul_symmetric_cuda
+
+    def forward(self, A, B):
+        return self.matmul_symmetric(A, B)
+```
+
+Kernel 2 (runtime: 45.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+matmul_symmetric_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 16
+
+template<typename scalar_t>
+__global__ void matmul_symmetric_kernel(
+    const scalar_t* __restrict__ A,
+    const scalar_t* __restrict__ B,
+    scalar_t* __restrict__ C,
+    const int N) {
+
+    __shared__ scalar_t As[TILE_SIZE][TILE_SIZE];
+    __shared__ scalar_t Bs[TILE_SIZE][TILE_SIZE];
+
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    scalar_t sum = static_cast<scalar_t>(0.0f);
+
+    for (int k_block = 0; k_block < (N + TILE_SIZE - 1) / TILE_SIZE; ++k_block) {
+        // Load A tile
+        int a_row = by * TILE_SIZE + ty;
+        int a_col = k_block * TILE_SIZE + tx;
+        As[ty][tx] = (a_row < N && a_col < N) ? A[a_row * N + a_col] : static_cast<scalar_t>(0.0f);
+
+        // Load B tile
+        int b_row = k_block * TILE_SIZE + ty;
+        int b_col = bx * TILE_SIZE + tx;
+        Bs[ty][tx] = (b_row < N && b_col < N) ? B[b_row * N + b_col] : static_cast<scalar_t>(0.0f);
+
+        __syncthreads();
+
+        // Compute partial sum
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            sum += As[ty][i] * Bs[i][tx];
+        }
+
+        __syncthreads();
+    }
+
+    if (row < N && col < N) {
+        C[row * N + col] = sum;
+    }
+}
+
+torch::Tensor matmul_symmetric_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.is_contiguous() && B.is_contiguous(), "Inputs must be contiguous");
+    TORCH_CHECK(A.sizes().size() == 2 && A.size(0) == A.size(1), "A must be square matrix");
+    TORCH_CHECK(B.sizes().size() == 2 && B.size(0) == B.size(1), "B must be square matrix");
+
+    auto N = A.size(0);
+    dim3 threadsPerBlock(TILE_SIZE, TILE_SIZE);
+    dim3 blocksPerGrid((N + TILE_SIZE - 1) / TILE_SIZE, (N + TILE_SIZE - 1) / TILE_SIZE);
+
+    auto C = torch::empty({N, N}, A.options());
+
+    AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "matmul_symmetric", ([&] {
+        matmul_symmetric_kernel<scalar_t><<<blocksPerGrid, threadsPerBlock>>>(
+            A.data_ptr<scalar_t>(),
+            B.data_ptr<scalar_t>(),
+            C.data_ptr<scalar_t>(),
+            N);
+    }));
+
+    return C;
+}
+"""
+
+matmul_symmetric_header = """
+torch::Tensor matmul_symmetric_cuda(torch::Tensor A, torch::Tensor B);
+"""
+
+matmul_symmetric_ext = load_inline(
+    name='matmul_symmetric',
+    cpp_sources=[matmul_symmetric_header],
+    cuda_sources=[matmul_symmetric_source],
+    functions=['matmul_symmetric_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.matmul_symmetric = matmul_symmetric_ext.matmul_symmetric_cuda
+
+    def forward(self, A, B):
+        return self.matmul_symmetric(A, B)
+```

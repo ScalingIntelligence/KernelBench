@@ -1,0 +1,7 @@
+[
+  "The kernel performs operator fusion between multiple operations.",
+  "The kernel uses loop unrolling to reduce loop overhead and enable compiler optimizations.",
+  "The kernel minimizes global memory traffic by keeping intermediate results in registers.",
+  "The kernel uses boundary checks that are statically analyzable and less divergent.",
+  "The kernel avoids framework overhead by implementing operations in a custom kernel rather than using multiple framework-provided operations."
+]

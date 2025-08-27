@@ -1,0 +1,326 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 23.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused kernel combining max pooling, global average pooling and clamping
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_maxpool_avg_clamp_kernel(const float* input, float* output, 
+                                              int batch_size, int channels,
+                                              int depth, int height, int width,
+                                              float min_val, float max_val) {
+    const int batch = blockIdx.x / channels;
+    const int channel = blockIdx.x % channels;
+    if (batch >= batch_size) return;
+
+    const int num_windows_depth = depth / 2;
+    const int num_windows_height = height / 2;
+    const int num_windows_width = width / 2;
+    const int total_windows = num_windows_depth * num_windows_height * num_windows_width;
+
+    float sum = 0.0f;
+
+    // Grid-stride loop for coalesced memory access
+    for (int i = threadIdx.x; i < total_windows; i += blockDim.x) {
+        // Convert linear index to 3D window coordinates
+        int wd = i / (num_windows_height * num_windows_width);
+        int rem = i % (num_windows_height * num_windows_width);
+        int wh = rem / num_windows_width;
+        int ww = rem % num_windows_width;
+
+        // Calculate window start positions
+        int d_start = wd * 2;
+        int h_start = wh * 2;
+        int w_start = ww * 2;
+
+        // Find max in 2x2x2 window
+        float max_val = -INFINITY;
+        for (int dd = 0; dd < 2; ++dd) {
+            for (int dh = 0; dh < 2; ++dh) {
+                for (int dw = 0; dw < 2; ++dw) {
+                    int d = d_start + dd;
+                    int h = h_start + dh;
+                    int w = w_start + dw;
+                    if (d < depth && h < height && w < width) {
+                        int idx = ((batch * channels + channel) * depth + d) * height * width + h * width + w;
+                        max_val = fmaxf(max_val, input[idx]);
+                    }
+                }
+            }
+        }
+        sum += max_val;
+    }
+
+    // Block reduction for sum
+    __shared__ float shared_sum[256];
+    shared_sum[threadIdx.x] = sum;
+    __syncthreads();
+
+    // Warp-aware reduction
+    for (int stride = 128; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride && threadIdx.x + stride < blockDim.x) {
+            shared_sum[threadIdx.x] += shared_sum[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    // Final output with clamping
+    if (threadIdx.x == 0) {
+        float avg = shared_sum[0] / total_windows;
+        output[batch * channels + channel] = fminf(fmaxf(avg, min_val), max_val);
+    }
+}
+
+torch::Tensor fused_maxpool_avg_clamp_cuda(torch::Tensor input, float min_val, float max_val) {
+    auto sizes = input.sizes();
+    auto output = torch::zeros({sizes[0], sizes[1], 1, 1, 1}, input.options());
+    
+    const int batch_size = sizes[0];
+    const int channels = sizes[1];
+    const int num_blocks = batch_size * channels;
+    const int threads = 256;
+    
+    fused_maxpool_avg_clamp_kernel<<<num_blocks, threads>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        sizes[2], sizes[3], sizes[4],
+        min_val, max_val
+    );
+    
+    return output;
+}
+"""
+
+cpp_wrapper = "torch::Tensor fused_maxpool_avg_clamp_cuda(torch::Tensor input, float min_val, float max_val);"
+
+fused_kernel = load_inline(
+    name='fused_maxpool_avg_clamp',
+    cpp_sources=cpp_wrapper,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_maxpool_avg_clamp_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, scale, maxpool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, 
+                                                stride=stride, padding=padding)
+        
+        # Fuse scaling into convolution weights
+        with torch.no_grad():
+            self.conv_transpose.weight.data *= scale
+            self.conv_transpose.bias.data *= scale
+        
+        self.clamp_min = 0.0
+        self.clamp_max = 1.0
+        self.fused_op = fused_kernel
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.fused_op.fused_maxpool_avg_clamp_cuda(x, self.clamp_min, self.clamp_max)
+        return x
+
+# Original configuration parameters
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+scale = 0.5
+maxpool_kernel_size = 2
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, depth, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, scale, maxpool_kernel_size]
+```
+
+Kernel 2 (runtime: 23.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized Fused Pooling and Clamp CUDA Kernel
+fused_pool_clamp_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_pool_clamp_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    const int D, const int H, const int W,
+    const int batch_size,
+    const int out_channels,
+    const float clamp_min,
+    const float clamp_max,
+    const int total_windows
+) {
+    const int batch_idx = blockIdx.x;
+    const int channel_idx = blockIdx.y;
+    const int tid = threadIdx.x;
+    
+    const float* in_ptr = input + (batch_idx * out_channels + channel_idx) * D * H * W;
+    
+    const int windows_z = W / 2;
+    const int windows_y = H / 2;
+    const int windows_x = D / 2;
+    
+    float thread_sum = 0.0f;
+
+    // Process windows with coalesced memory access
+    for (int i = tid; i < total_windows; i += blockDim.x) {
+        const int wz = i % windows_z;
+        const int wy = (i / windows_z) % windows_y;
+        const int wx = i / (windows_z * windows_y);
+        
+        const int x_start = wx * 2;
+        const int y_start = wy * 2;
+        const int z_start = wz * 2;
+
+        float max_val = -INFINITY;
+        
+        // Unrolled 2x2x2 window processing
+        #pragma unroll
+        for (int dx = 0; dx < 2; ++dx) {
+            const int x = x_start + dx;
+            if (x >= D) continue;
+            #pragma unroll
+            for (int dy = 0; dy < 2; ++dy) {
+                const int y = y_start + dy;
+                if (y >= H) continue;
+                #pragma unroll
+                for (int dz = 0; dz < 2; ++dz) {
+                    const int z = z_start + dz;
+                    if (z >= W) continue;
+                    max_val = fmaxf(max_val, in_ptr[x*H*W + y*W + z]);
+                }
+            }
+        }
+        thread_sum += max_val;
+    }
+
+    // Block-level reduction
+    __shared__ float shared_sum[256];
+    shared_sum[tid] = thread_sum;
+    __syncthreads();
+
+    // Optimized tree reduction
+    for (int s = blockDim.x/2; s >= 32; s >>= 1) {
+        if (tid < s) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        __syncthreads();
+    }
+
+    // Warp-level reduction using shuffle instructions
+    if (tid < 32) {
+        float val = shared_sum[tid];
+        #pragma unroll
+        for (int s = 16; s > 0; s >>= 1) {
+            val += __shfl_down_sync(0xffffffff, val, s);
+        }
+        if (tid == 0) {
+            const float avg = fminf(fmaxf(val / total_windows, clamp_min), clamp_max);
+            output[batch_idx * out_channels + channel_idx] = avg;
+        }
+    }
+}
+
+torch::Tensor fused_pool_clamp_cuda(
+    torch::Tensor input,
+    int D, int H, int W,
+    float clamp_min,
+    float clamp_max,
+    int total_windows
+) {
+    const int batch_size = input.size(0);
+    const int out_channels = input.size(1);
+    auto output = torch::zeros({batch_size, out_channels, 1, 1, 1}, input.options());
+
+    const dim3 grid(batch_size, out_channels);
+    const int block_size = 256;
+
+    fused_pool_clamp_kernel<<<grid, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        D, H, W,
+        batch_size,
+        out_channels,
+        clamp_min,
+        clamp_max,
+        total_windows
+    );
+
+    return output;
+}
+"""
+
+fused_pool_clamp_cpp_source = "torch::Tensor fused_pool_clamp_cuda(torch::Tensor input, int D, int H, int W, float clamp_min, float clamp_max, int total_windows);"
+
+fused_pool_clamp = load_inline(
+    name="fused_pool_clamp",
+    cpp_sources=fused_pool_clamp_cpp_source,
+    cuda_sources=fused_pool_clamp_source,
+    functions=["fused_pool_clamp_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, scale, maxpool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.clamp_min = 0.0
+        self.clamp_max = 1.0
+
+        # Fold scale into convolution weights during initialization
+        with torch.no_grad():
+            self.conv_transpose.weight.data *= scale
+            if self.conv_transpose.bias is not None:
+                self.conv_transpose.bias.data *= scale
+
+        self.fused_pool_clamp = fused_pool_clamp
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        D, H, W = x.shape[2:]
+        total_windows = (D // 2) * (H // 2) * (W // 2)
+        x = self.fused_pool_clamp.fused_pool_clamp_cuda(
+            x, D, H, W, 
+            self.clamp_min, self.clamp_max,
+            total_windows
+        )
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, scale, maxpool_kernel_size]
+
+# Hyperparameters (same as original)
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+scale = 0.5
+maxpool_kernel_size = 2
+```

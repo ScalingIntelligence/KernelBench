@@ -1,0 +1,5 @@
+[
+  "The kernel uses numerically stable functions (e.g., log1pf) for improved precision in sensitive operations.",
+  "The kernel avoids redundant intermediate variable assignments, allowing for potential compiler optimizations.",
+  "The kernel ensures mathematical equivalence through alternative expressions that may leverage compiler intrinsics or optimized library functions."
+]

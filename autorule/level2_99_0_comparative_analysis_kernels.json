@@ -1,0 +1,48 @@
+{
+  "kernel1": {
+    "problem_id": 99,
+    "sample_id": 5,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                            aten::addmm         1.20%      89.287us        16.06%       1.197ms       1.197ms       6.160ms        98.38%      12.321ms      12.321ms             1  \n                                           Unrecognized        14.22%       1.060ms        14.22%       1.060ms       1.060ms       6.160ms        98.38%       6.160ms       6.160ms             1  \n                                ampere_sgemm_128x128_tn         0.00%       0.000us         0.00%       0.000us       0.000us       6.160ms        98.37%       6.160ms       6.160ms             1  \n    fused_gelu_softmax_kernel(float*, float*, int, int)         0.00%       0.000us         0.00%       0.000us       0.000us     101.216us         1.62%     101.216us     101.216us             1  \n                                        Memset (Device)         0.00%       0.000us         0.00%       0.000us       0.000us       0.544us         0.01%       0.544us       0.544us             1  \n                                           aten::linear         0.22%      16.251us        16.90%       1.260ms       1.260ms       0.000us         0.00%      12.321ms      12.321ms             1  \n                                                aten::t         0.25%      18.896us         0.62%      46.518us      46.518us       0.000us         0.00%       0.000us       0.000us             1  \n                                        aten::transpose         0.32%      23.624us         0.37%      27.622us      27.622us       0.000us         0.00%       0.000us       0.000us             1  \n                                       aten::as_strided         0.05%       3.998us         0.05%       3.998us       3.998us       0.000us         0.00%       0.000us       0.000us             1  \n                                            aten::empty         0.07%       5.250us         0.07%       5.250us       5.250us       0.000us         0.00%       0.000us       0.000us             1  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 7.451ms\nSelf CUDA time total: 6.262ms\n"
+    },
+    "runtime": 7.29,
+    "runtime_stats": {
+      "mean": 7.29,
+      "std": 0.108,
+      "min": 6.25,
+      "max": 7.39,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "IR_no_profiler_level2_DeepSeek-R1"
+  },
+  "kernel2": {
+    "problem_id": 99,
+    "sample_id": 3,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-----------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                 Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-----------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                          aten::addmm         1.65%     125.932us        22.26%       1.698ms       1.698ms       5.943ms        99.42%      11.886ms      11.886ms             1  \n                                         Unrecognized        19.77%       1.508ms        19.77%       1.508ms       1.508ms       5.943ms        99.42%       5.943ms       5.943ms             1  \n                              ampere_sgemm_128x128_tn         0.00%       0.000us         0.00%       0.000us       0.000us       5.943ms        99.41%       5.943ms       5.943ms             1  \n    gelu_sigmoid_sum_kernel(float*, float*, int, int)         0.00%       0.000us         0.00%       0.000us       0.000us      34.912us         0.58%      34.912us      34.912us             1  \n                                      Memset (Device)         0.00%       0.000us         0.00%       0.000us       0.000us       0.544us         0.01%       0.544us       0.544us             1  \n                                         aten::linear         0.16%      12.002us        23.17%       1.767ms       1.767ms       0.000us         0.00%      11.886ms      11.886ms             1  \n                                              aten::t         0.43%      32.441us         0.76%      57.853us      57.853us       0.000us         0.00%       0.000us       0.000us             1  \n                                      aten::transpose         0.24%      18.287us         0.33%      25.412us      25.412us       0.000us         0.00%       0.000us       0.000us             1  \n                                     aten::as_strided         0.09%       7.125us         0.09%       7.125us       7.125us       0.000us         0.00%       0.000us       0.000us             1  \n                                          aten::empty         0.11%       8.189us         0.11%       8.189us       8.189us       0.000us         0.00%       0.000us       0.000us             1  \n-----------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 7.627ms\nSelf CUDA time total: 5.978ms\n"
+    },
+    "runtime": 7.06,
+    "runtime_stats": {
+      "mean": 7.06,
+      "std": 0.094,
+      "min": 6.2,
+      "max": 7.2,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "metr_level2_Qwen2.5-Coder-7B-Instruct-SFT"
+  }
+}

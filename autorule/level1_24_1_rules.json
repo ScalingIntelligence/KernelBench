@@ -1,0 +1,4 @@
+[
+  "The kernel adds numerical stability constants (e.g., epsilon) during reduction phases instead of per-thread during subsequent computations to avoid redundant arithmetic operations.",
+  "The kernel minimizes redundant arithmetic operations by performing scalar adjustments (e.g., adding epsilon) once during shared memory updates rather than in per-thread calculations."
+]

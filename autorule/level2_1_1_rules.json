@@ -1,0 +1,5 @@
+[
+  "The kernel precomputes repeated expressions on the host to reduce per-thread arithmetic operations.",
+  "The kernel minimizes per-thread computations by avoiding redundant arithmetic operations within the kernel.",
+  "The kernel passes precomputed constants (e.g., H*W) as parameters instead of calculating them within the kernel to reduce instruction count."
+]

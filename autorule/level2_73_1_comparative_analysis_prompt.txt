@@ -1,0 +1,293 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 5.94 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel for fused BatchNorm and scaling
+fused_bn_scale_source = """
+#include <torch/extension.h>
+#include <cmath>
+
+__global__ void fused_bn_scale_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ mean,
+    const float* __restrict__ var,
+    const float* __restrict__ gamma,
+    const float* __restrict__ beta,
+    float epsilon,
+    float scaling_factor,
+    float* __restrict__ output,
+    int num_elements,
+    int C, int H, int W) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+
+    int c = (idx % (C * H * W)) / (H * W);
+    
+    // Optimized memory access with texture cache and fused operations
+    float m = __ldg(mean + c);
+    float v = __ldg(var + c);
+    float g = __ldg(gamma + c) * scaling_factor;
+    float b = __ldg(beta + c) * scaling_factor;
+    float x = input[idx];
+
+    // Use faster reciprocal square root approximation
+    float inv_std = rsqrtf(v + epsilon);
+    output[idx] = (x - m) * inv_std * g + b;
+}
+
+torch::Tensor fused_bn_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor mean,
+    torch::Tensor var,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    float epsilon,
+    float scaling_factor) {
+
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+
+    int C = input.size(1);
+    int H = input.size(2);
+    int W = input.size(3);
+
+    const int block_size = 256;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+
+    fused_bn_scale_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        mean.data_ptr<float>(),
+        var.data_ptr<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        epsilon,
+        scaling_factor,
+        output.data_ptr<float>(),
+        num_elements,
+        C, H, W);
+
+    return output;
+}
+"""
+
+fused_bn_scale_cpp_source = "torch::Tensor fused_bn_scale_cuda(torch::Tensor input, torch::Tensor mean, torch::Tensor var, torch::Tensor gamma, torch::Tensor beta, float epsilon, float scaling_factor);"
+
+# Load the optimized CUDA kernel with fast math
+fused_bn_scale = load_inline(
+    name="fused_bn_scale",
+    cpp_sources=fused_bn_scale_cpp_source,
+    cuda_sources=fused_bn_scale_source,
+    functions=["fused_bn_scale_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_cuda_cflags=["-O3", "--use_fast_math"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.scaling_factor = scaling_factor
+        self.bn.momentum = 0.1  # Match default BatchNorm momentum
+
+    def forward(self, x):
+        x = self.conv(x)
+        
+        if self.training:
+            # Compute batch statistics using optimized PyTorch kernels
+            batch_mean = x.mean(dim=(0, 2, 3))
+            batch_var = x.var(dim=(0, 2, 3), unbiased=False)
+            
+            # Update running statistics
+            with torch.no_grad():
+                self.bn.running_mean = (1 - self.bn.momentum) * self.bn.running_mean + self.bn.momentum * batch_mean
+                self.bn.running_var = (1 - self.bn.momentum) * self.bn.running_var + self.bn.momentum * batch_var
+            mean = batch_mean
+            var = batch_var
+        else:
+            mean = self.bn.running_mean
+            var = self.bn.running_var
+
+        # Apply fused batch norm and scaling
+        x = fused_bn_scale.fused_bn_scale_cuda(
+            x,
+            mean,
+            var,
+            self.bn.weight,
+            self.bn.bias,
+            self.bn.eps,
+            self.scaling_factor
+        )
+        return x
+
+def get_inputs():
+    batch_size = 128
+    in_channels = 8
+    height, width = 128, 128
+    return [torch.rand(batch_size, in_channels, height, width, device='cuda')]
+
+def get_init_inputs():
+    in_channels = 8
+    out_channels = 64
+    kernel_size = 3
+    scaling_factor = 2.0
+    return [in_channels, out_channels, kernel_size, scaling_factor]
+```
+
+Kernel 2 (runtime: 5.91 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused BatchNorm+Scaling CUDA kernel implementation
+fused_bn_scale_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_bn_scale_kernel(
+    const float* input,
+    const float* mean,
+    const float* var,
+    const float* weight,
+    const float* bias,
+    float eps,
+    float scaling_factor,
+    float* output,
+    int num_elements,
+    int channels,
+    int height,
+    int width
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+
+    int c = (idx / (height * width)) % channels;
+
+    float m = mean[c];
+    float v = var[c];
+    float w = weight[c];
+    float b = bias[c];
+
+    float inv_std = rsqrtf(v + eps);
+    float val = (input[idx] - m) * inv_std;
+    val = val * w * scaling_factor + b * scaling_factor;
+    output[idx] = val;
+}
+
+torch::Tensor fused_bn_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor mean,
+    torch::Tensor var,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    float eps,
+    float scaling_factor
+) {
+    TORCH_CHECK(input.is_cuda(), "input must be a CUDA tensor");
+    
+    // Ensure all tensors are contiguous
+    auto input_contig = input.contiguous();
+    auto mean_contig = mean.contiguous();
+    auto var_contig = var.contiguous();
+    auto weight_contig = weight.contiguous();
+    auto bias_contig = bias.contiguous();
+    
+    auto output = torch::empty_like(input_contig);
+
+    int num_elements = input_contig.numel();
+    int channels = input_contig.size(1);
+    int height = input_contig.size(2);
+    int width = input_contig.size(3);
+
+    const int block_size = 256;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+
+    fused_bn_scale_kernel<<<grid_size, block_size>>>(
+        input_contig.data_ptr<float>(),
+        mean_contig.data_ptr<float>(),
+        var_contig.data_ptr<float>(),
+        weight_contig.data_ptr<float>(),
+        bias_contig.data_ptr<float>(),
+        eps,
+        scaling_factor,
+        output.data_ptr<float>(),
+        num_elements,
+        channels,
+        height,
+        width
+    );
+
+    return output;
+}
+"""
+
+fused_bn_scale_cpp_source = """
+torch::Tensor fused_bn_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor mean,
+    torch::Tensor var,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    float eps,
+    float scaling_factor
+);
+"""
+
+# Load the custom CUDA operation
+fused_bn_scale = load_inline(
+    name='fused_bn_scale',
+    cpp_sources=fused_bn_scale_cpp_source,
+    cuda_sources=fused_bn_scale_source,
+    functions=['fused_bn_scale_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, scaling_factor, momentum=0.1):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.scaling_factor = scaling_factor
+        self.momentum = momentum
+        
+        # Initialize BN parameters
+        self.bn_weight = nn.Parameter(torch.ones(out_channels))
+        self.bn_bias = nn.Parameter(torch.zeros(out_channels))
+        self.register_buffer('running_mean', torch.zeros(out_channels))
+        self.register_buffer('running_var', torch.ones(out_channels))
+        self.eps = 1e-5
+
+    def forward(self, x):
+        x = self.conv(x)
+        
+        if self.training:
+            # Compute batch statistics
+            mean = x.mean(dim=[0, 2, 3])
+            var = x.var(dim=[0, 2, 3], unbiased=False)
+            
+            # Update running statistics
+            with torch.no_grad():
+                self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * mean
+                self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var
+        else:
+            mean = self.running_mean
+            var = self.running_var
+
+        x = fused_bn_scale.fused_bn_scale_cuda(
+            x,
+            mean,
+            var,
+            self.bn_weight,
+            self.bn_bias,
+            self.eps,
+            self.scaling_factor
+        )
+        return x
+```

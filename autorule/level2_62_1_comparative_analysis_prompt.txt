@@ -1,0 +1,299 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.43 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused GroupNorm-LeakyReLU-Scale kernel with vectorized access and warp-level reductions
+fused_gn_relu_scale_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_fp16.h>
+
+__global__ void fused_gn_relu_scale_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ gamma,
+    const float* __restrict__ beta,
+    float* __restrict__ output,
+    int hidden_size,
+    int num_groups,
+    float eps,
+    float negative_slope
+) {
+    const int batch_group_idx = blockIdx.x;
+    const int batch_idx = batch_group_idx / num_groups;
+    const int group_idx = batch_group_idx % num_groups;
+    const int group_size = hidden_size / num_groups;
+    const int start_idx = group_idx * group_size;
+    
+    const int tid = threadIdx.x;
+    const int input_offset = batch_idx * hidden_size + start_idx + tid * 4;
+    
+    // Vectorized load for 4 elements
+    float4 x4 = *reinterpret_cast<const float4*>(input + input_offset);
+    float x[4] = {x4.x, x4.y, x4.z, x4.w};
+
+    // Compute local sums
+    float sum = x[0] + x[1] + x[2] + x[3];
+    float sq_sum = x[0]*x[0] + x[1]*x[1] + x[2]*x[2] + x[3]*x[3];
+
+    // Warp-level reduction with proper mask for active threads
+    const unsigned mask = 0xFu;  // Mask for first 4 threads (group_size=16, 4 elements per thread)
+    for (int offset = 2; offset > 0; offset >>= 1) {
+        sum += __shfl_down_sync(mask, sum, offset);
+        sq_sum += __shfl_down_sync(mask, sq_sum, offset);
+    }
+
+    // Compute statistics and broadcast
+    float mean = sum / group_size;
+    float var = (sq_sum / group_size) - (mean * mean);
+    float inv_std = rsqrtf(var + eps);
+    
+    mean = __shfl_sync(mask, mean, 0);
+    inv_std = __shfl_sync(mask, inv_std, 0);
+
+    // Process elements with vectorized operations
+    float4 out4;
+    #pragma unroll
+    for (int i = 0; i < 4; i++) {
+        const int channel_idx = start_idx + tid*4 + i;
+        const float normalized = (x[i] - mean) * inv_std;
+        const float scaled = fmaf(normalized, gamma[channel_idx], beta[channel_idx]);
+        const float activated = scaled > 0 ? scaled : scaled * negative_slope;
+        ((float*)&out4)[i] = activated * 2.0f;  // Fuse element-wise addition (x + x)
+    }
+    
+    // Vectorized store
+    *reinterpret_cast<float4*>(output + input_offset) = out4;
+}
+
+torch::Tensor fused_gn_relu_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    int num_groups,
+    float eps,
+    float negative_slope
+) {
+    const auto batch_size = input.size(0);
+    const auto hidden_size = input.size(1);
+    auto output = torch::empty_like(input);
+    
+    const int group_size = hidden_size / num_groups;
+    const dim3 blocks(batch_size * num_groups);
+    const dim3 threads(group_size / 4);  // 4 elements per thread
+    
+    fused_gn_relu_scale_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        output.data_ptr<float>(),
+        hidden_size,
+        num_groups,
+        eps,
+        negative_slope
+    );
+    
+    return output;
+}
+"""
+
+fused_gn_relu_scale_cpp = """
+torch::Tensor fused_gn_relu_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    int num_groups,
+    float eps,
+    float negative_slope
+);
+"""
+
+# Load the optimized CUDA kernel
+fused_gn_relu_scale = load_inline(
+    name='fused_gn_relu_scale',
+    cpp_sources=fused_gn_relu_scale_cpp,
+    cuda_sources=fused_gn_relu_scale_source,
+    functions=['fused_gn_relu_scale_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, num_groups, eps=1e-5, negative_slope=0.01):
+        super().__init__()
+        self.fc = nn.Linear(input_size, hidden_size)
+        self.num_groups = num_groups
+        self.eps = eps
+        self.negative_slope = negative_slope
+        
+        # Initialize normalization parameters directly (bypass GroupNorm)
+        self.gamma = nn.Parameter(torch.ones(hidden_size))
+        self.beta = nn.Parameter(torch.zeros(hidden_size))
+
+    def forward(self, x):
+        x = self.fc(x)
+        x = fused_gn_relu_scale.fused_gn_relu_scale_cuda(
+            x, 
+            self.gamma,
+            self.beta,
+            self.num_groups,
+            self.eps,
+            self.negative_slope
+        )
+        return x
+```
+
+Kernel 2 (runtime: 7.43 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused GroupNorm-LeakyReLU-Scale kernel with correct block reductions
+fused_gn_relu_scale_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_fp16.h>
+
+__global__ void fused_gn_relu_scale_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ gamma,
+    const float* __restrict__ beta,
+    float* __restrict__ output,
+    int hidden_size,
+    int num_groups,
+    float eps,
+    float negative_slope
+) {
+    const int batch_group_idx = blockIdx.x;
+    const int batch_idx = batch_group_idx / num_groups;
+    const int group_idx = batch_group_idx % num_groups;
+    const int group_size = hidden_size / num_groups;
+    const int start_idx = group_idx * group_size;
+    
+    const int tid = threadIdx.x;
+    const int input_offset = batch_idx * hidden_size + start_idx + tid * 4;
+    
+    // Vectorized load for 4 elements
+    float4 x4 = *reinterpret_cast<const float4*>(input + input_offset);
+    float x[4] = {x4.x, x4.y, x4.z, x4.w};
+
+    // Compute local sums
+    float sum = x[0] + x[1] + x[2] + x[3];
+    float sq_sum = x[0]*x[0] + x[1]*x[1] + x[2]*x[2] + x[3]*x[3];
+
+    // Block-level reduction using shared memory
+    __shared__ float s_sum[4];
+    __shared__ float s_sqsum[4];
+    
+    s_sum[tid] = sum;
+    s_sqsum[tid] = sq_sum;
+    __syncthreads();
+
+    // Proper reduction for 4 elements (2 reduction steps)
+    for (int offset = 2; offset > 0; offset >>= 1) {
+        if (tid < offset) {
+            s_sum[tid] += s_sum[tid + offset];
+            s_sqsum[tid] += s_sqsum[tid + offset];
+        }
+        __syncthreads();
+    }
+
+    // Compute statistics using first thread's reduced values
+    const float mean = s_sum[0] / group_size;
+    const float var = (s_sqsum[0] / group_size) - (mean * mean);
+    const float inv_std = rsqrtf(var + eps);
+
+    // Process elements with vectorized operations
+    float4 out4;
+    #pragma unroll
+    for (int i = 0; i < 4; i++) {
+        const int channel_idx = start_idx + tid*4 + i;
+        const float normalized = (x[i] - mean) * inv_std;
+        const float scaled = fmaf(normalized, gamma[channel_idx], beta[channel_idx]);
+        const float activated = scaled > 0 ? scaled : scaled * negative_slope;
+        ((float*)&out4)[i] = activated * 2.0f;
+    }
+    
+    // Vectorized store
+    *reinterpret_cast<float4*>(output + input_offset) = out4;
+}
+
+torch::Tensor fused_gn_relu_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    int num_groups,
+    float eps,
+    float negative_slope
+) {
+    const auto batch_size = input.size(0);
+    const auto hidden_size = input.size(1);
+    auto output = torch::empty_like(input);
+    
+    const int group_size = hidden_size / num_groups;
+    const dim3 blocks(batch_size * num_groups);
+    const dim3 threads(group_size / 4);  // 4 elements per thread
+    
+    fused_gn_relu_scale_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        output.data_ptr<float>(),
+        hidden_size,
+        num_groups,
+        eps,
+        negative_slope
+    );
+    
+    return output;
+}
+"""
+
+fused_gn_relu_scale_cpp = """
+torch::Tensor fused_gn_relu_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    int num_groups,
+    float eps,
+    float negative_slope
+);
+"""
+
+# Load the optimized CUDA kernel
+fused_gn_relu_scale = load_inline(
+    name='fused_gn_relu_scale',
+    cpp_sources=fused_gn_relu_scale_cpp,
+    cuda_sources=fused_gn_relu_scale_source,
+    functions=['fused_gn_relu_scale_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, num_groups, eps=1e-5, negative_slope=0.01):
+        super().__init__()
+        self.fc = nn.Linear(input_size, hidden_size)
+        self.num_groups = num_groups
+        self.eps = eps
+        self.negative_slope = negative_slope
+        
+        # Initialize normalization parameters
+        self.gamma = nn.Parameter(torch.ones(hidden_size))
+        self.beta = nn.Parameter(torch.zeros(hidden_size))
+
+    def forward(self, x):
+        x = self.fc(x)
+        x = fused_gn_relu_scale.fused_gn_relu_scale_cuda(
+            x, 
+            self.gamma,
+            self.beta,
+            self.num_groups,
+            self.eps,
+            self.negative_slope
+        )
+        return x
+```

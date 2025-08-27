@@ -1,0 +1,254 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 26.3 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused AvgPool3D + GELU
+fused_avg_gelu_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_avg_pool_gelu_kernel(const float* input, float* output, 
+    int N, int C, 
+    int D_in, int H_in, int W_in,
+    int D_out, int H_out, int W_out) {
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = N * C * D_out * H_out * W_out;
+    if (idx >= total_elements) return;
+
+    int n = idx / (C * D_out * H_out * W_out);
+    int remainder = idx % (C * D_out * H_out * W_out);
+    int c = remainder / (D_out * H_out * W_out);
+    remainder = remainder % (D_out * H_out * W_out);
+    int d_out = remainder / (H_out * W_out);
+    remainder = remainder % (H_out * W_out);
+    int h_out = remainder / W_out;
+    int w_out = remainder % W_out;
+
+    int d_in_start = d_out * 2;
+    int h_in_start = h_out * 2;
+    int w_in_start = w_out * 2;
+
+    float sum = 0.0f;
+    int count = 0;
+    for (int di = 0; di < 2; ++di) {
+        for (int dj = 0; dj < 2; ++dj) {
+            for (int dk = 0; dk < 2; ++dk) {
+                int d_in = d_in_start + di;
+                int h_in = h_in_start + dj;
+                int w_in = w_in_start + dk;
+                if (d_in < D_in && h_in < H_in && w_in < W_in) {
+                    int input_idx = n * C * D_in * H_in * W_in 
+                                  + c * D_in * H_in * W_in 
+                                  + d_in * H_in * W_in 
+                                  + h_in * W_in 
+                                  + w_in;
+                    sum += input[input_idx];
+                    count++;
+                }
+            }
+        }
+    }
+    float avg = count > 0 ? sum / count : 0.0f;
+
+    // GELU approximation matching PyTorch's implementation
+    float gelu = avg * 0.5f * (1.0f + tanhf(0.7978845608028654f * (avg + 0.044715f * avg * avg * avg)));
+
+    output[idx] = gelu;
+}
+
+torch::Tensor fused_avg_pool_gelu_cuda(torch::Tensor input) {
+    auto N = input.size(0);
+    auto C = input.size(1);
+    auto D_in = input.size(2);
+    auto H_in = input.size(3);
+    auto W_in = input.size(4);
+    
+    int D_out = D_in / 2;
+    int H_out = H_in / 2;
+    int W_out = W_in / 2;
+    
+    auto output = torch::empty({N, C, D_out, H_out, W_out}, input.options());
+    
+    int total_elements = N * C * D_out * H_out * W_out;
+    const int block_size = 256;
+    int grid_size = (total_elements + block_size - 1) / block_size;
+    
+    fused_avg_pool_gelu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C,
+        D_in, H_in, W_in,
+        D_out, H_out, W_out
+    );
+    
+    return output;
+}
+"""
+
+fused_avg_gelu_cpp_source = "torch::Tensor fused_avg_pool_gelu_cuda(torch::Tensor input);"
+
+fused_avg_gelu = load_inline(
+    name='fused_avg_gelu',
+    cpp_sources=fused_avg_gelu_cpp_source,
+    cuda_sources=fused_avg_gelu_source,
+    functions=['fused_avg_pool_gelu_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, sum_weight, norm_shape, pool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding, 
+            output_padding=output_padding
+        )
+        self.sum_weight = nn.Parameter(torch.tensor(sum_weight))
+        self.norm = nn.LayerNorm(norm_shape)
+        self.fused_avg_gelu = fused_avg_gelu.fused_avg_pool_gelu_cuda
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = x + self.sum_weight
+        x = self.norm(x)
+        x = self.fused_avg_gelu(x)
+        return x
+```
+
+Kernel 2 (runtime: 17.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused Add+LayerNorm over width dimension
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_add_layernorm_kernel(
+    const float* input,
+    float* output,
+    float add_weight,
+    const float* gamma,
+    const float* beta,
+    float eps,
+    int N, int C, int D, int H, int W
+) {
+    const int ncdh = blockIdx.x;
+    const int n = ncdh / (C * D * H);
+    const int residual = ncdh % (C * D * H);
+    const int c = residual / (D * H);
+    const int dh = residual % (D * H);
+    const int d = dh / H;
+    const int h = dh % H;
+    const int w = threadIdx.x;
+
+    const int idx = ((n * C + c) * D + d) * H * W + h * W + w;
+    float val = input[idx] + add_weight;
+
+    __shared__ float sum_shared[64];
+    __shared__ float sq_sum_shared[64];
+    __shared__ float mean, rstd;
+
+    sum_shared[w] = val;
+    sq_sum_shared[w] = val * val;
+    __syncthreads();
+
+    // Reduction over W dimension
+    for (int stride = W/2; stride > 0; stride >>= 1) {
+        if (w < stride) {
+            sum_shared[w] += sum_shared[w + stride];
+            sq_sum_shared[w] += sq_sum_shared[w + stride];
+        }
+        __syncthreads();
+    }
+
+    if (w == 0) {
+        mean = sum_shared[0] / W;
+        float var = (sq_sum_shared[0] / W) - (mean * mean);
+        rstd = rsqrtf(var + eps);
+    }
+    __syncthreads();
+
+    output[idx] = (val - mean) * rstd * gamma[c] + beta[c];
+}
+
+torch::Tensor fused_add_layernorm_cuda(
+    torch::Tensor input,
+    torch::Tensor add_weight,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    float eps
+) {
+    TORCH_CHECK(input.is_contiguous(), "Input must be contiguous");
+    const int N = input.size(0);
+    const int C = input.size(1);
+    const int D = input.size(2);
+    const int H = input.size(3);
+    const int W = input.size(4);
+
+    auto output = torch::empty_like(input);
+    const int num_blocks = N * C * D * H;
+    const int threads = W;
+
+    fused_add_layernorm_kernel<<<num_blocks, threads>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        add_weight.item<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        eps,
+        N, C, D, H, W
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp = """
+torch::Tensor fused_add_layernorm_cuda(torch::Tensor input, torch::Tensor add_weight, torch::Tensor gamma, torch::Tensor beta, float eps);
+"""
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp,
+    cuda_sources=fused_ops_source,
+    functions=['fused_add_layernorm_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, sum_weight, norm_shape, pool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride, padding, output_padding)
+        self.sum_weight = nn.Parameter(torch.tensor(sum_weight))
+        self.gamma = nn.Parameter(torch.ones(norm_shape))
+        self.beta = nn.Parameter(torch.zeros(norm_shape))
+        self.eps = 1e-5
+        self.avg_pool = nn.AvgPool3d(pool_kernel_size)
+        self.gelu = nn.GELU()
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = x.contiguous()  # Ensure contiguous memory layout
+        x = fused_ops.fused_add_layernorm_cuda(x, self.sum_weight, self.gamma, self.beta, self.eps)
+        x = self.avg_pool(x)
+        x = self.gelu(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(32, 32, 16, 32, 32).cuda()]
+
+def get_init_inputs():
+    return [32, 64, (3,3,3), (2,2,2), (1,1,1), (1,1,1), 1.0, (64,), (2,2,2)]
+```

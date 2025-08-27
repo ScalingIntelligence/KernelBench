@@ -1,0 +1,17 @@
+REASONING TRACE:
+[
+    "The kernel fuses multiple operations into a single kernel to reduce kernel launch overhead.",
+    "The kernel avoids writing intermediate results to global memory, reducing global memory bandwidth usage.",
+    "The kernel uses fixed-size pooling windows to enable compiler optimizations like loop unrolling.",
+    "The kernel processes intermediate values in registers or thread-local storage instead of global memory.",
+    "The kernel combines consecutive operations to improve memory coalescing patterns."
+]
+
+
+ANSWER:
+
+
+The provided reasoning highlights several key optimizations in Kernel 2 compared to Kernel 1. These optimizations are distilled into general, objective rule-like statements that can be applied to evaluate other CUDA kernels. The rules focus on fusion of operations, memory access patterns, use of fixed-size parameters for compiler optimizations, and efficient handling of intermediate data. Each statement is phrased to allow deterministic verification (e.g., checking for fused operations, analyzing memory access patterns, or identifying fixed-size loops). The rules avoid being overly specific to the example (e.g., "2x2 windows") and instead emphasize generalizable principles like "fixed-size pooling windows" to maintain broader applicability.
+
+Usage:
+{'inputTokens': 2642, 'outputTokens': 229, 'totalTokens': 2871}

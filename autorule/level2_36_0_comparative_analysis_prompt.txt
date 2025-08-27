@@ -1,0 +1,265 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 14.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused min over channels and sum over height kernel
+fused_min_sum_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cfloat>
+
+__global__ void fused_min_sum_kernel(const float* input, float* output, int B, int C, int H, int W) {
+    int b = blockIdx.x / W;
+    int w = blockIdx.x % W;
+    int tid = threadIdx.x;
+
+    extern __shared__ float smem[];
+
+    float sum = 0.0f;
+
+    for (int h = tid; h < H; h += blockDim.x) {
+        float min_val = FLT_MAX;
+        for (int c = 0; c < C; ++c) {
+            int idx = b * C * H * W + c * H * W + h * W + w;
+            float val = input[idx];
+            if (val < min_val) {
+                min_val = val;
+            }
+        }
+        sum += min_val;
+    }
+
+    smem[tid] = sum;
+    __syncthreads();
+
+    // Block-wide reduction
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            smem[tid] += smem[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        int out_idx = b * W + w;
+        output[out_idx] = smem[0];
+    }
+}
+
+torch::Tensor fused_min_sum_cuda(torch::Tensor input) {
+    auto sizes = input.sizes();
+    int B = sizes[0];
+    int C = sizes[1];
+    int H = sizes[2];
+    int W = sizes[3];
+
+    auto output = torch::zeros({B, 1, 1, W}, input.options());
+
+    dim3 grid(B * W);
+    int block_size = 256;
+    size_t shared_mem_size = block_size * sizeof(float);
+
+    fused_min_sum_kernel<<<grid, block_size, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        B, C, H, W
+    );
+
+    return output;
+}
+"""
+
+fused_min_sum_cpp_source = "torch::Tensor fused_min_sum_cuda(torch::Tensor input);"
+
+# Fused GELU + bias kernel
+gelu_bias_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void gelu_bias_kernel(float* x, const float* bias, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float val = x[idx];
+        // GELU approximation with fused bias addition
+        float gelu_val = val * 0.5f * (1.0f + tanhf(0.7978845608f * (val + 0.044715f * val * val * val)));
+        x[idx] = gelu_val + bias[0];
+    }
+}
+
+torch::Tensor gelu_bias_cuda(torch::Tensor x, torch::Tensor bias) {
+    auto size = x.numel();
+    auto out = x.clone();
+    float* x_ptr = out.data_ptr<float>();
+    const float* bias_ptr = bias.data_ptr<float>();
+
+    const int block_size = 256;
+    const int num_blocks = (size + block_size - 1) / block_size;
+
+    gelu_bias_kernel<<<num_blocks, block_size>>>(x_ptr, bias_ptr, size);
+    
+    return out;
+}
+"""
+
+gelu_bias_cpp_source = "torch::Tensor gelu_bias_cuda(torch::Tensor x, torch::Tensor bias);"
+
+# Load both CUDA extensions
+fused_min_sum = load_inline(
+    name="fused_min_sum",
+    cpp_sources=fused_min_sum_cpp_source,
+    cuda_sources=fused_min_sum_source,
+    functions=["fused_min_sum_cuda"],
+    verbose=True
+)
+
+gelu_bias = load_inline(
+    name="gelu_bias",
+    cpp_sources=gelu_bias_cpp_source,
+    cuda_sources=gelu_bias_source,
+    functions=["gelu_bias_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, output_padding)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_min_sum = fused_min_sum
+        self.gelu_bias = gelu_bias
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.fused_min_sum.fused_min_sum_cuda(x)
+        x = self.gelu_bias.gelu_bias_cuda(x, self.bias)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape]
+
+batch_size = 16
+in_channels = 64
+out_channels = 128
+height, width = 128, 128
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+bias_shape = (1, 1, 1)
+```
+
+Kernel 2 (runtime: 14.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused operations: min reduction, sum reduction, GELU, and bias add
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_operations_kernel(
+    const float* input,
+    const float* bias,
+    float* output,
+    int C, int H, int W, int batch_size
+) {
+    extern __shared__ float sdata[];
+
+    int batch_w_idx = blockIdx.x;
+    int batch = batch_w_idx / W;
+    int w = batch_w_idx % W;
+
+    if (batch >= batch_size) return;
+
+    int tid = threadIdx.x;
+
+    if (tid >= H) {
+        sdata[tid] = 0.0f;
+        return;
+    }
+
+    float min_val = INFINITY;
+    for (int c = 0; c < C; ++c) {
+        int input_idx = batch * C * H * W + c * H * W + tid * W + w;
+        float val = input[input_idx];
+        min_val = fminf(min_val, val);
+    }
+    sdata[tid] = min_val;
+
+    __syncthreads();
+
+    // Sum reduction
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        float sum = sdata[0];
+        // GELU approximation (matches PyTorch's fast approximation)
+        float gelu = sum * 0.5f * (1.0f + tanhf(0.7978845608f * (sum + 0.044715f * sum * sum * sum)));
+        gelu += bias[0];
+        output[batch * W + w] = gelu;
+    }
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor bias, int C, int H, int W, int batch_size) {
+    auto output = torch::zeros({batch_size, 1, 1, W}, input.options());
+    
+    int grid_size = batch_size * W;
+    dim3 grid(grid_size);
+    dim3 block(H);
+    size_t shared_mem_size = H * sizeof(float);
+
+    fused_operations_kernel<<<grid, block, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        C, H, W, batch_size
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp_source = """
+torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor bias, int C, int H, int W, int batch_size);
+"""
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=['fused_ops_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size, 
+            stride, padding, output_padding
+        )
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv_transpose(x).contiguous()
+        batch_size, C, H, W = x.shape
+        return self.fused_ops.fused_ops_cuda(x, self.bias, C, H, W, batch_size)
+```

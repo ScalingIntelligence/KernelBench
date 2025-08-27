@@ -1,0 +1,8 @@
+[
+  "The kernel uses a grid-stride loop to distribute work across threads, improving occupancy and load balancing.",
+  "The kernel uses a smaller thread block size (e.g., 256) to allow higher occupancy and better utilization of GPU resources.",
+  "The kernel is compiled with the -use_fast_math flag to enable faster approximate mathematical operations.",
+  "The kernel employs contiguous memory access patterns through vectorized loads (e.g., float4) to maximize coalescing efficiency.",
+  "The kernel uses a single-step block-level reduction in shared memory instead of a multi-step warp and block reduction.",
+  "The kernel leverages GPU caching (e.g., L1/L2) to mitigate repeated global memory accesses for frequently used values."
+]

@@ -1,0 +1,125 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom Swish CUDA kernel
+swish_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void swish_forward_kernel(const float* x, float* out, int num_elements) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < num_elements) {
+        const float x_val = x[index];
+        const float sigmoid = 1.0f / (1.0f + expf(-x_val));
+        out[index] = x_val * sigmoid;
+    }
+}
+
+torch::Tensor swish_forward_cuda(torch::Tensor x) {
+    auto num_elements = x.numel();
+    auto out = torch::empty_like(x);
+    
+    const int threads_per_block = 256;
+    const int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    swish_forward_kernel<<<num_blocks, threads_per_block>>>(
+        x.data_ptr<float>(),
+        out.data_ptr<float>(),
+        num_elements
+    );
+    
+    return out;
+}
+"""
+
+swish_cpp_source = "torch::Tensor swish_forward_cuda(torch::Tensor x);"
+
+# Compile the inline CUDA code
+swish_extension = load_inline(
+    name="swish_extension",
+    cpp_sources=swish_cpp_source,
+    cuda_sources=swish_kernel_source,
+    functions=["swish_forward_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.swish_op = swish_extension.swish_forward_cuda
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.swish_op(x)
+```
+
+Kernel 2 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the custom CUDA kernel for Swish activation
+swish_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void swish_forward_kernel(const float* input, float* output, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        float x = input[i];
+        output[i] = x * (1.0f / (1.0f + exp(-x)));
+    }
+}
+
+torch::Tensor swish_forward_cuda(torch::Tensor input) {
+    int n = input.numel();
+    torch::Tensor output = torch::empty_like(input);
+
+    const int threads_per_block = 256;
+    const int blocks_per_grid = (n + threads_per_block - 1) / threads_per_block;
+
+    swish_forward_kernel<<<blocks_per_grid, threads_per_block>>>(input.data_ptr<float>(), output.data_ptr<float>(), n);
+
+    return output;
+}
+"""
+
+swish_cpp_source = (
+    "torch::Tensor swish_forward_cuda(torch::Tensor input);"
+)
+
+# Compile the inline CUDA code for Swish activation
+swish = load_inline(
+    name="swish",
+    cpp_sources=swish_cpp_source,
+    cuda_sources=swish_source,
+    functions=["swish_forward_cuda"],
+    verbose=True,
+    extra_cflags=[""],
+    extra_ldflags=[""],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return swish.swish_forward_cuda(x)
+
+# Example usage
+if __name__ == "__main__":
+    batch_size = 4096
+    dim = 393216
+    x = torch.rand(batch_size, dim).cuda()
+
+    model = ModelNew().cuda()
+    output = model(x)
+    print(output.shape)
+```

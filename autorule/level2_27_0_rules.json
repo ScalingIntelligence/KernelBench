@@ -1,0 +1,4 @@
+[
+  "- The kernel uses explicit parentheses to group integer division before multiplication in the denominator of mean and variance calculations.",
+  "- The kernel ensures loop-invariant integer division is explicitly grouped to hint compiler optimizations for strength reduction."
+]

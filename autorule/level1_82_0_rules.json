@@ -1,0 +1,9 @@
+[
+  "The kernel uses registers instead of shared memory for frequently accessed data to reduce latency and synchronization overhead.",
+  "The kernel fully unrolls loops with known iteration counts using #pragma unroll to eliminate loop control overhead.",
+  "The kernel employs a 1D grid layout to ensure coalesced global memory accesses for both reads and writes.",
+  "The kernel specializes for fixed-size operations (e.g., 3x3 kernels) to enable compile-time optimizations and boundary check elimination.",
+  "The kernel uses linear thread indexing patterns to maintain spatial locality in memory accesses.",
+  "The kernel minimizes synchronization points by avoiding inter-thread communication requirements.",
+  "The kernel optimizes grid dimensionality (1D vs 3D) to reduce arithmetic overhead in index calculations."
+]

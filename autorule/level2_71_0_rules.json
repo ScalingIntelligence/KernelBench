@@ -1,0 +1,5 @@
+[
+  "The kernel replaces division operations with multiplication by a precomputed reciprocal to reduce computational cost.",
+  "The kernel uses branchless intrinsics (e.g., fmaxf) instead of explicit conditional logic (e.g., ternary operators) to avoid warp divergence.",
+  "The kernel precomputes constants outside the kernel to enable compile-time optimizations for arithmetic operations."
+]

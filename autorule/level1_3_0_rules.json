@@ -1,0 +1,6 @@
+[
+  "The kernel uses smaller tile sizes to reduce shared memory usage per block, allowing higher occupancy on streaming multiprocessors (SMs).",
+  "The kernel avoids shared memory configurations that exceed hardware limits per block, ensuring more concurrent blocks can be scheduled on an SM.",
+  "The kernel uses thread block dimensions that balance parallelism and shared memory usage to maximize occupancy.",
+  "The kernel structures grid dimensions to prioritize spatial locality for batched operations (e.g., batch index in the z-dimension)."
+]

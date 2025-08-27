@@ -1,0 +1,6 @@
+[
+  "The kernel uses compile-time constants instead of runtime parameters for values that do not change during execution.",
+  "The kernel avoids passing parameters that can be hardcoded, reducing register pressure and constant memory accesses.",
+  "The kernel enables compiler optimizations such as constant propagation and instruction reordering by using literals instead of variables.",
+  "The kernel uses immediate values in floating-point operations instead of loading values from memory."
+]

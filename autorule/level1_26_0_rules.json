@@ -1,0 +1,5 @@
+[
+  "The kernel uses a mathematical approximation (tanh-based) instead of a more computationally expensive exact function (erf).",
+  "The kernel ensures input tensor contiguity to avoid uncoalesced memory access.",
+  "The kernel utilizes CUDA-optimized intrinsic functions (e.g., tanh) for faster computation compared to less optimized alternatives (e.g., erf)."
+]

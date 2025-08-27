@@ -1,0 +1,8 @@
+[
+  "The kernel uses a grid-stride loop to process elements, enabling full GPU occupancy regardless of input dimensions.",
+  "The kernel employs coalesced memory accesses to contiguous 1D tensors without explicit vectorization.",
+  "The kernel performs a single efficient block reduction in shared memory followed by atomic adds.",
+  "The kernel fuses element-wise computation and reduction into a single kernel launch.",
+  "The kernel minimizes control flow complexity to avoid warp divergence.",
+  "The kernel structures work distribution to ensure all threads participate in useful computation."
+]

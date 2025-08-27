@@ -1,0 +1,7 @@
+[
+  "The kernel uses fixed kernel dimensions allowing loop unrolling for reduced loop control overhead.",
+  "The kernel avoids grid-stride loops by assigning one output element per thread, eliminating loop setup overhead.",
+  "The kernel leverages compile-time constants for index calculations to enable compiler optimizations.",
+  "The kernel is specialized for specific parameters (e.g., stride, padding) enabling constant propagation.",
+  "The kernel omits conditional branches (e.g., bias checks) to reduce thread divergence and instruction count."
+]

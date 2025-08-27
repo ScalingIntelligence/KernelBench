@@ -1,0 +1,148 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.39 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel for fused bias add, divide, and Swish
+elementwise_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void elementwise_ops_kernel(const float* x, float bias, float inv_divide_value, float* out, int size) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        // Fused operations with fast math
+        const float val = (x[idx] + bias) * inv_divide_value;
+        const float sigmoid_val = 1.0f / (1.0f + __expf(-val));
+        out[idx] = __fmul_rn(val, sigmoid_val);
+    }
+}
+
+torch::Tensor elementwise_ops_cuda(torch::Tensor x, torch::Tensor bias, float divide_value) {
+    auto out = torch::empty_like(x);
+    const int size = x.numel();
+    constexpr int block_size = 512;  // Optimal block size for modern GPUs
+    const int num_blocks = (size + block_size - 1) / block_size;
+
+    const float bias_val = bias.item<float>();
+    const float inv_divide_value = 1.0f / divide_value;
+
+    elementwise_ops_kernel<<<num_blocks, block_size>>>(
+        x.data_ptr<float>(),
+        bias_val,
+        inv_divide_value,
+        out.data_ptr<float>(),
+        size
+    );
+
+    return out;
+}
+"""
+
+elementwise_ops_cpp_source = "torch::Tensor elementwise_ops_cuda(torch::Tensor x, torch::Tensor bias, float divide_value);"
+
+# Load the optimized kernel with fast math
+elementwise_ops = load_inline(
+    name='elementwise_ops',
+    cpp_sources=elementwise_ops_cpp_source,
+    cuda_sources=elementwise_ops_source,
+    functions=['elementwise_ops_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bn_eps=1e-5, bn_momentum=0.1, bias_shape=(1,), divide_value=1.0):
+        super().__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.bn = nn.BatchNorm1d(out_features, eps=bn_eps, momentum=bn_momentum)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.divide_value = divide_value
+        self.elementwise_ops = elementwise_ops
+
+    def forward(self, x):
+        x = self.matmul(x)
+        x = self.bn(x)
+        x = self.elementwise_ops.elementwise_ops_cuda(x, self.bias, self.divide_value)
+        return x
+```
+
+Kernel 2 (runtime: 7.27 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+swish_fused_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template<typename scalar_t>
+__global__ void swish_fused_kernel(
+    const scalar_t* x,
+    const scalar_t* bias,
+    scalar_t divide_val,
+    scalar_t* out,
+    int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        scalar_t temp = (x[idx] + bias[0]) / divide_val;
+        out[idx] = temp * (scalar_t(1.0f) / (scalar_t(1.0f) + expf(-temp)));
+    }
+}
+
+torch::Tensor fused_swish_cuda(torch::Tensor x, torch::Tensor bias, float divide_val) {
+    TORCH_CHECK(x.is_contiguous(), "Input must be contiguous");
+    TORCH_CHECK(bias.dim() == 1 && bias.size(0) == 1, "Bias must be a scalar");
+    TORCH_CHECK(divide_val != 0.0f, "Division by zero error");
+
+    auto out = torch::empty_like(x);
+    int numel = x.numel();
+
+    const int threads_per_block = 512;
+    int blocks_per_grid = (numel + threads_per_block - 1) / threads_per_block;
+
+    AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "fused_swish", ([&] {
+        swish_fused_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(
+            x.data_ptr<scalar_t>(),
+            bias.data_ptr<scalar_t>(),
+            static_cast<scalar_t>(divide_val),
+            out.data_ptr<scalar_t>(),
+            numel);
+    }));
+
+    return out;
+}
+"""
+
+swish_fused_header = """
+torch::Tensor fused_swish_cuda(torch::Tensor x, torch::Tensor bias, float divide_val);
+"""
+
+swish_module = load_inline(
+    name='swish_fused',
+    cpp_sources=swish_fused_header,
+    cuda_sources=swish_fused_source,
+    functions=['fused_swish_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bn_eps=1e-5, bn_momentum=0.1, bias_shape=(1,), divide_value=1.0):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.bn = nn.BatchNorm1d(out_features, eps=bn_eps, momentum=bn_momentum)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.divide_value = divide_value
+        self.fused_swish = swish_module.fused_swish_cuda
+
+    def forward(self, x):
+        x = self.matmul(x)
+        x = self.bn(x)
+        x = self.fused_swish(x, self.bias, self.divide_value)
+        return x
+```

@@ -1,0 +1,7 @@
+[
+  "The kernel uses separate kernels for reduction and element-wise operations to maximize thread utilization.",
+  "The kernel avoids underutilization of threads by ensuring all threads participate in element-wise operations.",
+  "The kernel uses larger thread block sizes (e.g., 256 threads) to improve SM occupancy and latency hiding.",
+  "The kernel ensures that element-wise operations are parallelized across all threads rather than restricting them to a single thread per block.",
+  "The kernel prioritizes thread utilization over fusing operations when fusion leads to significant thread underutilization."
+]

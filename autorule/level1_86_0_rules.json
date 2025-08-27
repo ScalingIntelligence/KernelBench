@@ -1,0 +1,5 @@
+[
+  "The kernel avoids loop unrolling to reduce register pressure and improve occupancy.",
+  "The kernel groups threads by output channels first to enable broadcast memory access for weights in pointwise convolution.",
+  "The kernel organizes thread blocks to access consecutive memory locations in the same output channel for coalesced writes."
+]

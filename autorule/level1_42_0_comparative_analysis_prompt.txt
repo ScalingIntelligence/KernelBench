@@ -1,0 +1,265 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 11.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+maxpool2d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+#define BLOCK_SIZE 16  // 16x16 threads per block
+
+__global__ void maxpool2d_kernel(
+    const float* input, float* output,
+    int batch_size, int channels, int height, int width,
+    int kernel_size, int stride, int padding, int dilation,
+    int out_h, int out_w
+) {
+    extern __shared__ float shmem[];
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
+    
+    // Calculate shared memory dimensions
+    const int shmem_width = (BLOCK_SIZE - 1) * stride + (kernel_size - 1) * dilation + 1;
+    const int shmem_height = shmem_width;  // Square kernel assumed
+    
+    const int batch_channel = blockIdx.z;
+    const int n = batch_channel / channels;
+    const int c = batch_channel % channels;
+    
+    const int ph_start = blockIdx.y * BLOCK_SIZE;
+    const int pw_start = blockIdx.x * BLOCK_SIZE;
+    
+    // Input starting indices for this block's tile
+    const int h_start = ph_start * stride - padding;
+    const int w_start = pw_start * stride - padding;
+    
+    // Load input tile into shared memory
+    for (int i = ty; i < shmem_height; i += BLOCK_SIZE) {
+        for (int j = tx; j < shmem_width; j += BLOCK_SIZE) {
+            const int h_in = h_start + i * dilation;
+            const int w_in = w_start + j * dilation;
+            
+            float val = -INFINITY;
+            if (h_in >= 0 && h_in < height && w_in >= 0 && w_in < width) {
+                const int input_idx = n * channels * height * width 
+                                    + c * height * width 
+                                    + h_in * width 
+                                    + w_in;
+                val = input[input_idx];
+            }
+            shmem[i * shmem_width + j] = val;
+        }
+    }
+    __syncthreads();
+    
+    // Calculate output position
+    const int ph = ph_start + ty;
+    const int pw = pw_start + tx;
+    if (ph >= out_h || pw >= out_w) return;
+    
+    // Compute max within the window using shared memory
+    float max_val = -INFINITY;
+    #pragma unroll
+    for (int kh = 0; kh < 4; ++kh) {  // Kernel size 4 assumed
+        #pragma unroll
+        for (int kw = 0; kw < 4; ++kw) {
+            const int shmem_h = ty * stride + kh * dilation;
+            const int shmem_w = tx * stride + kw * dilation;
+            if (shmem_h < shmem_height && shmem_w < shmem_width) {
+                max_val = fmaxf(max_val, shmem[shmem_h * shmem_width + shmem_w]);
+            }
+        }
+    }
+    
+    const int output_idx = n * channels * out_h * out_w 
+                         + c * out_h * out_w 
+                         + ph * out_w 
+                         + pw;
+    output[output_idx] = max_val;
+}
+
+torch::Tensor maxpool2d_cuda(torch::Tensor input, int kernel_size, int stride, int padding, int dilation) {
+    // Validate kernel size (optimized for 4x4)
+    if (kernel_size != 4) throw std::runtime_error("Optimized for kernel_size=4");
+    
+    // Get input dimensions
+    const int batch_size = input.size(0);
+    const int channels = input.size(1);
+    const int height = input.size(2);
+    const int width = input.size(3);
+    
+    // Calculate output dimensions
+    const int out_h = (height + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1;
+    const int out_w = (width + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1;
+    
+    auto output = torch::zeros({batch_size, channels, out_h, out_w}, input.options());
+    
+    // Configure kernel launch parameters
+    dim3 block(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 grid(
+        (out_w + BLOCK_SIZE - 1) / BLOCK_SIZE,
+        (out_h + BLOCK_SIZE - 1) / BLOCK_SIZE,
+        batch_size * channels
+    );
+    
+    const int shmem_size = ((BLOCK_SIZE - 1) * stride + (kernel_size - 1) * dilation + 1) 
+                         * ((BLOCK_SIZE - 1) * stride + (kernel_size - 1) * dilation + 1) 
+                         * sizeof(float);
+    
+    maxpool2d_kernel<<<grid, block, shmem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        height,
+        width,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        out_h,
+        out_w
+    );
+    
+    return output;
+}
+"""
+
+maxpool2d_cpp_source = "torch::Tensor maxpool2d_cuda(torch::Tensor input, int kernel_size, int stride, int padding, int dilation);"
+
+maxpool2d = load_inline(
+    name="maxpool2d",
+    cpp_sources=maxpool2d_cpp_source,
+    cuda_sources=maxpool2d_source,
+    functions=["maxpool2d_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[""]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, kernel_size: int, stride: int, padding: int, dilation: int):
+        super().__init__()
+        if kernel_size != 4:
+            raise ValueError("This implementation is optimized for kernel_size=4")
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return maxpool2d.maxpool2d_cuda(x, self.kernel_size, self.stride, self.padding, self.dilation)
+```
+
+Kernel 2 (runtime: 10.3 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+maxpool2d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <algorithm>
+
+__global__ void maxpool2d_forward_kernel(const float* __restrict__ input,
+                                        float* __restrict__ output,
+                                        const int batch,
+                                        const int channels,
+                                        const int height,
+                                        const int width,
+                                        const int out_h,
+                                        const int out_w) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= batch * channels * out_h * out_w) return;
+
+    // Unravel indices
+    const int n = idx / (channels * out_h * out_w);
+    const int c = (idx / (out_h * out_w)) % channels;
+    const int h_out = (idx / out_w) % out_h;
+    const int w_out = idx % out_w;
+
+    const int h_start = h_out - 1;  // stride=1, padding=1
+    const int w_start = w_out - 1;
+
+    float max_val = -INFINITY;
+    #pragma unroll
+    for (int kh = 0; kh < 4; ++kh) {
+        const int h_in = h_start + kh;
+        #pragma unroll
+        for (int kw = 0; kw < 4; ++kw) {
+            const int w_in = w_start + kw;
+            if (h_in >= 0 && h_in < height && w_in >= 0 && w_in < width) {
+                const int input_idx = ((n * channels + c) * height + h_in) * width + w_in;
+                max_val = fmaxf(max_val, input[input_idx]);
+            }
+        }
+    }
+
+    const int output_idx = ((n * channels + c) * out_h + h_out) * out_w + w_out;
+    output[output_idx] = max_val;
+}
+
+torch::Tensor maxpool2d_forward_cuda(torch::Tensor input) {
+    const int batch = input.size(0);
+    const int channels = input.size(1);
+    const int height = input.size(2);
+    const int width = input.size(3);
+    
+    const int out_h = height - 1;  // Precomputed for kernel_size=4, padding=1, stride=1
+    const int out_w = width - 1;
+
+    auto output = torch::empty({batch, channels, out_h, out_w}, input.options());
+
+    const int total_elements = batch * channels * out_h * out_w;
+    const int threads_per_block = 256;
+    const int num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    maxpool2d_forward_kernel<<<num_blocks, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch,
+        channels,
+        height,
+        width,
+        out_h,
+        out_w
+    );
+
+    return output;
+}
+"""
+
+maxpool2d_cpp_source = "torch::Tensor maxpool2d_forward_cuda(torch::Tensor input);"
+
+maxpool2d_ext = load_inline(
+    name="maxpool2d_ext",
+    cpp_sources=maxpool2d_cpp_source,
+    cuda_sources=maxpool2d_source,
+    functions=["maxpool2d_forward_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, kernel_size: int, stride: int, padding: int, dilation: int):
+        super().__init__()
+        assert kernel_size == 4, "Kernel optimized for size 4"
+        assert stride == 1, "Kernel optimized for stride 1"
+        assert padding == 1, "Kernel optimized for padding 1"
+        assert dilation == 1, "Kernel optimized for dilation 1"
+        
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return maxpool2d_ext.maxpool2d_forward_cuda(x)
+```

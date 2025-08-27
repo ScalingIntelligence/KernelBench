@@ -1,0 +1,6 @@
+[
+  "The kernel passes scalar parameters by value instead of using global memory pointers.",
+  "The kernel avoids global memory accesses for frequently used parameters by storing them in registers or constant memory.",
+  "The kernel uses explicit dynamic shared memory allocation via kernel launch parameters rather than static shared memory declarations.",
+  "The kernel reduces overhead by minimizing the use of vectorized data types that require unpacking operations."
+]

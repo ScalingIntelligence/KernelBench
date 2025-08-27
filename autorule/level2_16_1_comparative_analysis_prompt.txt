@@ -1,0 +1,157 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 28.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_activations_kernel(
+    const float* input, float* output,
+    float add_value, float scale,
+    int total_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+
+    // Compute Mish activation
+    float x = input[idx];
+    float softplus_x = logf(1.0f + expf(x));
+    float tanh_sp = tanhf(softplus_x);
+    float mish_val = x * tanh_sp;
+
+    // Add value and apply Hardtanh
+    float temp = mish_val + add_value;
+    temp = fmaxf(fminf(temp, 1.0f), -1.0f);
+
+    // Scale and store result
+    output[idx] = temp * scale;
+}
+
+torch::Tensor fused_activations_cuda(
+    torch::Tensor input,
+    float add_value,
+    float scale) {
+    auto output = torch::empty_like(input);
+    int total_elements = input.numel();
+
+    const int threads_per_block = 256;
+    int blocks_per_grid = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    fused_activations_kernel<<<blocks_per_grid, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        add_value,
+        scale,
+        total_elements);
+
+    return output;
+}
+"""
+
+fused_ops_cpp = "torch::Tensor fused_activations_cuda(torch::Tensor input, float add_value, float scale);"
+
+fused_ops = load_inline(
+    name='fused_activations',
+    cpp_sources=fused_ops_cpp,
+    cuda_sources=fused_ops_source,
+    functions=['fused_activations_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, add_value, scale):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size, stride, padding, output_padding
+        )
+        self.add_value = add_value
+        self.scale = scale
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = fused_ops.fused_activations_cuda(x, self.add_value, self.scale)
+        return x
+```
+
+Kernel 2 (runtime: 28.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_mish_add_clamp_scale_kernel(
+    const float* input,
+    float* output,
+    float add_val,
+    float scale,
+    int num_elements
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+
+    float x = input[idx];
+
+    // Compute Mish activation: x * tanh(softplus(x))
+    float sp_x = log(1.0f + expf(x));
+    float mish_val = x * tanhf(sp_x);
+
+    // Add value, apply Hardtanh, then scale
+    float temp = mish_val + add_val;
+    temp = fmaxf(fminf(temp, 1.0f), -1.0f);
+    output[idx] = temp * scale;
+}
+
+torch::Tensor fused_ops_forward(torch::Tensor x, float add_val, float scale) {
+    auto output = torch::empty_like(x);
+    int num_elements = x.numel();
+
+    const int threads_per_block = 256;
+    int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+
+    fused_mish_add_clamp_scale_kernel<<<num_blocks, threads_per_block>>>(
+        x.data_ptr<float>(),
+        output.data_ptr<float>(),
+        add_val,
+        scale,
+        num_elements
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp = "torch::Tensor fused_ops_forward(torch::Tensor x, float add_val, float scale);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp,
+    cuda_sources=fused_ops_source,
+    functions=['fused_ops_forward'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, add_value, scale):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size, stride, padding, output_padding
+        )
+        self.add_value = add_value
+        self.scale = scale
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        return fused_ops.fused_ops_forward(x, self.add_value, self.scale)
+```

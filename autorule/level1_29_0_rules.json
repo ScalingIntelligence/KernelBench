@@ -1,0 +1,5 @@
+[
+  "The kernel uses log1pf instead of logf(1.0f + expf(val)) to reduce the number of floating-point operations.",
+  "The kernel leverages CUDA's optimized intrinsic functions (e.g., log1pf) for improved numerical precision and performance.",
+  "The kernel minimizes computational steps by combining operations (e.g., log1p(expf(val))) to enhance instruction throughput."
+]

@@ -1,0 +1,153 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 0.208 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+diag_mul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void diag_mul_kernel(const float* A, const float* B, float* C, int N, int M) {
+    int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (global_idx >= N * M) return;
+
+    int row = global_idx / M;
+    int col = global_idx % M;
+
+    C[global_idx] = A[row] * B[global_idx];
+}
+
+torch::Tensor diag_mul_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 1, "A must be a 1D tensor");
+    TORCH_CHECK(B.dim() == 2, "B must be a 2D tensor");
+    int N = A.size(0);
+    int M = B.size(1);
+    TORCH_CHECK(B.size(0) == N, "A and B dimension mismatch");
+
+    auto C = torch::empty({N, M}, A.options());
+    int total_elements = N * M;
+    const int block_size = 256;
+    int num_blocks = (total_elements + block_size - 1) / block_size;
+
+    diag_mul_kernel<<<num_blocks, block_size>>>(
+        A.contiguous().data_ptr<float>(),
+        B.contiguous().data_ptr<float>(),
+        C.data_ptr<float>(),
+        N,
+        M
+    );
+
+    return C;
+}
+"""
+
+diag_mul_cpp_source = "torch::Tensor diag_mul_cuda(torch::Tensor A, torch::Tensor B);"
+
+diag_mul_ext = load_inline(
+    name='diag_mul',
+    cpp_sources=diag_mul_cpp_source,
+    cuda_sources=diag_mul_source,
+    functions=['diag_mul_cuda'],
+    verbose=True,
+    extra_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A, B):
+        return diag_mul_ext.diag_mul_cuda(A, B)
+```
+
+Kernel 2 (runtime: 0.212 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+diag_mul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void diag_mul_kernel(const float* A, const float* B, float* C, int N, int M) {
+    __shared__ float s_a_val;
+    
+    int row = blockIdx.x;
+    if (row >= N) return;
+    
+    // Load A value into shared memory once per block
+    if (threadIdx.x == 0) {
+        s_a_val = A[row];
+    }
+    __syncthreads();
+    
+    const float a_val = s_a_val;
+    const int start_idx = row * M;
+    
+    // Process 4 elements per thread using vectorized loads/stores
+    for (int idx = threadIdx.x * 4; idx < M; idx += blockDim.x * 4) {
+        if (idx + 3 < M) {
+            const float4 b4 = *reinterpret_cast<const float4*>(&B[start_idx + idx]);
+            float4 c4;
+            c4.x = a_val * b4.x;
+            c4.y = a_val * b4.y;
+            c4.z = a_val * b4.z;
+            c4.w = a_val * b4.w;
+            *reinterpret_cast<float4*>(&C[start_idx + idx]) = c4;
+        } else {
+            // Handle remaining elements (1-3)
+            for (int i = 0; i < 4 && (idx + i) < M; ++i) {
+                C[start_idx + idx + i] = a_val * B[start_idx + idx + i];
+            }
+        }
+    }
+}
+
+torch::Tensor diag_mul_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 1, "A must be 1D");
+    TORCH_CHECK(B.dim() == 2, "B must be 2D");
+    
+    const int N = A.size(0);
+    const int M = B.size(1);
+    TORCH_CHECK(B.size(0) == N, "A and B dimension mismatch");
+    
+    auto C = torch::empty_like(B);
+    const int block_size = 256;  // Optimized for vectorized access
+    dim3 grid(N);
+    dim3 block(block_size);
+    
+    diag_mul_kernel<<<grid, block>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        N,
+        M
+    );
+    
+    return C;
+}
+"""
+
+diag_mul_cpp = "torch::Tensor diag_mul_cuda(torch::Tensor A, torch::Tensor B);"
+
+diag_mul = load_inline(
+    name="diag_mul",
+    cpp_sources=diag_mul_cpp,
+    cuda_sources=diag_mul_source,
+    functions=["diag_mul_cuda"],
+    verbose=True,
+    extra_cflags=["-O2"],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.diag_mul = diag_mul
+
+    def forward(self, A, B):
+        return self.diag_mul.diag_mul_cuda(A, B)
+```

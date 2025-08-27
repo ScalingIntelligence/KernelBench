@@ -1,0 +1,7 @@
+[
+  "The kernel orders loops such that input channel iterations are outermost, followed by spatial kernel dimensions, to improve memory coalescing.",
+  "The kernel accesses input tensor elements with spatial dimensions (depth, height, width) in inner loops to leverage contiguous memory access patterns.",
+  "The kernel accesses weight tensor elements sequentially by iterating over kernel spatial dimensions (depth, height, width) after input channels to match memory layout.",
+  "The kernel minimizes strided global memory accesses by avoiding inner loops over input channels for spatial operations.",
+  "The kernel uses a data type-specific implementation (e.g., float) instead of templated types to enable compiler optimizations."
+]

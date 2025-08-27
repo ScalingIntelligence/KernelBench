@@ -1,0 +1,42 @@
+REASONING TRACE:
+Okay, let's break down the reasoning provided and extract the rule-like statements. The user wants these rules to be general, objective, and applicable to various CUDA kernels.
+
+First, the reasoning mentions that Kernel 2 uses a grid-stride loop with vectorization, processing 4 elements per thread. This suggests a general rule about using grid-stride loops and vectorization to handle multiple elements per thread. 
+
+Next, the use of `#pragma unroll` in Kernel 2's loop is highlighted. This points to loop unrolling as an optimization technique, so that's another rule.
+
+Kernel 2 employs the `__restrict__` qualifier, which helps the compiler optimize by indicating no pointer aliasing. That's a specific CUDA optimization technique.
+
+The `-use_fast_math` compiler flag is used in Kernel 2, enabling faster math operations. This is a compiler-level optimization, so that's a rule.
+
+Inlining the GELU calculation instead of using a separate device function is mentioned. This relates to avoiding function call overhead, so inlining computations would be a rule.
+
+The grid size calculation in Kernel 2 is adjusted to account for processing multiple elements per thread, which optimizes grid dimensions. This is about adjusting grid size based on elements per thread.
+
+Memory coalescing is improved by accessing consecutive elements, which is a result of vectorization. So, structuring memory access for coalescing is another rule.
+
+Using a local array (`results[4]`) for register-level data reuse is mentioned. This suggests using registers to reuse data and reduce memory accesses.
+
+Capping the grid size at 65535 blocks is noted, which relates to adhering to hardware limits for grid dimensions.
+
+Putting these together, each identified optimization technique becomes a rule. I need to ensure they're phrased generally, not specific to the example. For instance, "processes multiple elements per thread using a grid-stride loop" instead of mentioning 4 elements. Similarly, using `__restrict__` is a specific CUDA practice. The rules should be concise and applicable across different kernels.
+
+
+ANSWER:
+
+
+[
+    "The kernel uses a grid-stride loop pattern to process multiple elements per thread.",
+    "The kernel employs loop unrolling to reduce loop control overhead.",
+    "The kernel uses the __restrict__ qualifier to enable better compiler optimizations.",
+    "The kernel is compiled with -use_fast_math for faster approximate math operations.",
+    "The kernel inlines computations rather than using separate device functions.",
+    "The kernel adjusts grid dimensions based on elements processed per thread to improve occupancy.",
+    "The kernel structures memory access patterns to enable better memory coalescing.",
+    "The kernel utilizes register-level data reuse for intermediate values.",
+    "The kernel caps grid dimensions to stay within architectural limits.",
+    "The kernel processes multiple elements per thread iteration to increase arithmetic intensity."
+]
+
+Usage:
+{'inputTokens': 1312, 'outputTokens': 590, 'totalTokens': 1902}

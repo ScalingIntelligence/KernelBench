@@ -1,0 +1,212 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 8.16 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for optimized fused min reduction and bias addition
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <limits>
+
+__global__ void fused_min_bias_add_kernel(const float* input, const float* bias, float* output, int batch_size, int features) {
+    int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    extern __shared__ float shared_min[];
+
+    const float* current_input = input + batch_idx * features;
+
+    // Calculate feature chunk for this thread
+    const int chunk_size = (features + blockDim.x - 1) / blockDim.x;
+    const int start = threadIdx.x * chunk_size;
+    const int end = min(start + chunk_size, features);
+
+    // 1. Compute thread-local min over feature chunk
+    float thread_min = INFINITY;
+    for(int i = start; i < end; ++i) {
+        thread_min = fminf(thread_min, current_input[i]);
+    }
+
+    // 2. Parallel reduction to find global min
+    shared_min[threadIdx.x] = thread_min;
+    __syncthreads();
+
+    for(int stride = blockDim.x/2; stride > 0; stride >>= 1) {
+        if(threadIdx.x < stride) {
+            shared_min[threadIdx.x] = fminf(shared_min[threadIdx.x], shared_min[threadIdx.x + stride]);
+        }
+        __syncthreads();
+    }
+
+    const float global_min = shared_min[0];
+
+    // 3. Write results with coalesced memory access pattern
+    for(int i = start; i < end; ++i) {
+        const int output_idx = i * batch_size + batch_idx;
+        output[output_idx] = global_min + bias[i];
+    }
+}
+
+torch::Tensor fused_min_bias_add_cuda(torch::Tensor input, torch::Tensor bias) {
+    const int batch_size = input.size(0);
+    const int features = input.size(1);
+
+    // Create output tensor with original model's expected output shape [1, features, batch_size, 1]
+    auto output = torch::empty({1, features, batch_size, 1}, input.options());
+
+    // Ensure bias is contiguous and properly shaped
+    torch::Tensor bias_contiguous = bias.contiguous().view({features});
+
+    // Optimal block size based on feature dimension
+    const int block_size = 256;
+    dim3 grid(batch_size);
+    dim3 block(block_size);
+    const int shared_mem_size = block_size * sizeof(float);
+
+    fused_min_bias_add_kernel<<<grid, block, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        bias_contiguous.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        features
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp_source = "torch::Tensor fused_min_bias_add_cuda(torch::Tensor input, torch::Tensor bias);"
+
+# Load the optimized CUDA kernel
+fused_min_bias_add = load_inline(
+    name='fused_min_bias_add',
+    cpp_sources=fused_kernel_cpp_source,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_min_bias_add_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, num_groups, bias_shape):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.group_norm = nn.GroupNorm(num_groups, out_features)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_min_bias_add = fused_min_bias_add
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = self.group_norm(x)
+        x = self.fused_min_bias_add.fused_min_bias_add_cuda(x, self.bias)
+        return x
+```
+
+Kernel 2 (runtime: 8.15 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused min reduction + bias addition
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <c10/cuda/CUDAGuard.h>
+
+template <typename scalar_t>
+__global__ void fused_min_bias_kernel(
+    const scalar_t* input,
+    const scalar_t* bias,
+    scalar_t* output,
+    int batch_size,
+    int features) {
+    
+    const int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    const int tid = threadIdx.x;
+    const int block_size = blockDim.x;
+
+    // Parallel min reduction
+    scalar_t min_val = INFINITY;
+    for (int i = tid; i < features; i += block_size) {
+        scalar_t val = input[batch_idx * features + i];
+        min_val = min(min_val, val);
+    }
+
+    // Shared memory reduction
+    __shared__ scalar_t shared_min[256];
+    shared_min[tid] = min_val;
+    __syncthreads();
+
+    for (int s = block_size/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_min[tid] = min(shared_min[tid], shared_min[tid + s]);
+        }
+        __syncthreads();
+    }
+
+    // Add bias to reduced min value with correct output indexing
+    const scalar_t batch_min = shared_min[0];
+    for (int i = tid; i < features; i += block_size) {
+        int output_idx = i * batch_size + batch_idx;
+        output[output_idx] = batch_min + bias[i];
+    }
+}
+
+torch::Tensor fused_min_bias_cuda(
+    torch::Tensor input,
+    torch::Tensor bias) {
+    
+    at::cuda::CUDAGuard device_guard(input.device());
+    auto batch_size = input.size(0);
+    auto features = input.size(1);
+    auto output = torch::empty({1, features, batch_size, 1}, input.options());
+
+    const int block_size = 256;
+    dim3 grid(batch_size);
+    dim3 block(block_size);
+
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "fused_min_bias", ([&] {
+        fused_min_bias_kernel<scalar_t><<<grid, block>>>(
+            input.data_ptr<scalar_t>(),
+            bias.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            batch_size,
+            features
+        );
+    }));
+
+    return output;
+}
+"""
+
+# Load the CUDA kernel
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources="torch::Tensor fused_min_bias_cuda(torch::Tensor input, torch::Tensor bias);",
+    cuda_sources=fused_kernel_code,
+    functions=['fused_min_bias_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, num_groups, bias_shape):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.group_norm = nn.GroupNorm(num_groups, out_features)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = self.group_norm(x)
+        # Apply fused kernel with proper output shape handling
+        return fused_op.fused_min_bias_cuda(x, self.bias.view(-1))
+```

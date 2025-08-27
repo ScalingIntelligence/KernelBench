@@ -1,0 +1,316 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 1.83 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernels implementation
+custom_kernels_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+/************************************
+* Channel-wise Softmax Kernel *
+************************************/
+
+__global__ void channel_softmax_kernel(const float* input, float* output, 
+                                      int batch_size, int num_channels,
+                                      int depth, int height, int width) {
+    int spatial_size = depth * height * width;
+    int total_positions = batch_size * spatial_size;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (idx >= total_positions) return;
+    
+    int batch = idx / spatial_size;
+    int spatial_idx = idx % spatial_size;
+    int d = spatial_idx / (height * width);
+    int h = (spatial_idx % (height * width)) / width;
+    int w = spatial_idx % width;
+    
+    // Find max value across channels
+    float max_val = -INFINITY;
+    for(int c=0; c<num_channels; ++c) {
+        int input_idx = batch*num_channels*spatial_size + c*spatial_size + d*height*width + h*width + w;
+        max_val = fmaxf(max_val, input[input_idx]);
+    }
+    
+    // Compute sum of exponentials
+    float sum_exp = 0.0f;
+    for(int c=0; c<num_channels; ++c) {
+        int input_idx = batch*num_channels*spatial_size + c*spatial_size + d*height*width + h*width + w;
+        sum_exp += expf(input[input_idx] - max_val);
+    }
+    
+    // Compute softmax values
+    for(int c=0; c<num_channels; ++c) {
+        int input_idx = batch*num_channels*spatial_size + c*spatial_size + d*height*width + h*width + w;
+        output[input_idx] = expf(input[input_idx] - max_val) / sum_exp;
+    }
+}
+
+torch::Tensor channel_softmax_cuda(torch::Tensor input) {
+    auto sizes = input.sizes();
+    auto output = torch::empty_like(input);
+    
+    int batch_size = sizes[0];
+    int num_channels = sizes[1];
+    int depth = sizes[2];
+    int height = sizes[3];
+    int width = sizes[4];
+    
+    int total_positions = batch_size * depth * height * width;
+    int block_size = 256;
+    int grid_size = (total_positions + block_size - 1) / block_size;
+    
+    channel_softmax_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        num_channels,
+        depth,
+        height,
+        width
+    );
+    
+    return output;
+}
+
+/************************************
+* Fused Max Pooling Kernel *
+************************************/
+
+__global__ void fused_max_pool_kernel(const float* input, float* output,
+                                     int batch_size, int num_channels,
+                                     int input_depth, int input_height, int input_width,
+                                     int kernel_size, int stride) {
+    int output_depth = (input_depth - kernel_size)/stride + 1;
+    int output_height = (input_height - kernel_size)/stride + 1;
+    int output_width = (input_width - kernel_size)/stride + 1;
+    
+    int output_spatial = output_depth * output_height * output_width;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    int c = blockIdx.y;
+    int b = blockIdx.z;
+    
+    if(b >= batch_size || c >= num_channels || idx >= output_spatial) return;
+    
+    int d_out = idx / (output_height * output_width);
+    int h_out = (idx % (output_height * output_width)) / output_width;
+    int w_out = idx % output_width;
+    
+    int d_start = d_out * stride;
+    int h_start = h_out * stride;
+    int w_start = w_out * stride;
+    
+    int d_end = d_start + kernel_size;
+    int h_end = h_start + kernel_size;
+    int w_end = w_start + kernel_size;
+    
+    d_end = min(d_end, input_depth);
+    h_end = min(h_end, input_height);
+    w_end = min(w_end, input_width);
+    
+    float max_val = -INFINITY;
+    for(int d=d_start; d<d_end; ++d) {
+        for(int h=h_start; h<h_end; ++h) {
+            for(int w=w_start; w<w_end; ++w) {
+                int input_idx = b*num_channels*input_depth*input_height*input_width +
+                               c*input_depth*input_height*input_width +
+                               d*input_height*input_width +
+                               h*input_width +
+                               w;
+                max_val = fmaxf(max_val, input[input_idx]);
+            }
+        }
+    }
+    
+    int output_idx = b*num_channels*output_depth*output_height*output_width +
+                    c*output_depth*output_height*output_width +
+                    d_out*output_height*output_width +
+                    h_out*output_width +
+                    w_out;
+    output[output_idx] = max_val;
+}
+
+torch::Tensor fused_max_pool_cuda(torch::Tensor input, int kernel_size, int stride) {
+    auto sizes = input.sizes();
+    auto output = torch::empty({
+        sizes[0], 
+        sizes[1],
+        (sizes[2]-kernel_size)/stride + 1,
+        (sizes[3]-kernel_size)/stride + 1,
+        (sizes[4]-kernel_size)/stride + 1
+    }, input.options());
+    
+    int batch_size = sizes[0];
+    int num_channels = sizes[1];
+    int input_depth = sizes[2];
+    int input_height = sizes[3];
+    int input_width = sizes[4];
+    
+    int output_spatial = output.size(2) * output.size(3) * output.size(4);
+    dim3 block(256);
+    dim3 grid((output_spatial + block.x - 1)/block.x, num_channels, batch_size);
+    
+    fused_max_pool_kernel<<<grid, block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        num_channels,
+        input_depth,
+        input_height,
+        input_width,
+        kernel_size,
+        stride
+    );
+    
+    return output;
+}
+"""
+
+# Load custom CUDA operations
+custom_ops = load_inline(
+    name='custom_ops',
+    cpp_sources="torch::Tensor channel_softmax_cuda(torch::Tensor input);\n"
+                "torch::Tensor fused_max_pool_cuda(torch::Tensor input, int kernel_size, int stride);",
+    cuda_sources=custom_kernels_source,
+    functions=['channel_softmax_cuda', 'fused_max_pool_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, pool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.fused_pool_kernel = pool_kernel_size * 2
+        self.fused_pool_stride = pool_kernel_size * 2
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = custom_ops.channel_softmax_cuda(x)
+        x = custom_ops.fused_max_pool_cuda(x, self.fused_pool_kernel, self.fused_pool_stride)
+        return x
+```
+
+Kernel 2 (runtime: 1.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom softmax implementation for channel-wise operation
+softmax_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void channel_softmax_kernel(const float* input, float* output, 
+                                     int batch_size, int channels, 
+                                     int depth, int height, int width) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_spatial = depth * height * width;
+    int total_elements = batch_size * total_spatial;
+    
+    if (idx >= total_elements) return;
+    
+    int b = idx / total_spatial;
+    int spatial_idx = idx % total_spatial;
+    int d = spatial_idx / (height * width);
+    int hw = spatial_idx % (height * width);
+    int h = hw / width;
+    int w = hw % width;
+
+    float max_val = -INFINITY;
+    // Find max value across channels
+    for (int c = 0; c < channels; ++c) {
+        int input_idx = ((b * channels + c) * depth + d) * height * width + h * width + w;
+        max_val = fmaxf(max_val, input[input_idx]);
+    }
+
+    float sum_exp = 0.0f;
+    // Compute sum of exponentials
+    for (int c = 0; c < channels; ++c) {
+        int input_idx = ((b * channels + c) * depth + d) * height * width + h * width + w;
+        sum_exp += expf(input[input_idx] - max_val);
+    }
+
+    // Compute softmax values
+    for (int c = 0; c < channels; ++c) {
+        int input_idx = ((b * channels + c) * depth + d) * height * width + h * width + w;
+        output[input_idx] = expf(input[input_idx] - max_val) / sum_exp;
+    }
+}
+
+torch::Tensor channel_softmax_cuda(torch::Tensor input) {
+    auto sizes = input.sizes();
+    int batch_size = sizes[0];
+    int channels = sizes[1];
+    int depth = sizes[2];
+    int height = sizes[3];
+    int width = sizes[4];
+
+    auto output = torch::empty_like(input);
+    int total_elements = batch_size * depth * height * width;
+    int block_size = 256;
+    int grid_size = (total_elements + block_size - 1) / block_size;
+
+    channel_softmax_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        depth,
+        height,
+        width
+    );
+
+    return output;
+}
+"""
+
+softmax_cpp_source = "torch::Tensor channel_softmax_cuda(torch::Tensor input);"
+
+# Compile the inline CUDA code for softmax
+softmax_ext = load_inline(
+    name="channel_softmax",
+    cpp_sources=softmax_cpp_source,
+    cuda_sources=softmax_source,
+    functions=["channel_softmax_cuda"],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, pool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        # Fused max pool equivalent to two consecutive pools
+        self.fused_pool = nn.MaxPool3d(kernel_size=pool_kernel_size*2, 
+                                     stride=pool_kernel_size*2)
+        self.custom_softmax = softmax_ext.channel_softmax_cuda
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.custom_softmax(x)  # Replaces torch.softmax
+        x = self.fused_pool(x)      # Replaces two sequential pools
+        return x
+
+# Rest of original code remains unchanged
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+pool_kernel_size = 2
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, pool_kernel_size]
+```

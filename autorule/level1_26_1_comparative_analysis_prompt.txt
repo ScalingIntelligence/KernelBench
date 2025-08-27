@@ -1,0 +1,124 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom GELU CUDA kernel
+gelu_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void gelu_kernel(const float* input, float* output, int num_elements) {
+    const float sqrt_2_over_pi = 0.7978845608028654f;
+    const float coeff = 0.044715f;
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float x = input[idx];
+        float cdf = 0.5f * (1.0f + erff(x * 0.7071067811865475f));  // 1/sqrt(2)
+        output[idx] = x * cdf;
+    }
+}
+
+torch::Tensor gelu_forward_cuda(torch::Tensor x) {
+    auto output = torch::empty_like(x);
+    int num_elements = x.numel();
+    
+    const int threads_per_block = 256;
+    const int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    gelu_kernel<<<num_blocks, threads_per_block>>>(
+        x.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+gelu_cpp_source = "torch::Tensor gelu_forward_cuda(torch::Tensor x);"
+
+# Load the custom CUDA extension
+gelu_extension = load_inline(
+    name="gelu_extension",
+    cpp_sources=gelu_cpp_source,
+    cuda_sources=gelu_kernel_source,
+    functions=["gelu_forward_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return gelu_extension.gelu_forward_cuda(x)
+
+batch_size = 4096
+dim = 393216
+
+def get_inputs():
+    x = torch.rand(batch_size, dim).cuda()  # Move to CUDA for GPU processing
+    return [x]
+
+def get_init_inputs():
+    return []
+```
+
+Kernel 2 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom GELU CUDA kernel implementation
+gelu_cuda_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void gelu_kernel(const float* x, float* out, int num_elements) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        const float x_val = x[idx];
+        const float cdf = 0.5f * (1.0f + tanhf(0.7978845608f * (x_val + 0.044715f * x_val * x_val * x_val)));
+        out[idx] = x_val * cdf;
+    }
+}
+
+torch::Tensor gelu_cuda(torch::Tensor x) {
+    auto out = torch::empty_like(x);
+    int num_elements = x.numel();
+    const int block_size = 256;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+    gelu_kernel<<<grid_size, block_size>>>(x.data_ptr<float>(), out.data_ptr<float>(), num_elements);
+    return out;
+}
+"""
+
+gelu_cpp_source = "torch::Tensor gelu_cuda(torch::Tensor x);"
+
+# Load the custom CUDA kernel as a PyTorch extension
+gelu_module = load_inline(
+    name='gelu',
+    cpp_sources=gelu_cpp_source,
+    cuda_sources=gelu_cuda_source,
+    functions=['gelu_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.gelu = gelu_module.gelu_cuda
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.gelu(x)
+```

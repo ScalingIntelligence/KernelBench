@@ -1,0 +1,16 @@
+REASONING TRACE:
+[
+    "The kernel is compiled with -O3 optimization level for both C++ and CUDA code.",
+    "The kernel uses --use_fast_math compiler flag to enable hardware-optimized approximate math instructions.",
+    "The kernel ensures input tensor contiguity before memory access to avoid irregular access patterns.",
+    "The kernel uses thread block sizes that are multiples of the warp size (32)."
+]
+
+
+ANSWER:
+
+
+The JSON array lists the rule-like statements derived from the reasoning. The first two rules address compiler optimizations (-O3 and --use_fast_math), which are critical for performance. The third rule highlights the importance of memory contiguity handling to ensure efficient memory access. The fourth rule, while not explicitly mentioned in the reasoning, is inferred from the use of 256 threads per block (a multiple of 32), which aligns with CUDA best practices. These rules are objective, deterministic, and applicable to various CUDA kernels.
+
+Usage:
+{'inputTokens': 1533, 'outputTokens': 197, 'totalTokens': 1730}

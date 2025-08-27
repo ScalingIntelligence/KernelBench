@@ -1,0 +1,269 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 26.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel with vectorized loads/stores and efficient tail handling
+cumprod_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void cumprod_kernel(const float* __restrict__ input, float* __restrict__ output, 
+                              int batch_size, int dim_size) {
+    const int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= batch_size) return;
+
+    float product = 1.0f;
+    int i = 0;
+    
+    // Process full 4-element chunks without branching
+    while (i + 4 <= dim_size) {
+        const float4 data = __ldg(reinterpret_cast<const float4*>(input + row * dim_size + i));
+        float4 out_data;
+
+        out_data.x = product * data.x;
+        out_data.y = out_data.x * data.y;
+        out_data.z = out_data.y * data.z;
+        out_data.w = out_data.z * data.w;
+
+        *reinterpret_cast<float4*>(output + row * dim_size + i) = out_data;
+        product = out_data.w;
+        i += 4;
+    }
+
+    // Process remaining elements (0-3) with minimal branching
+    if (i < dim_size) {
+        float vals[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+        const int remaining = dim_size - i;
+        #pragma unroll
+        for(int j = 0; j < remaining; ++j) {
+            vals[j] = __ldg(input + row * dim_size + i + j);
+        }
+
+        float p = product;
+        #pragma unroll
+        for(int j = 0; j < remaining; ++j) {
+            p *= vals[j];
+            output[row * dim_size + i + j] = p;
+        }
+    }
+}
+
+torch::Tensor cumprod_cuda(torch::Tensor input, int dim) {
+    TORCH_CHECK(input.dim() == 2, "Input must be 2D");
+    input = input.contiguous();
+    auto sizes = input.sizes();
+    const int batch_size = sizes[0];
+    const int dim_size = sizes[1];
+
+    auto output = torch::empty_like(input);
+
+    const int block_size = 256;
+    const int grid_size = (batch_size + block_size - 1) / block_size;
+
+    cumprod_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        dim_size
+    );
+
+    return output;
+}
+"""
+
+cumprod_cpp_source = "torch::Tensor cumprod_cuda(torch::Tensor input, int dim);"
+
+# Compile the optimized CUDA extension
+cumprod_extension = load_inline(
+    name="cumprod",
+    cpp_sources=cumprod_cpp_source,
+    cuda_sources=cumprod_source,
+    functions=["cumprod_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math", "-Xptxas=-v"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+        self.cumprod_cuda = cumprod_extension.cumprod_cuda
+
+    def forward(self, x):
+        if self.dim not in [0, 1]:
+            raise NotImplementedError("Only 2D tensors supported")
+            
+        # Transpose for dimension flexibility while maintaining coalesced access
+        if self.dim == 0:
+            x = x.transpose(0, 1).contiguous()
+            result = self.cumprod_cuda(x, 1)
+            return result.transpose(0, 1).contiguous()
+        return self.cumprod_cuda(x, self.dim)
+```
+
+Kernel 2 (runtime: 50.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel implementation for optimized cumulative product
+cumprod_cuda_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define CHUNK_SIZE 1024
+
+// First kernel: Compute chunk-wise cumulative products and chunk products
+__global__ void chunk_cumprod_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    float* __restrict__ chunk_products,
+    int dim_size,
+    int num_chunks
+) {
+    const int row = blockIdx.y;
+    const int chunk = blockIdx.x;
+    const int tid = threadIdx.x;
+    
+    const int start_idx = row * dim_size + chunk * CHUNK_SIZE;
+    const int end_idx = min(start_idx + CHUNK_SIZE, (row+1)*dim_size);
+    const int elements = end_idx - start_idx;
+
+    extern __shared__ float smem[];
+    if (tid < elements) smem[tid] = input[start_idx + tid];
+    else smem[tid] = 1.0f;
+    __syncthreads();
+
+    // Parallel prefix product (Hillis-Steele)
+    for (int stride = 1; stride < CHUNK_SIZE; stride *= 2) {
+        if (tid >= stride && tid < elements) {
+            smem[tid] *= smem[tid - stride];
+        }
+        __syncthreads();
+    }
+
+    if (tid < elements) output[start_idx + tid] = smem[tid];
+    if (tid == 0 && elements > 0) {
+        chunk_products[row * num_chunks + chunk] = smem[elements-1];
+    }
+}
+
+// Second kernel: Compute cumulative products of chunks
+__global__ void aggregate_chunks_kernel(
+    float* __restrict__ chunk_products,
+    float* __restrict__ cumulative_products,
+    int num_chunks
+) {
+    const int row = blockIdx.x;
+    const int tid = threadIdx.x;
+    
+    extern __shared__ float smem[];
+    smem[tid] = (tid < num_chunks) ? chunk_products[row * num_chunks + tid] : 1.0f;
+    __syncthreads();
+
+    // Work-efficient prefix product
+    for (int stride = 1; stride < num_chunks; stride *= 2) {
+        if (tid >= stride) {
+            smem[tid] *= smem[tid - stride];
+        }
+        __syncthreads();
+    }
+
+    if (tid < num_chunks) cumulative_products[row * num_chunks + tid] = smem[tid];
+}
+
+// Third kernel: Apply cumulative products to chunks
+__global__ void apply_products_kernel(
+    float* __restrict__ output,
+    const float* __restrict__ cumulative_products,
+    int dim_size,
+    int num_chunks
+) {
+    const int row = blockIdx.y;
+    const int chunk = blockIdx.x;
+    const int tid = threadIdx.x;
+    
+    const int start_idx = row * dim_size + chunk * CHUNK_SIZE;
+    if (start_idx >= (row+1)*dim_size) return;
+
+    const float prefix = (chunk == 0) ? 1.0f : cumulative_products[row * num_chunks + chunk - 1];
+    const int idx = start_idx + tid;
+    if (idx < (row+1)*dim_size) output[idx] *= prefix;
+}
+
+torch::Tensor custom_cumprod(torch::Tensor input, int dim) {
+    TORCH_CHECK(dim == 1, "Optimized for dimension 1");
+    const int batch_size = input.size(0);
+    const int dim_size = input.size(1);
+    const int num_chunks = (dim_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+    auto output = input.clone();
+    auto options = torch::TensorOptions().dtype(input.dtype()).device(input.device());
+    auto chunk_products = torch::zeros({batch_size, num_chunks}, options);
+    auto cumulative_products = torch::zeros_like(chunk_products);
+
+    // Phase 1: Compute chunk products
+    {
+        dim3 grid(num_chunks, batch_size);
+        dim3 block(CHUNK_SIZE);
+        size_t smem = CHUNK_SIZE * sizeof(float);
+        chunk_cumprod_kernel<<<grid, block, smem>>>(
+            input.data_ptr<float>(),
+            output.data_ptr<float>(),
+            chunk_products.data_ptr<float>(),
+            dim_size,
+            num_chunks
+        );
+    }
+
+    // Phase 2: Compute cumulative chunk products
+    {
+        dim3 grid(batch_size);
+        dim3 block(num_chunks);
+        size_t smem = num_chunks * sizeof(float);
+        aggregate_chunks_kernel<<<grid, block, smem>>>(
+            chunk_products.data_ptr<float>(),
+            cumulative_products.data_ptr<float>(),
+            num_chunks
+        );
+    }
+
+    // Phase 3: Apply cumulative products
+    {
+        dim3 grid(num_chunks, batch_size);
+        dim3 block(CHUNK_SIZE);
+        apply_products_kernel<<<grid, block>>>(
+            output.data_ptr<float>(),
+            cumulative_products.data_ptr<float>(),
+            dim_size,
+            num_chunks
+        );
+    }
+
+    return output;
+}
+"""
+
+# Load the custom CUDA extension
+cumprod_extension = load_inline(
+    name='cumprod_extension',
+    cpp_sources="torch::Tensor custom_cumprod(torch::Tensor input, int dim);",
+    cuda_sources=cumprod_cuda_code,
+    functions=['custom_cumprod'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        x = x.contiguous()
+        return cumprod_extension.custom_cumprod(x, self.dim)
+```

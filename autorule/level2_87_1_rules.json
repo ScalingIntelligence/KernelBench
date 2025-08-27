@@ -1,0 +1,4 @@
+[
+  "The kernel fuses multiple arithmetic operations into a single operation by precomputing values on the CPU.",
+  "The kernel minimizes the number of arithmetic operations per thread to reduce cumulative overhead across parallel threads."
+]

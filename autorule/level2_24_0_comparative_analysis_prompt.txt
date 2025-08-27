@@ -1,0 +1,226 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 3.23 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom fused kernel for min reduction and softmax
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_min_softmax_kernel(
+    const float* input,
+    float* output,
+    int B, int C, int D, int H, int W
+) {
+    int b = blockIdx.z;
+    int h = blockIdx.y;
+    int w = blockIdx.x;
+    int c = threadIdx.x;
+
+    if (b >= B || h >= H || w >= W || c >= C) return;
+
+    // Compute min over D dimension
+    float min_val = INFINITY;
+    for(int d = 0; d < D; d++) {
+        int idx = b * C*D*H*W + c*D*H*W + d*H*W + h*W + w;
+        min_val = fminf(min_val, input[idx]);
+    }
+
+    extern __shared__ float smem[];
+    smem[c] = min_val;
+    __syncthreads();
+
+    // Softmax over channels
+    float max_val = -INFINITY;
+    for(int i = 0; i < C; i++) {
+        max_val = fmaxf(max_val, smem[i]);
+    }
+
+    float sum_exp = 0.0f;
+    for(int i = 0; i < C; i++) {
+        sum_exp += expf(smem[i] - max_val);
+    }
+
+    float result = expf(smem[c] - max_val) / sum_exp;
+    int out_idx = b * C*H*W + c*H*W + h*W + w;
+    output[out_idx] = result;
+}
+
+torch::Tensor fused_min_softmax_cuda(torch::Tensor input, int dim) {
+    TORCH_CHECK(dim == 2, "Only D dimension reduction supported");
+    TORCH_CHECK(input.is_cuda(), "Input must be CUDA tensor");
+    input = input.contiguous();
+    
+    int B = input.size(0);
+    int C = input.size(1);
+    int D = input.size(2);
+    int H = input.size(3);
+    int W = input.size(4);
+    
+    auto output = torch::empty({B, C, H, W}, input.options());
+    
+    dim3 grid(W, H, B);
+    dim3 block(C);
+    size_t smem_size = C * sizeof(float);
+    
+    fused_min_softmax_kernel<<<grid, block, smem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        B, C, D, H, W
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_min_softmax_cuda(torch::Tensor input, int dim);"
+
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_min_softmax_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dim):
+        super().__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.dim = dim
+        self.fused_op = fused_op
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fused_op.fused_min_softmax_cuda(x, self.dim)
+        return x
+```
+
+Kernel 2 (runtime: 11.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+min_softmax_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template<typename scalar_t>
+__device__ scalar_t cuda_exp(scalar_t x) {
+    return exp(x);
+}
+
+template<>
+__device__ float cuda_exp<float>(float x) {
+    return expf(x);
+}
+
+template<typename scalar_t>
+__global__ void min_softmax_kernel(
+    const scalar_t* conv_output,
+    scalar_t* output,
+    const int B,
+    const int C_out,
+    const int D,
+    const int H,
+    const int W
+) {
+    const int b = blockIdx.x;
+    const int h = blockIdx.y;
+    const int w = blockIdx.z;
+    const int c = threadIdx.x;
+
+    if (c >= C_out) return;
+
+    extern __shared__ __align__(sizeof(scalar_t)) unsigned char shared_mem[];
+    scalar_t* min_values = reinterpret_cast<scalar_t*>(shared_mem);
+
+    scalar_t min_val = INFINITY;
+    for (int d = 0; d < D; ++d) {
+        int idx = b * C_out * D * H * W + c * D * H * W + d * H * W + h * W + w;
+        scalar_t val = conv_output[idx];
+        min_val = (val < min_val) ? val : min_val;
+    }
+    min_values[c] = min_val;
+
+    __syncthreads();
+
+    // Compute softmax over channels
+    scalar_t max_val = -INFINITY;
+    for (int i = 0; i < C_out; ++i) {
+        if (min_values[i] > max_val) max_val = min_values[i];
+    }
+
+    scalar_t sum_exp = 0;
+    for (int i = 0; i < C_out; ++i) {
+        sum_exp += cuda_exp<scalar_t>(min_values[i] - max_val);
+    }
+
+    scalar_t softmax_val = cuda_exp<scalar_t>(min_values[c] - max_val) / sum_exp;
+
+    int output_idx = b * C_out * H * W + c * H * W + h * W + w;
+    output[output_idx] = softmax_val;
+}
+
+torch::Tensor min_softmax_cuda(torch::Tensor conv_output, int reduce_dim, int softmax_dim) {
+    TORCH_CHECK(reduce_dim == 2, "Reduction dimension must be 2 (D dimension)");
+    TORCH_CHECK(softmax_dim == 1, "Softmax dimension must be 1 (channel dimension)");
+
+    auto sizes = conv_output.sizes();
+    int B = sizes[0];
+    int C_out = sizes[1];
+    int D = sizes[2];
+    int H = sizes[3];
+    int W = sizes[4];
+
+    auto output = torch::empty({B, C_out, H, W}, conv_output.options());
+
+    dim3 grid(B, H, W);
+    dim3 block(C_out);
+    size_t shared_mem_size = C_out * conv_output.element_size();
+
+    AT_DISPATCH_FLOATING_TYPES(conv_output.scalar_type(), "min_softmax_cuda", ([&] {
+        min_softmax_kernel<scalar_t><<<grid, block, shared_mem_size>>>(
+            conv_output.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            B,
+            C_out,
+            D,
+            H,
+            W
+        );
+    }));
+
+    return output;
+}
+"""
+
+min_softmax_cpp_source = "torch::Tensor min_softmax_cuda(torch::Tensor conv_output, int reduce_dim, int softmax_dim);"
+
+min_softmax = load_inline(
+    name='min_softmax',
+    cpp_sources=min_softmax_cpp_source,
+    cuda_sources=min_softmax_source,
+    functions=['min_softmax_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dim):
+        super(ModelNew, self).__init__()
+        assert dim == 2, "This implementation only supports reduction along dim=2"
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.dim = dim
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = min_softmax.min_softmax_cuda(x, self.dim, 1)
+        return x
+```

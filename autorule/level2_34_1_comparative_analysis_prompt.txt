@@ -1,0 +1,320 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 17.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused LayerNorm (last dimension) + GELU + Scaling CUDA kernel
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__device__ float gelu(float x) {
+    return 0.5f * x * (1.0f + tanhf(0.7978845608f * (x + 0.044715f * x * x * x)));
+}
+
+__global__ void fused_layernorm_gelu_scale_kernel(
+    const float* input,
+    float* output,
+    int W,
+    int total_positions,
+    float eps,
+    float scaling_factor
+) {
+    extern __shared__ float sdata[];
+    int position_idx = blockIdx.x;
+    if (position_idx >= total_positions) return;
+
+    int tid = threadIdx.x;
+    if (tid >= W) return;
+
+    const float* position_input = input + position_idx * W;
+    float* position_output = output + position_idx * W;
+
+    float val = position_input[tid];
+    
+    // Initialize shared memory for sum and sum of squares
+    sdata[tid] = val;
+    sdata[W + tid] = val * val;
+    __syncthreads();
+
+    // Tree reduction for sum and sum_sq
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+            sdata[W + tid] += sdata[W + tid + s];
+        }
+        __syncthreads();
+    }
+
+    float total_sum = sdata[0];
+    float total_sum_sq = sdata[W];
+
+    float mean, inv_std;
+    if (tid == 0) {
+        mean = total_sum / W;
+        float variance = (total_sum_sq / W) - (mean * mean) + eps;
+        inv_std = rsqrtf(variance);
+    }
+
+    // Broadcast results using shared memory
+    __syncthreads();
+    if (tid == 0) {
+        sdata[0] = mean;
+        sdata[1] = inv_std;
+    }
+    __syncthreads();
+    mean = sdata[0];
+    inv_std = sdata[1];
+
+    float normalized = (val - mean) * inv_std;
+    float activated = gelu(normalized);
+    position_output[tid] = activated * scaling_factor;
+}
+
+torch::Tensor fused_layernorm_gelu_scale_cuda(
+    torch::Tensor input,
+    int W,
+    float eps,
+    float scaling_factor
+) {
+    auto input_reshaped = input.view({-1, W});
+    auto output = torch::empty_like(input_reshaped);
+
+    int total_positions = input_reshaped.size(0);
+    int threads_per_block = W;
+
+    if (threads_per_block > 1024) {
+        throw std::runtime_error("Feature dimension exceeds maximum threads per block");
+    }
+
+    size_t shared_mem_size = 2 * W * sizeof(float);
+    
+    fused_layernorm_gelu_scale_kernel<<<total_positions, threads_per_block, shared_mem_size>>>(
+        input_reshaped.data_ptr<float>(),
+        output.data_ptr<float>(),
+        W,
+        total_positions,
+        eps,
+        scaling_factor
+    );
+
+    return output.view(input.sizes());
+}
+"""
+
+fused_cpp_source = """
+torch::Tensor fused_layernorm_gelu_scale_cuda(torch::Tensor input, int W, float eps, float scaling_factor);
+"""
+
+# Load the custom CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_cpp_source,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_layernorm_gelu_scale_cuda'],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=True, eps=1e-5, scaling_factor=1.0):
+        super().__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, bias=bias
+        )
+        self.eps = eps
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        W = x.size(-1)  # Get last dimension size (matches original LayerNorm dim)
+        x_reshaped = x.view(-1, W)
+        x_processed = fused_ops.fused_layernorm_gelu_scale_cuda(
+            x_reshaped,
+            W,
+            self.eps,
+            self.scaling_factor
+        )
+        return x_processed.view(x.shape)
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, D, H, W).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, bias, eps, scaling_factor]
+
+# Constants from original implementation
+batch_size = 32
+in_channels = 32
+out_channels = 64
+D, H, W = 16, 32, 32
+kernel_size = 4
+stride = 2
+padding = 1
+bias = True
+eps = 1e-5
+scaling_factor = 1.0
+```
+
+Kernel 2 (runtime: 18.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused kernel with dynamic block sizing and efficient reductions
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <ATen/AccumulateType.h>
+
+template <typename T>
+__device__ __forceinline__ T gelu(T x) {
+    return 0.5f * x * (1.0f + tanhf(0.7978845608028654f * (x + 0.044715f * x * x * x)));
+}
+
+template <typename T>
+__global__ void fused_layernorm_gelu_scale_kernel(
+    const T* __restrict__ input,
+    const T* __restrict__ gamma,
+    const T* __restrict__ beta,
+    T* __restrict__ output,
+    const float scaling_factor,
+    const float eps,
+    const int C,
+    const int num_slices
+) {
+    extern __shared__ __align__(sizeof(float)) char shared_buffer[];
+    float* s_sum = reinterpret_cast<float*>(shared_buffer);
+    float* s_sum_sq = s_sum + blockDim.x;
+
+    const int slice_idx = blockIdx.x;
+    const int tid = threadIdx.x;
+    const int stride = blockDim.x;
+
+    if (slice_idx >= num_slices) return;
+
+    const T* slice_input = input + slice_idx * C;
+    T* slice_output = output + slice_idx * C;
+
+    // First pass: compute partial sums with stride-based access
+    float sum = 0.0f, sum_sq = 0.0f;
+    for (int i = tid; i < C; i += stride) {
+        float val = static_cast<float>(slice_input[i]);
+        sum += val;
+        sum_sq += val * val;
+    }
+
+    s_sum[tid] = sum;
+    s_sum_sq[tid] = sum_sq;
+    __syncthreads();
+
+    // Parallel reduction with power-of-two block size
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            s_sum[tid] += s_sum[tid + s];
+            s_sum_sq[tid] += s_sum_sq[tid + s];
+        }
+        __syncthreads();
+    }
+
+    const float mean = s_sum[0] / C;
+    const float var = (s_sum_sq[0] - s_sum[0]*s_sum[0]/C) / C + eps;
+    const float inv_std = rsqrtf(var);
+
+    // Second pass: apply transformations with stride-based access
+    for (int i = tid; i < C; i += stride) {
+        float val = static_cast<float>(slice_input[i]);
+        float normalized = (val - mean) * inv_std;
+        float transformed = static_cast<float>(gamma[i]) * normalized + static_cast<float>(beta[i]);
+        transformed = gelu(transformed) * scaling_factor;
+        slice_output[i] = static_cast<T>(transformed);
+    }
+}
+
+torch::Tensor fused_layernorm_gelu_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    float scaling_factor,
+    float eps
+) {
+    auto input_shape = input.sizes();
+    int num_slices = input.size(0) * input.size(2) * input.size(3) * input.size(4);
+    int C = input.size(1);
+
+    auto output = torch::empty_like(input);
+    
+    // Dynamically determine block size based on C (next power of two up to 1024)
+    int block_size = 1;
+    while (block_size < C && block_size < 1024) {
+        block_size <<= 1;
+    }
+    block_size = std::min(block_size, 1024);
+
+    dim3 grid(num_slices);
+    dim3 block(block_size);
+    size_t shared_mem = 2 * block_size * sizeof(float);
+
+    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, input.scalar_type(), "fused_op", [&] {
+        fused_layernorm_gelu_scale_kernel<scalar_t><<<grid, block, shared_mem>>>(
+            input.data_ptr<scalar_t>(),
+            gamma.data_ptr<scalar_t>(),
+            beta.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            scaling_factor,
+            eps,
+            C,
+            num_slices
+        );
+    });
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = """
+torch::Tensor fused_layernorm_gelu_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    float scaling_factor,
+    float eps
+);
+"""
+
+# Load optimized CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_layernorm_gelu_scale_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=True, eps=1e-5, scaling_factor=1.0):
+        super().__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, bias=bias
+        )
+        self.eps = eps
+        self.scaling_factor = scaling_factor
+        self.gamma = nn.Parameter(torch.ones(out_channels))
+        self.beta = nn.Parameter(torch.zeros(out_channels))
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = x.contiguous()  # Ensure contiguous memory layout
+        return fused_ops.fused_layernorm_gelu_scale_cuda(
+            x, self.gamma, self.beta, self.scaling_factor, self.eps
+        )
+```

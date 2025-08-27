@@ -1,0 +1,6 @@
+[
+  "The kernel uses memory access patterns that group consecutive thread accesses to contiguous memory addresses for better coalescing.",
+  "The kernel orders loops to prioritize reuse of loaded values in registers across inner loop iterations.",
+  "The kernel employs const qualifiers on loop variables to enable compiler optimizations like loop unrolling and register allocation.",
+  "The kernel structures index calculations to match the tensor layout (e.g., NCHW) for sequential memory access patterns."
+]

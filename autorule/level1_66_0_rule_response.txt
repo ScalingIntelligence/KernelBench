@@ -1,0 +1,25 @@
+REASONING TRACE:
+[
+    "The kernel uses a multi-dimensional grid structure to group threads processing spatially adjacent output elements, improving memory coalescing.",
+    "The kernel minimizes index calculation overhead by leveraging block and thread indices directly for spatial mapping.",
+    "The kernel's memory access pattern ensures consecutive threads access contiguous memory locations, enabling stride-1 accesses.",
+    "The kernel aligns weight tensor indexing with the memory layout to improve cache utilization.",
+    "The kernel avoids flat index unraveling with division/modulo operations, reducing computational overhead and register usage."
+]
+
+
+ANSWER:
+
+
+The JSON array above captures the key rule-like statements derived from the reasoning. These statements focus on: 
+
+1. **Grid Organization** - Multi-dimensional grid structure for spatial locality
+2. **Memory Coalescing** - Contiguous memory access patterns via spatial grouping
+3. **Indexing Efficiency** - Direct use of block/thread indices over complex unraveling
+4. **Cache Utilization** - Memory-aligned tensor access patterns
+5. **Register Efficiency** - Reduced arithmetic operations for index calculation
+
+These rules are objective, deterministic, and applicable to CUDA kernel optimization in general.
+
+Usage:
+{'inputTokens': 3718, 'outputTokens': 229, 'totalTokens': 3947}

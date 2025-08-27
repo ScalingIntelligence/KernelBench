@@ -1,0 +1,33 @@
+REASONING TRACE:
+Okay, let's break down the reasoning provided and extract the rule-like statements. The user wants these rules to be general enough for various CUDA kernels and objectively verifiable.
+
+First, the reasoning mentions that Kernel 1 uses sequential/strided memory accesses that can be coalesced. This implies a general rule about coalesced global memory access. So, a rule could be: "The kernel uses coalesced global memory access patterns for efficient memory throughput."
+
+Next, the thread utilization part says Kernel 1 uses one thread per output with a loop, while Kernel 2 uses many threads per output. The problem with Kernel 2 is underutilization when reduction dimensions are small. So, a rule here is: "The kernel avoids underutilization of threads by matching the number of active threads to the workload size."
+
+Then, the reduction overhead in Kernel 2 includes shared memory synchronization and tree reduction steps. This points to a rule about synchronization and steps: "The kernel minimizes synchronization points and reduction steps by avoiding unnecessary inter-thread communication."
+
+Grid configuration is another point. Kernel 1 has a compact grid, reducing scheduling overhead. So: "The kernel uses a compact grid configuration to reduce scheduling overhead and improve warp utilization."
+
+Additionally, the reasoning highlights that Kernel 1 doesn't use shared memory, avoiding related overhead. Thus: "The kernel avoids shared memory usage when synchronization and memory overhead would outweigh benefits."
+
+Looking at the examples given, like coalesced access and thread utilization, these are all objective and can be checked in code. The rules are general enough to apply to other kernels, not just this specific case.
+
+I need to ensure each rule is a concise statement without specifics to the example. For instance, mentioning coalesced access is a general best practice. Similarly, grid configuration and thread utilization are common considerations.
+
+So compiling all these points into rule-like statements, the JSON array should include each distinct rule derived from the reasoning.
+
+
+ANSWER:
+
+
+[
+    "The kernel uses coalesced global memory access patterns for efficient memory throughput.",
+    "The kernel avoids underutilization of threads by matching the number of active threads to the workload size.",
+    "The kernel minimizes synchronization points and reduction steps by avoiding unnecessary inter-thread communication.",
+    "The kernel uses a compact grid configuration to reduce scheduling overhead and improve warp utilization.",
+    "The kernel avoids shared memory usage when synchronization and memory overhead would outweigh benefits."
+]
+
+Usage:
+{'inputTokens': 2739, 'outputTokens': 485, 'totalTokens': 3224}

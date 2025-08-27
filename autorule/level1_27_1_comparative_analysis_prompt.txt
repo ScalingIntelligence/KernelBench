@@ -1,0 +1,120 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernel for optimized SELU activation
+selu_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void selu_kernel(const float* input, float* output, int num_elements) {
+    const float alpha = 1.6732632423543772848170429916717f;
+    const float scale = 1.0507009873554804934193349852946f;
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float x = input[idx];
+        output[idx] = x > 0 ? scale * x : scale * alpha * (expf(x) - 1);
+    }
+}
+
+torch::Tensor selu_forward_cuda(torch::Tensor x) {
+    auto output = torch::empty_like(x);
+    int num_elements = x.numel();
+    
+    const int threads_per_block = 256;
+    const int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    selu_kernel<<<num_blocks, threads_per_block>>>(
+        x.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+selu_cpp_source = "torch::Tensor selu_forward_cuda(torch::Tensor x);"
+
+# Load the custom CUDA extension
+selu_extension = load_inline(
+    name='selu_extension',
+    cpp_sources=selu_cpp_source,
+    cuda_sources=selu_source,
+    functions=['selu_forward_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return selu_extension.selu_forward_cuda(x)
+```
+
+Kernel 2 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the custom CUDA kernel for SELU activation
+selu_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void selu_kernel(const float* x, float* out, int num_elements) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        const float alpha = 1.6732632423543772848170429916717f;
+        const float scale = 1.0507009873554804934193349852946f;
+        float val = x[idx];
+        out[idx] = scale * (val > 0 ? val : alpha * (expf(val) - 1.0f));
+    }
+}
+
+torch::Tensor selu_cuda(torch::Tensor x) {
+    auto out = torch::empty_like(x);
+    int num_elements = x.numel();
+    
+    const int block_size = 256;
+    int num_blocks = (num_elements + block_size - 1) / block_size;
+    
+    selu_kernel<<<num_blocks, block_size>>>(
+        x.data_ptr<float>(),
+        out.data_ptr<float>(),
+        num_elements
+    );
+    
+    return out;
+}
+"""
+
+selu_cpp_source = "torch::Tensor selu_cuda(torch::Tensor x);"
+
+# Compile the inline CUDA code
+selu_extension = load_inline(
+    name="selu_extension",
+    cpp_sources=selu_cpp_source,
+    cuda_sources=selu_source,
+    functions=["selu_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return selu_extension.selu_cuda(x)
+```

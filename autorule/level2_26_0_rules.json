@@ -1,0 +1,5 @@
+[
+  "The kernel uses thread block sizes that are multiples of warp size (32).",
+  "The kernel performs arithmetic operations in an order that allows compiler optimizations for instruction fusion.",
+  "The kernel minimizes register usage by avoiding unnecessary intermediate variables."
+]

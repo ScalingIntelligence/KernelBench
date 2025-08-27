@@ -1,0 +1,48 @@
+{
+  "kernel1": {
+    "problem_id": 91,
+    "sample_id": 5,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nfused_softmax_bias_scale_sigmoid_kernel(float const*...         0.00%       0.000us         0.00%       0.000us       0.000us      16.338ms        61.83%      16.338ms      16.338ms             1  \n                      aten::cudnn_convolution_transpose         0.45%     129.198us         7.82%       2.231ms       2.231ms       6.920ms        26.19%      13.840ms      13.840ms             1  \n                                           Unrecognized         7.13%       2.034ms         7.13%       2.034ms       2.034ms       6.920ms        26.19%       6.920ms       6.920ms             1  \nvoid cutlass__5x_cudnn::Kernel<cutlass_tensorop_s168...         0.00%       0.000us         0.00%       0.000us       0.000us       3.332ms        12.61%       3.332ms       3.332ms             1  \nvoid cudnn::engines_precompiled::nhwcToNchwKernel<fl...         0.00%       0.000us         0.00%       0.000us       0.000us       3.193ms        12.08%       3.193ms       3.193ms             1  \n                                             aten::add_         0.11%      30.941us         0.14%      41.294us      41.294us       3.167ms        11.98%       3.167ms       3.167ms             1  \nvoid at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       3.167ms        11.98%       3.167ms       3.167ms             1  \nvoid cudnn::engines_precompiled::nchwToNhwcKernel<fl...         0.00%       0.000us         0.00%       0.000us       0.000us     395.104us         1.50%     395.104us     197.552us             2  \n                                 aten::conv_transpose2d         0.05%      14.404us         8.31%       2.371ms       2.371ms       0.000us         0.00%      17.007ms      17.007ms             1  \n                                      aten::convolution         0.12%      35.448us         8.26%       2.357ms       2.357ms       0.000us         0.00%      17.007ms      17.007ms             1  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 28.542ms\nSelf CUDA time total: 26.425ms\n"
+    },
+    "runtime": 28.5,
+    "runtime_stats": {
+      "mean": 28.5,
+      "std": 0.208,
+      "min": 28.2,
+      "max": 29.2,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "IR_level2_DeepSeek-R1"
+  },
+  "kernel2": {
+    "problem_id": 91,
+    "sample_id": 5,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nfused_softmax_bias_scale_sigmoid_kernel(float const*...         0.00%       0.000us         0.00%       0.000us       0.000us      12.847ms        55.42%      12.847ms      12.847ms             1  \n                      aten::cudnn_convolution_transpose         0.44%     106.122us         4.59%       1.112ms       1.112ms       7.164ms        30.90%      14.328ms      14.328ms             1  \n                                           Unrecognized         3.95%     957.110us         3.95%     957.110us     957.110us       7.164ms        30.90%       7.164ms       7.164ms             1  \nvoid cutlass__5x_cudnn::Kernel<cutlass_tensorop_s168...         0.00%       0.000us         0.00%       0.000us       0.000us       3.580ms        15.44%       3.580ms       3.580ms             1  \nvoid cudnn::engines_precompiled::nhwcToNchwKernel<fl...         0.00%       0.000us         0.00%       0.000us       0.000us       3.189ms        13.76%       3.189ms       3.189ms             1  \n                                             aten::add_         0.11%      26.900us         0.14%      34.950us      34.950us       3.171ms        13.68%       3.171ms       3.171ms             1  \nvoid at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       3.171ms        13.68%       3.171ms       3.171ms             1  \nvoid cudnn::engines_precompiled::nchwToNhwcKernel<fl...         0.00%       0.000us         0.00%       0.000us       0.000us     394.660us         1.70%     394.660us     197.330us             2  \n                                 aten::conv_transpose2d         0.03%       6.300us         5.08%       1.231ms       1.231ms       0.000us         0.00%      17.499ms      17.499ms             1  \n                                      aten::convolution         0.13%      31.561us         5.06%       1.225ms       1.225ms       0.000us         0.00%      17.499ms      17.499ms             1  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 24.225ms\nSelf CUDA time total: 23.182ms\n"
+    },
+    "runtime": 24.4,
+    "runtime_stats": {
+      "mean": 24.4,
+      "std": 0.3,
+      "min": 23.8,
+      "max": 25.4,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "best_of_n_level2_DeepSeek-R1"
+  }
+}

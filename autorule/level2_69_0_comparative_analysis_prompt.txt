@@ -1,0 +1,150 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 4.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused HardSwish+ReLU activation kernel
+fused_activation_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_activation_kernel(const float* input, float* output, int num_elements) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        const float x = input[idx];
+        if (x < 0.0f) {
+            output[idx] = 0.0f;
+        } else if (x <= 3.0f) {
+            output[idx] = x * (x + 3.0f) / 6.0f;
+        } else {
+            output[idx] = x;
+        }
+    }
+}
+
+torch::Tensor fused_activation_cuda(torch::Tensor input) {
+    input = input.contiguous();
+    auto output = torch::empty_like(input);
+    const int num_elements = input.numel();
+    
+    const int block_size = 256;
+    const int grid_size = (num_elements + block_size - 1) / block_size;
+    
+    fused_activation_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_activation_cpp = "torch::Tensor fused_activation_cuda(torch::Tensor input);"
+
+# Load the fused activation CUDA kernel
+fused_activation = load_inline(
+    name="fused_activation",
+    cpp_sources=fused_activation_cpp,
+    cuda_sources=fused_activation_source,
+    functions=["fused_activation_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    """
+    Optimized model using fused HardSwish+ReLU activation kernel
+    """
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.fused_activation = fused_activation
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fused_activation.fused_activation_cuda(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]
+
+# Configuration parameters (preserved from original)
+batch_size = 128
+in_channels = 8
+out_channels = 64
+height, width = 128, 128
+kernel_size = 3
+```
+
+Kernel 2 (runtime: 4.21 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_hardswish_relu_kernel(float* input, int num_elements) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= num_elements) return;
+    
+    float val = input[index];
+    
+    // HardSwish implementation
+    if (val < 0.f) {
+        input[index] = 0.f;
+    } else {
+        if (val <= 3.f) {
+            input[index] = val * (val + 3) / 6;
+        } else {
+            input[index] = val;
+        }
+    }
+}
+
+torch::Tensor fused_hardswish_relu_cuda(torch::Tensor input) {
+    auto numel = input.numel();
+    dim3 blocks((numel + 255)/256);
+    dim3 threads(256);
+    fused_hardswish_relu_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        numel
+    );
+    return input;
+}
+"""
+
+fused_ops_h = """
+torch::Tensor fused_hardswish_relu_cuda(torch::Tensor input);
+"""
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_h,
+    cuda_sources=fused_ops_source,
+    functions=['fused_hardswish_relu_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.fused_op = fused_ops
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fused_op.fused_hardswish_relu_cuda(x)
+        return x
+```

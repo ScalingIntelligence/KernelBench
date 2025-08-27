@@ -1,0 +1,116 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 4.21 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_op_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_conv_relu_hswish_kernel(const float* input, float* output, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+
+    float x = input[idx];
+    float temp = x + 3.0f;
+    float clamped = fminf(fmaxf(temp, 0.0f), 6.0f);
+    float hs_val = x * clamped / 6.0f;
+    output[idx] = fmaxf(hs_val, 0.0f);
+}
+
+torch::Tensor fused_conv_relu_hswish_cuda(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int numel = input.numel();
+    const int threads_per_block = 256;
+    int num_blocks = (numel + threads_per_block - 1) / threads_per_block;
+    
+    fused_conv_relu_hswish_kernel<<<num_blocks, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        numel
+    );
+    
+    return output;
+}
+"""
+
+fused_op_header = "torch::Tensor fused_conv_relu_hswish_cuda(torch::Tensor input);"
+
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_op_header,
+    cuda_sources=fused_op_source,
+    functions=['fused_conv_relu_hswish_cuda'],
+    verbose=True,
+    extra_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_op.fused_conv_relu_hswish_cuda(x)
+        return x
+```
+
+Kernel 2 (runtime: 4.21 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_activation_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_hardswish_relu_kernel(const float* input, float* output, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float x = input[idx];
+        float temp = x + 3.0f;
+        float relu6_val = fminf(fmaxf(temp, 0.0f), 6.0f);
+        float hs_val = x * relu6_val / 6.0f;
+        output[idx] = fmaxf(hs_val, 0.0f);
+    }
+}
+
+torch::Tensor fused_activation_cuda(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int numel = input.numel();
+    const int threads_per_block = 256;
+    int blocks_per_grid = (numel + threads_per_block - 1) / threads_per_block;
+    
+    fused_hardswish_relu_kernel<<<blocks_per_grid, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        numel
+    );
+    
+    return output;
+}
+"""
+
+fused_activation = load_inline(
+    name='fused_activation',
+    cpp_sources="torch::Tensor fused_activation_cuda(torch::Tensor input);",
+    cuda_sources=fused_activation_source,
+    functions=['fused_activation_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_activation.fused_activation_cuda(x)
+        return x
+```

@@ -1,0 +1,11 @@
+REASONING TRACE:
+[]
+
+
+ANSWER:
+
+
+[]
+
+Usage:
+{'inputTokens': 8224, 'outputTokens': 5, 'totalTokens': 8229}

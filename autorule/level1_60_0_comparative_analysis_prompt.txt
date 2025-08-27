@@ -1,0 +1,418 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 97.0 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+conv3d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+template <typename scalar_t>
+__global__ void conv3d_forward_kernel(
+    const scalar_t* input,
+    const scalar_t* weight,
+    const scalar_t* bias,
+    scalar_t* output,
+    int batch_size,
+    int in_channels,
+    int out_channels,
+    int in_depth,
+    int in_height,
+    int in_width,
+    int out_depth,
+    int out_height,
+    int out_width,
+    int kernel_d,
+    int kernel_h,
+    int kernel_w,
+    int stride_d,
+    int stride_h,
+    int stride_w,
+    int padding_d,
+    int padding_h,
+    int padding_w,
+    int dilation_d,
+    int dilation_h,
+    int dilation_w,
+    int groups,
+    bool has_bias
+) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = batch_size * out_channels * out_depth * out_height * out_width;
+    if (tid >= total_elements) return;
+
+    int n = tid / (out_channels * out_depth * out_height * out_width);
+    int oc = (tid % (out_channels * out_depth * out_height * out_width)) / (out_depth * out_height * out_width);
+    int od = (tid % (out_depth * out_height * out_width)) / (out_height * out_width);
+    int oh = (tid % (out_height * out_width)) / out_width;
+    int ow = tid % out_width;
+
+    int group_size = out_channels / groups;
+    int g = oc / group_size;
+    int in_per_group = in_channels / groups;
+    int ig_start = g * in_per_group;
+    int ig_end = ig_start + in_per_group;
+
+    scalar_t sum = 0.0;
+
+    for (int kd = 0; kd < kernel_d; ++kd) {
+        for (int kh = 0; kh < kernel_h; ++kh) {
+            for (int kw = 0; kw < kernel_w; ++kw) {
+                // Compute input coordinates considering dilation and padding
+                int id = od * stride_d - padding_d + kd * dilation_d;
+                int ih = oh * stride_h - padding_h + kh * dilation_h;
+                int iw = ow * stride_w - padding_w + kw * dilation_w;
+
+                if (id < 0 || id >= in_depth || ih < 0 || ih >= in_height || iw < 0 || iw >= in_width) continue;
+
+                for (int ic = ig_start; ic < ig_end; ++ic) {
+                    int input_idx = n * in_channels * in_depth * in_height * in_width +
+                                    ic * in_depth * in_height * in_width +
+                                    id * in_height * in_width +
+                                    ih * in_width +
+                                    iw;
+
+                    int w_base = oc * (in_per_group * kernel_d * kernel_h * kernel_w) +
+                                 (ic - ig_start) * kernel_d * kernel_h * kernel_w +
+                                 kd * kernel_h * kernel_w +
+                                 kh * kernel_w +
+                                 kw;
+
+                    int weight_idx = w_base;
+
+                    sum += input[input_idx] * weight[weight_idx];
+                }
+            }
+        }
+    }
+
+    if (has_bias) {
+        sum += bias[oc];
+    }
+
+    int output_idx = n * out_channels * out_depth * out_height * out_width +
+                     oc * out_depth * out_height * out_width +
+                     od * out_height * out_width +
+                     oh * out_width +
+                     ow;
+
+    output[output_idx] = sum;
+}
+
+torch::Tensor conv3d_forward_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int stride_d, int stride_h, int stride_w,
+    int padding_d, int padding_h, int padding_w,
+    int dilation_d, int dilation_h, int dilation_w,
+    int groups,
+    bool has_bias
+) {
+    TORCH_CHECK(input.dim() == 5, "Input must be 5D");
+    TORCH_CHECK(weight.dim() == 5, "Weight must be 5D");
+
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int in_depth = input.size(2);
+    const int in_height = input.size(3);
+    const int in_width = input.size(4);
+
+    const int out_channels = weight.size(0);
+    const int kernel_d = weight.size(2);
+    const int kernel_h = weight.size(3);
+    const int kernel_w = weight.size(4);
+
+    const int group_size = out_channels / groups;
+    TORCH_CHECK(out_channels % groups == 0, "Invalid number of groups");
+
+    // Calculate output dimensions
+    int out_depth = (in_depth + 2 * padding_d - dilation_d * (kernel_d - 1) - 1) / stride_d + 1;
+    int out_height = (in_height + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) / stride_h + 1;
+    int out_width = (in_width + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) / stride_w + 1;
+
+    auto output = torch::empty({batch_size, out_channels, out_depth, out_height, out_width}, 
+                              input.options());
+
+    int total_elements = batch_size * out_channels * out_depth * out_height * out_width;
+    const int threads_per_block = 256;
+    int blocks_per_grid = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "conv3d_forward", ([&] {
+        conv3d_forward_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(
+            input.data_ptr<scalar_t>(),
+            weight.data_ptr<scalar_t>(),
+            has_bias ? bias.data_ptr<scalar_t>() : nullptr,
+            output.data_ptr<scalar_t>(),
+            batch_size,
+            in_channels,
+            out_channels,
+            in_depth,
+            in_height,
+            in_width,
+            out_depth,
+            out_height,
+            out_width,
+            kernel_d,
+            kernel_h,
+            kernel_w,
+            stride_d,
+            stride_h,
+            stride_w,
+            padding_d,
+            padding_h,
+            padding_w,
+            dilation_d,
+            dilation_h,
+            dilation_w,
+            groups,
+            has_bias
+        );
+    }));
+
+    return output;
+}
+"""
+
+conv3d_cpp_source = """
+torch::Tensor conv3d_forward_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int stride_d, int stride_h, int stride_w,
+    int padding_d, int padding_h, int padding_w,
+    int dilation_d, int dilation_h, int dilation_w,
+    int groups,
+    bool has_bias
+);
+"""
+
+conv3d_ext = load_inline(
+    name='conv3d_ext',
+    cpp_sources=conv3d_cpp_source,
+    cuda_sources=conv3d_source,
+    functions=['conv3d_forward_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: tuple, 
+                 stride: int = 1, padding: int = 0, dilation: int = 1, 
+                 groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+        
+        self.weight = nn.Parameter(torch.empty(
+            out_channels,
+            in_channels // groups,
+            kernel_size[0], kernel_size[1], kernel_size[2]
+        ))
+        
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        has_bias = self.bias is not None
+        return conv3d_ext.conv3d_forward_cuda(
+            x.contiguous(),
+            self.weight,
+            self.bias if has_bias else torch.zeros(0, device=x.device),
+            self.stride, self.stride, self.stride,
+            self.padding, self.padding, self.padding,
+            self.dilation, self.dilation, self.dilation,
+            self.groups,
+            has_bias
+        )
+```
+
+Kernel 2 (runtime: 87.0 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+conv3d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void conv3d_forward_kernel(
+    const float* input,
+    const float* weight,
+    const float* bias,
+    float* output,
+    int batch_size,
+    int in_channels,
+    int out_channels,
+    int input_w, int input_h, int input_d,
+    int output_w, int output_h, int output_d,
+    int kernel_w, int kernel_h, int kernel_d,
+    int stride_w, int stride_h, int stride_d,
+    int pad_w, int pad_h, int pad_d,
+    int dilation_w, int dilation_h, int dilation_d,
+    bool has_bias
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int total_elements = batch_size * out_channels * output_w * output_h * output_d;
+    if (idx >= total_elements) return;
+
+    // Unravel index
+    int residual = idx;
+    const int z = residual % output_d;
+    residual /= output_d;
+    const int y = residual % output_h;
+    residual /= output_h;
+    const int x = residual % output_w;
+    residual /= output_w;
+    const int out_ch = residual % out_channels;
+    residual /= out_channels;
+    const int batch = residual;
+
+    if (batch >= batch_size || out_ch >= out_channels || x >= output_w || y >= output_h || z >= output_d) return;
+
+    float sum = 0.0f;
+
+    for (int in_ch = 0; in_ch < in_channels; ++in_ch) {
+        for (int kx = 0; kx < kernel_w; ++kx) {
+            for (int ky = 0; ky < kernel_h; ++ky) {
+                for (int kz = 0; kz < kernel_d; ++kz) {
+                    const int x_in = x * stride_w - pad_w + kx * dilation_w;
+                    const int y_in = y * stride_h - pad_h + ky * dilation_h;
+                    const int z_in = z * stride_d - pad_d + kz * dilation_d;
+
+                    if (x_in >= 0 && x_in < input_w && y_in >= 0 && y_in < input_h && z_in >= 0 && z_in < input_d) {
+                        const int input_idx = ((batch * in_channels + in_ch) * input_w + x_in) * input_h * input_d + y_in * input_d + z_in;
+                        const int weight_idx = ((out_ch * in_channels + in_ch) * kernel_w + kx) * kernel_h * kernel_d + ky * kernel_d + kz;
+                        sum += input[input_idx] * weight[weight_idx];
+                    }
+                }
+            }
+        }
+    }
+
+    if (has_bias) sum += bias[out_ch];
+
+    const int output_idx = ((batch * out_channels + out_ch) * output_w + x) * output_h * output_d + y * output_d + z;
+    output[output_idx] = sum;
+}
+
+torch::Tensor conv3d_forward_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int stride_w, int stride_h, int stride_d,
+    int pad_w, int pad_h, int pad_d,
+    int dilation_w, int dilation_h, int dilation_d,
+    bool has_bias
+) {
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int input_w = input.size(2);
+    const int input_h = input.size(3);
+    const int input_d = input.size(4);
+
+    const int out_channels = weight.size(0);
+    const int kernel_w = weight.size(2);
+    const int kernel_h = weight.size(3);
+    const int kernel_d = weight.size(4);
+
+    const int output_w = (input_w + 2 * pad_w - dilation_w * (kernel_w - 1) - 1) / stride_w + 1;
+    const int output_h = (input_h + 2 * pad_h - dilation_h * (kernel_h - 1) - 1) / stride_h + 1;
+    const int output_d = (input_d + 2 * pad_d - dilation_d * (kernel_d - 1) - 1) / stride_d + 1;
+
+    auto output = torch::zeros({batch_size, out_channels, output_w, output_h, output_d}, input.options());
+
+    const int total_elements = output.numel();
+    const int threads = 256;
+    const int blocks = (total_elements + threads - 1) / threads;
+
+    conv3d_forward_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        has_bias ? bias.data_ptr<float>() : nullptr,
+        output.data_ptr<float>(),
+        batch_size,
+        in_channels,
+        out_channels,
+        input_w, input_h, input_d,
+        output_w, output_h, output_d,
+        kernel_w, kernel_h, kernel_d,
+        stride_w, stride_h, stride_d,
+        pad_w, pad_h, pad_d,
+        dilation_w, dilation_h, dilation_d,
+        has_bias
+    );
+
+    return output;
+}
+"""
+
+conv3d_cpp_source = "torch::Tensor conv3d_forward_cuda(torch::Tensor input, torch::Tensor weight, torch::Tensor bias, int stride_w, int stride_h, int stride_d, int pad_w, int pad_h, int pad_d, int dilation_w, int dilation_h, int dilation_d, bool has_bias);"
+
+conv3d_module = load_inline(
+    name="conv3d_module",
+    cpp_sources=conv3d_cpp_source,
+    cuda_sources=conv3d_source,
+    functions=["conv3d_forward_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: tuple, stride: int = 1, padding: int = 0, dilation: int = 1, groups: int = 1, bias: bool = False):
+        super().__init__()
+        assert groups == 1, "Only groups=1 supported"
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = (stride,)*3 if isinstance(stride, int) else stride
+        self.padding = (padding,)*3 if isinstance(padding, int) else padding
+        self.dilation = (dilation,)*3 if isinstance(dilation, int) else dilation
+
+        self.weight = nn.Parameter(torch.empty(out_channels, in_channels, *kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return conv3d_module.conv3d_forward_cuda(
+            x,
+            self.weight,
+            self.bias if self.bias is not None else torch.empty(0),
+            *self.stride,
+            *self.padding,
+            *self.dilation,
+            self.bias is not None
+        )
+```

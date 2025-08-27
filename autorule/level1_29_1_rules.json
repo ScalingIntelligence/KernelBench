@@ -1,0 +1,5 @@
+[
+  "The kernel uses const qualifiers for variables to enable compiler optimizations such as better register allocation.",
+  "The kernel avoids using log1pf in favor of logf with explicit arithmetic operations when numerical precision for small values is not critical.",
+  "The kernel declares loop or thread-specific variables as const to reduce register pressure and improve instruction scheduling."
+]

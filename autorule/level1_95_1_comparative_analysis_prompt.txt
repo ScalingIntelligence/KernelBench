@@ -1,0 +1,345 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 1.16 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+cross_entropy_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void cross_entropy_kernel(const float* predictions, const int64_t* targets, float* loss, int num_classes, int batch_size) {
+    extern __shared__ float shared_mem[];
+    
+    int sample_idx = blockIdx.x;
+    int tid = threadIdx.x;
+    int num_threads = blockDim.x;
+    
+    // Each thread processes multiple elements
+    int elements_per_thread = (num_classes + num_threads - 1) / num_threads;
+    int start = tid * elements_per_thread;
+    int end = min(start + elements_per_thread, num_classes);
+    
+    // Load target for this sample
+    int t = targets[sample_idx];
+    
+    // Step 1: Find max value for numerical stability
+    float local_max = -INFINITY;
+    for (int i = start; i < end; i++) {
+        float val = predictions[sample_idx * num_classes + i];
+        local_max = fmaxf(local_max, val);
+    }
+    
+    // Reduce to find global max in block
+    shared_mem[tid] = local_max;
+    __syncthreads();
+    
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]);
+        }
+        __syncthreads();
+    }
+    float max_val = shared_mem[0];
+    __syncthreads();
+    
+    // Step 2: Compute sum of exponentials
+    float local_sum = 0.0f;
+    for (int i = start; i < end; i++) {
+        local_sum += expf(predictions[sample_idx * num_classes + i] - max_val);
+    }
+    
+    // Reduce to find sum_exp
+    shared_mem[tid] = local_sum;
+    __syncthreads();
+    
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_mem[tid] += shared_mem[tid + s];
+        }
+        __syncthreads();
+    }
+    float sum_exp = shared_mem[0];
+    float log_sum_exp = logf(sum_exp);
+    __syncthreads();
+    
+    // Step 3: Compute loss contribution for target class
+    float target_log_softmax = 0.0f;
+    for (int i = start; i < end; i++) {
+        if (i == t) {
+            target_log_softmax = predictions[sample_idx * num_classes + i] - max_val - log_sum_exp;
+            break;
+        }
+    }
+    
+    // Find target contribution using shared memory
+    shared_mem[tid] = (t >= start && t < end) ? target_log_softmax : 0.0f;
+    __syncthreads();
+    
+    // Reduce to find the target value
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_mem[tid] += shared_mem[tid + s];
+        }
+        __syncthreads();
+    }
+    
+    // Accumulate to global loss
+    if (tid == 0) {
+        atomicAdd(loss, -shared_mem[0]);
+    }
+}
+
+torch::Tensor cross_entropy_cuda(torch::Tensor predictions, torch::Tensor targets) {
+    auto batch_size = predictions.size(0);
+    auto num_classes = predictions.size(1);
+    
+    // Initialize scalar loss tensor
+    auto loss = torch::zeros({}, predictions.options());
+    
+    int threads = 256;
+    int blocks = batch_size;
+    size_t shared_mem_size = threads * sizeof(float);
+    
+    cross_entropy_kernel<<<blocks, threads, shared_mem_size>>>(
+        predictions.data_ptr<float>(),
+        targets.data_ptr<int64_t>(),
+        loss.data_ptr<float>(),
+        num_classes,
+        batch_size
+    );
+    
+    // Return mean loss as scalar
+    return loss / batch_size;
+}
+"""
+
+cross_entropy_cpp_source = "torch::Tensor cross_entropy_cuda(torch::Tensor predictions, torch::Tensor targets);"
+
+# Load the custom CUDA kernel
+cross_entropy_ext = load_inline(
+    name="cross_entropy_ext",
+    cpp_sources=cross_entropy_cpp_source,
+    cuda_sources=cross_entropy_kernel_source,
+    functions=["cross_entropy_cuda"],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.cross_entropy = cross_entropy_ext.cross_entropy_cuda
+
+    def forward(self, predictions, targets):
+        return self.cross_entropy(predictions, targets)
+```
+
+Kernel 2 (runtime: 1.26 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused cross entropy CUDA kernels with two-step reduction
+cross_entropy_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+constexpr int WARP_SIZE = 32;
+
+__device__ float warp_reduce_max(float val) {
+    for (int offset = WARP_SIZE/2; offset > 0; offset >>= 1) {
+        val = fmaxf(val, __shfl_down_sync(0xffffffff, val, offset));
+    }
+    return val;
+}
+
+__device__ float warp_reduce_sum(float val) {
+    for (int offset = WARP_SIZE/2; offset > 0; offset >>= 1) {
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    }
+    return val;
+}
+
+__global__ void cross_entropy_fused_kernel(
+    const float* __restrict__ predictions,
+    const int* __restrict__ targets,
+    float* __restrict__ per_sample_loss,
+    int batch_size,
+    int num_classes
+) {
+    extern __shared__ float shared_mem[];
+    const int sample_idx = blockIdx.x;
+    const int tid = threadIdx.x;
+    
+    if (sample_idx >= batch_size) return;
+    
+    const int target = targets[sample_idx];
+    if (target < 0 || target >= num_classes) {
+        if (tid == 0) per_sample_loss[sample_idx] = 0.0f;
+        return;
+    }
+
+    const float* sample_preds = predictions + sample_idx * num_classes;
+    
+    // Vectorized load for max reduction
+    float thread_max = -INFINITY;
+    for (int i = tid * 4; i < num_classes; i += blockDim.x * 4) {
+        float4 vec = *reinterpret_cast<const float4*>(&sample_preds[i]);
+        thread_max = fmaxf(thread_max, vec.x);
+        thread_max = fmaxf(thread_max, vec.y);
+        thread_max = fmaxf(thread_max, vec.z);
+        thread_max = fmaxf(thread_max, vec.w);
+    }
+
+    // Warp-level max reduction
+    float warp_max = warp_reduce_max(thread_max);
+    
+    // Block-level max reduction
+    if (tid % WARP_SIZE == 0) {
+        shared_mem[tid / WARP_SIZE] = warp_max;
+    }
+    __syncthreads();
+    
+    float block_max = (tid < blockDim.x / WARP_SIZE) ? shared_mem[tid] : -INFINITY;
+    if (tid < WARP_SIZE) {
+        block_max = warp_reduce_max(block_max);
+        if (tid == 0) shared_mem[0] = block_max;
+    }
+    __syncthreads();
+    
+    const float max_val = shared_mem[0];
+
+    // Vectorized load for sum reduction
+    float thread_sum = 0.0f;
+    for (int i = tid * 4; i < num_classes; i += blockDim.x * 4) {
+        float4 vec = *reinterpret_cast<const float4*>(&sample_preds[i]);
+        thread_sum += expf(vec.x - max_val);
+        thread_sum += expf(vec.y - max_val);
+        thread_sum += expf(vec.z - max_val);
+        thread_sum += expf(vec.w - max_val);
+    }
+
+    // Warp-level sum reduction
+    float warp_sum = warp_reduce_sum(thread_sum);
+    
+    // Block-level sum reduction
+    if (tid % WARP_SIZE == 0) {
+        shared_mem[tid / WARP_SIZE] = warp_sum;
+    }
+    __syncthreads();
+    
+    float block_sum = (tid < blockDim.x / WARP_SIZE) ? shared_mem[tid] : 0.0f;
+    if (tid < WARP_SIZE) {
+        block_sum = warp_reduce_sum(block_sum);
+        if (tid == 0) shared_mem[0] = block_sum;
+    }
+    __syncthreads();
+    
+    const float log_sum_exp = logf(shared_mem[0]) + max_val;
+    const float target_val = sample_preds[target] - log_sum_exp;
+
+    if (tid == 0) {
+        per_sample_loss[sample_idx] = -target_val;
+    }
+}
+
+__global__ void sum_loss_kernel(const float* __restrict__ per_sample_loss, float* total_loss, int batch_size) {
+    __shared__ float shared[256];
+    
+    int tid = threadIdx.x;
+    int i = blockIdx.x * blockDim.x + tid;
+    
+    shared[tid] = (i < batch_size) ? per_sample_loss[i] : 0.0f;
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            shared[tid] += shared[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        atomicAdd(total_loss, shared[0]);
+    }
+}
+
+torch::Tensor cross_entropy_fused(torch::Tensor predictions, torch::Tensor targets) {
+    TORCH_CHECK(predictions.dim() == 2, "predictions must be 2D");
+    TORCH_CHECK(targets.dim() == 1, "targets must be 1D");
+    int batch_size = predictions.size(0);
+    int num_classes = predictions.size(1);
+    TORCH_CHECK(targets.size(0) == batch_size, "Batch size mismatch");
+
+    auto options = predictions.options();
+    auto per_sample_loss = torch::empty(batch_size, options);
+    auto total_loss = torch::zeros(1, options);
+
+    // First kernel: Compute per-sample loss
+    const int block_size = 256;
+    const int grid_size = batch_size;
+    const size_t shared_mem = (block_size / WARP_SIZE) * sizeof(float);
+    
+    cross_entropy_fused_kernel<<<grid_size, block_size, shared_mem>>>(
+        predictions.data_ptr<float>(),
+        targets.data_ptr<int>(),
+        per_sample_loss.data_ptr<float>(),
+        batch_size,
+        num_classes
+    );
+
+    // Second kernel: Sum losses
+    const int sum_block_size = 256;
+    const int sum_grid_size = (batch_size + sum_block_size - 1) / sum_block_size;
+    
+    sum_loss_kernel<<<sum_grid_size, sum_block_size, sum_block_size * sizeof(float)>>>(
+        per_sample_loss.data_ptr<float>(),
+        total_loss.data_ptr<float>(),
+        batch_size
+    );
+
+    cudaDeviceSynchronize();
+    
+    float avg_loss = total_loss.item<float>() / batch_size;
+    return torch::tensor(avg_loss, options);
+}
+"""
+
+cross_entropy_cpp = """
+torch::Tensor cross_entropy_fused(torch::Tensor predictions, torch::Tensor targets);
+"""
+
+# Load the CUDA extension
+cross_entropy_ext = load_inline(
+    name='cross_entropy_ext',
+    cpp_sources=cross_entropy_cpp,
+    cuda_sources=cross_entropy_source,
+    functions=['cross_entropy_fused'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+
+    def forward(self, predictions, targets):
+        targets = targets.to(torch.int32)
+        return cross_entropy_ext.cross_entropy_fused(predictions, targets)
+
+batch_size = 32768
+num_classes = 4096
+input_shape = (num_classes,)
+dim = 1
+
+def get_inputs():
+    return [torch.rand(batch_size, *input_shape, device='cuda'), 
+            torch.randint(0, num_classes, (batch_size,), device='cuda')]
+
+def get_init_inputs():
+    return []
+```

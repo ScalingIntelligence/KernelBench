@@ -1,0 +1,201 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 57.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom matrix multiplication kernel with fused transpose
+matmul_transposed_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 32
+
+__global__ void matmul_transposed_kernel(const float* A, const float* B, float* C, int M, int K, int N) {
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    int bx = blockIdx.x, by = blockIdx.y;
+    int tx = threadIdx.x, ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    float sum = 0.0f;
+
+    for (int i = 0; i < (K + TILE_SIZE - 1) / TILE_SIZE; ++i) {
+        // Load A^T tile (original A is KxM, A^T is MxK)
+        int A_col_in_transposed = i * TILE_SIZE + tx;
+        int A_row_in_transposed = row;
+        if (A_row_in_transposed < M && A_col_in_transposed < K) {
+            As[ty][tx] = A[A_col_in_transposed * M + A_row_in_transposed];
+        } else {
+            As[ty][tx] = 0.0f;
+        }
+
+        // Load B tile (KxN)
+        int B_row = i * TILE_SIZE + ty;
+        int B_col = col;
+        if (B_row < K && B_col < N) {
+            Bs[ty][tx] = B[B_row * N + B_col];
+        } else {
+            Bs[ty][tx] = 0.0f;
+        }
+
+        __syncthreads();
+
+        for (int k = 0; k < TILE_SIZE; ++k) {
+            sum += As[ty][k] * Bs[k][tx];
+        }
+
+        __syncthreads();
+    }
+
+    if (row < M && col < N) {
+        C[row * N + col] = sum;
+    }
+}
+
+torch::Tensor matmul_transposed_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.size(0) == B.size(0), "A and B must have the same K dimension");
+    int K = A.size(0);
+    int M = A.size(1);
+    int N = B.size(1);
+
+    auto C = torch::zeros({M, N}, A.options());
+
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid((N + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
+
+    matmul_transposed_kernel<<<grid, block>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        M, K, N
+    );
+
+    return C;
+}
+"""
+
+matmul_transposed_cpp_source = "torch::Tensor matmul_transposed_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Compile the custom kernel
+matmul_transposed = load_inline(
+    name="matmul_transposed",
+    cpp_sources=matmul_transposed_cpp_source,
+    cuda_sources=matmul_transposed_source,
+    functions=["matmul_transposed_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.matmul_transposed = matmul_transposed
+
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        # Ensure tensors are contiguous and on CUDA
+        return self.matmul_transposed.matmul_transposed_cuda(A.contiguous(), B.contiguous())
+```
+
+Kernel 2 (runtime: 59.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for optimized transposed matrix multiplication
+gemm_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 32  // Optimal tile size for modern GPUs
+
+__global__ void transposed_gemm_kernel(const float* A, const float* B, float* C, int M, int K, int N) {
+    __shared__ float Ashared[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bshared[TILE_SIZE][TILE_SIZE];
+
+    int row = blockIdx.y * TILE_SIZE + threadIdx.y;  // M dimension
+    int col = blockIdx.x * TILE_SIZE + threadIdx.x;  // N dimension
+    float sum = 0.0f;
+
+    for (int t = 0; t < (K + TILE_SIZE - 1)/TILE_SIZE; ++t) {
+        int tiled = t * TILE_SIZE;
+
+        // Load A.T tile (M x K) with coalesced access
+        int A_row = tiled + threadIdx.x;    // Original A's row (K dimension)
+        int A_col = blockIdx.y * TILE_SIZE + threadIdx.y;  // Original A's column (M dimension)
+        if (A_row < K && A_col < M) {
+            Ashared[threadIdx.y][threadIdx.x] = A[A_row * M + A_col];  // A.T element
+        } else {
+            Ashared[threadIdx.y][threadIdx.x] = 0.0f;
+        }
+
+        // Load B tile (K x N) with coalesced access
+        int B_row = tiled + threadIdx.y;    // B's row (K dimension)
+        int B_col = blockIdx.x * TILE_SIZE + threadIdx.x;  // B's column (N dimension)
+        if (B_row < K && B_col < N) {
+            Bshared[threadIdx.y][threadIdx.x] = B[B_row * N + B_col];
+        } else {
+            Bshared[threadIdx.y][threadIdx.x] = 0.0f;
+        }
+
+        __syncthreads();
+
+        // Compute partial sum with optimal memory access pattern
+        for (int k = 0; k < TILE_SIZE; ++k) {
+            sum += Ashared[threadIdx.y][k] * Bshared[k][threadIdx.x];
+        }
+
+        __syncthreads();
+    }
+
+    // Write result with boundary check
+    if (row < M && col < N) {
+        C[row * N + col] = sum;
+    }
+}
+
+torch::Tensor transposed_gemm_cuda(torch::Tensor A, torch::Tensor B) {
+    int K = A.size(0);
+    int M = A.size(1);
+    int N = B.size(1);
+    
+    auto C = torch::zeros({M, N}, A.options());
+    
+    dim3 threads(TILE_SIZE, TILE_SIZE);
+    dim3 blocks((N + TILE_SIZE - 1)/TILE_SIZE, (M + TILE_SIZE - 1)/TILE_SIZE);
+    
+    transposed_gemm_kernel<<<blocks, threads>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        M, K, N
+    );
+    
+    return C;
+}
+"""
+
+gemm_cpp_source = "torch::Tensor transposed_gemm_cuda(torch::Tensor A, torch::Tensor B);"
+
+gemm_module = load_inline(
+    name="gemm_module",
+    cpp_sources=gemm_cpp_source,
+    cuda_sources=gemm_kernel_source,
+    functions=["transposed_gemm_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.gemm_op = gemm_module
+
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        return self.gemm_op.transposed_gemm_cuda(A, B)
+```

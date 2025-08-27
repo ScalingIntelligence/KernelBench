@@ -1,0 +1,170 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 17.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused kernel for min reduction + double tanh
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_min_tanh_kernel(const float* input, float* output, 
+                                    int batch_size, int channels, 
+                                    int height, int width) {
+    const int spatial_pos = blockIdx.x * blockDim.x + threadIdx.x;
+    const int spatial_size = height * width;
+    const int total_positions = batch_size * spatial_size;
+    
+    if (spatial_pos >= total_positions) return;
+    
+    const int b = spatial_pos / spatial_size;
+    const int hw = spatial_pos % spatial_size;
+    const int h = hw / width;
+    const int w = hw % width;
+
+    float min_val = INFINITY;
+    const float* channel_start = input + (b * channels * spatial_size) + hw;
+    
+    for (int c = 0; c < channels; ++c) {
+        const float val = channel_start[c * spatial_size];
+        min_val = fminf(min_val, val);
+    }
+    
+    // Apply tanh twice
+    float result = tanhf(tanhf(min_val));
+    output[b * spatial_size + hw] = result;
+}
+
+torch::Tensor fused_min_tanh_cuda(torch::Tensor input) {
+    const auto batch_size = input.size(0);
+    const auto channels = input.size(1);
+    const auto height = input.size(2);
+    const auto width = input.size(3);
+    
+    auto output = torch::empty({batch_size, 1, height, width}, input.options());
+    
+    const int spatial_size = height * width;
+    const int total_positions = batch_size * spatial_size;
+    const int block_size = 256;
+    const int grid_size = (total_positions + block_size - 1) / block_size;
+    
+    fused_min_tanh_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        height,
+        width
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_min_tanh_cuda(torch::Tensor input);"
+
+# Load the custom fused kernel
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_min_tanh_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    """
+    Optimized model using fused CUDA kernel for min reduction + double tanh
+    """
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_ops.fused_min_tanh_cuda(x)
+        return x
+```
+
+Kernel 2 (runtime: 17.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_min_tanh_tanh_kernel(
+    const float* input, float* output,
+    int batch_size, int channels, int height, int width) {
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= batch_size * height * width) return;
+
+    int hw = height * width;
+    int batch_hw = batch_size * hw;
+    int b = idx / hw;
+    int rem = idx % hw;
+    int h = rem / width;
+    int w = rem % width;
+
+    float min_val = INFINITY;
+    for (int c = 0; c < channels; ++c) {
+        int input_idx = b * channels * hw + c * hw + h * width + w;
+        float val = input[input_idx];
+        if (val < min_val) {
+            min_val = val;
+        }
+    }
+
+    // Apply tanh twice
+    float temp = tanhf(min_val);
+    temp = tanhf(temp);
+    output[idx] = temp;
+}
+
+torch::Tensor fused_min_tanh_tanh_cuda(torch::Tensor input) {
+    auto batch_size = input.size(0);
+    auto channels = input.size(1);
+    auto height = input.size(2);
+    auto width = input.size(3);
+
+    auto output = torch::empty({batch_size, 1, height, width}, input.options());
+
+    int total_elements = batch_size * height * width;
+    int threads_per_block = 256;
+    int num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    fused_min_tanh_tanh_kernel<<<num_blocks, threads_per_block>>>(
+        input.contiguous().data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size, channels, height, width
+    );
+
+    return output;
+}
+"""
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources="torch::Tensor fused_min_tanh_tanh_cuda(torch::Tensor input);",
+    cuda_sources=fused_ops_source,
+    functions=['fused_min_tanh_tanh_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_ops.fused_min_tanh_tanh_cuda(x)
+        return x
+```

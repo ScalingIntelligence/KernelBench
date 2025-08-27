@@ -1,0 +1,199 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 42.3 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized fused kernel with vectorized access and type-safe operations
+fused_clamp_div_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_fp16.h>
+
+template <typename scalar_t>
+__global__ void fused_clamp_div_kernel(
+    scalar_t* __restrict__ data,
+    const scalar_t min_value,
+    const scalar_t inv_divisor,
+    const int num_elements
+) {
+    constexpr int VEC_SIZE = sizeof(float4) / sizeof(scalar_t);
+    const int global_idx = (blockIdx.x * blockDim.x + threadIdx.x) * VEC_SIZE;
+    const int stride = blockDim.x * gridDim.x * VEC_SIZE;
+
+    for (int idx = global_idx; idx < num_elements; idx += stride) {
+        float4 vec;
+        scalar_t elements[VEC_SIZE];
+        
+        // Vectorized load with boundary checks
+        if (idx + VEC_SIZE <= num_elements) {
+            vec = *reinterpret_cast<float4*>(&data[idx]);
+            #pragma unroll
+            for (int i = 0; i < VEC_SIZE; ++i) {
+                elements[i] = reinterpret_cast<scalar_t*>(&vec)[i];
+            }
+        } else {
+            #pragma unroll
+            for (int i = 0; i < VEC_SIZE; ++i) {
+                elements[i] = (idx + i < num_elements) ? data[idx + i] : scalar_t(0);
+            }
+        }
+
+        // Process elements with type-safe operations
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) {
+            if (idx + i < num_elements) {
+                elements[i] = elements[i] > min_value ? elements[i] * inv_divisor : min_value * inv_divisor;
+            }
+        }
+
+        // Vectorized store with boundary checks
+        if (idx + VEC_SIZE <= num_elements) {
+            #pragma unroll
+            for (int i = 0; i < VEC_SIZE; ++i) {
+                reinterpret_cast<scalar_t*>(&vec)[i] = elements[i];
+            }
+            *reinterpret_cast<float4*>(&data[idx]) = vec;
+        } else {
+            #pragma unroll
+            for (int i = 0; i < VEC_SIZE; ++i) {
+                if (idx + i < num_elements) {
+                    data[idx + i] = elements[i];
+                }
+            }
+        }
+    }
+}
+
+torch::Tensor fused_clamp_div_cuda(torch::Tensor x, float min_value, float divisor) {
+    TORCH_CHECK(x.is_cuda(), "x must be a CUDA tensor");
+    auto x_contig = x.contiguous();
+    const int num_elements = x_contig.numel();
+
+    // Get device properties for optimal configuration
+    int device_id;
+    cudaGetDevice(&device_id);
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device_id);
+
+    constexpr int block_size = 256;
+    constexpr int vec_size = sizeof(float4) / sizeof(float);  // Max possible vector size
+    int num_blocks = (num_elements + (block_size * vec_size) - 1) / (block_size * vec_size);
+    
+    // Optimize grid size for current GPU
+    num_blocks = std::min(num_blocks, prop.multiProcessorCount * 32);
+
+    AT_DISPATCH_FLOATING_TYPES(x_contig.scalar_type(), "fused_clamp_div_cuda", [&] {
+        const scalar_t min_val = static_cast<scalar_t>(min_value);
+        const scalar_t inv_div = static_cast<scalar_t>(1.0 / divisor);
+        
+        fused_clamp_div_kernel<scalar_t><<<num_blocks, block_size>>>(
+            x_contig.data_ptr<scalar_t>(),
+            min_val,
+            inv_div,
+            num_elements
+        );
+    });
+
+    return x_contig;
+}
+"""
+
+fused_clamp_div_cpp_source = "torch::Tensor fused_clamp_div_cuda(torch::Tensor x, float min_value, float divisor);"
+
+# Load the optimized CUDA extension
+fused_clamp_div = load_inline(
+    name='fused_clamp_div',
+    cpp_sources=fused_clamp_div_cpp_source,
+    cuda_sources=fused_clamp_div_source,
+    functions=['fused_clamp_div_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, min_value, divisor):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding
+        )
+        self.min_value = min_value
+        self.divisor = divisor
+        self.fused_clamp_div = fused_clamp_div
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.fused_clamp_div.fused_clamp_div_cuda(x, self.min_value, self.divisor)
+        return x
+```
+
+Kernel 2 (runtime: 42.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused clamp and division CUDA kernel
+fused_clamp_div_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template <typename scalar_t>
+__global__ void fused_clamp_div_kernel(scalar_t* data, scalar_t min_value, scalar_t divisor, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        scalar_t val = data[idx];
+        val = max(val, min_value);
+        data[idx] = val / divisor;
+    }
+}
+
+torch::Tensor fused_clamp_div_cuda(torch::Tensor x, float min_value, float divisor) {
+    TORCH_CHECK(x.is_cuda(), "x must be a CUDA tensor");
+    auto x_contig = x.contiguous();
+    int num_elements = x_contig.numel();
+
+    const int block_size = 256;
+    int num_blocks = (num_elements + block_size - 1) / block_size;
+
+    AT_DISPATCH_FLOATING_TYPES(x_contig.scalar_type(), "fused_clamp_div_cuda", [&] {
+        scalar_t min_val = static_cast<scalar_t>(min_value);
+        scalar_t div = static_cast<scalar_t>(divisor);
+        fused_clamp_div_kernel<scalar_t><<<num_blocks, block_size>>>(
+            x_contig.data_ptr<scalar_t>(), min_val, div, num_elements
+        );
+    });
+
+    return x_contig;
+}
+"""
+
+fused_clamp_div_cpp_source = "torch::Tensor fused_clamp_div_cuda(torch::Tensor x, float min_value, float divisor);"
+
+# Load the CUDA extension
+fused_clamp_div = load_inline(
+    name='fused_clamp_div',
+    cpp_sources=fused_clamp_div_cpp_source,
+    cuda_sources=fused_clamp_div_source,
+    functions=['fused_clamp_div_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, min_value, divisor):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding
+        )
+        self.min_value = min_value
+        self.divisor = divisor
+        self.fused_clamp_div = fused_clamp_div
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.fused_clamp_div.fused_clamp_div_cuda(x, self.min_value, self.divisor)
+        return x
+```

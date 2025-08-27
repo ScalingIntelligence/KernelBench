@@ -1,0 +1,257 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused kernel with vectorized memory access
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__device__ float gelu(float x) {
+    const float sqrt_2_over_pi = 0.7978845608028654f;
+    const float coeff = 0.044715f;
+    float x_cubed = x * x * x;
+    float inner = sqrt_2_over_pi * (x + coeff * x_cubed);
+    float tanh_inner = tanhf(inner);
+    return 0.5f * x * (1.0f + tanh_inner);
+}
+
+__global__ void fused_ops_kernel(const float* input, float* output, int num_rows, int num_cols) {
+    extern __shared__ float shared[];
+
+    int row = blockIdx.x;
+    if (row >= num_rows) return;
+
+    const float* row_data = input + row * num_cols;
+    const int elements_per_thread = (num_cols + blockDim.x - 1) / blockDim.x;
+    const int start = threadIdx.x * elements_per_thread;
+    const int end = min(start + elements_per_thread, num_cols);
+
+    // Vectorized max reduction
+    float max_val = -INFINITY;
+    int i = start;
+    for (; i + 3 < end; i += 4) {
+        float4 chunk = *reinterpret_cast<const float4*>(row_data + i);
+        max_val = fmaxf(max_val, chunk.x);
+        max_val = fmaxf(max_val, chunk.y);
+        max_val = fmaxf(max_val, chunk.z);
+        max_val = fmaxf(max_val, chunk.w);
+    }
+    for (; i < end; ++i) {
+        max_val = fmaxf(max_val, row_data[i]);
+    }
+
+    // Block max reduction
+    float* sdata = shared;
+    sdata[threadIdx.x] = max_val;
+    __syncthreads();
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] = fmaxf(sdata[threadIdx.x], sdata[threadIdx.x + s]);
+        }
+        __syncthreads();
+    }
+    float block_max = sdata[0];
+    __syncthreads();
+
+    // Vectorized sum reduction
+    float sum_exp = 0.0f;
+    i = start;
+    for (; i + 3 < end; i += 4) {
+        float4 chunk = *reinterpret_cast<const float4*>(row_data + i);
+        sum_exp += expf(chunk.x - block_max) 
+                 + expf(chunk.y - block_max)
+                 + expf(chunk.z - block_max)
+                 + expf(chunk.w - block_max);
+    }
+    for (; i < end; ++i) {
+        sum_exp += expf(row_data[i] - block_max);
+    }
+
+    // Block sum reduction
+    sdata[threadIdx.x] = sum_exp;
+    __syncthreads();
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        float lse = logf(sdata[0]) + block_max;
+        float x = lse > 0 ? lse : 0.0001f * lse;  // Fused LeakyReLUs
+        x = gelu(gelu(x));                         // Double GELU
+        output[row] = x;
+    }
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input) {
+    auto num_rows = input.size(0);
+    auto num_cols = input.size(1);
+    auto output = torch::empty({num_rows, 1}, input.options());
+
+    const int block_size = 256;
+    dim3 grid(num_rows);
+    size_t shared_mem = block_size * sizeof(float);
+
+    fused_ops_kernel<<<grid, block_size, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_rows,
+        num_cols
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp = "torch::Tensor fused_ops_cuda(torch::Tensor input);"
+
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp,
+    cuda_sources=fused_ops_source,
+    functions=["fused_ops_cuda"],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bias=True):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features, bias=bias)
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_ops.fused_ops_cuda(x)
+        return x
+```
+
+Kernel 2 (runtime: 7.14 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom fused kernel combining LogSumExp, 2x LeakyReLU, and 2x GELU
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+#define BLOCK_SIZE 256
+#define SQRT_2 1.41421356237f
+
+__global__ void fused_ops_kernel(const float* input, float* output, int num_rows, int num_cols) {
+    int row = blockIdx.x;
+    int tid = threadIdx.x;
+    
+    extern __shared__ float shared[];
+    float* max_vals = shared;
+    float* sum_exps = &shared[blockDim.x];
+    
+    // Initialize thread-local max and sum
+    float thread_max = -INFINITY;
+    float thread_sum = 0.0f;
+    
+    // Process elements in strided fashion
+    for (int i = tid; i < num_cols; i += blockDim.x) {
+        float val = input[row * num_cols + i];
+        thread_max = fmaxf(thread_max, val);
+    }
+    
+    // Reduce max values in block
+    max_vals[tid] = thread_max;
+    __syncthreads();
+    
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            max_vals[tid] = fmaxf(max_vals[tid], max_vals[tid + s]);
+        }
+        __syncthreads();
+    }
+    float block_max = max_vals[0];
+    
+    // Compute sum of exps with block_max stability
+    for (int i = tid; i < num_cols; i += blockDim.x) {
+        float val = input[row * num_cols + i];
+        thread_sum += expf(val - block_max);
+    }
+    
+    // Reduce sum values in block
+    sum_exps[tid] = thread_sum;
+    __syncthreads();
+    
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sum_exps[tid] += sum_exps[tid + s];
+        }
+        __syncthreads();
+    }
+    
+    if (tid == 0) {
+        // Final logsumexp computation
+        float log_sum_exp = logf(sum_exps[0]) + block_max;
+        
+        // Apply activations
+        float x = log_sum_exp;
+        x = fmaxf(x, 0.01f * x);  // LeakyReLU 1
+        x = fmaxf(x, 0.01f * x);  // LeakyReLU 2
+        
+        // GELU implementations
+        x = 0.5f * x * (1.0f + erff(x / SQRT_2));  // GELU 1
+        x = 0.5f * x * (1.0f + erff(x / SQRT_2));  // GELU 2
+        
+        output[row] = x;
+    }
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input) {
+    int batch_size = input.size(0);
+    int num_features = input.size(1);
+    auto output = torch::empty({batch_size, 1}, input.options());
+    
+    dim3 grid(batch_size);
+    dim3 block(BLOCK_SIZE);
+    size_t shared_mem = 2 * BLOCK_SIZE * sizeof(float);
+    
+    fused_ops_kernel<<<grid, block, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        num_features
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_ops_cuda(torch::Tensor input);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_ops_cuda'],
+    verbose=True,
+    extra_cuda_cflags=["-O3"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bias=True):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features, bias=bias)
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_ops.fused_ops_cuda(x)
+        return x
+```

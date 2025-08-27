@@ -1,0 +1,53 @@
+REASONING TRACE:
+Okay, let me go through the reasoning provided and extract the rule-like statements. The user wants these rules to be general enough for various CUDA kernels and objectively verifiable.
+
+First, the reasoning mentions that Kernel 2 uses shared memory to cache weights and bias. That translates to a rule about using shared memory to reduce global memory access. So: "The kernel uses shared memory tiling to reduce global memory access."
+
+Next, the thread block sizes in Kernel 2 are 32x8, which are multiples of the warp size (32). The example given in the problem includes a similar rule. So: "The kernel uses thread block sizes that are multiples of warp size (32)."
+
+Kernel 2 employs loop unrolling with #pragma unroll. That's a specific optimization technique. So: "The kernel uses loop unrolling to reduce loop overhead and improve instruction-level parallelism."
+
+The use of __ldg() intrinsic is noted. This relates to leveraging the read-only data cache. So: "The kernel uses the __ldg() intrinsic to leverage the read-only data cache for global memory accesses."
+
+The __restrict__ keyword is mentioned, which helps the compiler optimize. So: "The kernel uses __restrict__ qualifiers to enable compiler optimizations by indicating no pointer aliasing."
+
+Cooperative loading into shared memory by threads in a block is highlighted. That's a cooperative data loading strategy. So: "The kernel employs cooperative loading of data into shared memory within a thread block."
+
+The grid configuration in Kernel 2 is 3D, which groups computations by batch and channel. This improves locality. So: "The kernel uses a grid configuration that groups related computations (e.g., batch and channel) to improve data locality."
+
+Kernel 2 checks for bias once per block instead of per thread, reducing branching. So: "The kernel reduces thread divergence by minimizing conditional branching within threads."
+
+The reasoning also mentions that Kernel 2's 2D block structure leads to coalesced memory accesses. This is about memory access patterns. So: "The kernel organizes threads to enable coalesced global memory accesses by aligning with data dimensions."
+
+I need to ensure these rules are general and not specific to the example. Each statement should be a general principle applicable to other CUDA kernels. Let me check each one again:
+
+1. Shared memory tiling: General.
+2. Thread block multiples of warp size: General.
+3. Loop unrolling: General.
+4. __ldg() intrinsic: General.
+5. __restrict__ qualifiers: General.
+6. Cooperative loading into shared memory: General.
+7. Grid configuration for data locality: General.
+8. Reducing thread divergence via branching: General.
+9. Coalesced memory via thread organization: General.
+
+These all fit as rule-like statements. I don't see any that are too specific to the depthwise convolution example. They should apply to various CUDA kernels.
+
+
+ANSWER:
+
+
+[
+    "The kernel uses shared memory tiling to reduce global memory access.",
+    "The kernel uses thread block sizes that are multiples of warp size (32).",
+    "The kernel uses loop unrolling to reduce loop overhead and improve instruction-level parallelism.",
+    "The kernel uses the __ldg() intrinsic to leverage the read-only data cache for global memory accesses.",
+    "The kernel uses __restrict__ qualifiers to enable compiler optimizations by indicating no pointer aliasing.",
+    "The kernel employs cooperative loading of data into shared memory within a thread block.",
+    "The kernel uses a grid configuration that groups related computations (e.g., batch and channel) to improve data locality.",
+    "The kernel reduces thread divergence by minimizing conditional branching within threads.",
+    "The kernel organizes threads to enable coalesced global memory accesses by aligning with data dimensions."
+]
+
+Usage:
+{'inputTokens': 1975, 'outputTokens': 773, 'totalTokens': 2748}

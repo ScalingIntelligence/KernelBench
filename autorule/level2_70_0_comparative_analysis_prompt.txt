@@ -1,0 +1,162 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.08 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_sigmoid_scale_add_kernel(
+    const float* x_gemm,
+    const float scaling_factor,
+    float* output,
+    int batch_size,
+    int hidden_size
+) {
+    int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (global_idx >= batch_size * hidden_size) return;
+
+    int row = global_idx / hidden_size;
+    int col = global_idx % hidden_size;
+
+    float val = x_gemm[row * hidden_size + col];
+
+    float exp_val = expf(-val);
+    float sigmoid_val = 1.0f / (1.0f + exp_val);
+    float scaled = sigmoid_val * scaling_factor;
+    output[row * hidden_size + col] = scaled + val;
+}
+
+torch::Tensor fused_sigmoid_scale_add_cuda(
+    torch::Tensor x_gemm,
+    float scaling_factor
+) {
+    auto output = torch::empty_like(x_gemm);
+    int batch_size = x_gemm.size(0);
+    int hidden_size = x_gemm.size(1);
+
+    int total_elements = batch_size * hidden_size;
+    const int threads_per_block = 256;
+    int num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    fused_sigmoid_scale_add_kernel<<<num_blocks, threads_per_block>>>(
+        x_gemm.data_ptr<float>(),
+        scaling_factor,
+        output.data_ptr<float>(),
+        batch_size,
+        hidden_size
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_sigmoid_scale_add_cuda(torch::Tensor x_gemm, float scaling_factor);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_sigmoid_scale_add_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(input_size, hidden_size)
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.gemm(x)
+        return fused_ops.fused_sigmoid_scale_add_cuda(x, self.scaling_factor)
+```
+
+Kernel 2 (runtime: 7.14 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized fused CUDA kernel with vectorized memory access
+fused_op_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_op_kernel(const float* __restrict__ input, 
+                               float* __restrict__ output, 
+                               float scaling_factor, 
+                               int num_elements) {
+    const int idx = 4 * (blockIdx.x * blockDim.x + threadIdx.x);
+    if (idx >= num_elements) return;
+    
+    // Vectorized load/store for better memory throughput
+    const int remaining = num_elements - idx;
+    if (remaining >= 4) {
+        const float4 in = *reinterpret_cast<const float4*>(input + idx);
+        float4 out;
+        out.x = in.x + (1.0f / (1.0f + __expf(-in.x))) * scaling_factor;
+        out.y = in.y + (1.0f / (1.0f + __expf(-in.y))) * scaling_factor;
+        out.z = in.z + (1.0f / (1.0f + __expf(-in.z))) * scaling_factor;
+        out.w = in.w + (1.0f / (1.0f + __expf(-in.w))) * scaling_factor;
+        *reinterpret_cast<float4*>(output + idx) = out;
+    } else {
+        // Handle remaining elements
+        for(int i = 0; i < remaining; ++i) {
+            const float val = input[idx + i];
+            output[idx + i] = val + (1.0f / (1.0f + __expf(-val))) * scaling_factor;
+        }
+    }
+}
+
+torch::Tensor elementwise_fused_op_cuda(torch::Tensor input, float scaling_factor) {
+    auto output = torch::empty_like(input);
+    const int num_elements = input.numel();
+    
+    const int block_size = 256;  // Optimal for modern GPUs
+    const int grid_size = (num_elements + 4*block_size - 1) / (4*block_size);
+    
+    fused_op_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        scaling_factor,
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_op_cpp_source = "torch::Tensor elementwise_fused_op_cuda(torch::Tensor input, float scaling_factor);"
+
+# Compile with aggressive optimizations
+elementwise_fused_op = load_inline(
+    name="elementwise_fused_op",
+    cpp_sources=fused_op_cpp_source,
+    cuda_sources=fused_op_source,
+    functions=["elementwise_fused_op_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_cuda_cflags=["-O3", "--use_fast_math"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    """
+    Optimized model with vectorized fused kernel and fast math optimizations
+    """
+    def __init__(self, input_size, hidden_size, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(input_size, hidden_size)
+        self.scaling_factor = scaling_factor
+        self.fused_op = elementwise_fused_op
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = self.fused_op.elementwise_fused_op_cuda(x, self.scaling_factor)
+        return x
+```

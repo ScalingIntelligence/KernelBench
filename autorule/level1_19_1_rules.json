@@ -1,0 +1,4 @@
+[
+  "The kernel uses 32-bit integer types (e.g., int) for loop bounds or indices instead of 64-bit types (e.g., int64_t).",
+  "The kernel avoids 64-bit arithmetic operations in performance-critical conditional checks (e.g., index comparisons)."
+]

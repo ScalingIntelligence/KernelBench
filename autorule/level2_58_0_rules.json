@@ -1,0 +1,6 @@
+[
+  "The kernel uses the __restrict__ qualifier on pointers to enable compiler optimizations by assuming no pointer aliasing.",
+  "The kernel is compiled with the -use_fast_math flag to optimize transcendental functions like expf and logf for speed at the cost of precision.",
+  "The kernel implements a numerically stable log-sum-exp calculation by tracking a running maximum to avoid overflow, which allows efficient use of fast math optimizations.",
+  "The kernel precomputes loop-invariant constants (e.g., spatial_size, step) outside the loop to reduce redundant calculations."
+]

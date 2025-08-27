@@ -1,0 +1,8 @@
+[
+  "The kernel uses vectorized memory access to reduce global memory transactions.",
+  "The kernel replaces division operations with precomputed multiplications.",
+  "The kernel processes multiple elements per thread to increase arithmetic intensity and hide latency.",
+  "The kernel unrolls loops to reduce overhead and improve instruction-level parallelism.",
+  "The kernel configures grid size as a multiple of the number of streaming multiprocessors multiplied by 32 to optimize occupancy.",
+  "The kernel handles boundary conditions to maintain coalesced memory access patterns."
+]

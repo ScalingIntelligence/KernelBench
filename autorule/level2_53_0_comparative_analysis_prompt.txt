@@ -1,0 +1,226 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 14.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized fused kernel with vectorized loads/stores and fast math
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_scale_hardtanh_gelu_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    float scaling_factor,
+    float hardtanh_min,
+    float hardtanh_max,
+    int num_elements
+) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int elements_per_thread = 4;
+    const int stride = blockDim.x * gridDim.x * elements_per_thread;
+    
+    // Process elements in chunks of 4 with grid-stride loop
+    for(int i = tid * elements_per_thread; i < num_elements; i += stride) {
+        float4 buffer;
+        const int remaining = num_elements - i;
+        const int valid_load = min(elements_per_thread, remaining);
+        
+        // Load elements using vectorized access
+        if (valid_load == elements_per_thread) {
+            buffer = reinterpret_cast<const float4*>(input + i)[0];
+        } else {
+            // Handle partial load for last block
+            #pragma unroll
+            for(int j = 0; j < elements_per_thread; j++) {
+                ((float*)&buffer)[j] = (j < valid_load) ? input[i + j] : 0.0f;
+            }
+        }
+
+        // Process elements
+        float results[elements_per_thread];
+        const float sqrt_2_over_pi = 0.7978845608028654f;
+        const float gelu_coeff = 0.044715f;
+        
+        #pragma unroll
+        for(int j = 0; j < elements_per_thread; j++) {
+            if(i + j >= num_elements) break;
+            
+            float val = ((float*)&buffer)[j] * scaling_factor;
+            val = fmaxf(hardtanh_min, fminf(val, hardtanh_max));
+            
+            // PyTorch's GELU approximation
+            float cube = val * val * val;
+            float inner = sqrt_2_over_pi * (val + gelu_coeff * cube);
+            results[j] = 0.5f * val * (1.0f + tanhf(inner));
+        }
+
+        // Store results
+        const int valid_store = min(elements_per_thread, remaining);
+        if (valid_store == elements_per_thread) {
+            reinterpret_cast<float4*>(output + i)[0] = *reinterpret_cast<float4*>(results);
+        } else {
+            #pragma unroll
+            for(int j = 0; j < valid_store; j++) {
+                output[i + j] = results[j];
+            }
+        }
+    }
+}
+
+torch::Tensor fused_scale_hardtanh_gelu_cuda(
+    torch::Tensor input,
+    float scaling_factor,
+    float hardtanh_min,
+    float hardtanh_max
+) {
+    auto output = torch::empty_like(input);
+    const int num_elements = input.numel();
+    
+    // Optimized kernel configuration
+    const int block_size = 256;
+    const int max_blocks = 65535;
+    const int grid_size = min(max_blocks, (num_elements + block_size * 4 - 1) / (block_size * 4));
+
+    fused_scale_hardtanh_gelu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        scaling_factor,
+        hardtanh_min,
+        hardtanh_max,
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_scale_hardtanh_gelu_cuda(torch::Tensor input, float scaling_factor, float hardtanh_min, float hardtanh_max);"
+
+# Load the optimized CUDA extension with fast math
+fused_scale_hardtanh_gelu = load_inline(
+    name='fused_scale_hardtanh_gelu',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_scale_hardtanh_gelu_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scaling_factor, hardtanh_min, hardtanh_max):
+        super().__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.scaling_factor = scaling_factor
+        self.hardtanh_min = hardtanh_min
+        self.hardtanh_max = hardtanh_max
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = fused_scale_hardtanh_gelu.fused_scale_hardtanh_gelu_cuda(
+            x, 
+            self.scaling_factor,
+            self.hardtanh_min,
+            self.hardtanh_max
+        )
+        return x
+```
+
+Kernel 2 (runtime: 14.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused scale, hardtanh, and GELU CUDA kernel with corrected GELU implementation
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_scale_hardtanh_gelu_kernel(
+    const float* input,
+    float* output,
+    float scaling_factor,
+    float hardtanh_min,
+    float hardtanh_max,
+    int num_elements
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        // Apply scaling
+        float val = input[idx] * scaling_factor;
+        
+        // Apply Hardtanh
+        val = fmaxf(hardtanh_min, fminf(val, hardtanh_max));
+        
+        // Compute GELU using PyTorch's default tanh approximation
+        const float sqrt_2_over_pi = 0.7978845608028654f;  // sqrt(2/pi)
+        const float gelu_coeff = 0.044715f;
+        float cube = val * val * val;
+        float inner = sqrt_2_over_pi * (val + gelu_coeff * cube);
+        float tanh_val = tanhf(inner);
+        float gelu = 0.5f * val * (1.0f + tanh_val);
+        
+        output[idx] = gelu;
+    }
+}
+
+torch::Tensor fused_scale_hardtanh_gelu_cuda(
+    torch::Tensor input,
+    float scaling_factor,
+    float hardtanh_min,
+    float hardtanh_max
+) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    
+    const int block_size = 256;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+    
+    fused_scale_hardtanh_gelu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        scaling_factor,
+        hardtanh_min,
+        hardtanh_max,
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_scale_hardtanh_gelu_cuda(torch::Tensor input, float scaling_factor, float hardtanh_min, float hardtanh_max);"
+
+# Load the custom CUDA extension
+fused_scale_hardtanh_gelu = load_inline(
+    name='fused_scale_hardtanh_gelu',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_scale_hardtanh_gelu_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scaling_factor, hardtanh_min, hardtanh_max):
+        super().__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.scaling_factor = scaling_factor
+        self.hardtanh_min = hardtanh_min
+        self.hardtanh_max = hardtanh_max
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = fused_scale_hardtanh_gelu.fused_scale_hardtanh_gelu_cuda(
+            x, 
+            self.scaling_factor,
+            self.hardtanh_min,
+            self.hardtanh_max
+        )
+        return x
+```

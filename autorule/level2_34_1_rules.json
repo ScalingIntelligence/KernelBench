@@ -1,0 +1,7 @@
+[
+  "The kernel uses a single-pass approach to read input data, reducing global memory accesses by half compared to a two-pass approach.",
+  "The kernel employs contiguous per-thread element access to enable coalesced global memory reads and writes.",
+  "The kernel omits unnecessary parameters (e.g., gamma and beta in LayerNorm) to reduce computational operations and memory accesses.",
+  "The kernel configures thread block sizes to exactly match the feature dimension, ensuring full thread utilization without stride-based loops.",
+  "The kernel performs reductions using values already stored in shared memory, minimizing register pressure and shared memory bank conflicts."
+]

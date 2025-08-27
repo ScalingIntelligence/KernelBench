@@ -1,0 +1,304 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.55 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused Scale + BatchNorm CUDA kernel implementation
+fused_scale_bn_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_scale_bn_kernel(
+    const float* x,
+    const float* scale,
+    const float* gamma,
+    const float* beta,
+    float* running_mean,
+    float* running_var,
+    float* output,
+    int batch_size,
+    int out_features,
+    float eps,
+    float momentum,
+    bool training_mode) {
+
+    int j = blockIdx.x;
+    if (j >= out_features) return;
+
+    float s = scale[j];
+    float g = gamma[j];
+    float b = beta[j];
+
+    float sum = 0.0f;
+    float sum_sq = 0.0f;
+
+    int tid = threadIdx.x;
+    int num_threads = blockDim.x;
+    int elements_per_thread = (batch_size + num_threads - 1) / num_threads;
+    int start = tid * elements_per_thread;
+    int end = min(start + elements_per_thread, batch_size);
+
+    // First pass: compute sum and sum of squares
+    for (int i = start; i < end; ++i) {
+        float val = x[i * out_features + j] * s;
+        sum += val;
+        sum_sq += val * val;
+    }
+
+    __shared__ float shared_sum[256];
+    __shared__ float shared_sum_sq[256];
+    
+    shared_sum[tid] = sum;
+    shared_sum_sq[tid] = sum_sq;
+    __syncthreads();
+
+    // Block reduction for sum and sum_sq
+    for (int stride = blockDim.x/2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            shared_sum[tid] += shared_sum[tid + stride];
+            shared_sum_sq[tid] += shared_sum_sq[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    float total_sum = shared_sum[0];
+    float total_sum_sq = shared_sum_sq[0];
+    
+    float mean = total_sum / batch_size;
+    float var = (total_sum_sq / batch_size) - (mean * mean);
+
+    // Update running statistics if training
+    if (training_mode) {
+        float new_mean = running_mean[j] * (1 - momentum) + mean * momentum;
+        float new_var = running_var[j] * (1 - momentum) + var * momentum;
+        running_mean[j] = new_mean;
+        running_var[j] = new_var;
+    } else {
+        mean = running_mean[j];
+        var = running_var[j];
+    }
+
+    float inv_std = 1.0f / sqrt(var + eps);
+
+    // Second pass: apply normalization
+    for (int i = start; i < end; ++i) {
+        float val = x[i * out_features + j] * s;
+        float normalized = (val - mean) * inv_std * g + b;
+        output[i * out_features + j] = normalized;
+    }
+}
+
+torch::Tensor fused_scale_bn_cuda(
+    torch::Tensor x,
+    torch::Tensor scale,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    torch::Tensor running_mean,
+    torch::Tensor running_var,
+    bool training_mode,
+    float eps,
+    float momentum) {
+    
+    int batch_size = x.size(0);
+    int out_features = x.size(1);
+    
+    auto output = torch::empty_like(x);
+    
+    int num_blocks = out_features;
+    int threads_per_block = 256;
+    
+    fused_scale_bn_kernel<<<num_blocks, threads_per_block>>>(
+        x.data_ptr<float>(),
+        scale.data_ptr<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        running_mean.data_ptr<float>(),
+        running_var.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        out_features,
+        eps,
+        momentum,
+        training_mode);
+    
+    return output;
+}
+"""
+
+fused_scale_bn_cpp_source = """
+torch::Tensor fused_scale_bn_cuda(
+    torch::Tensor x,
+    torch::Tensor scale,
+    torch::Tensor gamma,
+    torch::Tensor beta,
+    torch::Tensor running_mean,
+    torch::Tensor running_var,
+    bool training_mode,
+    float eps,
+    float momentum);
+"""
+
+# Load the CUDA extension
+fused_scale_bn = load_inline(
+    name='fused_scale_bn',
+    cpp_sources=fused_scale_bn_cpp_source,
+    cuda_sources=fused_scale_bn_source,
+    functions=['fused_scale_bn_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scale_shape, eps=1e-5, momentum=0.1):
+        super().__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.scale = nn.Parameter(torch.randn(scale_shape))
+        
+        # Replace BatchNorm with learnable parameters
+        self.gamma = nn.Parameter(torch.ones(out_features))
+        self.beta = nn.Parameter(torch.zeros(out_features))
+        self.register_buffer('running_mean', torch.zeros(out_features))
+        self.register_buffer('running_var', torch.ones(out_features))
+        self.eps = eps
+        self.momentum = momentum
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = fused_scale_bn.fused_scale_bn_cuda(
+            x,
+            self.scale,
+            self.gamma,
+            self.beta,
+            self.running_mean,
+            self.running_var,
+            self.training,
+            self.eps,
+            self.momentum
+        )
+        return x
+```
+
+Kernel 2 (runtime: 7.49 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom batchnorm kernel for fused normalization
+fused_bn_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_bn_kernel(
+    const float* input,
+    const float* mean,
+    const float* var,
+    const float* weight,
+    const float* bias,
+    float eps,
+    float* output,
+    int num_elements,
+    int num_features
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        int feature_idx = idx % num_features;
+        float inv_std = 1.0f / sqrtf(var[feature_idx] + eps);
+        float normalized = (input[idx] - mean[feature_idx]) * inv_std;
+        output[idx] = normalized * weight[feature_idx] + bias[feature_idx];
+    }
+}
+
+torch::Tensor fused_bn_cuda(
+    torch::Tensor input,
+    torch::Tensor mean,
+    torch::Tensor var,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    float eps
+) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    int num_features = input.size(1);
+
+    const int threads = 256;
+    const int blocks = (num_elements + threads - 1) / threads;
+
+    fused_bn_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        mean.data_ptr<float>(),
+        var.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        eps,
+        output.data_ptr<float>(),
+        num_elements,
+        num_features
+    );
+
+    return output;
+}
+"""
+
+fused_bn_cpp = "torch::Tensor fused_bn_cuda(torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, float);"
+
+fused_bn = load_inline(
+    name='fused_bn',
+    cpp_sources=fused_bn_cpp,
+    cuda_sources=fused_bn_source,
+    functions=['fused_bn_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scale_shape, eps=1e-5, momentum=0.1):
+        super().__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.scale = nn.Parameter(torch.randn(scale_shape))
+        self.register_buffer('running_mean', torch.zeros(out_features))
+        self.register_buffer('running_var', torch.ones(out_features))
+        self.bn_weight = nn.Parameter(torch.ones(out_features))
+        self.bn_bias = nn.Parameter(torch.zeros(out_features))
+        self.eps = eps
+        self.momentum = momentum
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x_scaled = x * self.scale
+
+        if self.training:
+            # Compute batch statistics for scaled input
+            batch_mean = x_scaled.mean(dim=0)
+            batch_var = x_scaled.var(dim=0, unbiased=False)
+            
+            # Update running statistics
+            with torch.no_grad():
+                self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
+                self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_var
+        else:
+            batch_mean = self.running_mean
+            batch_var = self.running_var
+
+        # Apply fused normalization kernel
+        x = fused_bn.fused_bn_cuda(
+            x_scaled,
+            batch_mean,
+            batch_var,
+            self.bn_weight,
+            self.bn_bias,
+            self.eps
+        )
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features, scale_shape]
+```

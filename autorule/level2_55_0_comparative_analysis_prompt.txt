@@ -1,0 +1,252 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 16.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused max pool, sum, and scale operations with optimizations
+max_pool_sum_scale_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template <unsigned int blockSize>
+__device__ __forceinline__ float warpReduceSum(float sum) {
+    if (blockSize >= 32) sum += __shfl_down_sync(0xffffffff, sum, 16);
+    if (blockSize >= 16) sum += __shfl_down_sync(0xffffffff, sum, 8);
+    if (blockSize >= 8) sum += __shfl_down_sync(0xffffffff, sum, 4);
+    if (blockSize >= 2) sum += __shfl_down_sync(0xffffffff, sum, 2);
+    if (blockSize >= 1) sum += __shfl_down_sync(0xffffffff, sum, 1);
+    return sum;
+}
+
+__global__ void max_pool_sum_scale_kernel(const float* __restrict__ input, float* __restrict__ output, 
+                                        int out_features, float scale_factor, 
+                                        int batch_size) {
+    int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    const float* sample_input = input + batch_idx * out_features;
+    float sum = 0.0f;
+
+    const int num_pairs = out_features / 2;
+    const int tid = threadIdx.x;
+    int i = tid;
+
+    // Process 4 elements per loop iteration for better ILP
+    while (i < num_pairs) {
+        float2 pair = reinterpret_cast<const float2*>(sample_input)[i];
+        sum += fmaxf(pair.x, pair.y);
+        i += blockDim.x;
+        
+        if (i < num_pairs) {
+            pair = reinterpret_cast<const float2*>(sample_input)[i];
+            sum += fmaxf(pair.x, pair.y);
+            i += blockDim.x;
+        }
+    }
+
+    // Warp-level reduction
+    sum = warpReduceSum<32>(sum);
+
+    // Dynamic shared memory allocation for partial sums
+    extern __shared__ float shared_mem[];
+    float* shared_sum = shared_mem;
+    int num_warps = blockDim.x / 32;
+    int warp_id = tid / 32;
+    int lane_id = tid % 32;
+
+    if (lane_id == 0) {
+        shared_sum[warp_id] = sum;
+    }
+
+    __syncthreads();
+
+    // Final reduction using first warp
+    if (warp_id == 0) {
+        float sum_total = (lane_id < num_warps) ? shared_sum[lane_id] : 0.0f;
+        sum_total = warpReduceSum<32>(sum_total);
+        
+        if (lane_id == 0) {
+            output[batch_idx] = sum_total * scale_factor;
+        }
+    }
+}
+
+torch::Tensor max_pool_sum_scale_cuda(torch::Tensor input, float scale_factor) {
+    int batch_size = input.size(0);
+    int out_features = input.size(1);
+    auto output = torch::zeros({batch_size}, input.options());
+
+    if (out_features % 2 != 0) {
+        AT_ERROR("out_features must be even for kernel_size=2 max pooling");
+    }
+
+    const int threads_per_block = 512;  // Increased block size
+    const int num_blocks = batch_size;
+    size_t shared_mem_size = (threads_per_block / 32) * sizeof(float);
+    
+    max_pool_sum_scale_kernel<<<num_blocks, threads_per_block, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        out_features,
+        scale_factor,
+        batch_size
+    );
+
+    return output;
+}
+"""
+
+max_pool_sum_scale_cpp_source = "torch::Tensor max_pool_sum_scale_cuda(torch::Tensor input, float scale_factor);"
+
+# Compile the CUDA extension with optimizations
+max_pool_sum_scale = load_inline(
+    name='max_pool_sum_scale',
+    cpp_sources=max_pool_sum_scale_cpp_source,
+    cuda_sources=max_pool_sum_scale_source,
+    functions=['max_pool_sum_scale_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[],
+    extra_cuda_cflags=['-O3', '-use_fast_math', '--maxrregcount=32']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, kernel_size, scale_factor):
+        super(ModelNew, self).__init__()
+        if kernel_size != 2:
+            raise ValueError("Custom kernel only supports kernel_size=2")
+        if out_features % 2 != 0:
+            raise ValueError("out_features must be even for kernel_size=2 max pooling")
+            
+        self.matmul = nn.Linear(in_features, out_features)
+        self.scale_factor = scale_factor
+        self.custom_op = max_pool_sum_scale
+
+    def forward(self, x):
+        x = self.matmul(x)
+        x = self.custom_op.max_pool_sum_scale_cuda(x, self.scale_factor)
+        return x
+```
+
+Kernel 2 (runtime: 16.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused kernel with correct reduction and compiler flags
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_maxpool_sum_scale_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    int batch_size,
+    int out_features,
+    float scale_factor
+) {
+    const int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    const float* batch_row = input + batch_idx * out_features;
+    const int tid = threadIdx.x;
+    const int num_pairs = out_features / 2;
+    const int elements_per_thread = (num_pairs + blockDim.x - 1) / blockDim.x;
+
+    float thread_sum = 0.0f;
+
+    // Vectorized processing with coalesced memory access
+    for (int i = 0; i < elements_per_thread; ++i) {
+        const int pair_idx = tid + i * blockDim.x;
+        if (pair_idx >= num_pairs) break;
+        
+        const int offset = pair_idx * 2;
+        float2 pair = *reinterpret_cast<const float2*>(batch_row + offset);
+        thread_sum += fmaxf(pair.x, pair.y);
+    }
+
+    // Warp-level reduction using shuffle instructions
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        thread_sum += __shfl_down_sync(0xFFFFFFFF, thread_sum, offset);
+    }
+
+    // Shared memory for inter-warp reduction
+    extern __shared__ float warp_sums[];
+    if (tid % 32 == 0) {
+        warp_sums[tid / 32] = thread_sum;
+    }
+    __syncthreads();
+
+    // Final reduction across warps using first warp
+    if (tid < 32) {
+        float total = 0.0f;
+        const int num_warps = (blockDim.x + 31) / 32;
+        
+        for (int i = tid; i < num_warps; i += 32) {
+            total += warp_sums[i];
+        }
+        
+        // Warp-wide reduction of partial sums
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            total += __shfl_down_sync(0xFFFFFFFF, total, offset);
+        }
+
+        if (tid == 0) {
+            output[batch_idx] = total * scale_factor;
+        }
+    }
+}
+
+torch::Tensor fused_ops_cuda(
+    torch::Tensor input,
+    float scale_factor
+) {
+    const int batch_size = input.size(0);
+    const int out_features = input.size(1);
+    auto output = torch::zeros({batch_size}, input.options());
+
+    const int block_size = 512;  // Optimal for modern GPUs
+    const dim3 grid(batch_size);
+    const dim3 block(block_size);
+    const size_t shared_mem = ((block_size + 31)/32) * sizeof(float);
+
+    fused_maxpool_sum_scale_kernel<<<grid, block, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        out_features,
+        scale_factor
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_ops_cuda(torch::Tensor input, float scale_factor);"
+
+# Load the optimized CUDA kernel with correct compiler flags
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_ops_cuda'],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, kernel_size, scale_factor):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.scale_factor = scale_factor
+        assert kernel_size == 2, "Kernel size must be 2 for fused implementation"
+
+    def forward(self, x):
+        x = self.matmul(x)
+        x = fused_ops.fused_ops_cuda(x, self.scale_factor)
+        return x
+```

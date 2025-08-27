@@ -1,0 +1,5 @@
+[
+  "The kernel is compiled with the --use_fast_math flag to enable aggressive floating-point optimizations.",
+  "The kernel fuses multiple arithmetic operations into a single expression to allow compiler optimization into fused multiply-add (FMA) instructions.",
+  "The kernel uses approximate intrinsic functions (e.g., rsqrtf) for faster computation when enabled by compiler flags."
+]

@@ -1,0 +1,137 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 12.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for upper triangular matrix multiplication
+upper_tri_matmul_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void upper_tri_matmul_kernel(const float* A, const float* B, float* C, int N) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i >= N || j >= N || i > j) return;
+
+    float sum = 0.0f;
+    for (int k = i; k <= j; ++k) {
+        sum += A[i * N + k] * B[k * N + j];
+    }
+    C[i * N + j] = sum;
+}
+
+torch::Tensor upper_tri_matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    int N = A.size(0);
+    auto C = torch::zeros_like(A);
+
+    dim3 blockDim(16, 16);
+    dim3 gridDim((N + blockDim.x - 1) / blockDim.x, (N + blockDim.y - 1) / blockDim.y);
+
+    upper_tri_matmul_kernel<<<gridDim, blockDim>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        N
+    );
+
+    return C;
+}
+"""
+
+upper_tri_matmul_cpp_source = "torch::Tensor upper_tri_matmul_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Compile the inline CUDA code
+upper_tri_matmul = load_inline(
+    name="upper_tri_matmul",
+    cpp_sources=upper_tri_matmul_cpp_source,
+    cuda_sources=upper_tri_matmul_source,
+    functions=["upper_tri_matmul_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.upper_tri_matmul = upper_tri_matmul
+
+    def forward(self, A, B):
+        return self.upper_tri_matmul.upper_tri_matmul_cuda(A, B)
+```
+
+Kernel 2 (runtime: 10.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for optimized upper triangular matrix multiplication
+upper_tri_matmul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+const int TILE_SIZE = 32;
+
+__global__ void upper_tri_matmul_kernel(const float* A, const float* B, float* C, int N) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (row >= N || col >= N || row > col) return;
+
+    float sum = 0.0f;
+    const int start_k = row;
+    const int end_k = col;
+    
+    // Loop unrolling for better instruction-level parallelism
+    int k = start_k;
+    for (; k <= end_k - 4; k += 4) {
+        sum += A[row * N + k] * B[k * N + col];
+        sum += A[row * N + (k+1)] * B[(k+1) * N + col];
+        sum += A[row * N + (k+2)] * B[(k+2) * N + col];
+        sum += A[row * N + (k+3)] * B[(k+3) * N + col];
+    }
+    
+    // Handle remaining elements
+    for (; k <= end_k; ++k) {
+        sum += A[row * N + k] * B[k * N + col];
+    }
+    
+    C[row * N + col] = sum;
+}
+
+torch::Tensor upper_tri_matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    int N = A.size(0);
+    auto C = torch::zeros({N, N}, A.options());
+
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid((N + TILE_SIZE - 1) / TILE_SIZE, (N + TILE_SIZE - 1) / TILE_SIZE);
+    
+    upper_tri_matmul_kernel<<<grid, block>>>(A.data_ptr<float>(), B.data_ptr<float>(), C.data_ptr<float>(), N);
+    
+    return C;
+}
+"""
+
+upper_tri_matmul_cpp_source = "torch::Tensor upper_tri_matmul_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Load the optimized CUDA kernel
+upper_tri_matmul = load_inline(
+    name='upper_tri_matmul',
+    cpp_sources=upper_tri_matmul_cpp_source,
+    cuda_sources=upper_tri_matmul_source,
+    functions=['upper_tri_matmul_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O2', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.upper_tri_matmul = upper_tri_matmul
+
+    def forward(self, A, B):
+        return self.upper_tri_matmul.upper_tri_matmul_cuda(A, B)
+```

@@ -1,0 +1,9 @@
+[
+  "The kernel uses shared memory tiling to reduce global memory access.",
+  "The kernel uses loop unrolling via pragma directives and template parameters to reduce loop overhead.",
+  "The kernel employs memory coalescing through tiling and thread block structure to optimize global memory access patterns.",
+  "The kernel uses specialized variants via compile-time constants for kernel parameters to enable compiler optimizations.",
+  "The kernel uses __restrict__ qualifiers on pointers to enable compiler optimizations by preventing pointer aliasing.",
+  "The kernel configures grid and block dimensions to align with data structure dimensions for improved locality and parallelism.",
+  "The kernel uses thread block sizes that are multiples of warp size (32)."
+]

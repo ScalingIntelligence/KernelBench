@@ -1,0 +1,292 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 44.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Combined CUDA sources for fused operations
+cuda_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+// Fused Tanh+HardSwish+Add kernel
+__global__ void fused_act_add_kernel(const float* x_norm, const float* x_conv, float* out, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float val = x_norm[idx];
+        // Tanh activation
+        float tanh_val = tanhf(val);
+        // HardSwish: x * relu6(x + 3) / 6
+        float hs_val = tanh_val * fminf(fmaxf(tanh_val + 3.0f, 0.0f), 6.0f) / 6.0f;
+        // Residual addition
+        out[idx] = x_conv[idx] + hs_val;
+    }
+}
+
+torch::Tensor fused_act_add_cuda(torch::Tensor x_norm, torch::Tensor x_conv) {
+    auto out = torch::zeros_like(x_conv);
+    int num_elements = x_conv.numel();
+    const int block_size = 256;
+    int num_blocks = (num_elements + block_size - 1) / block_size;
+    fused_act_add_kernel<<<num_blocks, block_size>>>(x_norm.data_ptr<float>(), x_conv.data_ptr<float>(), out.data_ptr<float>(), num_elements);
+    return out;
+}
+
+// Optimized LogSumExp kernel with parallel reduction
+__global__ void logsumexp_kernel(const float* input, float* output, int B, int C, int H, int W) {
+    extern __shared__ float shared[];
+    int b = blockIdx.x;
+    int h = blockIdx.y;
+    int w = blockIdx.z;
+    
+    if (b >= B || h >= H || w >= W) return;
+    
+    float* max_shared = shared;
+    float* sum_shared = &shared[blockDim.x];
+    int tid = threadIdx.x;
+    
+    // Initialize max values
+    float local_max = -INFINITY;
+    for (int c = tid; c < C; c += blockDim.x) {
+        int idx = ((b * C + c) * H + h) * W + w;
+        local_max = fmaxf(local_max, input[idx]);
+    }
+    max_shared[tid] = local_max;
+    __syncthreads();
+    
+    // Parallel max reduction
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            max_shared[tid] = fmaxf(max_shared[tid], max_shared[tid + s]);
+        }
+        __syncthreads();
+    }
+    
+    float max_val = max_shared[0];
+    __syncthreads();
+    
+    // Compute sum of exps
+    float local_sum = 0.0f;
+    for (int c = tid; c < C; c += blockDim.x) {
+        int idx = ((b * C + c) * H + h) * W + w;
+        local_sum += expf(input[idx] - max_val);
+    }
+    sum_shared[tid] = local_sum;
+    __syncthreads();
+    
+    // Parallel sum reduction
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sum_shared[tid] += sum_shared[tid + s];
+        }
+        __syncthreads();
+    }
+    
+    if (tid == 0) {
+        output[(b * H + h) * W + w] = logf(sum_shared[0]) + max_val;
+    }
+}
+
+torch::Tensor logsumexp_cuda(torch::Tensor input) {
+    int B = input.size(0);
+    int C = input.size(1);
+    int H = input.size(2);
+    int W = input.size(3);
+    
+    auto output = torch::empty({B, 1, H, W}, input.options());
+    dim3 grid(B, H, W);
+    int threads = min(1024, C);
+    size_t shared_size = 2 * threads * sizeof(float);
+    
+    logsumexp_kernel<<<grid, threads, shared_size>>>(
+        input.data_ptr<float>(), output.data_ptr<float>(), B, C, H, W
+    );
+    
+    return output;
+}
+"""
+
+cpp_source = """
+torch::Tensor fused_act_add_cuda(torch::Tensor x_norm, torch::Tensor x_conv);
+torch::Tensor logsumexp_cuda(torch::Tensor input);
+"""
+
+# Load custom operators
+custom_ops = load_inline(
+    name='custom_ops',
+    cpp_sources=cpp_source,
+    cuda_sources=cuda_source,
+    functions=['fused_act_add_cuda', 'logsumexp_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, groups, eps=1e-5):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.group_norm = nn.GroupNorm(groups, out_channels, eps=eps)
+
+    def forward(self, x):
+        x_conv = self.conv(x)
+        x_norm = self.group_norm(x_conv)
+        # Fused activation and residual add
+        x_res = custom_ops.fused_act_add_cuda(x_norm, x_conv)
+        # Optimized LogSumExp
+        return custom_ops.logsumexp_cuda(x_res)
+```
+
+Kernel 2 (runtime: 9.94 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused GroupNorm+Tanh+HardSwish+Residual kernel
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_group_norm_act_residual_kernel(
+    const float* x_conv,
+    const float* gamma,
+    const float* beta,
+    float* output,
+    int N, int C, int H, int W,
+    int groups,
+    float eps
+) {
+    int n = blockIdx.y;
+    int g = blockIdx.x;
+    int channels_per_group = C / groups;
+    int start_c = g * channels_per_group;
+    int elements_per_group = channels_per_group * H * W;
+
+    extern __shared__ float sdata[];
+    float* sum_ptr = sdata;
+    float* sum_sq_ptr = &sdata[blockDim.x];
+
+    float sum = 0.0f;
+    float sum_sq = 0.0f;
+
+    for (int i = threadIdx.x; i < elements_per_group; i += blockDim.x) {
+        int c = start_c + (i / (H * W));
+        int hw = i % (H * W);
+        int h = hw / W;
+        int w = hw % W;
+        float val = x_conv[((n * C + c) * H + h) * W + w];
+        sum += val;
+        sum_sq += val * val;
+    }
+
+    sum_ptr[threadIdx.x] = sum;
+    sum_sq_ptr[threadIdx.x] = sum_sq;
+    __syncthreads();
+
+    // Parallel reduction
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (threadIdx.x < s) {
+            sum_ptr[threadIdx.x] += sum_ptr[threadIdx.x + s];
+            sum_sq_ptr[threadIdx.x] += sum_sq_ptr[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        float mean = sum_ptr[0] / elements_per_group;
+        float var = (sum_sq_ptr[0]/elements_per_group) - (mean*mean) + eps;
+        sum_ptr[0] = mean;
+        sum_sq_ptr[0] = 1.0f / sqrtf(var);
+    }
+    __syncthreads();
+
+    float mean = sum_ptr[0];
+    float inv_std = sum_sq_ptr[0];
+
+    for (int i = threadIdx.x; i < elements_per_group; i += blockDim.x) {
+        int c = start_c + (i / (H * W));
+        int hw = i % (H * W);
+        int h = hw / W;
+        int w = hw % W;
+        float x = x_conv[((n * C + c) * H + h) * W + w];
+        
+        // GroupNorm
+        float normalized = (x - mean) * inv_std;
+        float scaled = normalized * gamma[c] + beta[c];
+        
+        // Tanh + HardSwish
+        float tanh_val = tanhf(scaled);
+        float hard_swish_val = tanh_val * __fdividef(fminf(fmaxf(tanh_val + 3.0f, 0.0f), 6.0f), 6.0f);
+        
+        // Residual addition
+        output[((n * C + c) * H + h) * W + w] = x_conv[((n * C + c) * H + h) * W + w] + hard_swish_val;
+    }
+}
+
+torch::Tensor fused_group_norm_act_residual_cuda(
+    const torch::Tensor& x_conv,
+    const torch::Tensor& gamma,
+    const torch::Tensor& beta,
+    int groups,
+    float eps
+) {
+    auto output = torch::empty_like(x_conv);
+    int N = x_conv.size(0);
+    int C = x_conv.size(1);
+    int H = x_conv.size(2);
+    int W = x_conv.size(3);
+
+    TORCH_CHECK(C % groups == 0, "Number of channels must be divisible by groups");
+
+    dim3 block(256);
+    dim3 grid(groups, N);
+    size_t shared_mem_size = 2 * block.x * sizeof(float);
+
+    fused_group_norm_act_residual_kernel<<<grid, block, shared_mem_size>>>(
+        x_conv.data_ptr<float>(),
+        gamma.data_ptr<float>(),
+        beta.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, H, W,
+        groups,
+        eps
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = """
+torch::Tensor fused_group_norm_act_residual_cuda(const torch::Tensor& x_conv, const torch::Tensor& gamma, const torch::Tensor& beta, int groups, float eps);
+"""
+
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_group_norm_act_residual_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, groups, eps=1e-5):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.group_norm = nn.GroupNorm(groups, out_channels, eps=eps)
+
+    def forward(self, x):
+        x_conv = self.conv(x)
+        x_res = fused_op.fused_group_norm_act_residual_cuda(
+            x_conv,
+            self.group_norm.weight,
+            self.group_norm.bias,
+            self.group_norm.num_groups,
+            self.group_norm.eps
+        )
+        return torch.logsumexp(x_res, dim=1, keepdim=True)
+```

@@ -1,0 +1,191 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 31.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernel for optimized sum reduction along dim=1
+sum_reduce_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void sum_reduce_dim1_kernel(const float* input, float* output, int dim1, int dim2, int batch_size) {
+    int block_idx = blockIdx.x;
+    int b = block_idx / dim2;
+    int d2 = block_idx % dim2;
+
+    if (b >= batch_size) return;
+
+    int tid = threadIdx.x;
+    const int threads_per_block = blockDim.x;
+    const int elements_per_thread = (dim1 + threads_per_block - 1) / threads_per_block;
+
+    float sum = 0.0f;
+    #pragma unroll
+    for (int i = 0; i < elements_per_thread; ++i) {
+        int idx = tid + i * threads_per_block;
+        if (idx < dim1) {
+            sum += input[b * dim1 * dim2 + idx * dim2 + d2];
+        }
+    }
+
+    __shared__ float shared_sum[256];
+    shared_sum[tid] = sum;
+    __syncthreads();
+
+    // Parallel reduction
+    for (int s = 128; s > 0; s >>= 1) {
+        if (tid < s && (tid + s) < threads_per_block) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[b * dim2 + d2] = shared_sum[0];
+    }
+}
+
+torch::Tensor sum_reduce_dim1_cuda(torch::Tensor input) {
+    int batch_size = input.size(0);
+    int dim1 = input.size(1);
+    int dim2 = input.size(2);
+
+    auto output = torch::zeros({batch_size, 1, dim2}, input.options());
+    
+    const int threads_per_block = 256;
+    const int num_blocks = batch_size * dim2;
+
+    sum_reduce_dim1_kernel<<<num_blocks, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        dim1,
+        dim2,
+        batch_size
+    );
+
+    return output;
+}
+"""
+
+sum_reduce_cpp_source = "torch::Tensor sum_reduce_dim1_cuda(torch::Tensor input);"
+
+# Compile the inline CUDA code
+sum_reduce = load_inline(
+    name="sum_reduce",
+    cpp_sources=sum_reduce_cpp_source,
+    cuda_sources=sum_reduce_source,
+    functions=["sum_reduce_dim1_cuda"],
+    verbose=True,
+    extra_cflags=["-O2"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+        self.sum_reduce_cuda = sum_reduce.sum_reduce_dim1_cuda
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.dim == 1 and x.is_cuda:
+            return self.sum_reduce_cuda(x)
+        else:
+            return torch.sum(x, dim=self.dim, keepdim=True)
+```
+
+Kernel 2 (runtime: 14.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the custom CUDA kernel for sum reduction along dim=1
+sum_reduce_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void sum_reduce_kernel(const float* __restrict__ input, float* __restrict__ output, 
+                                int batch_size, int dim1, int dim2) {
+    const int k = blockIdx.x * blockDim.x + threadIdx.x;
+    const int b = blockIdx.y;
+    
+    if (b >= batch_size || k >= dim2) return;
+    
+    const int input_base = b * dim1 * dim2 + k;
+    float sum = 0.0f;
+    
+    // Unrolled loop for better performance
+    #pragma unroll(4)
+    for (int i = 0; i < dim1; ++i) {
+        sum += input[input_base + i * dim2];
+    }
+    
+    output[b * dim2 + k] = sum;
+}
+
+torch::Tensor sum_reduce_cuda(torch::Tensor input, int dim) {
+    TORCH_CHECK(dim == 1, "This kernel only supports reduction along dim=1");
+    input = input.contiguous();
+    const auto sizes = input.sizes();
+    const int batch_size = sizes[0];
+    const int dim1 = sizes[1];
+    const int dim2 = sizes[2];
+    
+    auto output = torch::zeros({batch_size, 1, dim2}, input.options());
+    
+    const int block_size = 256;
+    const dim3 grid((dim2 + block_size - 1) / block_size, batch_size);
+    
+    sum_reduce_kernel<<<grid, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        dim1,
+        dim2
+    );
+    
+    return output;
+}
+"""
+
+sum_reduce_cpp_source = "torch::Tensor sum_reduce_cuda(torch::Tensor input, int dim);"
+
+# Load the custom CUDA extension
+sum_reduce = load_inline(
+    name="sum_reduce",
+    cpp_sources=sum_reduce_cpp_source,
+    cuda_sources=sum_reduce_source,
+    functions=["sum_reduce_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    """
+    Optimized model using custom CUDA kernel for sum reduction along dim=1
+    """
+    def __init__(self, dim: int):
+        super().__init__()
+        self.dim = dim
+        self._check_dim()
+        
+    def _check_dim(self):
+        if self.dim != 1:
+            raise NotImplementedError("This implementation only supports reduction along dim=1")
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return sum_reduce.sum_reduce_cuda(x, self.dim)
+
+# Original configuration parameters
+batch_size = 128
+dim1 = 4096
+dim2 = 4095
+reduce_dim = 1
+
+def get_inputs():
+    return [torch.rand(batch_size, dim1, dim2).cuda()]
+
+def get_init_inputs():
+    return [reduce_dim]
+```

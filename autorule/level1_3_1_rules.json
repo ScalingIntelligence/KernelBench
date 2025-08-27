@@ -1,0 +1,4 @@
+[
+  "The kernel uses compiler optimization flags (-O3) for aggressive code optimization.",
+  "The kernel uses const qualifiers for input pointers to enable compiler optimizations on read-only data."
+]

@@ -1,0 +1,75 @@
+REASONING TRACE:
+Okay, let's break this down. The user wants me to extract rule-like statements from the reasoning provided about why Kernel 2 is faster than Kernel 1. The rules need to be general, objective, and applicable to various CUDA kernels.
+
+First, I'll go through the reasoning step by step. The main points mentioned are shared memory caching, grid-stride loops, use of __ldg, __restrict__ qualifiers, block size, use_fast_math, vectorized access, and memory coalescing.
+
+Looking at the first optimization: using shared memory to store bias and scale. This reduces global memory access. So a rule could be "The kernel uses shared memory tiling to reduce global memory access." But in the example, Example 2 is similar. The reasoning mentions loading into shared memory once per block. So maybe rephrase to something like "The kernel utilizes shared memory to cache frequently accessed parameters."
+
+Next, grid-stride loop pattern. The reasoning says this allows processing multiple elements per thread, improving occupancy and memory coalescing. A rule here could be "The kernel employs a grid-stride loop pattern to process multiple elements per thread and improve memory coalescing."
+
+Use of __ldg() is mentioned as using the read-only data cache. So a rule like "The kernel uses the __ldg intrinsic to access read-only data through the texture cache." That's specific but still a general practice.
+
+__restrict__ qualifiers help the compiler optimize by indicating no pointer aliasing. So "The kernel uses __restrict__ qualifiers on pointers to enable compiler optimizations."
+
+Block size of 512 vs 256. The example given in the user's examples mentions block sizes as multiples of warp size. Here, the reasoning says larger block size improves occupancy. So a rule could be "The kernel uses larger thread block sizes to improve occupancy and resource utilization."
+
+The -use_fast_math flag is a compiler optimization. So "The kernel is compiled with fast math flags to enable approximate transcendental functions."
+
+Vectorized memory access and memory coalescing are mentioned. The grid-stride helps with coalescing. So "The kernel employs memory access patterns that enable vectorized loads and memory coalescing."
+
+Precomputing H*W as hw might be a minor point, but the reasoning says it's precomputed. However, that's specific to this kernel. Maybe not general enough. The key is to find general rules.
+
+Avoiding repeated computations by precomputing hw: but this is more of a kernel-specific optimization. Not sure if that's a general rule.
+
+Shared memory synchronization with __syncthreads() is mentioned. So a rule like "The kernel synchronizes threads after loading shared memory to ensure data consistency."
+
+Putting it all together, the rules should capture the general CUDA optimization techniques applied here. Let me list them:
+
+1. Using shared memory to cache parameters from global memory.
+2. Grid-stride loop pattern for processing multiple elements and better memory access.
+3. __ldg for read-only data via texture cache.
+4. __restrict__ qualifiers for compiler optimizations.
+5. Larger block sizes for occupancy.
+6. Compiler flags like -use_fast_math.
+7. Memory access patterns for coalescing and vectorization.
+8. Synchronization after shared memory loads.
+
+I need to check if these are all objective and deterministic. For example, "uses shared memory tiling" is a rule from the examples. The reasoning here uses shared memory to cache bias and scale, so "The kernel uses shared memory to cache frequently accessed data from global memory."
+
+Grid-stride loop is a known pattern, so that's a valid rule. __ldg and __restrict__ are specific techniques. Block size as a multiple of warp size is an example, but here it's about larger block sizes. However, the example given by the user includes "thread block sizes that are multiples of warp size (32)", but here the reasoning mentions using 512 which is a multiple of 32. So maybe a rule about block size being a multiple of warp size, but the reasoning here uses 512 which is 16 warps. Alternatively, the rule could be about block size choice for occupancy. But the example given by the user is about multiples of warp size. The reasoning here says Kernel 2 uses 512, which is a multiple of 32 (16*32=512). So perhaps that's covered under the example rule. But the reasoning emphasizes larger block size for occupancy. Hmm. The user's example 3 is about multiples of warp size. The reasoning here's block size is 512, which is a multiple, but the key point in the reasoning is the size being larger (512 vs 256). So maybe two separate rules: one about block size being multiples of warp size, and another about larger block sizes. But the example given by the user includes the multiple of warp size as a rule. However, in the reasoning, the block size is 512, which is a multiple, but the analysis says that the larger size improves occupancy. So perhaps the rule here is about block size choice for occupancy, not just being a multiple. But the example given by the user is about multiples. So maybe the correct rule here is "The kernel uses thread block sizes that maximize occupancy, such as larger sizes within hardware limits."
+
+But the user wants rules that can be applied objectively. So perhaps "The kernel uses thread block sizes that are multiples of the warp size (e.g., 32, 64, 128, 256, 512)." But in the reasoning, the block size is 512, which is a multiple, but the key point was larger size. However, the example from the user includes that as a rule. So maybe include both? Wait, the user's example 3 is "The kernel uses thread block sizes that are multiples of warp size (32)." So that's one rule. The reasoning here's Kernel 2 uses 512, which is a multiple, so that's covered. But the analysis also mentions that larger block sizes can improve occupancy. However, the rule should be general. So perhaps the rule here is that the block size is a multiple of warp size, which is already covered in the example. But the reasoning's point is that 512 is larger, leading to better occupancy. But that's more of a heuristic. The objective rule is that the block size is a multiple of 32. So in this case, since Kernel 2 uses 512 (a multiple of 32), that's a valid rule. But the reasoning emphasizes the size being larger. However, the user's examples include the multiple of warp size as a rule. So perhaps the correct rule here is that the block size is a multiple of the warp size. But the reasoning's Kernel 1 uses 256 (which is also a multiple), so that's not the differentiating factor. The key difference in block size is 512 vs 256, both multiples. So maybe the block size being larger is not a rule, but the multiple is. But since both are multiples, that's not the reason for the speedup. Therefore, the actual rule here is about block size choice for occupancy, which is more subjective. Hmm, this is tricky.
+
+Alternatively, perhaps the block size being 512 allows more threads per block, which can be better for occupancy depending on the GPU's resources. But as a general rule, it's hard to state that without knowing the specific GPU. So maybe the rule is about using larger block sizes where possible, but that's not objective. The user wants rules that can be judged objectively. So perhaps the rule is that the kernel uses a block size that is a multiple of the warp size, which both kernels do, so that's not the differentiator. Therefore, the block size difference might not lead to a rule here, unless the reasoning explicitly states that larger block sizes improve performance, which it does. But as a general rule, it's not always true that larger block sizes are better. It depends on the kernel and GPU. So maybe that's not a good rule. Therefore, perhaps the block size isn't the key rule here, but the other factors are.
+
+So focusing back on the main points: shared memory caching, grid-stride loops, __ldg, __restrict__, compiler flags, memory coalescing.
+
+The final list of rules would be:
+
+1. The kernel uses shared memory to cache frequently accessed data from global memory.
+2. The kernel employs a grid-stride loop pattern to process multiple elements per thread.
+3. The kernel uses the __ldg intrinsic to access read-only data through the texture cache.
+4. The kernel utilizes __restrict__ qualifiers on pointers to enable compiler optimizations.
+5. The kernel is compiled with fast math flags to enable approximate transcendental functions.
+6. The kernel employs memory access patterns that enable vectorized loads and memory coalescing.
+7. The kernel synchronizes threads after loading shared memory to ensure data consistency.
+
+These are all objective and can be checked by looking at the code or compilation commands. The block size being 512 is a multiple of warp size, but since both kernels use multiples (256 and 512), that's not the differentiator. The key differentiators are the other optimizations.
+
+
+ANSWER:
+
+
+[
+    "The kernel uses shared memory to cache frequently accessed parameters from global memory.",
+    "The kernel employs a grid-stride loop pattern to improve occupancy and memory coalescing.",
+    "The kernel utilizes the __ldg intrinsic for read-only data access via the texture cache.",
+    "The kernel uses __restrict__ qualifiers on pointers to enable compiler optimizations.",
+    "The kernel is compiled with fast math flags (-use_fast_math) for approximate transcendental functions.",
+    "The kernel employs memory access patterns that enable vectorized loads and memory coalescing.",
+    "The kernel uses thread block sizes that are multiples of warp size (32).",
+    "The kernel synchronizes threads with __syncthreads() after shared memory loads."
+]
+
+Usage:
+{'inputTokens': 1823, 'outputTokens': 2066, 'totalTokens': 3889}

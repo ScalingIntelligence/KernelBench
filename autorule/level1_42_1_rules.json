@@ -1,0 +1,8 @@
+[
+  "The kernel avoids shared memory usage to eliminate associated overheads like synchronization and data loading.",
+  "The kernel uses loop unrolling pragmas to enable compiler optimizations and reduce loop overhead.",
+  "The kernel employs a 1D grid configuration to improve GPU occupancy and simplify thread scheduling.",
+  "The kernel accesses global memory with coalesced patterns, leveraging cache locality for small data windows.",
+  "The kernel specializes in fixed kernel parameters (e.g., size, stride) to enable compile-time optimizations.",
+  "The kernel minimizes control flow complexity by avoiding runtime parameter checks and conditional logic."
+]

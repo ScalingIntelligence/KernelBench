@@ -1,0 +1,5 @@
+[
+  "The kernel precomputes constants outside of the kernel to avoid runtime calculations in each thread.",
+  "The kernel uses __restrict__ qualifiers on pointers to indicate no aliasing, enabling more aggressive compiler optimizations for memory accesses.",
+  "The kernel forces inline expansion of device functions to reduce function call overhead."
+]

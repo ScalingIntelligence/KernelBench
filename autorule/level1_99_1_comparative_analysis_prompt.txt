@@ -1,0 +1,161 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 0.0952 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Combined Distance and Triplet Margin Loss CUDA Source
+combined_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void combined_triplet_margin_loss(const float* anchor, const float* positive, const float* negative, float* losses, float margin, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    float pos_dist = anchor[i] - positive[i];
+    float neg_dist = anchor[i] - negative[i];
+
+    float loss = max(pos_dist - neg_dist + margin, 0.0f);
+    losses[i] = loss;
+}
+
+torch::Tensor combined_triplet_margin_loss_cuda(const torch::Tensor& anchor, const torch::Tensor& positive, const torch::Tensor& negative, float margin) {
+    auto n = anchor.size(0);
+    auto losses = torch::zeros(n, torch::kFloat32).cuda();
+
+    const int block_size = 256;
+    const int num_blocks = (n + block_size - 1) / block_size;
+
+    combined_triplet_margin_loss<<<num_blocks, block_size>>>(anchor.data_ptr<float>(), positive.data_ptr<float>(), negative.data_ptr<float>(), losses.data_ptr<float>(), margin, n);
+
+    return losses;
+}
+"""
+
+combined_cpp_source = (
+    "torch::Tensor combined_triplet_margin_loss_cuda(const torch::Tensor& anchor, const torch::Tensor& positive, const torch::Tensor& negative, float margin);"
+)
+
+# Compile the inline CUDA code for combined distance and triplet margin loss
+combined = load_inline(
+    name="combined",
+    cpp_sources=combined_cpp_source,
+    cuda_sources=combined_source,
+    functions=["combined_triplet_margin_loss_cuda"],
+    verbose=True,
+    extra_cflags=[""],
+    extra_ldflags=[""],
+)
+
+
+class ModelNew(nn.Module):
+    def __init__(self, margin=1.0):
+        super(ModelNew, self).__init__()
+        self.margin = margin
+
+    def forward(self, anchor, positive, negative):
+        losses = combined.combined_triplet_margin_loss_cuda(anchor, positive, negative, self.margin)
+        return losses.mean()
+
+# Example usage
+if __name__ == "__main__":
+    batch_size = 32768
+    input_shape = (8192,)
+    dim = 1
+
+    def get_inputs():
+        scale = torch.rand(())
+        return [torch.rand(batch_size, *input_shape) * scale, torch.rand(batch_size, *input_shape), torch.rand(batch_size, *input_shape)]
+
+    def get_init_inputs():
+        return [1.0]  # Default margin
+
+    model = ModelNew()
+    inputs = get_inputs()
+    anchor, positive, negative = inputs
+    loss = model(anchor, positive, negative)
+    print(loss)
+```
+
+Kernel 2 (runtime: 0.0944 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Combined Distance and Triplet Margin Loss CUDA Source
+combined_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void combined_triplet_margin_loss(const float* anchor, const float* positive, const float* negative, float* losses, float margin, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    float pos_dist = anchor[i] - positive[i];
+    float neg_dist = anchor[i] - negative[i];
+
+    float loss = max(pos_dist - neg_dist + margin, 0.0f);
+    losses[i] = loss;
+}
+
+torch::Tensor combined_triplet_margin_loss_cuda(const torch::Tensor& anchor, const torch::Tensor& positive, const torch::Tensor& negative, float margin) {
+    auto n = anchor.size(0);
+    auto losses = torch::zeros(n, torch::kFloat32).cuda();
+
+    const int block_size = 256;
+    const int num_blocks = (n + block_size - 1) / block_size;
+
+    combined_triplet_margin_loss<<<num_blocks, block_size>>>(anchor.data_ptr<float>(), positive.data_ptr<float>(), negative.data_ptr<float>(), losses.data_ptr<float>(), margin, n);
+
+    return losses;
+}
+"""
+
+combined_cpp_source = (
+    "torch::Tensor combined_triplet_margin_loss_cuda(const torch::Tensor& anchor, const torch::Tensor& positive, const torch::Tensor& negative, float margin);"
+)
+
+# Compile the inline CUDA code for combined distance and triplet margin loss
+combined = load_inline(
+    name="combined",
+    cpp_sources=combined_cpp_source,
+    cuda_sources=combined_source,
+    functions=["combined_triplet_margin_loss_cuda"],
+    verbose=True,
+    extra_cflags=[""],
+    extra_ldflags=[""],
+)
+
+
+class ModelNew(nn.Module):
+    def __init__(self, margin=1.0):
+        super(ModelNew, self).__init__()
+        self.margin = margin
+
+    def forward(self, anchor, positive, negative):
+        losses = combined.combined_triplet_margin_loss_cuda(anchor, positive, negative, self.margin)
+        return losses.mean()
+
+
+# Example usage
+if __name__ == "__main__":
+    batch_size = 32768
+    input_shape = (8192,)
+    dim = 1
+
+    def get_inputs():
+        scale = torch.rand(())
+        return [torch.rand(batch_size, *input_shape) * scale, torch.rand(batch_size, *input_shape), torch.rand(batch_size, *input_shape)]
+
+    def get_init_inputs():
+        return [1.0]  # Default margin
+
+    model = ModelNew()
+    inputs = get_inputs()
+    anchor, positive, negative = inputs
+    loss = model(anchor, positive, negative)
+    print(loss)
+```

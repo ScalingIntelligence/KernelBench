@@ -1,0 +1,7 @@
+[
+  "The kernel orders thread indices to prioritize output width, height, then channel and batch dimensions, enabling coalesced writes to the output tensor in NCHW layout.",
+  "The kernel groups threads processing the same output channel across spatial positions, allowing broadcasted and coalesced reads from the weight matrix in pointwise convolution.",
+  "The kernel avoids strided memory accesses to the weight matrix in pointwise convolution by ensuring consecutive threads access contiguous weight elements.",
+  "The kernel terminates outer loops early when input indices are out of bounds, reducing redundant inner loop iterations.",
+  "The kernel structures thread indexing to maximize spatial locality of input accesses in depthwise convolution, improving cache utilization."
+]

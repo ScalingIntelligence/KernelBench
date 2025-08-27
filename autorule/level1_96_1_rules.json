@@ -1,0 +1,7 @@
+[
+  "The kernel uses block-level shared memory reduction to minimize the number of atomic operations.",
+  "The kernel uses a block size that reduces the total number of blocks, thereby decreasing atomic operation frequency.",
+  "The kernel avoids per-warp atomic additions by aggregating results at the block level before a single atomic update.",
+  "The kernel employs a grid-stride loop structure with fewer iterations for handling remainder elements compared to separate grid-stride remainder loops.",
+  "The kernel uses thread block sizes that align with vectorized memory access patterns (e.g., multiples of 4 for float4 operations)."
+]

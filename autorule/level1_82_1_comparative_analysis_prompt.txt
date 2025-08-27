@@ -1,0 +1,335 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 6.16 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for depthwise convolution
+depthwise_conv2d_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void depthwise_conv2d_kernel(
+    const float* input,
+    const float* weight,
+    float* output,
+    int batch_size,
+    int in_channels,
+    int in_height,
+    int in_width,
+    int kernel_size,
+    int stride,
+    int padding,
+    int out_height,
+    int out_width
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = batch_size * in_channels * out_height * out_width;
+    if (idx >= total_elements) return;
+
+    // Calculate n, c, h_out, w_out from idx
+    int w_out = idx % out_width;
+    idx /= out_width;
+    int h_out = idx % out_height;
+    idx /= out_height;
+    int c = idx % in_channels;
+    int n = idx / in_channels;
+
+    float sum = 0.0f;
+
+    for (int kh = 0; kh < kernel_size; ++kh) {
+        for (int kw = 0; kw < kernel_size; ++kw) {
+            int h_in = h_out * stride + kh - padding;
+            int w_in = w_out * stride + kw - padding;
+
+            if (h_in >= 0 && h_in < in_height && w_in >= 0 && w_in < in_width) {
+                int input_idx = n * in_channels * in_height * in_width + c * in_height * in_width + h_in * in_width + w_in;
+                int weight_idx = c * kernel_size * kernel_size + kh * kernel_size + kw;
+                sum += input[input_idx] * weight[weight_idx];
+            }
+        }
+    }
+
+    int output_idx = n * in_channels * out_height * out_width + c * out_height * out_width + h_out * out_width + w_out;
+    output[output_idx] = sum;
+}
+
+torch::Tensor depthwise_conv2d_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    int kernel_size,
+    int stride,
+    int padding
+) {
+    TORCH_CHECK(input.dim() == 4, "Input must be 4D (N, C, H, W)");
+    TORCH_CHECK(weight.dim() == 4, "Weight must be 4D (C, 1, K, K)");
+    TORCH_CHECK(weight.size(1) == 1, "Weight must have 1 input channel per group");
+    TORCH_CHECK(weight.size(2) == kernel_size && weight.size(3) == kernel_size, "Weight size must match kernel_size");
+
+    int batch_size = input.size(0);
+    int in_channels = input.size(1);
+    int in_height = input.size(2);
+    int in_width = input.size(3);
+
+    int out_height = (in_height + 2 * padding - kernel_size) / stride + 1;
+    int out_width = (in_width + 2 * padding - kernel_size) / stride + 1;
+
+    auto output = torch::zeros({batch_size, in_channels, out_height, out_width}, input.options());
+
+    int total_elements = batch_size * in_channels * out_height * out_width;
+    int block_size = 256;
+    int grid_size = (total_elements + block_size - 1) / block_size;
+
+    depthwise_conv2d_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        in_channels,
+        in_height,
+        in_width,
+        kernel_size,
+        stride,
+        padding,
+        out_height,
+        out_width
+    );
+
+    return output;
+}
+"""
+
+depthwise_conv2d_cpp_source = """
+torch::Tensor depthwise_conv2d_cuda(torch::Tensor input, torch::Tensor weight, int kernel_size, int stride, int padding);
+"""
+
+# Load the custom CUDA extension
+depthwise_conv2d = load_inline(
+    name='depthwise_conv2d',
+    cpp_sources=depthwise_conv2d_cpp_source,
+    cuda_sources=depthwise_conv2d_source,
+    functions=['depthwise_conv2d_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.use_bias = bias
+
+        # Initialize weight parameters (C, 1, K, K)
+        self.weight = nn.Parameter(torch.Tensor(in_channels, 1, kernel_size, kernel_size))
+        if self.use_bias:
+            self.bias = nn.Parameter(torch.Tensor(in_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Ensure input is contiguous
+        x = x.contiguous()
+        
+        # Perform depthwise convolution
+        output = depthwise_conv2d.depthwise_conv2d_cuda(
+            x,
+            self.weight,
+            self.kernel_size,
+            self.stride,
+            self.padding
+        )
+
+        # Add bias if required
+        if self.bias is not None:
+            output += self.bias.view(1, -1, 1, 1)
+
+        return output
+```
+
+Kernel 2 (runtime: 5.53 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+depthwise_conv2d_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template<int KERNEL_SIZE, int STRIDE, int PADDING>
+__global__ void depthwise_conv2d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    float* __restrict__ output,
+    int batch_size, int in_channels, int in_height, int in_width,
+    int out_height, int out_width
+) {
+    extern __shared__ float shared_input[];
+    const int TILE_SIZE = 16;
+    const int INPUT_TILE_SIZE = TILE_SIZE + KERNEL_SIZE - 1;
+
+    const int batch_channel = blockIdx.z;
+    const int batch_idx = batch_channel / in_channels;
+    const int channel_idx = batch_channel % in_channels;
+
+    const int tile_h = blockIdx.y * TILE_SIZE;
+    const int tile_w = blockIdx.x * TILE_SIZE;
+
+    const int h_in_start = tile_h * STRIDE - PADDING;
+    const int w_in_start = tile_w * STRIDE - PADDING;
+
+    const int tid = threadIdx.y * blockDim.x + threadIdx.x;
+
+    // Load input tile into shared memory
+    for(int i = tid; i < INPUT_TILE_SIZE*INPUT_TILE_SIZE; i += blockDim.x*blockDim.y) {
+        const int h_in = h_in_start + i / INPUT_TILE_SIZE;
+        const int w_in = w_in_start + i % INPUT_TILE_SIZE;
+        
+        if(h_in >= 0 && h_in < in_height && w_in >= 0 && w_in < in_width) {
+            shared_input[i] = input[batch_idx * in_channels * in_height * in_width +
+                                   channel_idx * in_height * in_width +
+                                   h_in * in_width + w_in];
+        } else {
+            shared_input[i] = 0.0f;
+        }
+    }
+
+    __syncthreads();
+
+    const int h_out = tile_h + threadIdx.y;
+    const int w_out = tile_w + threadIdx.x;
+
+    if(h_out >= out_height || w_out >= out_width) return;
+
+    float sum = 0.0f;
+    #pragma unroll
+    for(int kh = 0; kh < KERNEL_SIZE; ++kh) {
+        #pragma unroll
+        for(int kw = 0; kw < KERNEL_SIZE; ++kw) {
+            const int h_shared = threadIdx.y * STRIDE + kh;
+            const int w_shared = threadIdx.x * STRIDE + kw;
+            sum += shared_input[h_shared * INPUT_TILE_SIZE + w_shared] * 
+                   weight[channel_idx * KERNEL_SIZE * KERNEL_SIZE + kh * KERNEL_SIZE + kw];
+        }
+    }
+
+    output[batch_idx * in_channels * out_height * out_width +
+          channel_idx * out_height * out_width +
+          h_out * out_width + w_out] = sum;
+}
+
+torch::Tensor depthwise_conv2d_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    int kernel_size,
+    int stride,
+    int padding
+) {
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int in_height = input.size(2);
+    const int in_width = input.size(3);
+
+    const int out_height = (in_height + 2 * padding - kernel_size) / stride + 1;
+    const int out_width = (in_width + 2 * padding - kernel_size) / stride + 1;
+
+    auto output = torch::zeros({batch_size, in_channels, out_height, out_width}, input.options());
+
+    const dim3 grid_dim(
+        (out_width + 15) / 16,
+        (out_height + 15) / 16,
+        batch_size * in_channels
+    );
+    const dim3 block_dim(16, 16);
+    const int shared_mem_size = (16 + kernel_size - 1) * (16 + kernel_size - 1) * sizeof(float);
+
+    switch(kernel_size) {
+        case 3:
+            if(stride == 1 && padding == 0) {
+                depthwise_conv2d_kernel<3,1,0><<<grid_dim, block_dim, shared_mem_size>>>(
+                    input.data_ptr<float>(),
+                    weight.data_ptr<float>(),
+                    output.data_ptr<float>(),
+                    batch_size, in_channels, in_height, in_width,
+                    out_height, out_width
+                );
+            }
+            break;
+        // Add other kernel configurations here
+    }
+
+    return output;
+}
+"""
+
+depthwise_conv2d_cpp_source = """
+torch::Tensor depthwise_conv2d_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    int kernel_size,
+    int stride,
+    int padding
+);
+"""
+
+depthwise_conv2d = load_inline(
+    name='depthwise_conv2d',
+    cpp_sources=depthwise_conv2d_cpp_source,
+    cuda_sources=depthwise_conv2d_source,
+    functions=['depthwise_conv2d_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        self.weight = nn.Parameter(torch.Tensor(in_channels, 1, kernel_size, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(in_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        weight_flat = self.weight.view(-1, self.kernel_size * self.kernel_size)
+        output = depthwise_conv2d.depthwise_conv2d_cuda(
+            x,
+            weight_flat,
+            self.kernel_size,
+            self.stride,
+            self.padding
+        )
+        if self.bias is not None:
+            output += self.bias.view(1, -1, 1, 1)
+        return output
+```

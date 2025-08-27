@@ -1,0 +1,189 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.24 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+# Define the fused CUDA kernel for bias addition, ReLU, and division
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_bias_relu_div_kernel(const float* input, const float* bias, float divisor, float* output, int batch_size, int out_features) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = batch_size * out_features;
+    if (idx < total_elements) {
+        int j = idx % out_features;  // Feature dimension index
+        float val = input[idx] + bias[j];
+        val = fmaxf(val, 0.0f);
+        output[idx] = val / divisor;
+    }
+}
+
+torch::Tensor fused_bias_relu_div_cuda(torch::Tensor input, torch::Tensor bias, float divisor) {
+    auto output = torch::empty_like(input);
+    int batch_size = input.size(0);
+    int out_features = input.size(1);
+    int total_elements = batch_size * out_features;
+
+    const int block_size = 256;
+    int num_blocks = (total_elements + block_size - 1) / block_size;
+
+    fused_bias_relu_div_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        divisor,
+        output.data_ptr<float>(),
+        batch_size,
+        out_features
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_bias_relu_div_cuda(torch::Tensor input, torch::Tensor bias, float divisor);"
+
+# Load the custom CUDA operation
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_bias_relu_div_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, divisor):
+        super(ModelNew, self).__init__()
+        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.bias = nn.Parameter(torch.Tensor(out_features))
+        self.divisor = divisor
+        
+        # Initialize parameters using PyTorch's default linear layer initialization
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x):
+        # Perform matrix multiplication using PyTorch's optimized matmul
+        x = torch.matmul(x, self.weight.t())
+        # Apply fused kernel for bias addition, ReLU, and division
+        x = fused_op.fused_bias_relu_div_cuda(x, self.bias, self.divisor)
+        return x
+
+# Preserve original configuration and input functions
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+divisor = 2.0
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features, divisor]
+```
+
+Kernel 2 (runtime: 7.24 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused ReLU and division kernel with vectorized loads/stores
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_relu_div_kernel(const float* __restrict__ input, 
+                                      float* __restrict__ output, 
+                                      int size, 
+                                      float inv_divisor) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int idx = tid * 4;
+    
+    if (idx + 3 < size) {
+        // Vectorized load for 4 elements
+        float4 in = *reinterpret_cast<const float4*>(input + idx);
+        float4 out;
+        
+        // Apply ReLU and scale
+        out.x = fmaxf(0.0f, in.x) * inv_divisor;
+        out.y = fmaxf(0.0f, in.y) * inv_divisor;
+        out.z = fmaxf(0.0f, in.z) * inv_divisor;
+        out.w = fmaxf(0.0f, in.w) * inv_divisor;
+        
+        // Vectorized store
+        *reinterpret_cast<float4*>(output + idx) = out;
+    } else {
+        // Handle remaining elements
+        for(int i = 0; i < 4; ++i) {
+            if(idx + i < size) {
+                output[idx + i] = fmaxf(0.0f, input[idx + i]) * inv_divisor;
+            }
+        }
+    }
+}
+
+torch::Tensor fused_relu_div_cuda(torch::Tensor input, float divisor) {
+    auto output = torch::empty_like(input);
+    const int size = input.numel();
+    const float inv_divisor = 1.0f / divisor;
+    
+    // Use 256 threads per block, each handling 4 elements
+    const int block_size = 256;
+    const int grid_size = (size / 4 + block_size - 1) / block_size;
+    
+    fused_relu_div_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        size,
+        inv_divisor
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_relu_div_cuda(torch::Tensor input, float divisor);"
+
+# Load the optimized CUDA kernel
+fused_op = load_inline(
+    name="fused_op",
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=["fused_relu_div_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, divisor):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.divisor = divisor
+        self.fused_op = fused_op
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_op.fused_relu_div_cuda(x, self.divisor)
+        return x
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+divisor = 2.0
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, divisor]
+```

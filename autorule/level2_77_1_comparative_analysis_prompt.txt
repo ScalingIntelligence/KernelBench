@@ -1,0 +1,235 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 14.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused kernel implementation for scale + batchnorm + pooling
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_scale_bn_pool_kernel(
+    const float* input,
+    float* output,
+    const float* scale,
+    const float* bias,
+    int N, int C, int D, int H, int W) {
+    
+    const int linear_idx = blockIdx.x;
+    const int n = linear_idx / C;
+    const int c = linear_idx % C;
+    const int total_elements = D * H * W;
+    
+    float sum = 0.0f;
+    for (int i = threadIdx.x; i < total_elements; i += blockDim.x) {
+        const int w = i % W;
+        const int h = (i / W) % H;
+        const int d = i / (H * W);
+        
+        const int input_idx = n * C * D * H * W + 
+                             c * D * H * W + 
+                             d * H * W + 
+                             h * W + 
+                             w;
+        
+        sum += input[input_idx] * scale[c] + bias[c];
+    }
+    
+    // Block reduction using warp shuffle
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
+    
+    if (threadIdx.x % 32 == 0) {
+        atomicAdd(&output[n * C + c], sum / (D * H * W));
+    }
+}
+
+torch::Tensor fused_operations_cuda(
+    torch::Tensor input,
+    torch::Tensor scale,
+    torch::Tensor bias) {
+    
+    TORCH_CHECK(input.is_contiguous(), "Input must be contiguous");
+    TORCH_CHECK(scale.is_contiguous(), "Scale must be contiguous");
+    TORCH_CHECK(bias.is_contiguous(), "Bias must be contiguous");
+    
+    const int N = input.size(0);
+    const int C = input.size(1);
+    const int D = input.size(2);
+    const int H = input.size(3);
+    const int W = input.size(4);
+    
+    auto output = torch::zeros({N, C, 1, 1, 1}, input.options());
+    
+    const int num_blocks = N * C;
+    const int block_size = 256;
+    
+    fused_scale_bn_pool_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        scale.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        N, C, D, H, W
+    );
+    
+    return output;
+}
+"""
+
+fused_cpp_decl = "torch::Tensor fused_operations_cuda(torch::Tensor input, torch::Tensor scale, torch::Tensor bias);"
+
+# Load the custom CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_cpp_decl,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_operations_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, scale_factor, eps=1e-5, momentum=0.1):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size)
+        self.scale_factor = scale_factor
+        self.batch_norm = nn.BatchNorm3d(out_channels, eps=eps, momentum=momentum)
+        self.global_avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
+        self.fused_ops = fused_ops.fused_operations_cuda
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        
+        if self.training:
+            # Use original path for training to maintain BN statistics
+            x = x * self.scale_factor
+            x = self.batch_norm(x)
+            x = self.global_avg_pool(x)
+        else:
+            # Use fused kernel for inference
+            scale = self.scale_factor * self.batch_norm.weight / torch.sqrt(self.batch_norm.running_var + self.batch_norm.eps)
+            bias = self.batch_norm.bias - self.batch_norm.running_mean * self.batch_norm.weight / torch.sqrt(self.batch_norm.running_var + self.batch_norm.eps)
+            
+            x = x.contiguous()
+            scale = scale.contiguous().to(x.dtype)
+            bias = bias.contiguous().to(x.dtype)
+            
+            x = self.fused_ops(x, scale, bias)
+        
+        return x
+```
+
+Kernel 2 (runtime: 14.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for optimized 3D global average pooling
+pool_kernel_source = '''
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void global_pool_kernel(const float* input, float* output, 
+                                  int B, int C, int D, int H, int W) {
+    int bid = blockIdx.x;
+    int c = bid % C;
+    int b = bid / C;
+    
+    int elements = D * H * W;
+    float sum = 0.0f;
+    
+    for(int i = threadIdx.x; i < elements; i += blockDim.x) {
+        int d = i / (H * W);
+        int h = (i % (H * W)) / W;
+        int w = i % W;
+        int idx = b*C*D*H*W + c*D*H*W + d*H*W + h*W + w;
+        sum += input[idx];
+    }
+    
+    __shared__ float shared[256];
+    shared[threadIdx.x] = sum;
+    __syncthreads();
+    
+    // Reduction
+    for(int stride=128; stride>0; stride>>=1) {
+        if(threadIdx.x < stride) {
+            shared[threadIdx.x] += shared[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+    
+    if(threadIdx.x == 0) {
+        output[b*C + c] = shared[0] / elements;
+    }
+}
+
+torch::Tensor global_avg_pool(torch::Tensor x) {
+    auto sizes = x.sizes();
+    int B = sizes[0], C = sizes[1], D = sizes[2], H = sizes[3], W = sizes[4];
+    auto output = torch::zeros({B, C, 1, 1, 1}, x.options());
+    
+    dim3 grid(B*C);
+    dim3 block(256);
+    
+    global_pool_kernel<<<grid, block>>>(
+        x.data_ptr<float>(),
+        output.data_ptr<float>(),
+        B, C, D, H, W
+    );
+    
+    return output;
+}
+'''
+
+pool_cpp_source = "torch::Tensor global_avg_pool(torch::Tensor x);"
+
+custom_pool = load_inline(
+    name='custom_pool',
+    cpp_sources=pool_cpp_source,
+    cuda_sources=pool_kernel_source,
+    functions=['global_avg_pool'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, scale_factor, eps=1e-5, momentum=0.1):
+        super().__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size)
+        
+        # Fuse scale factor into convolution weights
+        with torch.no_grad():
+            self.conv_transpose.weight.data *= scale_factor
+            if self.conv_transpose.bias is not None:
+                self.conv_transpose.bias.data *= scale_factor
+                
+        self.bn = nn.BatchNorm3d(out_channels, eps=eps, momentum=momentum)
+        self.pool = custom_pool.global_avg_pool
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.bn(x)
+        x = self.pool(x.contiguous())  # Ensure contiguous memory for kernel
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, depth, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, scale_factor]
+
+batch_size = 16
+in_channels = 64
+out_channels = 128
+depth, height, width = 16, 32, 32
+kernel_size = 5
+scale_factor = 2.0
+```

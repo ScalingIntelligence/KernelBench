@@ -1,0 +1,8 @@
+[
+  "The kernel performs operator fusion between multiple operations.",
+  "The kernel uses shared memory tiling to reduce global memory access.",
+  "The kernel uses thread block sizes that are multiples of warp size (32).",
+  "The kernel maintains intermediate results in registers or shared memory to avoid global memory transactions.",
+  "The kernel is compiled with fast math compiler flags to enable approximate mathematical optimizations.",
+  "The kernel employs a grid configuration that maximizes GPU occupancy through a higher number of smaller thread blocks."
+]

@@ -1,0 +1,188 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 15.8 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__device__ float gelu(float x) {
+    return 0.5f * x * (1.0f + tanhf(0.7978845608028654f * (x + 0.044715f * x*x*x)));
+}
+
+__global__ void fused_mul_leaky_gelu_kernel(
+    const float* input, const float* multiplier, float* output,
+    int N, int C, int H, int W, float negative_slope) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N*C*H*W) return;
+
+    int w = idx % W;
+    int rem = idx / W;
+    int h = rem % H;
+    rem /= H;
+    int c = rem % C;
+    int n = rem / C;
+
+    float val = input[n*C*H*W + c*H*W + h*W + w] * multiplier[c];
+
+    if (val < 0.0f) {
+        val *= negative_slope;
+    }
+
+    output[idx] = gelu(val);
+}
+
+torch::Tensor fused_mul_leaky_gelu_cuda(
+    torch::Tensor input, torch::Tensor multiplier, float negative_slope) {
+
+    int N = input.size(0);
+    int C = input.size(1);
+    int H = input.size(2);
+    int W = input.size(3);
+
+    auto output = torch::empty_like(input);
+
+    int total_elements = N * C * H * W;
+    const int threads_per_block = 256;
+    int blocks_per_grid = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    fused_mul_leaky_gelu_kernel<<<blocks_per_grid, threads_per_block>>>(
+        input.data_ptr<float>(),
+        multiplier.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, H, W,
+        negative_slope
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_mul_leaky_gelu_cuda(torch::Tensor input, torch::Tensor multiplier, float negative_slope);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=['fused_mul_leaky_gelu_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.negative_slope = 0.01
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_ops.fused_mul_leaky_gelu_cuda(x, self.multiplier, self.negative_slope)
+        return x
+```
+
+Kernel 2 (runtime: 15.7 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__device__ float gelu(float x) {
+    return 0.5f * x * (1.0f + tanhf(0.7978845608028654f * (x + 0.044715f * x*x*x)));
+}
+
+__global__ void fused_mult_leaky_gelu_kernel(
+    const float* input, const float* multiplier, float* output,
+    int N, int C, int H, int W, float negative_slope) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N*C*H*W) return;
+
+    int w = idx % W;
+    int rem = idx / W;
+    int h = rem % H;
+    rem /= H;
+    int c = rem % C;
+    int n = rem / C;
+
+    float val = input[n*C*H*W + c*H*W + h*W + w];
+    val *= multiplier[c]; // access multiplier per channel
+
+    // Leaky ReLU
+    if (val < 0.0f) {
+        val *= negative_slope;
+    }
+
+    // GELU approximation
+    output[idx] = gelu(val);
+} // end kernel
+
+torch::Tensor fused_mult_leaky_gelu_cuda(
+    torch::Tensor input, torch::Tensor multiplier, float negative_slope) {
+
+    // Get dimensions
+    int N = input.size(0);
+    int C = input.size(1);
+    int H = input.size(2);
+    int W = input.size(3);
+
+    // Create output tensor same shape as input
+    auto output = torch::empty_like(input);
+
+    // Total number of elements
+    int total_elements = N * C * H * W;
+
+    // Kernel launch configuration
+    const int threads_per_block = 256;
+    int blocks_per_grid = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    // Launch kernel
+    fused_mult_leaky_gelu_kernel<<<blocks_per_grid, threads_per_block>>>(
+        input.data_ptr<float>(),
+        multiplier.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, H, W,
+        negative_slope
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_mult_leaky_gelu_cuda(torch::Tensor input, torch::Tensor multiplier, float negative_slope);"
+
+# Compile the CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=['fused_mult_leaky_gelu_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.negative_slope = 0.01  # Default from original LeakyReLU
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_ops.fused_mult_leaky_gelu_cuda(x, self.multiplier, self.negative_slope)
+        return x
+```

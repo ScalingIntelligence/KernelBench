@@ -1,0 +1,16 @@
+REASONING TRACE:
+[
+    "The kernel uses a grid-stride loop pattern to process elements, reducing register pressure and improving occupancy.",
+    "The kernel performs the final reduction across warps using a direct assignment to shared memory followed by a single warp-wide shuffle reduction, avoiding loop overhead.",
+    "The kernel omits redundant boundary checks (e.g., batch index validation) to reduce branch divergence and instruction overhead.",
+    "The kernel uses a warp-level reduction pattern that directly assigns partial sums to shared memory via lane IDs instead of thread ID calculations."
+]
+
+
+ANSWER:
+
+
+The JSON array above captures the key rule-like statements derived from the reasoning. These statements highlight concrete optimizations in Kernel 2 that differentiate it from Kernel 1, such as the grid-stride loop pattern, streamlined reduction strategy, elimination of redundant checks, and optimized warp-level reduction mechanics. Each rule is objective, deterministic, and applicable to CUDA kernels generally.
+
+Usage:
+{'inputTokens': 7104, 'outputTokens': 184, 'totalTokens': 7288}

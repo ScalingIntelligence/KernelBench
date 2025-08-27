@@ -1,0 +1,9 @@
+{
+  "response": "\n\n[]",
+  "reasoning_trace": "[]\n",
+  "usage": {
+    "inputTokens": 8224,
+    "outputTokens": 5,
+    "totalTokens": 8229
+  }
+}

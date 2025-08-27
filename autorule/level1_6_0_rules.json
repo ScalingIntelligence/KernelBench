@@ -1,0 +1,8 @@
+[
+  "The kernel uses vectorized memory operations (e.g., float4) to load/store multiple elements per transaction.",
+  "The kernel employs register blocking to compute multiple output elements per thread, increasing arithmetic intensity.",
+  "The kernel configures thread block sizes to optimize occupancy and latency hiding (e.g., smaller blocks for higher concurrency).",
+  "The kernel ensures memory access patterns are coalesced for both global and shared memory.",
+  "The kernel unrolls inner loops to reduce instruction overhead and improve instruction scheduling.",
+  "The kernel handles boundary conditions with bulk vector operations and minimal branching in common cases."
+]

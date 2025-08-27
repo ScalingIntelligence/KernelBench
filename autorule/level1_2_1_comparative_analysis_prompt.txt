@@ -1,0 +1,203 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 46.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom matrix multiplication CUDA kernel
+matmul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void matmul_kernel(const float* A, const float* B, float* C, int M, int N, int K) {
+    const int TILE_SIZE = 16;
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    float sum = 0.0f;
+
+    for (int i = 0; i < (K + TILE_SIZE - 1) / TILE_SIZE; ++i) {
+        // Load A tile
+        int a_col = i * TILE_SIZE + tx;
+        if (row < M && a_col < K)
+            As[ty][tx] = A[row * K + a_col];
+        else
+            As[ty][tx] = 0.0f;
+
+        // Load B tile
+        int b_row = i * TILE_SIZE + ty;
+        if (b_row < K && col < N)
+            Bs[ty][tx] = B[b_row * N + col];
+        else
+            Bs[ty][tx] = 0.0f;
+
+        __syncthreads();
+
+        for (int k = 0; k < TILE_SIZE; ++k) {
+            sum += As[ty][k] * Bs[k][tx];
+        }
+
+        __syncthreads();
+    }
+
+    if (row < M && col < N)
+        C[row * N + col] = sum;
+}
+
+torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 2, "A must be 2D");
+    TORCH_CHECK(B.dim() == 2, "B must be 2D");
+    int M = A.size(0);
+    int K = A.size(1);
+    int N = B.size(1);
+    TORCH_CHECK(K == B.size(0), "A and B dimensions mismatch");
+
+    auto C = torch::zeros({M, N}, A.options());
+
+    const int TILE_SIZE = 16;
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid((N + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
+
+    matmul_kernel<<<grid, block>>>(A.data_ptr<float>(), B.data_ptr<float>(), C.data_ptr<float>(), M, N, K);
+
+    return C;
+}
+"""
+
+matmul_cpp_source = "torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Compile the inline CUDA code
+matmul_cuda = load_inline(
+    name="matmul_cuda",
+    cpp_sources=matmul_cpp_source,
+    cuda_sources=matmul_source,
+    functions=["matmul_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.matmul = matmul_cuda
+
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        return self.matmul.matmul_cuda(A, B)
+```
+
+Kernel 2 (runtime: 46.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+matrix_mult_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 16
+
+__global__ void matrix_mult_kernel(const float* A, const float* B, float* C, int M, int N, int K) {
+    // Block indices
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+
+    // Thread indices
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    // Calculate row and column for this thread
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float sum = 0.0f;
+
+    // Loop over K dimension in tiles
+    for (int k_step = 0; k_step < K; k_step += TILE_SIZE) {
+        // Load A tile
+        if (row < M && (k_step + tx) < K) {
+            As[ty][tx] = A[row * K + (k_step + tx)];
+        } else {
+            As[ty][tx] = 0.0f;
+        }
+
+        // Load B tile (coalesced access with transpose)
+        if ((k_step + ty) < K && col < N) {
+            Bs[ty][tx] = B[(k_step + ty) * N + col];
+        } else {
+            Bs[ty][tx] = 0.0f;
+        }
+
+        __syncthreads();
+
+        // Compute partial sum
+        for (int k = 0; k < TILE_SIZE; ++k) {
+            sum += As[ty][k] * Bs[k][tx];
+        }
+
+        __syncthreads();
+    }
+
+    // Write result
+    if (row < M && col < N) {
+        C[row * N + col] = sum;
+    }
+}
+
+torch::Tensor matrix_mult_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 2, "A must be a 2D tensor");
+    TORCH_CHECK(B.dim() == 2, "B must be a 2D tensor");
+    
+    int M = A.size(0);
+    int K = A.size(1);
+    int N = B.size(1);
+    TORCH_CHECK(K == B.size(0), "A and B shapes cannot be multiplied");
+
+    auto C = torch::zeros({M, N}, A.options());
+
+    const float* A_data = A.data_ptr<float>();
+    const float* B_data = B.data_ptr<float>();
+    float* C_data = C.data_ptr<float>();
+
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid((N + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
+
+    matrix_mult_kernel<<<grid, block>>>(A_data, B_data, C_data, M, N, K);
+
+    return C;
+}
+"""
+
+matrix_mult_cpp_source = "torch::Tensor matrix_mult_cuda(torch::Tensor A, torch::Tensor B);"
+
+matrix_mult = load_inline(
+    name='matrix_mult',
+    cpp_sources=matrix_mult_cpp_source,
+    cuda_sources=matrix_mult_source,
+    functions=['matrix_mult_cuda'],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[""],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.matrix_mult = matrix_mult
+
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        return self.matrix_mult.matrix_mult_cuda(A, B)
+```

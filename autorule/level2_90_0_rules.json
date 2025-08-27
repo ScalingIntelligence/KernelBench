@@ -1,0 +1,6 @@
+[
+  "The kernel uses a simpler GELU approximation requiring fewer arithmetic operations.",
+  "The kernel avoids cubic terms in activation functions to reduce computational complexity.",
+  "The kernel minimizes the use of high-latency operations such as tanhf and multiple exponentials.",
+  "The kernel reduces register pressure by using fewer intermediate variables in activation functions."
+]

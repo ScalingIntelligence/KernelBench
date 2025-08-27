@@ -1,0 +1,48 @@
+{
+  "kernel1": {
+    "problem_id": 58,
+    "sample_id": 5,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:1",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nconv_transpose3d_kernel(float const*, float const*, ...         0.00%       0.000us         0.00%       0.000us       0.000us      36.785ms        99.83%      36.785ms      36.785ms             1  \n                                            aten::fill_         0.04%      16.950us         0.11%      43.290us      43.290us      63.776us         0.17%      63.776us      63.776us             1  \nvoid at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      63.776us         0.17%      63.776us      63.776us             1  \n                                            aten::empty         0.11%      39.870us         2.49%     940.450us     470.225us       0.000us         0.00%       0.000us       0.000us             2  \n                                            aten::zeros         0.07%      24.851us         2.66%       1.005ms       1.005ms       0.000us         0.00%      63.776us      63.776us             1  \n                                           Unrecognized         2.38%     900.580us         2.38%     900.580us     900.580us       0.000us         0.00%       0.000us       0.000us             1  \n                                            aten::zero_         0.02%       6.120us         0.13%      49.410us      49.410us       0.000us         0.00%      63.776us      63.776us             1  \n                                       cudaLaunchKernel         0.08%      31.580us         0.08%      31.580us      15.790us       0.000us         0.00%       0.000us       0.000us             2  \n                                  cudaDeviceSynchronize        97.30%      36.817ms        97.30%      36.817ms      18.408ms       0.000us         0.00%       0.000us       0.000us             2  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 37.837ms\nSelf CUDA time total: 36.848ms\n"
+    },
+    "runtime": 40.3,
+    "runtime_stats": {
+      "mean": 40.3,
+      "std": 0.251,
+      "min": 39.9,
+      "max": 41.5,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:1"
+    },
+    "run_name": "best_of_n_level1_DeepSeek-R1"
+  },
+  "kernel2": {
+    "problem_id": 58,
+    "sample_id": 2,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:3",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nconv_transpose3d_kernel(float const*, float const*, ...         0.00%       0.000us         0.00%       0.000us       0.000us     457.535ms        99.99%     457.535ms     457.535ms             1  \n                                            aten::fill_         0.01%      26.010us         0.02%      76.489us      76.489us      63.584us         0.01%      63.584us      63.584us             1  \nvoid at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      63.584us         0.01%      63.584us      63.584us             1  \n                                            aten::zeros         0.01%      32.560us         0.25%       1.133ms       1.133ms       0.000us         0.00%      63.584us      63.584us             1  \n                                            aten::empty         0.01%      60.250us         0.22%       1.016ms       1.016ms       0.000us         0.00%       0.000us       0.000us             1  \n                                           Unrecognized         0.21%     955.852us         0.21%     955.852us     955.852us       0.000us         0.00%       0.000us       0.000us             1  \n                                            aten::zero_         0.00%       8.260us         0.02%      84.749us      84.749us       0.000us         0.00%      63.584us      63.584us             1  \n                                       cudaLaunchKernel         0.01%      59.259us         0.01%      59.259us      29.629us       0.000us         0.00%       0.000us       0.000us             2  \n                                  cudaDeviceSynchronize        99.75%     457.534ms        99.75%     457.534ms     228.767ms       0.000us         0.00%       0.000us       0.000us             2  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 458.676ms\nSelf CUDA time total: 457.598ms\n"
+    },
+    "runtime": 448.0,
+    "runtime_stats": {
+      "mean": 448.0,
+      "std": 16.0,
+      "min": 413.0,
+      "max": 492.0,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:3"
+    },
+    "run_name": "metr_level1_DeepSeek-R1"
+  }
+}

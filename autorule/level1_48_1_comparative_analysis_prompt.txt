@@ -1,0 +1,196 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 14.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernel for optimized mean reduction
+mean_reduce_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void mean_reduce_kernel(const float* input, float* output, int stride, int num_elements, int total_output_size, int reduction_dim, int B, int D1, int D2) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_output_size) return;
+
+    int b, d1, d2;
+    const float* ptr = input;
+
+    switch (reduction_dim) {
+        case 0:  // Reduce batch dimension
+            d1 = idx / D2;
+            d2 = idx % D2;
+            ptr += d1 * D2 + d2;
+            break;
+        case 1:  // Reduce D1 dimension
+            b = idx / D2;
+            d2 = idx % D2;
+            ptr += b * D1 * D2 + d2;
+            break;
+        case 2:  // Reduce D2 dimension
+            b = idx / D1;
+            d1 = idx % D1;
+            ptr += b * D1 * D2 + d1 * D2;
+            break;
+        default:
+            return;
+    }
+
+    float sum = 0.0f;
+    for (int i = 0; i < num_elements; ++i) {
+        sum += *ptr;
+        ptr += stride;
+    }
+    output[idx] = sum / num_elements;
+}
+
+torch::Tensor mean_reduce_cuda(torch::Tensor input, int reduction_dim, int stride, int num_elements) {
+    auto input_sizes = input.sizes();
+    int B = input_sizes[0], D1 = input_sizes[1], D2 = input_sizes[2];
+    
+    std::vector<int64_t> output_shape;
+    switch (reduction_dim) {
+        case 0: output_shape = {D1, D2}; break;
+        case 1: output_shape = {B, D2}; break;
+        case 2: output_shape = {B, D1}; break;
+        default: throw std::invalid_argument("Invalid reduction dimension");
+    }
+
+    auto output = torch::empty(output_shape, input.options());
+    int total_output_size = output.numel();
+    if (total_output_size == 0) return output;
+
+    const int block_size = 256;
+    int num_blocks = (total_output_size + block_size - 1) / block_size;
+
+    mean_reduce_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        stride,
+        num_elements,
+        total_output_size,
+        reduction_dim,
+        B,
+        D1,
+        D2
+    );
+
+    return output;
+}
+"""
+
+mean_reduce_cpp_source = "torch::Tensor mean_reduce_cuda(torch::Tensor input, int reduction_dim, int stride, int num_elements);"
+
+# Compile the inline CUDA code
+mean_reduce = load_inline(
+    name="mean_reduce",
+    cpp_sources=mean_reduce_cpp_source,
+    cuda_sources=mean_reduce_source,
+    functions=["mean_reduce_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super().__init__()
+        self.dim = dim
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, D1, D2 = x.size(0), x.size(1), x.size(2)
+        if self.dim == 0:
+            return mean_reduce.mean_reduce_cuda(x, 0, D1*D2, B)
+        elif self.dim == 1:
+            return mean_reduce.mean_reduce_cuda(x, 1, D2, D1)
+        elif self.dim == 2:
+            return mean_reduce.mean_reduce_cuda(x, 2, 1, D2)
+        raise ValueError("Invalid reduction dimension")
+```
+
+Kernel 2 (runtime: 14.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the custom CUDA kernel for mean reduction
+mean_reduce_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void mean_reduce_kernel(const float* input, float* output, int64_t inner_size, int64_t n_reduce, int64_t total_output_elements) {
+    int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_output_elements) return;
+
+    int64_t base = (idx / inner_size) * (n_reduce * inner_size) + (idx % inner_size);
+    float sum = 0.0f;
+
+    for (int64_t j = 0; j < n_reduce; ++j) {
+        sum += input[base + j * inner_size];
+    }
+
+    output[idx] = sum / n_reduce;
+}
+
+torch::Tensor mean_reduce_cuda(torch::Tensor input, int64_t dim) {
+    TORCH_CHECK(input.is_contiguous(), "Input tensor must be contiguous");
+    TORCH_CHECK(input.device().type() == torch::kCUDA, "Input tensor must be on CUDA");
+    TORCH_CHECK(dim >= 0 && dim < input.dim(), "Dimension out of range");
+
+    auto sizes = input.sizes().vec();
+    int64_t n_reduce = sizes[dim];
+    sizes.erase(sizes.begin() + dim);
+    auto output = torch::empty(sizes, input.options());
+
+    int64_t inner_size = 1;
+    for (int64_t i = dim + 1; i < input.dim(); ++i) {
+        inner_size *= input.size(i);
+    }
+
+    int64_t total_output_elements = output.numel();
+
+    const int block_size = 256;
+    int64_t num_blocks = (total_output_elements + block_size - 1) / block_size;
+
+    mean_reduce_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        inner_size,
+        n_reduce,
+        total_output_elements
+    );
+
+    return output;
+}
+"""
+
+mean_reduce_cpp_source = "torch::Tensor mean_reduce_cuda(torch::Tensor input, int64_t dim);"
+
+# Compile the inline CUDA code
+mean_reduce = load_inline(
+    name='mean_reduce',
+    cpp_sources=mean_reduce_cpp_source,
+    cuda_sources=mean_reduce_source,
+    functions=['mean_reduce_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return mean_reduce.mean_reduce_cuda(x, self.dim)
+
+batch_size = 128
+dim1 = 4096
+dim2 = 4095
+
+def get_inputs():
+    x = torch.rand(batch_size, dim1, dim2).cuda()
+    return [x]
+
+def get_init_inputs():
+    return [1]
+```

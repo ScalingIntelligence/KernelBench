@@ -1,0 +1,25 @@
+REASONING TRACE:
+[
+    "The kernel ensures input tensor contiguity to enable coalesced memory access.",
+    "The kernel avoids atomic operations by assigning each output element to a single thread.",
+    "The kernel uses a grid layout with one thread per output element to maximize parallelism.",
+    "The kernel accesses memory with sequential reads and optimal strides to leverage cache lines and memory bursts.",
+    "The kernel minimizes control divergence by using uniform execution paths across threads.",
+    "The kernel simplifies memory access patterns by reshaping the problem into outer and inner dimensions."
+]
+
+
+ANSWER:
+
+
+[
+    "The kernel ensures input tensor contiguity to enable coalesced memory access.",
+    "The kernel avoids atomic operations by assigning each output element to a single thread.",
+    "The kernel uses a grid layout with one thread per output element to maximize parallelism.",
+    "The kernel accesses memory with sequential reads and optimal strides to leverage cache lines and memory bursts.",
+    "The kernel minimizes control divergence by using uniform execution paths across threads.",
+    "The kernel simplifies memory access patterns by reshaping the problem into outer and inner dimensions."
+]
+
+Usage:
+{'inputTokens': 2482, 'outputTokens': 218, 'totalTokens': 2700}

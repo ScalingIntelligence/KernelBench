@@ -1,0 +1,229 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 2.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused clamp-multiply-max kernel
+clamp_multiply_max_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <algorithm>
+
+__global__ void clamp_multiply_max_kernel(
+    const float* input,
+    const float* multiplier,
+    float* output,
+    int batch_size,
+    int out_channels,
+    int D, int H, int W,
+    float clamp_min,
+    float clamp_max
+) {
+    int linear_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int spatial_size = D * H * W;
+    int total_elements = batch_size * spatial_size;
+    
+    if (linear_idx >= total_elements) return;
+    
+    int b = linear_idx / spatial_size;
+    int spatial_idx = linear_idx % spatial_size;
+    
+    int d = spatial_idx / (H * W);
+    int h = (spatial_idx % (H * W)) / W;
+    int w = spatial_idx % W;
+    
+    float max_val = -INFINITY;
+    for(int c = 0; c < out_channels; ++c) {
+        int input_idx = ((b * out_channels + c) * D + d) * H * W + h * W + w;
+        float val = input[input_idx];
+        val = fmaxf(clamp_min, fminf(clamp_max, val));
+        val *= multiplier[c];
+        max_val = fmaxf(max_val, val);
+    }
+    
+    output[linear_idx] = max_val;
+}
+
+torch::Tensor clamp_multiply_max_cuda(
+    torch::Tensor input,
+    torch::Tensor multiplier,
+    float clamp_min,
+    float clamp_max
+) {
+    auto sizes = input.sizes();
+    int batch_size = sizes[0];
+    int out_channels = sizes[1];
+    int D = sizes[2];
+    int H = sizes[3];
+    int W = sizes[4];
+    
+    auto output = torch::zeros({batch_size, D, H, W}, input.options());
+    
+    int total_elements = batch_size * D * H * W;
+    const int block_size = 256;
+    int num_blocks = (total_elements + block_size - 1) / block_size;
+    
+    clamp_multiply_max_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        multiplier.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        out_channels,
+        D, H, W,
+        clamp_min,
+        clamp_max
+    );
+    
+    return output;
+}
+"""
+
+clamp_multiply_max_cpp_source = "torch::Tensor clamp_multiply_max_cuda(torch::Tensor input, torch::Tensor multiplier, float clamp_min, float clamp_max);"
+
+# Compile the inline CUDA code
+clamp_multiply_max = load_inline(
+    name="clamp_multiply_max",
+    cpp_sources=clamp_multiply_max_cpp_source,
+    cuda_sources=clamp_multiply_max_source,
+    functions=["clamp_multiply_max_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, multiplier_shape, clamp_min, clamp_max):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.instance_norm = nn.InstanceNorm3d(out_channels)
+        self.clamp_min = clamp_min
+        self.clamp_max = clamp_max
+        self.clamp_multiply_max = clamp_multiply_max
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x * self.multiplier
+        x = self.instance_norm(x)
+        x = self.clamp_multiply_max.clamp_multiply_max_cuda(
+            x, 
+            self.multiplier.view(-1),  # Flatten multiplier to 1D
+            self.clamp_min,
+            self.clamp_max
+        )
+        return x
+```
+
+Kernel 2 (runtime: 2.21 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused clamp-multiply-max operations
+clamp_multiply_max_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void clamp_multiply_max_kernel(
+    const float* input,
+    const float* multiplier,
+    float clamp_min,
+    float clamp_max,
+    float* output,
+    int C, int D, int H, int W,
+    int batch_size
+) {
+    int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_output_elements = batch_size * D * H * W;
+    if (global_idx >= total_output_elements) return;
+
+    int batch = global_idx / (D * H * W);
+    int spatial_idx = global_idx % (D * H * W);
+
+    int d = spatial_idx / (H * W);
+    int remaining = spatial_idx % (H * W);
+    int h = remaining / W;
+    int w = remaining % W;
+
+    float max_val = -INFINITY;
+    for (int c = 0; c < C; ++c) {
+        int input_idx = batch * C * D * H * W + c * D * H * W + d * H * W + h * W + w;
+        float val = input[input_idx];
+        val = fmaxf(fminf(val, clamp_max), clamp_min);
+        val *= multiplier[c];
+        if (val > max_val) max_val = val;
+    }
+
+    output[global_idx] = max_val;
+}
+
+torch::Tensor clamp_multiply_max_cuda(
+    torch::Tensor input,
+    torch::Tensor multiplier,
+    float clamp_min,
+    float clamp_max
+) {
+    TORCH_CHECK(input.dim() == 5, "Input must be 5D [batch, C, D, H, W]");
+    TORCH_CHECK(multiplier.dim() == 4, "Multiplier must be 4D [C, 1, 1, 1]");
+    
+    int batch_size = input.size(0);
+    int C = input.size(1);
+    int D = input.size(2);
+    int H = input.size(3);
+    int W = input.size(4);
+    
+    auto output = torch::zeros({batch_size, D, H, W}, input.options());
+    
+    int total_output_elements = batch_size * D * H * W;
+    int block_size = 256;
+    int num_blocks = (total_output_elements + block_size - 1) / block_size;
+    
+    clamp_multiply_max_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        multiplier.data_ptr<float>(),
+        clamp_min,
+        clamp_max,
+        output.data_ptr<float>(),
+        C, D, H, W,
+        batch_size
+    );
+    
+    return output;
+}
+"""
+
+clamp_multiply_max_cpp_source = "torch::Tensor clamp_multiply_max_cuda(torch::Tensor input, torch::Tensor multiplier, float clamp_min, float clamp_max);"
+
+# Load the CUDA kernel
+clamp_multiply_max = load_inline(
+    name="clamp_multiply_max",
+    cpp_sources=clamp_multiply_max_cpp_source,
+    cuda_sources=clamp_multiply_max_source,
+    functions=["clamp_multiply_max_cuda"],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, multiplier_shape, clamp_min, clamp_max):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.instance_norm = nn.InstanceNorm3d(out_channels)
+        self.clamp_min = clamp_min
+        self.clamp_max = clamp_max
+        self.clamp_multiply_max = clamp_multiply_max
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x * self.multiplier
+        x = self.instance_norm(x)
+        # Fused clamp-multiply-max operation
+        x = self.clamp_multiply_max.clamp_multiply_max_cuda(x, self.multiplier, self.clamp_min, self.clamp_max)
+        return x
+```

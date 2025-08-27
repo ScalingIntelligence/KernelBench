@@ -1,0 +1,8 @@
+[
+  "The kernel processes multiple elements per thread using strided loops to enable memory coalescing.",
+  "The kernel uses shared memory to store frequently accessed data reused across threads within a block.",
+  "The kernel avoids warp divergence by using non-branching operations instead of conditional statements for element-wise computations.",
+  "The kernel employs a multi-dimensional grid structure aligned with data dimensions (e.g., batch/channel/spatial) to improve memory locality.",
+  "The kernel processes multiple elements per thread to increase arithmetic intensity and hide memory latency.",
+  "The kernel explicitly structures grid dimensions to maintain cache-friendly access patterns across batches."
+]

@@ -1,0 +1,7 @@
+[
+  "The kernel uses vectorized memory accesses (e.g., float4) to reduce global memory transactions and improve coalescing.",
+  "The kernel unrolls loops explicitly to reduce loop overhead and improve instruction-level parallelism.",
+  "The kernel calculates grid size to minimize the number of blocks, reducing atomic operations on global memory.",
+  "The kernel processes remainder elements separately from vectorized data to minimize overhead.",
+  "The kernel aligns memory access patterns with GPU coalescing rules to reduce wasted transactions."
+]

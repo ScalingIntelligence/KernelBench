@@ -1,0 +1,6 @@
+[
+  "The kernel uses thread block sizes that are multiples of warp size (32).",
+  "The kernel uses larger thread block sizes to reduce loop iterations per thread.",
+  "The kernel uses larger thread block sizes to improve memory coalescing by increasing contiguous memory access patterns.",
+  "The kernel uses larger thread block sizes to increase the number of active warps per block, improving occupancy and latency hiding."
+]

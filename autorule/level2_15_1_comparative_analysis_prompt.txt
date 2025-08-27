@@ -1,0 +1,243 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 5.97 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for fused mean subtraction
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_mean_subtract_kernel(const float* input, float* output, 
+                                           int N, int C, int D, int H, int W) {
+    // Each block handles one (n, c)
+    int n = blockIdx.x / C;
+    int c = blockIdx.x % C;
+    
+    int num_elements = D * H * W;
+    float sum = 0.0f;
+
+    // Grid-stride loop to compute sum
+    for (int i = threadIdx.x; i < num_elements; i += blockDim.x) {
+        int d = i / (H * W);
+        int hw = i % (H * W);
+        int h = hw / W;
+        int w = hw % W;
+        int idx = n * C * D * H * W + c * D * H * W + d * H * W + h * W + w;
+        sum += __ldg(input + idx);
+    }
+
+    // Sum reduction within the block
+    __shared__ float shared_sum[256];
+    shared_sum[threadIdx.x] = sum;
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            shared_sum[threadIdx.x] += shared_sum[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    float mean = shared_sum[0] / num_elements;
+
+    // Subtract mean from each element
+    for (int i = threadIdx.x; i < num_elements; i += blockDim.x) {
+        int d = i / (H * W);
+        int hw = i % (H * W);
+        int h = hw / W;
+        int w = hw % W;
+        int idx = n * C * D * H * W + c * D * H * W + d * H * W + h * W + w;
+        output[idx] = __ldg(input + idx) - mean;
+    }
+}
+
+torch::Tensor fused_mean_subtract_cuda(torch::Tensor input) {
+    auto N = input.size(0);
+    auto C = input.size(1);
+    auto D = input.size(2);
+    auto H = input.size(3);
+    auto W = input.size(4);
+    auto output = torch::empty_like(input);
+
+    int num_blocks = N * C;
+    int block_size = 256;
+
+    fused_mean_subtract_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, D, H, W
+    );
+
+    return output;
+}
+"""
+
+cpp_wrapper = "torch::Tensor fused_mean_subtract_cuda(torch::Tensor input);"
+
+# Load the custom CUDA kernel
+fused_op = load_inline(
+    name="fused_mean_subtract",
+    cpp_sources=cpp_wrapper,
+    cuda_sources=fused_kernel_code,
+    functions=["fused_mean_subtract_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=True):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding, bias=bias
+        )
+        self.batch_norm = nn.BatchNorm3d(out_channels)
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.batch_norm(x)
+        x = fused_op.fused_mean_subtract_cuda(x)
+        return x
+
+batch_size = 16
+in_channels = 16
+out_channels = 32
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, depth, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding]
+```
+
+Kernel 2 (runtime: 5.91 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+subtract_mean_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+template <typename scalar_t>
+__global__ void subtract_mean_kernel(
+    const scalar_t* input,
+    scalar_t* output,
+    int B,
+    int C,
+    int D,
+    int H,
+    int W) {
+
+    int b = blockIdx.x;
+    int c = blockIdx.y;
+    int num_elements = D * H * W;
+
+    extern __shared__ char shared_mem[];
+    scalar_t* shared_sum = reinterpret_cast<scalar_t*>(shared_mem);
+    scalar_t* mean_ptr = reinterpret_cast<scalar_t*>(shared_mem + blockDim.x * sizeof(scalar_t));
+
+    scalar_t sum = 0;
+
+    for (int i = threadIdx.x; i < num_elements; i += blockDim.x) {
+        int d = i / (H * W);
+        int hw = i % (H * W);
+        int h = hw / W;
+        int w = hw % W;
+        int idx = ((b * C + c) * D + d) * H * W + h * W + w;
+        sum += input[idx];
+    }
+
+    shared_sum[threadIdx.x] = sum;
+    __syncthreads();
+
+    // Block reduction
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            shared_sum[threadIdx.x] += shared_sum[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        *mean_ptr = shared_sum[0] / num_elements;
+    }
+    __syncthreads();
+
+    scalar_t mean = *mean_ptr;
+
+    for (int i = threadIdx.x; i < num_elements; i += blockDim.x) {
+        int d = i / (H * W);
+        int hw = i % (H * W);
+        int h = hw / W;
+        int w = hw % W;
+        int idx = ((b * C + c) * D + d) * H * W + h * W + w;
+        output[idx] = input[idx] - mean;
+    }
+}
+
+torch::Tensor subtract_mean_cuda(torch::Tensor input) {
+    auto B = input.size(0);
+    auto C = input.size(1);
+    auto D = input.size(2);
+    auto H = input.size(3);
+    auto W = input.size(4);
+
+    auto output = torch::empty_like(input);
+
+    dim3 grid(B, C);
+    int block_size = 256;
+    size_t shared_mem_size = block_size * sizeof(float) + sizeof(float);
+
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "subtract_mean_cuda", ([&] {
+        subtract_mean_kernel<scalar_t><<<grid, block_size, shared_mem_size>>>(
+            input.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            B,
+            C,
+            D,
+            H,
+            W
+        );
+    }));
+
+    return output;
+}
+"""
+
+subtract_mean_cpp_source = "torch::Tensor subtract_mean_cuda(torch::Tensor input);"
+
+# Compile the inline CUDA code
+subtract_mean = load_inline(
+    name='subtract_mean',
+    cpp_sources=subtract_mean_cpp_source,
+    cuda_sources=subtract_mean_source,
+    functions=['subtract_mean_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=True):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, bias=bias
+        )
+        self.batch_norm = nn.BatchNorm3d(out_channels)
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.batch_norm(x)
+        x = subtract_mean.subtract_mean_cuda(x)
+        return x
+```

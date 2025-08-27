@@ -1,0 +1,277 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 0.0869 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for optimized fused linear layer + sum reduction
+fused_linear_sum_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_linear_sum_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ sum_weights,
+    float sum_bias,
+    float* __restrict__ output,
+    int batch_size,
+    int in_features
+) {
+    const int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    const float* input_row = input + batch_idx * in_features;
+    float thread_sum = 0.0f;
+
+    // Vectorized 4-element loads for coalesced memory access
+    constexpr int VEC_SIZE = 4;
+    const int num_vectors = in_features / VEC_SIZE;
+    
+    for (int i = threadIdx.x; i < num_vectors; i += blockDim.x) {
+        const int offset = i * VEC_SIZE;
+        const float4 input_vec = *reinterpret_cast<const float4*>(input_row + offset);
+        const float4 weights_vec = *reinterpret_cast<const float4*>(sum_weights + offset);
+        
+        thread_sum += 
+            input_vec.x * weights_vec.x +
+            input_vec.y * weights_vec.y +
+            input_vec.z * weights_vec.z +
+            input_vec.w * weights_vec.w;
+    }
+
+    // Warp-level reduction using shuffle instructions
+    float val = thread_sum;
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    }
+
+    // Shared memory for warp sums
+    __shared__ float warp_sums[8];
+    const int tid = threadIdx.x;
+    if (tid % 32 == 0) {
+        warp_sums[tid / 32] = val;
+    }
+    __syncthreads();
+
+    // Final reduction by first thread
+    if (tid == 0) {
+        float total = 0.0f;
+        #pragma unroll
+        for (int i = 0; i < 8; ++i) {
+            total += warp_sums[i];
+        }
+        output[batch_idx] = total + sum_bias;
+    }
+}
+
+torch::Tensor fused_linear_sum_cuda(
+    torch::Tensor input,
+    torch::Tensor sum_weights,
+    torch::Tensor sum_bias
+) {
+    int batch_size = input.size(0);
+    auto output = torch::zeros({batch_size, 1}, input.options());
+
+    const float bias = sum_bias.item<float>();
+    const dim3 blocks(batch_size);
+    constexpr int threads = 256;
+
+    fused_linear_sum_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        sum_weights.data_ptr<float>(),
+        bias,
+        output.data_ptr<float>(),
+        batch_size,
+        input.size(1)
+    );
+
+    return output;
+}
+"""
+
+fused_linear_sum_cpp = "torch::Tensor fused_linear_sum_cuda(torch::Tensor input, torch::Tensor sum_weights, torch::Tensor sum_bias);"
+
+# Load the optimized CUDA extension
+fused_linear_sum = load_inline(
+    name="fused_linear_sum",
+    cpp_sources=fused_linear_sum_cpp,
+    cuda_sources=fused_linear_sum_source,
+    functions=["fused_linear_sum_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        # Initialize linear layer to access parameters
+        self.linear = nn.Linear(in_features, out_features)
+        
+        # Precompute summed weights and bias (mathematically equivalent to original sequence)
+        with torch.no_grad():
+            sum_weights = self.linear.weight.sum(dim=0)  # Sum over output features
+            sum_bias = self.linear.bias.sum()
+        
+        # Register as buffers
+        self.register_buffer("sum_weights", sum_weights)
+        self.register_buffer("sum_bias", sum_bias.unsqueeze(0))
+
+    def forward(self, x):
+        # Single fused kernel replaces entire original sequence
+        return fused_linear_sum.fused_linear_sum_cuda(x, self.sum_weights, self.sum_bias)
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]
+```
+
+Kernel 2 (runtime: 0.0837 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for optimized fused linear layer + reduction
+fused_linear_sum_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_linear_sum_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ sum_weights,
+    float sum_bias,
+    float* __restrict__ output,
+    int batch_size,
+    int in_features
+) {
+    const int batch_idx = blockIdx.x;
+    if (batch_idx >= batch_size) return;
+
+    const float* input_row = input + batch_idx * in_features;
+    float thread_sum = 0.0f;
+
+    // Vectorized 4-element loads with loop unrolling
+    constexpr int VEC_SIZE = 4;
+    const int num_vectors = in_features / VEC_SIZE;
+    
+    #pragma unroll
+    for (int i = threadIdx.x; i < num_vectors; i += blockDim.x) {
+        const int offset = i * VEC_SIZE;
+        const float4 input_vec = *reinterpret_cast<const float4*>(input_row + offset);
+        const float4 weights_vec = *reinterpret_cast<const float4*>(sum_weights + offset);
+        
+        thread_sum += 
+            input_vec.x * weights_vec.x +
+            input_vec.y * weights_vec.y +
+            input_vec.z * weights_vec.z +
+            input_vec.w * weights_vec.w;
+    }
+
+    // Handle remaining elements for general case
+    const int remaining = in_features % VEC_SIZE;
+    const int remaining_start = num_vectors * VEC_SIZE;
+    for (int i = threadIdx.x; i < remaining; i += blockDim.x) {
+        thread_sum += input_row[remaining_start + i] * sum_weights[remaining_start + i];
+    }
+
+    // Warp-level reduction using shuffle instructions
+    float warp_sum = thread_sum;
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        warp_sum += __shfl_down_sync(0xffffffff, warp_sum, offset);
+    }
+
+    // Shared memory for warp sums (8 warps per block)
+    __shared__ float warp_sums[8];
+    if (threadIdx.x % 32 == 0) {
+        warp_sums[threadIdx.x / 32] = warp_sum;
+    }
+    __syncthreads();
+
+    // Final reduction across warps by first thread
+    if (threadIdx.x == 0) {
+        float total = 0.0f;
+        #pragma unroll
+        for (int i = 0; i < 8; ++i) {
+            total += warp_sums[i];
+        }
+        output[batch_idx] = total + sum_bias;
+    }
+}
+
+torch::Tensor fused_linear_sum_cuda(
+    torch::Tensor input,
+    torch::Tensor sum_weights,
+    torch::Tensor sum_bias
+) {
+    int batch_size = input.size(0);
+    auto output = torch::zeros({batch_size, 1}, input.options());
+
+    const float bias = sum_bias.item<float>();
+    const dim3 blocks(batch_size);
+    constexpr int threads = 256;  // 8 warps per block
+
+    fused_linear_sum_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        sum_weights.data_ptr<float>(),
+        bias,
+        output.data_ptr<float>(),
+        batch_size,
+        input.size(1)
+    );
+
+    return output;
+}
+"""
+
+fused_linear_sum_cpp = "torch::Tensor fused_linear_sum_cuda(torch::Tensor input, torch::Tensor sum_weights, torch::Tensor sum_bias);"
+
+# Load the optimized CUDA extension
+fused_linear_sum = load_inline(
+    name="fused_linear_sum",
+    cpp_sources=fused_linear_sum_cpp,
+    cuda_sources=fused_linear_sum_source,
+    functions=["fused_linear_sum_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        # Initialize linear layer to access parameters
+        self.linear = nn.Linear(in_features, out_features)
+        
+        # Precompute summed weights and bias (mathematically equivalent to original sequence)
+        with torch.no_grad():
+            # Sum weights across output features dimension (dim=0)
+            sum_weights = self.linear.weight.sum(dim=0)
+            # Sum biases across output features
+            sum_bias = self.linear.bias.sum()
+        
+        # Register as buffers
+        self.register_buffer("sum_weights", sum_weights)
+        self.register_buffer("sum_bias", sum_bias.unsqueeze(0))
+
+    def forward(self, x):
+        # Single fused kernel replaces entire original sequence
+        return fused_linear_sum.fused_linear_sum_cuda(x, self.sum_weights, self.sum_bias)
+
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]
+```

@@ -1,0 +1,6 @@
+[
+  "The kernel orders loops such that input channel iterations are inner loops, enabling contiguous memory access for input tensors.",
+  "The kernel is compiled with aggressive compiler optimization flags (e.g., -O3).",
+  "The kernel precomputes and reuses spatial index calculations to reduce redundant computations.",
+  "The kernel prioritizes input tensor memory access patterns over weight tensor access patterns when loop ordering."
+]

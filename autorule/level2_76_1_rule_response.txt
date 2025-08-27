@@ -1,0 +1,19 @@
+REASONING TRACE:
+[
+    "The kernel uses separate input and output buffers to allow overlapping of memory reads and writes.",
+    "The kernel avoids in-place operations to prevent read-modify-write dependencies that serialize memory operations.",
+    "The kernel writes to a new memory region to enable write-combining optimizations and reduce cache thrashing."
+]
+
+
+ANSWER:
+
+
+[
+    "The kernel uses separate input and output buffers to allow overlapping of memory reads and writes.",
+    "The kernel avoids in-place operations to prevent read-modify-write dependencies that serialize memory operations.",
+    "The kernel writes to a new memory region to enable write-combining optimizations and reduce cache thrashing."
+]
+
+Usage:
+{'inputTokens': 5224, 'outputTokens': 136, 'totalTokens': 5360}

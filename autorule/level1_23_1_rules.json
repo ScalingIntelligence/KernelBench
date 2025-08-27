@@ -1,0 +1,6 @@
+[
+  "The kernel avoids residual element handling by requiring input dimensions to be multiples of the vectorized load size (e.g., 4 elements).",
+  "The kernel uses a pure shared memory tree reduction strategy instead of combining warp shuffles and shared memory for reductions.",
+  "The kernel minimizes conditional branches by omitting residual element checks, reducing instruction overhead.",
+  "The kernel employs a linear code structure without multi-stage reductions, potentially lowering register usage and improving occupancy."
+]

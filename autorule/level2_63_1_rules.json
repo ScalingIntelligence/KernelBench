@@ -1,0 +1,6 @@
+[
+  "The kernel replaces division with multiplication by a precomputed reciprocal to reduce computational overhead.",
+  "The kernel is compiled with higher optimization flags (e.g., -O3) to enable aggressive compiler optimizations.",
+  "The kernel reduces global memory accesses by leveraging fused operations from optimized library functions (e.g., cuBLAS) instead of custom implementations.",
+  "The kernel minimizes the number of arithmetic operations per thread by offloading intermediate steps (e.g., bias addition) to optimized external operations."
+]

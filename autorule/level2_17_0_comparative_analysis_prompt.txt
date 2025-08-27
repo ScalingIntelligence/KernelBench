@@ -1,0 +1,249 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 13.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the fused InstanceNorm + Division CUDA kernel
+fused_norm_div_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_instance_norm_div_kernel(
+    const float* input,
+    float* output,
+    int N,
+    int C,
+    int H,
+    int W,
+    float eps,
+    float divide_by
+) {
+    int slice_idx = blockIdx.x;
+    int n = slice_idx / C;
+    int c = slice_idx % C;
+    int slice_size = H * W;
+
+    extern __shared__ float s_data[];  // Shared memory for reductions
+
+    float sum = 0.0f;
+    float sum_sq = 0.0f;
+
+    // First pass: compute sum and sum of squares
+    for (int idx = threadIdx.x; idx < slice_size; idx += blockDim.x) {
+        int h = idx / W;
+        int w = idx % W;
+        int input_idx = n*C*H*W + c*H*W + h*W + w;
+        float val = input[input_idx];
+        sum += val;
+        sum_sq += val * val;
+    }
+
+    // Store partial sums in shared memory
+    float* s_sum = s_data;
+    float* s_sum_sq = s_data + blockDim.x;
+    s_sum[threadIdx.x] = sum;
+    s_sum_sq[threadIdx.x] = sum_sq;
+    __syncthreads();
+
+    // Parallel reduction for sum and sum_sq
+    for (int stride = blockDim.x/2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            s_sum[threadIdx.x] += s_sum[threadIdx.x + stride];
+            s_sum_sq[threadIdx.x] += s_sum_sq[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    // Compute final statistics
+    if (threadIdx.x == 0) {
+        float mean = s_sum[0] / slice_size;
+        float var = (s_sum_sq[0]/slice_size) - (mean*mean);
+        float scale = 1.0f / (sqrtf(var + eps) * divide_by);
+        
+        // Store in shared memory for all threads
+        s_sum[0] = mean;
+        s_sum[1] = scale;
+    }
+    __syncthreads();
+
+    float mean = s_sum[0];
+    float scale = s_sum[1];
+
+    // Second pass: apply normalization and division
+    for (int idx = threadIdx.x; idx < slice_size; idx += blockDim.x) {
+        int h = idx / W;
+        int w = idx % W;
+        int input_idx = n*C*H*W + c*H*W + h*W + w;
+        output[input_idx] = (input[input_idx] - mean) * scale;
+    }
+}
+
+torch::Tensor fused_instance_norm_div_cuda(torch::Tensor input, float eps, float divide_by) {
+    auto N = input.size(0);
+    auto C = input.size(1);
+    auto H = input.size(2);
+    auto W = input.size(3);
+    auto output = torch::empty_like(input);
+
+    int num_slices = N * C;
+    int threads_per_block = 256;
+    size_t shared_mem = 2 * threads_per_block * sizeof(float);
+
+    fused_instance_norm_div_kernel<<<num_slices, threads_per_block, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, H, W,
+        eps,
+        divide_by
+    );
+
+    return output;
+}
+"""
+
+fused_norm_div_cpp_source = "torch::Tensor fused_instance_norm_div_cuda(torch::Tensor input, float eps, float divide_by);"
+
+# Compile the CUDA extension
+fused_norm_div = load_inline(
+    name='fused_norm_div',
+    cpp_sources=fused_norm_div_cpp_source,
+    cuda_sources=fused_norm_div_source,
+    functions=['fused_instance_norm_div_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, divide_by):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.divide_by = divide_by
+        self.eps = 1e-5  # Match PyTorch's InstanceNorm2d default
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_norm_div.fused_instance_norm_div_cuda(x, self.eps, self.divide_by)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, divide_by]
+```
+
+Kernel 2 (runtime: 12.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_innorm_div_cuda_code = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_innorm_div_kernel(
+    const float* input,
+    float* output,
+    int N, int C, int H, int W,
+    float eps,
+    float scale
+) {
+    extern __shared__ float smem[];
+
+    int n = blockIdx.x;
+    int c = blockIdx.y;
+    int hw = H * W;
+    int tid = threadIdx.x;
+    int stride = blockDim.x;
+
+    float sum = 0.0f, sum_sq = 0.0f;
+
+    for (int pos = tid; pos < hw; pos += stride) {
+        int h = pos / W;
+        int w = pos % W;
+        int idx = ((n * C + c) * H + h) * W + w;
+        float val = input[idx];
+        sum += val;
+        sum_sq += val * val;
+    }
+
+    smem[tid] = sum;
+    smem[blockDim.x + tid] = sum_sq;
+    __syncthreads();
+
+    for (int s = blockDim.x/2; s>0; s>>=1) {
+        if (tid < s) {
+            smem[tid] += smem[tid + s];
+            smem[blockDim.x + tid] += smem[blockDim.x + tid + s];
+        }
+        __syncthreads();
+    }
+
+    float total_sum = smem[0];
+    float total_sum_sq = smem[blockDim.x];
+    float mean = total_sum / hw;
+    float var = (total_sum_sq / hw) - (mean * mean);
+    float inv_std = rsqrtf(var + eps);
+
+    for (int pos = tid; pos < hw; pos += stride) {
+        int h = pos / W;
+        int w = pos % W;
+        int idx = ((n * C + c) * H + h) * W + w;
+        output[idx] = (input[idx] - mean) * inv_std * scale;
+    }
+}
+
+torch::Tensor fused_innorm_div_cuda(
+    torch::Tensor input,
+    float eps,
+    float scale
+) {
+    TORCH_CHECK(input.is_contiguous(), "Input must be contiguous");
+    TORCH_CHECK(input.dim() == 4, "Input must be 4D");
+
+    auto N = input.size(0);
+    auto C = input.size(1);
+    auto H = input.size(2);
+    auto W = input.size(3);
+
+    auto output = torch::empty_like(input);
+
+    dim3 grid(N, C);
+    int block_size = 1024;
+    size_t smem_size = 2 * block_size * sizeof(float);
+
+    fused_innorm_div_kernel<<<grid, block_size, smem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        N, C, H, W,
+        eps,
+        scale
+    );
+
+    return output;
+}
+"""
+
+fused_innorm_div = load_inline(
+    name='fused_innorm_div',
+    cpp_sources="torch::Tensor fused_innorm_div_cuda(torch::Tensor input, float eps, float scale);",
+    cuda_sources=fused_innorm_div_cuda_code,
+    functions=['fused_innorm_div_cuda'],
+    verbose=False,
+    extra_cuda_cflags=['-O2']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, divide_by):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.divide_by = divide_by
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_innorm_div.fused_innorm_div_cuda(x, 1e-5, 1.0/self.divide_by)
+        return x
+```

@@ -1,0 +1,5 @@
+[
+  "The kernel ensures optional tensors (e.g., bias) are explicitly placed on the correct device to avoid device synchronization or memory access errors.",
+  "The kernel checks both tensor definition status and element count (bias.defined() && bias.numel() > 0) to properly handle empty tensors and avoid invalid memory accesses.",
+  "The kernel uses device-aware placeholder tensors (same device/dtype as input) for optional parameters instead of default CPU tensors to prevent device mismatch overhead."
+]

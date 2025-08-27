@@ -1,0 +1,8 @@
+[
+  "The kernel uses __restrict__ qualifiers on input and output pointers to enable more aggressive compiler optimizations by assuming no pointer aliasing.",
+  "The kernel reorders thread indices to prioritize output position first, improving memory coalescing by aligning with input tensor memory layout.",
+  "The kernel separates full-window and partial-window cases to avoid boundary checks in the common full-window scenario, reducing branch divergence.",
+  "The kernel uses explicit loop unrolling with specified factors (e.g., #pragma unroll(4)) to increase instruction-level parallelism while balancing register pressure.",
+  "The kernel precomputes loop boundaries (valid_start, valid_end) and inverse kernel size to minimize redundant calculations and conditional checks within loops.",
+  "The kernel is compiled with -O3 and --use_fast_math flags to enable aggressive optimizations and faster math operations at the expense of precision."
+]

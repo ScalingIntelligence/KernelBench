@@ -1,0 +1,6 @@
+[
+  "The kernel uses shared memory tiling to reduce global memory access.",
+  "The kernel uses thread block sizes that are multiples of warp size (32).",
+  "The kernel optimizes global memory access patterns to improve coalescing.",
+  "The kernel minimizes shared memory bank conflicts during computation."
+]

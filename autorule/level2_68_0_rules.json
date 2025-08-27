@@ -1,0 +1,7 @@
+[
+  "The kernel uses a larger thread block size (e.g., 512 threads) to improve occupancy and latency hiding.",
+  "The kernel avoids conditional branches for handling edge cases (e.g., remainder elements), preventing warp divergence.",
+  "The kernel uses scalar memory access patterns instead of vectorized access (e.g., float4) to simplify code and reduce instruction overhead.",
+  "The kernel minimizes register usage by processing fewer elements per thread, allowing higher occupancy.",
+  "The kernel launches a higher total number of threads to better leverage GPU parallelism and concurrency."
+]

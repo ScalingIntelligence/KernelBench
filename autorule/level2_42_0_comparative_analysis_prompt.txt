@@ -1,0 +1,374 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 28.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernels for optimized operations
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void compute_means_bias_kernel(const float* input, const float* bias, float* means, 
+                                          int batch_size, int channels, int H, int W) {
+    int batch_idx = blockIdx.x / channels;
+    int channel_idx = blockIdx.x % channels;
+    int elements = H * W;
+
+    if (batch_idx >= batch_size || channel_idx >= channels) return;
+
+    const float* input_ptr = input + (batch_idx * channels + channel_idx) * elements;
+    float b = bias[channel_idx];
+
+    float sum = 0.0f;
+    int elements4 = elements / 4;
+
+    // Vectorized sum using float4 for better memory throughput
+    const float4* input_ptr4 = reinterpret_cast<const float4*>(input_ptr);
+    for (int i = threadIdx.x; i < elements4; i += blockDim.x) {
+        float4 val = input_ptr4[i];
+        sum += val.x + val.y + val.z + val.w;
+    }
+
+    // Handle remaining elements using standard float access
+    int base = elements4 * 4;
+    for (int i = base + threadIdx.x; i < elements; i += blockDim.x) {
+        sum += input_ptr[i];
+    }
+
+    __shared__ float shared_sum[256];
+    shared_sum[threadIdx.x] = sum;
+    __syncthreads();
+
+    // Parallel reduction within block
+    for (int stride = blockDim.x/2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            shared_sum[threadIdx.x] += shared_sum[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        means[batch_idx * channels + channel_idx] = shared_sum[0] / elements + b;
+    }
+}
+
+__inline__ __device__ float warpReduceMax(float val) {
+    for (int offset = 16; offset > 0; offset /= 2) 
+        val = fmaxf(val, __shfl_down_sync(0xffffffff, val, offset));
+    return val;
+}
+
+__inline__ __device__ float warpReduceSum(float val) {
+    for (int offset = 16; offset > 0; offset /= 2) 
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__global__ void logsumexp_scale_kernel(const float* means, float* output, 
+                                       int batch_size, int channels) {
+    extern __shared__ float smem[];
+    float* max_smem = smem;
+    float* sum_smem = smem + (blockDim.x / 32);
+
+    int batch_idx = blockIdx.x;
+    int tid = threadIdx.x;
+
+    if (batch_idx >= batch_size) return;
+
+    const float* batch_means = means + batch_idx * channels;
+
+    // Load channel means into registers
+    float my_val = (tid < channels) ? batch_means[tid] : -INFINITY;
+
+    // Warp-level max reduction
+    float max_val = warpReduceMax(my_val);
+    if (tid % 32 == 0) max_smem[tid / 32] = max_val;
+    __syncthreads();
+
+    // Final max reduction across warps
+    if (tid < 32) {
+        float val = (tid < (blockDim.x + 31)/32) ? max_smem[tid] : -INFINITY;
+        val = warpReduceMax(val);
+        if (tid == 0) max_smem[0] = val;
+    }
+    __syncthreads();
+    max_val = max_smem[0];
+
+    // Compute exp values and warp-level sum reduction
+    float exp_val = (tid < channels) ? expf(my_val - max_val) : 0.0f;
+    float sum_exp = warpReduceSum(exp_val);
+    if (tid % 32 == 0) sum_smem[tid / 32] = sum_exp;
+    __syncthreads();
+
+    // Final sum reduction across warps
+    if (tid < 32) {
+        float val = (tid < (blockDim.x + 31)/32) ? sum_smem[tid] : 0.0f;
+        val = warpReduceSum(val);
+        if (tid == 0) output[batch_idx] = (max_val + logf(val)) * 10.0f;
+    }
+}
+
+torch::Tensor compute_means_bias_cuda(torch::Tensor input, torch::Tensor bias) {
+    int batch_size = input.size(0);
+    int channels = input.size(1);
+    int H = input.size(2);
+    int W = input.size(3);
+
+    auto means = torch::zeros({batch_size, channels}, input.options());
+    int blocks = batch_size * channels;
+    compute_means_bias_kernel<<<blocks, 256>>>(
+        input.contiguous().data_ptr<float>(),
+        bias.contiguous().data_ptr<float>(),
+        means.contiguous().data_ptr<float>(),
+        batch_size, channels, H, W
+    );
+    return means;
+}
+
+torch::Tensor logsumexp_scale_cuda(torch::Tensor means) {
+    int batch_size = means.size(0);
+    int channels = means.size(1);
+    auto output = torch::zeros({batch_size, 1}, means.options());
+    int block_size = 128;
+    size_t shared_mem = (block_size / 32 * 2) * sizeof(float);
+    logsumexp_scale_kernel<<<batch_size, block_size, shared_mem>>>(
+        means.contiguous().data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size, channels
+    );
+    return output;
+}
+"""
+
+fused_ops_cpp_source = """
+torch::Tensor compute_means_bias_cuda(torch::Tensor input, torch::Tensor bias);
+torch::Tensor logsumexp_scale_cuda(torch::Tensor means);
+"""
+
+# Load the custom CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=['compute_means_bias_cuda', 'logsumexp_scale_cuda'],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.compute_means_bias = fused_ops.compute_means_bias_cuda
+        self.logsumexp_scale = fused_ops.logsumexp_scale_cuda
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.compute_means_bias(x, self.bias)
+        x = self.logsumexp_scale(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, bias_shape]
+
+batch_size = 16
+in_channels = 64
+out_channels = 128
+height = width = 512
+kernel_size = 3
+bias_shape = (out_channels, 1, 1)
+```
+
+Kernel 2 (runtime: 28.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernels for optimized operations
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void compute_means_bias_kernel(const float* input, const float* bias, float* means, 
+                                          int batch_size, int channels, int H, int W) {
+    int batch_idx = blockIdx.x / channels;
+    int channel_idx = blockIdx.x % channels;
+    int elements = H * W;
+
+    if (batch_idx >= batch_size || channel_idx >= channels) return;
+
+    const float* input_ptr = input + (batch_idx * channels + channel_idx) * elements;
+    float b = bias[channel_idx];
+
+    float sum = 0.0f;
+    int elements4 = elements / 4;
+
+    // Vectorized sum using float4 for better memory throughput
+    const float4* input_ptr4 = reinterpret_cast<const float4*>(input_ptr);
+    for (int i = threadIdx.x; i < elements4; i += blockDim.x) {
+        float4 val = input_ptr4[i];
+        sum += val.x + val.y + val.z + val.w;
+    }
+
+    // Handle remaining elements using standard float access
+    int base = elements4 * 4;
+    for (int i = base + threadIdx.x; i < elements; i += blockDim.x) {
+        sum += input_ptr[i];
+    }
+
+    __shared__ float shared_sum[256];
+    shared_sum[threadIdx.x] = sum;
+    __syncthreads();
+
+    // Parallel reduction within block
+    for (int stride = blockDim.x/2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            shared_sum[threadIdx.x] += shared_sum[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        means[batch_idx * channels + channel_idx] = shared_sum[0] / elements + b;
+    }
+}
+
+__inline__ __device__ float warpReduceMax(float val) {
+    for (int offset = 16; offset > 0; offset /= 2) 
+        val = fmaxf(val, __shfl_down_sync(0xffffffff, val, offset));
+    return val;
+}
+
+__inline__ __device__ float warpReduceSum(float val) {
+    for (int offset = 16; offset > 0; offset /= 2) 
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__global__ void logsumexp_scale_kernel(const float* means, float* output, 
+                                       int batch_size, int channels) {
+    extern __shared__ float smem[];
+    float* max_smem = smem;
+    float* sum_smem = smem + (blockDim.x / 32);
+
+    int batch_idx = blockIdx.x;
+    int tid = threadIdx.x;
+
+    if (batch_idx >= batch_size) return;
+
+    const float* batch_means = means + batch_idx * channels;
+
+    // Load channel means into registers
+    float my_val = (tid < channels) ? batch_means[tid] : -INFINITY;
+
+    // Warp-level max reduction
+    float max_val = warpReduceMax(my_val);
+    if (tid % 32 == 0) max_smem[tid / 32] = max_val;
+    __syncthreads();
+
+    // Final max reduction across warps
+    if (tid < 32) {
+        float val = (tid < (blockDim.x + 31)/32) ? max_smem[tid] : -INFINITY;
+        val = warpReduceMax(val);
+        if (tid == 0) max_smem[0] = val;
+    }
+    __syncthreads();
+    max_val = max_smem[0];
+
+    // Compute exp values and warp-level sum reduction
+    float exp_val = (tid < channels) ? expf(my_val - max_val) : 0.0f;
+    float sum_exp = warpReduceSum(exp_val);
+    if (tid % 32 == 0) sum_smem[tid / 32] = sum_exp;
+    __syncthreads();
+
+    // Final sum reduction across warps
+    if (tid < 32) {
+        float val = (tid < (blockDim.x + 31)/32) ? sum_smem[tid] : 0.0f;
+        val = warpReduceSum(val);
+        if (tid == 0) output[batch_idx] = (max_val + logf(val)) * 10.0f;
+    }
+}
+
+torch::Tensor compute_means_bias_cuda(torch::Tensor input, torch::Tensor bias) {
+    int batch_size = input.size(0);
+    int channels = input.size(1);
+    int H = input.size(2);
+    int W = input.size(3);
+
+    auto means = torch::zeros({batch_size, channels}, input.options());
+    int blocks = batch_size * channels;
+    compute_means_bias_kernel<<<blocks, 256>>>(
+        input.contiguous().data_ptr<float>(),
+        bias.contiguous().data_ptr<float>(),
+        means.contiguous().data_ptr<float>(),
+        batch_size, channels, H, W
+    );
+    return means;
+}
+
+torch::Tensor logsumexp_scale_cuda(torch::Tensor means) {
+    int batch_size = means.size(0);
+    int channels = means.size(1);
+    auto output = torch::zeros({batch_size, 1}, means.options());
+    int block_size = 128;
+    size_t shared_mem = (block_size / 32 * 2) * sizeof(float);
+    logsumexp_scale_kernel<<<batch_size, block_size, shared_mem>>>(
+        means.contiguous().data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size, channels
+    );
+    return output;
+}
+"""
+
+fused_ops_cpp_source = """
+torch::Tensor compute_means_bias_cuda(torch::Tensor input, torch::Tensor bias);
+torch::Tensor logsumexp_scale_cuda(torch::Tensor means);
+"""
+
+# Load the custom CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=['compute_means_bias_cuda', 'logsumexp_scale_cuda'],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.compute_means_bias = fused_ops.compute_means_bias_cuda
+        self.logsumexp_scale = fused_ops.logsumexp_scale_cuda
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.compute_means_bias(x, self.bias)
+        x = self.logsumexp_scale(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, bias_shape]
+
+batch_size = 16
+in_channels = 64
+out_channels = 128
+height = width = 512
+kernel_size = 3
+bias_shape = (out_channels, 1, 1)
+```

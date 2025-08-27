@@ -1,0 +1,11 @@
+[
+  "The kernel uses __restrict__ qualifiers on pointers to indicate no aliasing for better compiler optimizations.",
+  "The kernel employs __ldg() intrinsic for read-only memory accesses to utilize the read-only data cache.",
+  "The kernel precomputes loop bounds outside inner loops to reduce conditional checks during iteration.",
+  "The kernel uses a block size that balances occupancy and resource usage (e.g., 256 threads per block).",
+  "The kernel is compiled with --use_fast_math to enable approximate mathematical function optimizations.",
+  "The kernel implements a straightforward tree reduction pattern in shared memory for parallel reductions.",
+  "The kernel processes elements contiguously to ensure memory coalescing and efficient vectorization.",
+  "The kernel minimizes conditional branching within critical loops by pre-calculating valid iteration ranges.",
+  "The kernel uses const variables for invariant values to aid compiler optimizations."
+]

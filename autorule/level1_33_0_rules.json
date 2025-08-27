@@ -1,0 +1,7 @@
+[
+  "The kernel uses vectorized memory access (e.g., float4) to load/store multiple elements per transaction.",
+  "The kernel organizes the grid into 2D dimensions (e.g., batch and channel) to improve memory locality and parameter reuse.",
+  "The kernel processes multiple elements per thread to reduce instruction overhead and improve arithmetic intensity.",
+  "The kernel aligns memory access patterns to maximize coalescing and cache utilization.",
+  "The kernel reduces redundant global memory accesses by reusing parameters (e.g., scale, shift) across threads in the same block."
+]

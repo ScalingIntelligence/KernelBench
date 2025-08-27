@@ -1,0 +1,139 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 101.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+reverse_cumsum_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void reverse_cumsum_kernel(const float* __restrict__ input, float* __restrict__ output, 
+                                      int size, int stride, int total_slices) {
+    int slice_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (slice_idx >= total_slices) return;
+
+    const float* slice_input = input + slice_idx * size * stride;
+    float* slice_output = output + slice_idx * size * stride;
+
+    float sum = 0.0f;
+    #pragma unroll 4
+    for (int i = size - 1; i >= 0; --i) {
+        float val = __ldg(slice_input + i * stride);
+        sum += val;
+        slice_output[i * stride] = sum;
+    }
+}
+
+torch::Tensor reverse_cumsum_cuda(torch::Tensor input, int dim) {
+    TORCH_CHECK(input.is_contiguous(), "Input must be contiguous");
+    TORCH_CHECK(input.dtype() == torch::kFloat32, "Input must be float32");
+    TORCH_CHECK(input.device().is_cuda(), "Input must be on CUDA");
+
+    auto output = torch::zeros_like(input);
+    int size = input.size(dim);
+    int stride = input.stride(dim);
+    int total_slices = input.numel() / (size * stride);
+
+    const int block_size = 1024;
+    int num_blocks = (total_slices + block_size - 1) / block_size;
+
+    reverse_cumsum_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        size,
+        stride,
+        total_slices
+    );
+
+    return output;
+}
+"""
+
+reverse_cumsum_cpp_source = "torch::Tensor reverse_cumsum_cuda(torch::Tensor input, int dim);"
+
+reverse_cumsum = load_inline(
+    name="reverse_cumsum",
+    cpp_sources=reverse_cumsum_cpp_source,
+    cuda_sources=reverse_cumsum_source,
+    functions=["reverse_cumsum_cuda"],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        x = x.contiguous()
+        return reverse_cumsum.reverse_cumsum_cuda(x, self.dim)
+```
+
+Kernel 2 (runtime: 128.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernel for reverse cumulative sum
+reverse_cumsum_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void reverse_cumsum_kernel(const float* input, float* output, int batch_size, int input_size) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= batch_size) return;
+
+    const float* row_input = input + row * input_size;
+    float* row_output = output + row * input_size;
+
+    float sum = 0.0f;
+    for (int j = input_size - 1; j >= 0; --j) {
+        sum += row_input[j];
+        row_output[j] = sum;
+    }
+}
+
+torch::Tensor reverse_cumsum_cuda(torch::Tensor input, int dim) {
+    TORCH_CHECK(dim == 1, "Only dim=1 is supported in this implementation");
+    auto output = torch::zeros_like(input);
+
+    int batch_size = input.size(0);
+    int input_size = input.size(1);
+
+    const int threads_per_block = 256;
+    int num_blocks = (batch_size + threads_per_block - 1) / threads_per_block;
+
+    reverse_cumsum_kernel<<<num_blocks, threads_per_block>>>(
+        input.data_ptr<float>(), 
+        output.data_ptr<float>(),
+        batch_size,
+        input_size
+    );
+
+    return output;
+}
+"""
+
+reverse_cumsum_cpp_source = "torch::Tensor reverse_cumsum_cuda(torch::Tensor input, int dim);"
+
+# Compile the inline CUDA code
+reverse_cumsum = load_inline(
+    name="reverse_cumsum",
+    cpp_sources=reverse_cumsum_cpp_source,
+    cuda_sources=reverse_cumsum_source,
+    functions=["reverse_cumsum_cuda"],
+    verbose=True,
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+        self.reverse_cumsum = reverse_cumsum
+
+    def forward(self, x):
+        return self.reverse_cumsum.reverse_cumsum_cuda(x, self.dim)
+```

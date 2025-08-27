@@ -1,0 +1,6 @@
+[
+  "The kernel uses a multi-dimensional grid configuration that aligns with the output tensor's dimensions to enable coalesced memory writes.",
+  "The kernel organizes thread blocks to group threads accessing contiguous memory locations for efficient memory coalescing.",
+  "The kernel avoids flattening grid dimensions, preserving spatial locality in memory access patterns.",
+  "The kernel uses thread block sizes that are multiples of warp size (32)."
+]

@@ -1,0 +1,5 @@
+[
+  "The kernel reduces register pressure by limiting the live range of variables through redundant initialization.",
+  "The kernel optimizes register allocation by delaying variable initialization until the variable is actually needed.",
+  "The kernel minimizes the number of live registers during computationally intensive loops to improve occupancy."
+]

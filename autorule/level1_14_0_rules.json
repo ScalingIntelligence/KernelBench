@@ -1,0 +1,6 @@
+[
+  "The kernel accesses matrix elements in a coalesced manner by ensuring consecutive threads access contiguous memory locations for critical matrix operands.",
+  "The kernel avoids non-coalesced memory access patterns by aligning thread indexing with the memory layout of input matrices.",
+  "The kernel maps thread indices to matrix dimensions such that consecutive threads access contiguous elements in frequently accessed matrices.",
+  "The kernel minimizes strided memory accesses by ensuring thread-block/grid dimensions align with the dominant access pattern of key operands."
+]

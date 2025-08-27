@@ -1,0 +1,5 @@
+[
+  "The kernel avoids storing intermediate values in registers when recomputing them does not increase computational overhead significantly.",
+  "The kernel minimizes register usage by avoiding explicit storage of loop-invariant values outside of inner loops.",
+  "The kernel prioritizes lower register pressure over redundant computation to achieve higher GPU occupancy."
+]

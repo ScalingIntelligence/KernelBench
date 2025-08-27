@@ -1,0 +1,217 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 4.43 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom fused kernel for LeakyReLU-Mult-LeakyReLU sequence
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template<typename scalar_t>
+__global__ void fused_op_kernel(
+    const scalar_t* input,
+    const scalar_t* multiplier,
+    scalar_t* output,
+    int num_elements,
+    int channels,
+    int depth,
+    int height,
+    int width,
+    float negative_slope
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+
+    const int elements_per_channel = depth * height * width;
+    const int channel_idx = (idx / elements_per_channel) % channels;
+
+    const scalar_t x = input[idx];
+    const scalar_t m = multiplier[channel_idx];
+    
+    // First LeakyReLU
+    scalar_t temp = x > 0 ? x : static_cast<scalar_t>(negative_slope) * x;
+    // Element-wise multiplication
+    temp *= m;
+    // Second LeakyReLU
+    temp = temp > 0 ? temp : static_cast<scalar_t>(negative_slope) * temp;
+    
+    output[idx] = temp;
+}
+
+torch::Tensor fused_op_cuda(
+    torch::Tensor input,
+    torch::Tensor multiplier,
+    float negative_slope
+) {
+    auto output = torch::empty_like(input);
+    const int num_elements = input.numel();
+    
+    const auto sizes = input.sizes();
+    const int channels = sizes[1];
+    const int depth = sizes[2];
+    const int height = sizes[3];
+    const int width = sizes[4];
+
+    const int block_size = 256;
+    const int grid_size = (num_elements + block_size - 1) / block_size;
+
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "fused_op_cuda", ([&] {
+        fused_op_kernel<scalar_t><<<grid_size, block_size>>>(
+            input.data_ptr<scalar_t>(),
+            multiplier.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            num_elements,
+            channels,
+            depth,
+            height,
+            width,
+            negative_slope
+        );
+    }));
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = """
+torch::Tensor fused_op_cuda(torch::Tensor input, torch::Tensor multiplier, float negative_slope);
+"""
+
+# Load the custom CUDA kernel
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_op_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O2']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding,
+            output_padding=output_padding
+        )
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.max_pool = nn.MaxPool3d(kernel_size=2)
+        self.negative_slope = 0.2
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = fused_op.fused_op_cuda(x, self.multiplier, self.negative_slope)
+        x = self.max_pool(x)
+        return x
+```
+
+Kernel 2 (runtime: 4.43 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused LeakyReLU-Multiply-LeakyReLU CUDA kernel
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_lrelu_mult_lrelu_kernel(
+    const float* input,
+    const float* multiplier,
+    float* output,
+    int num_elements,
+    int channels,
+    int depth,
+    int height,
+    int width
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        const int elements_per_channel = depth * height * width;
+        const int c = (idx / elements_per_channel) % channels;
+        
+        float val = input[idx];
+        val = fmaxf(val, 0.2f * val);  // LeakyReLU
+        val *= multiplier[c];          // Channel-wise multiplication
+        val = fmaxf(val, 0.2f * val);  // LeakyReLU
+        output[idx] = val;
+    }
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor multiplier) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    
+    const dim3 block_size(256);
+    const dim3 grid_size((num_elements + block_size.x - 1) / block_size.x);
+    
+    fused_lrelu_mult_lrelu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        multiplier.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements,
+        input.size(1),  // channels
+        input.size(2),  // depth
+        input.size(3),  // height
+        input.size(4)   // width
+    );
+    
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor multiplier);"
+
+# Compile the CUDA extension
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=["fused_ops_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding,
+            output_padding=output_padding
+        )
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.max_pool = nn.MaxPool3d(kernel_size=2)
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        # Flatten multiplier to [out_channels] and apply fused ops
+        x = self.fused_ops.fused_ops_cuda(x, self.multiplier.view(-1))
+        x = self.max_pool(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier_shape]
+
+# Constants from original implementation
+batch_size = 16
+in_channels = 16
+out_channels = 32
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+multiplier_shape = (out_channels, 1, 1, 1)
+```

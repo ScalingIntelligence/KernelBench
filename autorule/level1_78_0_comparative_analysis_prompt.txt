@@ -1,0 +1,270 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 102.0 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel implementation for transposed convolution
+conv_transpose_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void conv_transpose2d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    float* __restrict__ output,
+    int batch_size, int in_channels, int out_channels,
+    int H_in, int W_in, int H_out, int W_out,
+    int kH, int kW, int pad_h, int pad_w
+) {
+    const int output_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (output_idx >= batch_size * out_channels * H_out * W_out) return;
+
+    // Calculate output tensor indices
+    const int n = output_idx / (out_channels * H_out * W_out);
+    const int oc = (output_idx / (H_out * W_out)) % out_channels;
+    const int oh = (output_idx / W_out) % H_out;
+    const int ow = output_idx % W_out;
+
+    float sum = 0.0f;
+    
+    #pragma unroll
+    for (int ic = 0; ic < in_channels; ++ic) {
+        #pragma unroll
+        for (int kh = 0; kh < kH; ++kh) {
+            #pragma unroll
+            for (int kw = 0; kw < kW; ++kw) {
+                const int ih = oh - kh + pad_h;
+                const int iw = ow - kw + pad_w;
+                
+                if (ih >= 0 && ih < H_in && iw >= 0 && iw < W_in) {
+                    const int input_offset = n * in_channels * H_in * W_in +
+                                          ic * H_in * W_in +
+                                          ih * W_in + iw;
+                                          
+                    const int weight_offset = ic * out_channels * kH * kW +
+                                            oc * kH * kW +
+                                            kh * kW + kw;
+                                            
+                    sum += input[input_offset] * weight[weight_offset];
+                }
+            }
+        }
+    }
+    
+    output[output_idx] = sum;
+}
+
+torch::Tensor conv_transpose2d_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    int pad_h, int pad_w
+) {
+    const int batch_size = input.size(0);
+    const int in_channels = input.size(1);
+    const int H_in = input.size(2);
+    const int W_in = input.size(3);
+    
+    const int out_channels = weight.size(1);
+    const int kH = weight.size(2);
+    const int kW = weight.size(3);
+    
+    const int H_out = H_in + 2 * pad_h - (kH - 1);
+    const int W_out = W_in + 2 * pad_w - (kW - 1);
+    
+    auto output = torch::zeros({batch_size, out_channels, H_out, W_out}, input.options());
+    
+    const int total_elements = output.numel();
+    const int threads = 256;
+    const int blocks = (total_elements + threads - 1) / threads;
+    
+    conv_transpose2d_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size, in_channels, out_channels,
+        H_in, W_in, H_out, W_out,
+        kH, kW, pad_h, pad_w
+    );
+    
+    return output;
+}
+"""
+
+conv_transpose_cpp_source = "torch::Tensor conv_transpose2d_cuda(torch::Tensor input, torch::Tensor weight, int pad_h, int pad_w);"
+
+# Load the CUDA extension
+conv_transpose_ext = load_inline(
+    name="conv_transpose2d",
+    cpp_sources=conv_transpose_cpp_source,
+    cuda_sources=conv_transpose_source,
+    functions=["conv_transpose2d_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: tuple, stride: tuple = (1, 1), padding: tuple = (0, 0), bias: bool = False):
+        super().__init__()
+        self.padding = padding
+        
+        # Initialize weight parameters
+        self.weight = nn.Parameter(torch.Tensor(
+            in_channels, out_channels, kernel_size[0], kernel_size[1]
+        ))
+        
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        # Kaiming initialization with correct fan-in
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = conv_transpose_ext.conv_transpose2d_cuda(
+            x, self.weight, self.padding[0], self.padding[1]
+        )
+        if self.bias is not None:
+            x += self.bias.view(1, -1, 1, 1)
+        return x
+```
+
+Kernel 2 (runtime: 84.4 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for transposed convolution with fixed kernel size (3,7), stride (1,1), padding (1,3)
+conv_transpose2d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void conv_transpose2d_forward_kernel(
+    const float* input,
+    const float* weight,
+    float* output,
+    int batch_size,
+    int in_channels,
+    int out_channels,
+    int H_in,
+    int W_in,
+    int H_out,
+    int W_out
+) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = batch_size * out_channels * H_out * W_out;
+    if (tid >= total_elements) return;
+
+    // Decompose tid into b, oc, i, j
+    int b = tid / (out_channels * H_out * W_out);
+    int remainder = tid % (out_channels * H_out * W_out);
+    int oc = remainder / (H_out * W_out);
+    remainder = remainder % (H_out * W_out);
+    int i = remainder / W_out;
+    int j = remainder % W_out;
+
+    float sum = 0.0f;
+
+    for (int ic = 0; ic < in_channels; ++ic) {
+        for (int kh = 0; kh < 3; ++kh) {
+            for (int kw = 0; kw < 7; ++kw) {
+                int i_in = i + 1 - kh;  // padding_h=1
+                int j_in = j + 3 - kw;  // padding_w=3
+
+                if (i_in >= 0 && i_in < H_in && j_in >= 0 && j_in < W_in) {
+                    int input_idx = b * in_channels * H_in * W_in + ic * H_in * W_in + i_in * W_in + j_in;
+                    int weight_idx = ic * out_channels * 3 * 7 + oc * 3 * 7 + kh * 7 + kw;
+                    sum += input[input_idx] * weight[weight_idx];
+                }
+            }
+        }
+    }
+
+    output[tid] = sum;
+}
+
+torch::Tensor conv_transpose2d_forward_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    int H_in,
+    int W_in,
+    int H_out,
+    int W_out
+) {
+    int batch_size = input.size(0);
+    int in_channels = input.size(1);
+    int out_channels = weight.size(1);
+
+    auto output = torch::zeros({batch_size, out_channels, H_out, W_out}, input.options());
+
+    int total_elements = batch_size * out_channels * H_out * W_out;
+    const int block_size = 256;
+    int grid_size = (total_elements + block_size - 1) / block_size;
+
+    conv_transpose2d_forward_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        in_channels,
+        out_channels,
+        H_in,
+        W_in,
+        H_out,
+        W_out
+    );
+
+    return output;
+}
+"""
+
+conv_transpose2d_cpp_source = """
+torch::Tensor conv_transpose2d_forward_cuda(torch::Tensor input, torch::Tensor weight, int H_in, int W_in, int H_out, int W_out);
+"""
+
+# Load the custom CUDA kernel
+conv_transpose2d = load_inline(
+    name='conv_transpose2d',
+    cpp_sources=conv_transpose2d_cpp_source,
+    cuda_sources=conv_transpose2d_source,
+    functions=['conv_transpose2d_forward_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: tuple, stride: tuple = (1, 1), padding: tuple = (0, 0), bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        # Validate kernel size and padding for optimized implementation
+        assert kernel_size == (3, 7), "Kernel size must be (3,7) for this custom implementation"
+        assert padding == (1, 3), "Padding must be (1,3) for this custom implementation"
+        assert stride == (1, 1), "Stride must be (1,1) for this custom implementation"
+
+        # Initialize weight parameters
+        self.weight = nn.Parameter(torch.Tensor(
+            in_channels,
+            out_channels,
+            kernel_size[0],
+            kernel_size[1]
+        ))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, _, H_in, W_in = x.shape
+        H_out = (H_in - 1) * self.stride[0] - 2 * self.padding[0] + self.kernel_size[0]
+        W_out = (W_in - 1) * self.stride[1] - 2 * self.padding[1] + self.kernel_size[1]
+        return conv_transpose2d.conv_transpose2d_forward_cuda(x, self.weight, H_in, W_in, H_out, W_out)
+```

@@ -1,0 +1,7 @@
+[
+  "The kernel uses the exact GELU implementation with erff instead of an approximate version requiring more arithmetic operations.",
+  "The kernel avoids vectorized memory access (e.g., float4) to reduce register pressure and improve GPU occupancy.",
+  "The kernel processes one element per thread to minimize register usage and enable higher parallelism.",
+  "The kernel uses hardware-optimized mathematical functions (e.g., erff, expf) for critical operations.",
+  "The kernel maintains simpler per-thread operations to allow better compiler optimizations and instruction scheduling."
+]

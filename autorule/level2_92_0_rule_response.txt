@@ -1,0 +1,27 @@
+REASONING TRACE:
+[
+    "The kernel uses PyTorch's optimized native operations (e.g., GroupNorm) instead of custom implementations.",
+    "The kernel separates complex fused operations into simpler, element-wise kernels to improve memory coalescing.",
+    "The kernel implements custom reductions (e.g., LogSumExp) tailored to specific tensor dimensions for parallel efficiency.",
+    "The kernel reduces register pressure by splitting operations into separate kernels, enabling higher GPU occupancy.",
+    "The kernel uses 1D grid layouts and standard thread block sizes (e.g., 256 threads) for efficient thread scheduling.",
+    "The kernel avoids strided memory access patterns by processing contiguous elements in element-wise operations.",
+    "The kernel leverages optimized libraries (e.g., cuDNN/cuBLAS) for computationally intensive operations like GroupNorm."
+]
+
+
+ANSWER:
+
+
+[
+    "The kernel uses PyTorch's optimized native operations (e.g., GroupNorm) instead of custom implementations.",
+    "The kernel separates complex fused operations into simpler, element-wise kernels to improve memory coalescing.",
+    "The kernel implements custom reductions (e.g., LogSumExp) tailored to specific tensor dimensions for parallel efficiency.",
+    "The kernel reduces register pressure by splitting operations into separate kernels, enabling higher GPU occupancy.",
+    "The kernel uses 1D grid layouts and standard thread block sizes (e.g., 256 threads) for efficient thread scheduling.",
+    "The kernel avoids strided memory access patterns by processing contiguous elements in element-wise operations.",
+    "The kernel leverages optimized libraries (e.g., cuDNN/cuBLAS) for computationally intensive operations like GroupNorm."
+]
+
+Usage:
+{'inputTokens': 2401, 'outputTokens': 330, 'totalTokens': 2731}

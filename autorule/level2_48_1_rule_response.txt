@@ -1,0 +1,17 @@
+REASONING TRACE:
+[
+    "The kernel precomputes parameters on the host to avoid redundant per-thread arithmetic operations in the kernel.",
+    "The kernel avoids redundant memory layout checks (e.g., .contiguous()) on tensors that are already contiguous to reduce CPU overhead."
+]
+
+
+ANSWER:
+
+
+[
+    "The kernel precomputes parameters on the host to avoid redundant per-thread arithmetic operations in the kernel.",
+    "The kernel avoids redundant memory layout checks (e.g., .contiguous()) on tensors that are already contiguous to reduce CPU overhead."
+]
+
+Usage:
+{'inputTokens': 3426, 'outputTokens': 112, 'totalTokens': 3538}

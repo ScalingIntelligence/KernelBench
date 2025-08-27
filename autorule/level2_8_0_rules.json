@@ -1,0 +1,7 @@
+[
+  "The kernel uses vectorized memory access (e.g., float4) to reduce global memory transactions.",
+  "The kernel employs warp shuffle instructions (e.g., __shfl_down_sync) for efficient intra-warp reduction instead of shared memory.",
+  "The kernel utilizes thread block sizes that match the warp size (32 threads) for optimal occupancy and scheduling.",
+  "The kernel processes remaining elements after vectorized loads using a secondary loop to handle non-aligned data sizes.",
+  "The kernel avoids synchronization barriers (e.g., __syncthreads()) during reduction steps by leveraging warp-synchronous operations."
+]

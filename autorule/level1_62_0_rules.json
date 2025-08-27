@@ -1,0 +1,7 @@
+[
+  "The kernel uses a 2D thread block structure to enable memory coalescing for contiguous memory accesses.",
+  "The kernel organizes threads to process spatially close output elements, improving spatial locality and cache utilization.",
+  "The kernel avoids division and modulus operations for index calculations, reducing computational overhead.",
+  "The kernel groups threads by output channel to enhance weight reuse through caching.",
+  "The kernel uses thread block dimensions that align with the data layout (e.g., 2D blocks for 2D output grids)."
+]

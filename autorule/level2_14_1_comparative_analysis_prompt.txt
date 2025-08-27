@@ -1,0 +1,221 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 1.08 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel with vectorized global memory accesses and broadcast optimization
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_matvec_scale_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ sum_W,
+    float* __restrict__ output,
+    int batch_size,
+    int input_size,
+    float scaling_factor_div_2) {
+    
+    const int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= batch_size) return;
+
+    const int vec_size = 4;
+    const int num_vectors = input_size / vec_size;
+    const int remainder = input_size % vec_size;
+
+    const float4* x_row = reinterpret_cast<const float4*>(x + row * input_size);
+    const float4* sum_W_vec = reinterpret_cast<const float4*>(sum_W);
+
+    float sum = 0.0f;
+
+    // Process full vector chunks with coalesced memory access
+    for (int j = 0; j < num_vectors; ++j) {
+        float4 x_val = x_row[j];
+        float4 w_val = sum_W_vec[j];
+        sum += x_val.x * w_val.x + 
+               x_val.y * w_val.y + 
+               x_val.z * w_val.z + 
+               x_val.w * w_val.w;
+    }
+
+    // Process remaining elements using scalar operations
+    const float* x_remainder = reinterpret_cast<const float*>(x_row) + num_vectors * vec_size;
+    const float* w_remainder = sum_W + num_vectors * vec_size;
+    for (int k = 0; k < remainder; ++k) {
+        sum += x_remainder[k] * w_remainder[k];
+    }
+
+    output[row] = sum * scaling_factor_div_2;
+}
+
+torch::Tensor fused_operation_cuda(
+    torch::Tensor x,
+    torch::Tensor sum_W,
+    float scaling_factor) {
+    
+    auto batch_size = x.size(0);
+    auto input_size = x.size(1);
+    auto output = torch::zeros({batch_size, 1}, x.options());
+
+    const int block_size = 512;  // Increased block size for better occupancy
+    const int grid_size = (batch_size + block_size - 1) / block_size;
+
+    float scaling_factor_div_2 = scaling_factor / 2.0f;
+
+    fused_matvec_scale_kernel<<<grid_size, block_size>>>(
+        x.data_ptr<float>(),
+        sum_W.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        input_size,
+        scaling_factor_div_2
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp_source = "torch::Tensor fused_operation_cuda(torch::Tensor x, torch::Tensor sum_W, float scaling_factor);"
+
+# Compile the inline CUDA code
+fused_operation = load_inline(
+    name="fused_operation",
+    cpp_sources=fused_kernel_cpp_source,
+    cuda_sources=fused_kernel_source,
+    functions=["fused_operation_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.weight = nn.Parameter(torch.randn(hidden_size, input_size))
+        self.scaling_factor = scaling_factor
+        self.fused_op = fused_operation
+
+    def forward(self, x):
+        # Precompute sum of weights and use optimized fused kernel
+        sum_W = self.weight.sum(dim=0)  # Shape [input_size]
+        return self.fused_op.fused_operation_cuda(x, sum_W, self.scaling_factor)
+```
+
+Kernel 2 (runtime: 0.897 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel with vectorized shared memory loading and remainder handling
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_matvec_scale_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ sum_W,
+    float* __restrict__ output,
+    int batch_size,
+    int input_size,
+    float scaling_factor_div_2) {
+    
+    extern __shared__ float s_sum_W[];
+
+    const int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= batch_size) return;
+
+    // Vectorized loading parameters
+    const int vec_size = 4;
+    const int num_vectors = input_size / vec_size;
+    const int remainder = input_size % vec_size;
+
+    // Load sum_W into shared memory using vectorized loads
+    const float4* sum_W_vec = reinterpret_cast<const float4*>(sum_W);
+    float4* s_sum_W_vec = reinterpret_cast<float4*>(s_sum_W);
+
+    // Cooperative vectorized loading
+    for (int i = threadIdx.x; i < num_vectors; i += blockDim.x) {
+        s_sum_W_vec[i] = sum_W_vec[i];
+    }
+
+    // Cooperative scalar loading for remainder elements
+    const int base_remainder = num_vectors * vec_size;
+    for (int i = threadIdx.x; i < remainder; i += blockDim.x) {
+        s_sum_W[base_remainder + i] = sum_W[base_remainder + i];
+    }
+
+    __syncthreads();
+
+    // Vectorized computation
+    const float4* x_row = reinterpret_cast<const float4*>(x + row * input_size);
+    float sum = 0.0f;
+
+    // Process full vectors
+    for (int j = 0; j < num_vectors; ++j) {
+        float4 x_val = x_row[j];
+        float4 w_val = s_sum_W_vec[j];
+        sum += x_val.x * w_val.x + x_val.y * w_val.y + 
+               x_val.z * w_val.z + x_val.w * w_val.w;
+    }
+
+    // Process remainder elements
+    const float* x_remainder = reinterpret_cast<const float*>(x_row) + num_vectors * vec_size;
+    for (int k = 0; k < remainder; ++k) {
+        sum += x_remainder[k] * s_sum_W[base_remainder + k];
+    }
+
+    output[row] = sum * scaling_factor_div_2;
+}
+
+torch::Tensor fused_operation_cuda(
+    torch::Tensor x,
+    torch::Tensor sum_W,
+    float scaling_factor) {
+    
+    auto batch_size = x.size(0);
+    auto input_size = x.size(1);
+    auto output = torch::zeros({batch_size, 1}, x.options());
+
+    const int block_size = 256;
+    const int grid_size = (batch_size + block_size - 1) / block_size;
+    const size_t shared_mem_size = input_size * sizeof(float);
+
+    float scaling_factor_div_2 = scaling_factor / 2.0f;
+
+    fused_matvec_scale_kernel<<<grid_size, block_size, shared_mem_size>>>(
+        x.data_ptr<float>(),
+        sum_W.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        input_size,
+        scaling_factor_div_2
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp_source = "torch::Tensor fused_operation_cuda(torch::Tensor x, torch::Tensor sum_W, float scaling_factor);"
+
+# Compile the inline CUDA code
+fused_operation = load_inline(
+    name="fused_operation",
+    cpp_sources=fused_kernel_cpp_source,
+    cuda_sources=fused_kernel_source,
+    functions=["fused_operation_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.weight = nn.Parameter(torch.randn(hidden_size, input_size))
+        self.scaling_factor = scaling_factor
+        self.fused_op = fused_operation
+
+    def forward(self, x):
+        # Precompute sum of weights and use optimized fused kernel
+        sum_W = self.weight.sum(dim=0)  # Shape [input_size]
+        return self.fused_op.fused_operation_cuda(x, sum_W, self.scaling_factor)
+```

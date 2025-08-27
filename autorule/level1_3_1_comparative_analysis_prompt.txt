@@ -1,0 +1,214 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 92.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+bmm_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 16
+
+__global__ void batched_gemm_kernel(float* A, float* B, float* C, int m, int n, int k) {
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    int batch_idx = blockIdx.z;
+    int row = blockIdx.y * TILE_SIZE + threadIdx.y;
+    int col = blockIdx.x * TILE_SIZE + threadIdx.x;
+
+    float sum = 0.0f;
+
+    // Loop over tiles of K
+    for (int i = 0; i < (k + TILE_SIZE - 1)/TILE_SIZE; ++i) {
+        // Load A tile into shared memory
+        int a_row = row;
+        int a_col = i*TILE_SIZE + threadIdx.x;
+        if (a_row < m && a_col < k) {
+            As[threadIdx.y][threadIdx.x] = A[batch_idx*m*k + a_row*k + a_col];
+        } else {
+            As[threadIdx.y][threadIdx.x] = 0.0f;
+        }
+
+        // Load B tile into shared memory
+        int b_row = i*TILE_SIZE + threadIdx.y;
+        int b_col = col;
+        if (b_row < k && b_col < n) {
+            Bs[threadIdx.y][threadIdx.x] = B[batch_idx*k*n + b_row*n + b_col];
+        } else {
+            Bs[threadIdx.y][threadIdx.x] = 0.0f;
+        }
+
+        __syncthreads();
+
+        // Compute partial sums
+        for (int j = 0; j < TILE_SIZE; ++j) {
+            sum += As[threadIdx.y][j] * Bs[j][threadIdx.x];
+        }
+
+        __syncthreads();
+    }
+
+    // Write result
+    if (row < m && col < n) {
+        C[batch_idx*m*n + row*n + col] = sum;
+    }
+}
+
+torch::Tensor batched_gemm_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 3, "A must be 3D");
+    TORCH_CHECK(B.dim() == 3, "B must be 3D");
+    TORCH_CHECK(A.size(0) == B.size(0), "Batch sizes must match");
+    TORCH_CHECK(A.size(2) == B.size(1), "K dimensions must match");
+
+    int batch_size = A.size(0);
+    int m = A.size(1);
+    int k = A.size(2);
+    int n = B.size(2);
+
+    auto C = torch::empty({batch_size, m, n}, A.options());
+
+    dim3 threads(TILE_SIZE, TILE_SIZE);
+    dim3 blocks((n + TILE_SIZE-1)/TILE_SIZE, (m + TILE_SIZE-1)/TILE_SIZE, batch_size);
+    
+    batched_gemm_kernel<<<blocks, threads>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        m, n, k
+    );
+
+    return C;
+}
+"""
+
+bmm_cpp_source = "torch::Tensor batched_gemm_cuda(torch::Tensor A, torch::Tensor B);"
+
+batched_gemm = load_inline(
+    name='batched_gemm',
+    cpp_sources=bmm_cpp_source,
+    cuda_sources=bmm_source,
+    functions=['batched_gemm_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A, B):
+        return batched_gemm.batched_gemm_cuda(A.contiguous(), B.contiguous())
+```
+
+Kernel 2 (runtime: 91.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define batched matrix multiplication CUDA kernel
+bmm_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 16
+#define TILE_SIZE_K 16
+
+__global__ void batched_bmm_kernel(const float* A, const float* B, float* C, 
+                                  int batch_size, int m, int k, int n) {
+    __shared__ float As[TILE_SIZE][TILE_SIZE_K];
+    __shared__ float Bs[TILE_SIZE_K][TILE_SIZE];
+
+    int batch = blockIdx.z;
+    int tile_row = blockIdx.y;
+    int tile_col = blockIdx.x;
+
+    int row = tile_row * TILE_SIZE + threadIdx.y;
+    int col = tile_col * TILE_SIZE + threadIdx.x;
+
+    float sum = 0.0f;
+
+    for (int t = 0; t < (k + TILE_SIZE_K - 1) / TILE_SIZE_K; ++t) {
+        // Load A tile
+        int a_col = t * TILE_SIZE_K + threadIdx.x;
+        if (row < m && a_col < k) {
+            As[threadIdx.y][threadIdx.x] = A[batch * m * k + row * k + a_col];
+        } else {
+            As[threadIdx.y][threadIdx.x] = 0.0f;
+        }
+
+        // Load B tile
+        int b_row = t * TILE_SIZE_K + threadIdx.y;
+        if (b_row < k && col < n) {
+            Bs[threadIdx.y][threadIdx.x] = B[batch * k * n + b_row * n + col];
+        } else {
+            Bs[threadIdx.y][threadIdx.x] = 0.0f;
+        }
+
+        __syncthreads();
+
+        // Compute partial sum
+        for (int i = 0; i < TILE_SIZE_K; ++i) {
+            sum += As[threadIdx.y][i] * Bs[i][threadIdx.x];
+        }
+
+        __syncthreads();
+    }
+
+    if (row < m && col < n) {
+        C[batch * m * n + row * n + col] = sum;
+    }
+}
+
+torch::Tensor batched_bmm_cuda(torch::Tensor A, torch::Tensor B) {
+    auto batch_size = A.size(0);
+    int m = A.size(1);
+    int k = A.size(2);
+    int n = B.size(2);
+
+    auto C = torch::zeros({batch_size, m, n}, A.options());
+
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid(
+        (n + TILE_SIZE - 1) / TILE_SIZE,
+        (m + TILE_SIZE - 1) / TILE_SIZE,
+        batch_size
+    );
+
+    batched_bmm_kernel<<<grid, block>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        batch_size,
+        m,
+        k,
+        n
+    );
+
+    return C;
+}
+"""
+
+bmm_cpp_wrapper = "torch::Tensor batched_bmm_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Load the custom CUDA kernel
+batched_bmm = load_inline(
+    name='batched_bmm',
+    cpp_sources=bmm_cpp_wrapper,
+    cuda_sources=bmm_kernel_source,
+    functions=['batched_bmm_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        return batched_bmm.batched_bmm_cuda(A, B)
+```

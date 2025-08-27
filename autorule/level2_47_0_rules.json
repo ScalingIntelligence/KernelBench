@@ -1,0 +1,6 @@
+[
+  "- The kernel avoids using log1pf for softplus computation, which may introduce unnecessary checks for certain input ranges.",
+  "- The kernel does not use the -use_fast_math compiler flag, which might reduce register pressure and improve occupancy.",
+  "- The kernel's explicit inlined computation of log(1.0f + expf(x)) allows for more efficient compiler optimizations compared to a separate device function.",
+  "- The kernel avoids potential overhead from redundant tensor contiguous checks in the host code."
+]

@@ -1,0 +1,326 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 3.81 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused dropout-softmax CUDA kernel with vectorized access and correct RNG
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
+
+#define VEC 4
+typedef float4 vec_t;
+
+__global__ void fused_dropout_softmax_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    const int rows,
+    const int cols,
+    const float dropout_p,
+    const float scale,
+    const bool training,
+    const unsigned long long seed
+) {
+    const int row = blockIdx.x;
+    const int tid = threadIdx.x;
+    const int stride = blockDim.x * VEC;
+    const int vec_cols = cols / VEC;
+
+    if (row >= rows) return;
+
+    extern __shared__ float smem[];
+    float* max_shared = smem;
+    float* sum_shared = &smem[blockDim.x];
+
+    curandStatePhilox4_32_10_t state;
+    if (training) curand_init(seed, row * cols + tid, 0, &state);
+
+    float max_val = -INFINITY;
+    const float* row_input = input + row * cols;
+
+    // First pass: apply dropout and find max
+    for (int col = tid * VEC; col < vec_cols * VEC; col += stride) {
+        vec_t in_vec = *reinterpret_cast<const vec_t*>(row_input + col);
+        vec_t out_vec;
+        
+        #pragma unroll
+        for (int v = 0; v < VEC; v++) {
+            float val = (&in_vec.x)[v];
+            if (training) {
+                float rand_val = curand_uniform(&state);
+                val = (rand_val < dropout_p) ? 0.0f : val * scale;
+            }
+            (&out_vec.x)[v] = val;
+            max_val = fmaxf(max_val, val);
+        }
+        *reinterpret_cast<vec_t*>(output + row * cols + col) = out_vec;
+    }
+
+    // Handle remaining elements
+    for (int col = vec_cols * VEC + tid; col < cols; col += blockDim.x) {
+        float val = row_input[col];
+        if (training) {
+            float rand_val = curand_uniform(&state);
+            val = (rand_val < dropout_p) ? 0.0f : val * scale;
+        }
+        output[row * cols + col] = val;
+        max_val = fmaxf(max_val, val);
+    }
+
+    // Max reduction
+    max_shared[tid] = max_val;
+    __syncthreads();
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            max_shared[tid] = fmaxf(max_shared[tid], max_shared[tid + s]);
+        }
+        __syncthreads();
+    }
+    const float row_max = max_shared[0];
+    __syncthreads();
+
+    // Second pass: compute sum of exps
+    float sum_exp = 0.0f;
+    for (int col = tid * VEC; col < vec_cols * VEC; col += stride) {
+        vec_t out_vec = *reinterpret_cast<vec_t*>(output + row * cols + col);
+        #pragma unroll
+        for (int v = 0; v < VEC; v++) {
+            sum_exp += expf((&out_vec.x)[v] - row_max);
+        }
+    }
+
+    for (int col = vec_cols * VEC + tid; col < cols; col += blockDim.x) {
+        sum_exp += expf(output[row * cols + col] - row_max);
+    }
+
+    sum_shared[tid] = sum_exp;
+    __syncthreads();
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sum_shared[tid] += sum_shared[tid + s];
+        }
+        __syncthreads();
+    }
+    const float row_sum = sum_shared[0] + 1e-8f;
+    __syncthreads();
+
+    // Final pass: compute softmax
+    for (int col = tid * VEC; col < vec_cols * VEC; col += stride) {
+        vec_t out_vec = *reinterpret_cast<vec_t*>(output + row * cols + col);
+        #pragma unroll
+        for (int v = 0; v < VEC; v++) {
+            (&out_vec.x)[v] = expf((&out_vec.x)[v] - row_max) / row_sum;
+        }
+        *reinterpret_cast<vec_t*>(output + row * cols + col) = out_vec;
+    }
+
+    for (int col = vec_cols * VEC + tid; col < cols; col += blockDim.x) {
+        output[row * cols + col] = expf(output[row * cols + col] - row_max) / row_sum;
+    }
+}
+
+torch::Tensor fused_dropout_softmax_cuda(
+    torch::Tensor input,
+    float dropout_p,
+    bool training,
+    unsigned long long seed
+) {
+    auto output = torch::empty_like(input);
+    if (input.numel() == 0) return output;
+    
+    const int rows = input.size(0);
+    const int cols = input.size(1);
+    const float scale = 1.0f / (1.0f - dropout_p);
+    
+    const int threads = 256;
+    const dim3 blocks(rows);
+    const size_t shared_mem = 2 * threads * sizeof(float);
+    
+    fused_dropout_softmax_kernel<<<blocks, threads, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        rows,
+        cols,
+        dropout_p,
+        scale,
+        training,
+        seed
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_dropout_softmax_cuda(torch::Tensor input, float dropout_p, bool training, unsigned long long seed);"
+
+fused_op = load_inline(
+    name='fused_dropout_softmax',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_dropout_softmax_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, dropout_p):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.dropout_p = dropout_p
+
+    def forward(self, x):
+        x = self.matmul(x)
+        if self.training:
+            # Generate seed using PyTorch's RNG with full 64-bit range
+            seed = torch.empty((1,), dtype=torch.int64, device=x.device).random_().item()
+        else:
+            seed = 0
+        x = fused_op.fused_dropout_softmax_cuda(x, self.dropout_p, self.training, seed)
+        return x
+```
+
+Kernel 2 (runtime: 3.81 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused dropout-softmax CUDA kernel with warp-level reductions
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__device__ inline float get_random(unsigned int row_seed, int element_idx) {
+    // Combined Tausworthe and LCG algorithm for better random quality
+    unsigned int z1 = (row_seed ^ element_idx) * 2891336453;
+    unsigned int z2 = z1 ^ (z1 >> 13);
+    unsigned int z3 = z2 ^ (z2 << 9);
+    return __uint_as_float((z3 >> 1) | 0x3f800000) - 1.0f; // [0,1) range
+}
+
+__global__ void fused_dropout_softmax_kernel(
+    float* input, 
+    float* output, 
+    float dropout_p, 
+    bool training, 
+    unsigned int seed, 
+    int rows, 
+    int cols) {
+
+    const int row = blockIdx.x;
+    const int tid = threadIdx.x;
+    const unsigned int row_seed = seed ^ row;
+
+    if (row >= rows) return;
+
+    // Warp parameters
+    const int lane_id = tid % 32;
+    const int warp_id = tid / 32;
+
+    // First pass: compute max after dropout
+    float thread_max = -INFINITY;
+    for (int i = tid; i < cols; i += blockDim.x) {
+        float val = input[row * cols + i];
+        if (training) {
+            float rand_val = get_random(row_seed, i);
+            val = (rand_val < dropout_p) ? 0.0f : val / (1.0f - dropout_p);
+        }
+        thread_max = fmaxf(thread_max, val);
+    }
+
+    // Warp-level max reduction
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        thread_max = fmaxf(thread_max, __shfl_down_sync(0xffffffff, thread_max, offset));
+    }
+    float row_max = __shfl_sync(0xffffffff, thread_max, 0);
+
+    // Second pass: compute sum of exp(val - max)
+    float thread_sum = 0.0f;
+    for (int i = tid; i < cols; i += blockDim.x) {
+        float val = input[row * cols + i];
+        if (training) {
+            float rand_val = get_random(row_seed, i);
+            val = (rand_val < dropout_p) ? 0.0f : val / (1.0f - dropout_p);
+        }
+        thread_sum += expf(val - row_max);
+    }
+
+    // Warp-level sum reduction
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        thread_sum += __shfl_down_sync(0xffffffff, thread_sum, offset);
+    }
+    float row_sum = __shfl_sync(0xffffffff, thread_sum, 0);
+
+    // Third pass: compute normalized values
+    for (int i = tid; i < cols; i += blockDim.x) {
+        float val = input[row * cols + i];
+        if (training) {
+            float rand_val = get_random(row_seed, i);
+            val = (rand_val < dropout_p) ? 0.0f : val / (1.0f - dropout_p);
+        }
+        output[row * cols + i] = expf(val - row_max) / row_sum;
+    }
+}
+
+torch::Tensor fused_dropout_softmax_cuda(
+    torch::Tensor input, 
+    float dropout_p, 
+    bool training, 
+    unsigned int seed) {
+
+    auto input_contig = input.contiguous();
+    auto output = torch::empty_like(input_contig);
+    int rows = input_contig.size(0);
+    int cols = input_contig.size(1);
+
+    const int block_size = 256;  // Must be multiple of 32
+    const int grid_size = rows;
+
+    fused_dropout_softmax_kernel<<<grid_size, block_size>>>(
+        input_contig.data_ptr<float>(),
+        output.data_ptr<float>(),
+        dropout_p,
+        training,
+        seed,
+        rows,
+        cols
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = """
+torch::Tensor fused_dropout_softmax_cuda(torch::Tensor input, float dropout_p, bool training, unsigned int seed);
+"""
+
+# Compile the CUDA kernel
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_dropout_softmax_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, dropout_p):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.dropout_p = dropout_p
+
+    def forward(self, x):
+        x = self.matmul(x)
+        if self.training:
+            # Generate 32-bit seed using full 32-bit range (0 to 2^32-1)
+            seed = torch.randint(0, 0x100000000, (1,), dtype=torch.int64, device='cpu').item()
+        else:
+            seed = 0
+        return fused_op.fused_dropout_softmax_cuda(x, self.dropout_p, self.training, seed)
+```

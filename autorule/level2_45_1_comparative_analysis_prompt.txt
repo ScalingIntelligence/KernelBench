@@ -1,0 +1,304 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 1170.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernels for fused operations
+cuda_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+// Fused GEMM + Sigmoid kernel
+__global__ void gemm_sigmoid_kernel(
+    const float* input, const float* weight, const float* bias,
+    float* output, int M, int N, int K) {
+    
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (row < M && col < N) {
+        float sum = 0.0f;
+        for(int k = 0; k < K; ++k) {
+            sum += input[row*K + k] * weight[col*K + k];
+        }
+        sum += bias[col];
+        output[row*N + col] = 1.0f / (1.0f + expf(-sum));
+    }
+}
+
+torch::Tensor gemm_sigmoid_cuda(torch::Tensor input, torch::Tensor weight, torch::Tensor bias) {
+    int M = input.size(0);
+    int K = input.size(1);
+    int N = weight.size(0);
+    
+    auto output = torch::empty({M, N}, torch::device(torch::kCUDA).dtype(torch::kFloat32));
+    
+    dim3 threads(16, 16);
+    dim3 blocks((N + threads.x - 1)/threads.x, (M + threads.y - 1)/threads.y);
+    
+    gemm_sigmoid_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        M, N, K
+    );
+    
+    return output;
+}
+
+// Fused GEMM + LogSumExp kernel
+__global__ void gemm_logsumexp_kernel(
+    const float* input, const float* weight, const float* bias,
+    float* output, int M, int N, int K) {
+    
+    int sample_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(sample_idx >= M) return;
+    
+    float max_val = -INFINITY;
+    float sum_exp = 0.0f;
+    
+    for(int n = 0; n < N; ++n) {
+        float val = 0.0f;
+        for(int k = 0; k < K; ++k) {
+            val += input[sample_idx*K + k] * weight[n*K + k];
+        }
+        val += bias[n];
+        
+        if(val > max_val) {
+            sum_exp *= expf(max_val - val);
+            max_val = val;
+            sum_exp += 1.0f;
+        } else {
+            sum_exp += expf(val - max_val);
+        }
+    }
+    
+    output[sample_idx] = max_val + logf(sum_exp);
+}
+
+torch::Tensor gemm_logsumexp_cuda(torch::Tensor input, torch::Tensor weight, torch::Tensor bias) {
+    int M = input.size(0);
+    int K = input.size(1);
+    int N = weight.size(0);
+    
+    auto output = torch::empty({M}, torch::device(torch::kCUDA).dtype(torch::kFloat32));
+    
+    int threads = 256;
+    int blocks = (M + threads - 1) / threads;
+    
+    gemm_logsumexp_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        M, N, K
+    );
+    
+    return output;
+}
+"""
+
+cpp_code = """
+torch::Tensor gemm_sigmoid_cuda(torch::Tensor input, torch::Tensor weight, torch::Tensor bias);
+torch::Tensor gemm_logsumexp_cuda(torch::Tensor input, torch::Tensor weight, torch::Tensor bias);
+"""
+
+# Load custom CUDA operations
+custom_ops = load_inline(
+    name='custom_ops',
+    cpp_sources=cpp_code,
+    cuda_sources=cuda_code,
+    functions=['gemm_sigmoid_cuda', 'gemm_logsumexp_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(ModelNew, self).__init__()
+        # Maintain linear layers for parameter storage
+        self.linear1 = nn.Linear(input_size, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # Fused GEMM + Sigmoid
+        x = custom_ops.gemm_sigmoid_cuda(x, self.linear1.weight, self.linear1.bias)
+        # Fused GEMM + LogSumExp
+        x = custom_ops.gemm_logsumexp_cuda(x, self.linear2.weight, self.linear2.bias)
+        return x
+```
+
+Kernel 2 (runtime: 504.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused GEMM + Sigmoid kernel
+gemm_sigmoid_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void gemm_sigmoid_kernel(
+    const float* x, const float* W, const float* b,
+    float* out, int batch_size, int input_size, int hidden_size) {
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= batch_size || j >= hidden_size) return;
+
+    float sum = 0.0f;
+    for (int k = 0; k < input_size; ++k) {
+        sum += x[i * input_size + k] * W[j * input_size + k];
+    }
+    sum += b[j];
+    out[i * hidden_size + j] = 1.0f / (1.0f + expf(-sum));
+}
+
+torch::Tensor gemm_sigmoid_cuda(torch::Tensor x, torch::Tensor W, torch::Tensor b) {
+    int batch_size = x.size(0);
+    int input_size = x.size(1);
+    int hidden_size = W.size(0);
+
+    auto out = torch::zeros({batch_size, hidden_size}, x.options());
+
+    dim3 block(16, 16);
+    dim3 grid((batch_size + block.x - 1) / block.x, (hidden_size + block.y - 1) / block.y);
+
+    gemm_sigmoid_kernel<<<grid, block>>>(
+        x.data_ptr<float>(),
+        W.data_ptr<float>(),
+        b.data_ptr<float>(),
+        out.data_ptr<float>(),
+        batch_size,
+        input_size,
+        hidden_size
+    );
+
+    return out;
+}
+"""
+
+gemm_sigmoid_cpp_source = "torch::Tensor gemm_sigmoid_cuda(torch::Tensor x, torch::Tensor W, torch::Tensor b);"
+
+# Define optimized LogSumExp kernel
+logsumexp_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void logsumexp_kernel(const float* input, float* output, int rows, int cols) {
+    extern __shared__ float shared[];
+
+    int row = blockIdx.x;
+    int tid = threadIdx.x;
+
+    // Find max value in row
+    float max_val = -INFINITY;
+    for (int i = tid; i < cols; i += blockDim.x) {
+        max_val = fmaxf(max_val, input[row * cols + i]);
+    }
+    shared[tid] = max_val;
+    __syncthreads();
+
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared[tid] = fmaxf(shared[tid], shared[tid + s]);
+        }
+        __syncthreads();
+    }
+    float row_max = shared[0];
+    __syncthreads();
+
+    // Compute sum(exp(x - max))
+    float sum = 0.0f;
+    for (int i = tid; i < cols; i += blockDim.x) {
+        sum += expf(input[row * cols + i] - row_max);
+    }
+    shared[tid] = sum;
+    __syncthreads();
+
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared[tid] += shared[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[row] = logf(shared[0]) + row_max;
+    }
+}
+
+torch::Tensor logsumexp_cuda(torch::Tensor x) {
+    int rows = x.size(0);
+    int cols = x.size(1);
+    auto output = torch::zeros(rows, x.options());
+    
+    int block_size = 256;
+    size_t shared_mem = block_size * sizeof(float);
+    
+    logsumexp_kernel<<<rows, block_size, shared_mem>>>(
+        x.data_ptr<float>(), 
+        output.data_ptr<float>(),
+        rows,
+        cols
+    );
+    
+    return output;
+}
+"""
+
+logsumexp_cpp_source = "torch::Tensor logsumexp_cuda(torch::Tensor x);"
+
+# Load custom CUDA extensions
+gemm_sigmoid = load_inline(
+    name='gemm_sigmoid',
+    cpp_sources=gemm_sigmoid_cpp_source,
+    cuda_sources=gemm_sigmoid_source,
+    functions=['gemm_sigmoid_cuda'],
+    verbose=True
+)
+
+logsumexp = load_inline(
+    name='logsumexp',
+    cpp_sources=logsumexp_cpp_source,
+    cuda_sources=logsumexp_source,
+    functions=['logsumexp_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(ModelNew, self).__init__()
+        self.linear1 = nn.Linear(input_size, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # Fused GEMM + Sigmoid with custom kernel
+        x = gemm_sigmoid.gemm_sigmoid_cuda(x, self.linear1.weight, self.linear1.bias)
+        # Standard GEMM (cuBLAS optimized)
+        x = self.linear2(x)
+        # Optimized LogSumExp with custom kernel
+        x = logsumexp.logsumexp_cuda(x)
+        return x
+
+def get_init_inputs():
+    return [input_size, hidden_size, output_size]
+
+batch_size = 16384
+input_size = 2048
+hidden_size = 4096
+output_size = 1024
+
+def get_inputs():
+    return [torch.rand(batch_size, input_size).cuda()]
+```

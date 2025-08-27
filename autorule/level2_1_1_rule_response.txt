@@ -1,0 +1,15 @@
+REASONING TRACE:
+[
+    "The kernel precomputes repeated expressions on the host to reduce per-thread arithmetic operations.",
+    "The kernel minimizes per-thread computations by avoiding redundant arithmetic operations within the kernel.",
+    "The kernel passes precomputed constants (e.g., H*W) as parameters instead of calculating them within the kernel to reduce instruction count."
+]
+
+
+ANSWER:
+
+
+The answer identifies that Kernel 1 precomputes H*W on the host, reducing per-thread operations. The rules focus on precomputing expressions, minimizing redundant operations, and passing precomputed constants. These are objective and applicable to other kernels.
+
+Usage:
+{'inputTokens': 2871, 'outputTokens': 127, 'totalTokens': 2998}

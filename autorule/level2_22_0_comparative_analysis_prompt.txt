@@ -1,0 +1,325 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.42 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+combined_cuda_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void scale_add_clamp_kernel(const float* input, float* output, float scale_add_factor, float clamp_min, float clamp_max, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float val = input[idx] * scale_add_factor;
+        val = fmaxf(clamp_min, fminf(clamp_max, val));
+        output[idx] = val;
+    }
+}
+
+torch::Tensor scale_add_clamp_cuda(torch::Tensor input, float scale_add_factor, float clamp_min, float clamp_max) {
+    auto output = torch::empty_like(input);
+    int size = input.numel();
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    scale_add_clamp_kernel<<<num_blocks, block_size>>>(input.data_ptr<float>(), output.data_ptr<float>(), scale_add_factor, clamp_min, clamp_max, size);
+    return output;
+}
+
+__global__ void logsumexp_kernel(const float* input, float* output, int rows, int cols) {
+    extern __shared__ float shared[];
+    int row = blockIdx.x;
+    int tid = threadIdx.x;
+
+    float max_val = -INFINITY;
+    for (int i = tid; i < cols; i += blockDim.x) {
+        max_val = fmaxf(max_val, input[row*cols + i]);
+    }
+    shared[tid] = max_val;
+    __syncthreads();
+
+    for (int s=blockDim.x/2; s>0; s>>=1) {
+        if (tid < s) {
+            if (shared[tid + s] > shared[tid]) shared[tid] = shared[tid + s];
+        }
+        __syncthreads();
+    }
+
+    float row_max = shared[0];
+    __syncthreads();
+
+    float sum_exp = 0.0f;
+    for (int i = tid; i < cols; i += blockDim.x) {
+        sum_exp += expf(input[row*cols + i] - row_max);
+    }
+    shared[tid] = sum_exp;
+    __syncthreads();
+
+    for (int s=blockDim.x/2; s>0; s>>=1) {
+        if (tid < s) shared[tid] += shared[tid + s];
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[row] = logf(shared[0]) + row_max;
+    }
+}
+
+torch::Tensor logsumexp_cuda(torch::Tensor input) {
+    int rows = input.size(0);
+    int cols = input.size(1);
+    auto output = torch::empty({rows, 1}, input.options());
+
+    int block_size = 256;
+    int shared_mem_size = block_size * sizeof(float);
+    logsumexp_kernel<<<rows, block_size, shared_mem_size>>>(
+        input.data_ptr<float>(), output.data_ptr<float>(), rows, cols
+    );
+    return output;
+}
+
+__global__ void mish_multiply_kernel(const float* input, float* output, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float x = input[idx];
+        float sp = log1pf(expf(x));
+        float tanh_sp = tanhf(sp);
+        output[idx] = x * x * tanh_sp;
+    }
+}
+
+torch::Tensor mish_multiply_cuda(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int size = input.numel();
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    mish_multiply_kernel<<<num_blocks, block_size>>>(input.data_ptr<float>(), output.data_ptr<float>(), size);
+    return output;
+}
+"""
+
+combined_cpp_source = """
+torch::Tensor scale_add_clamp_cuda(torch::Tensor input, float scale_add_factor, float clamp_min, float clamp_max);
+torch::Tensor logsumexp_cuda(torch::Tensor input);
+torch::Tensor mish_multiply_cuda(torch::Tensor input);
+"""
+
+custom_ops = load_inline(
+    name='custom_ops',
+    cpp_sources=combined_cpp_source,
+    cuda_sources=combined_cuda_source,
+    functions=['scale_add_clamp_cuda', 'logsumexp_cuda', 'mish_multiply_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, scale_factor, clamp_min, clamp_max):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(input_size, hidden_size)
+        self.scale_factor = scale_factor
+        self.clamp_min = clamp_min
+        self.clamp_max = clamp_max
+
+    def forward(self, x):
+        x = self.matmul(x)
+        x = custom_ops.scale_add_clamp_cuda(x, self.scale_factor*2.0, self.clamp_min, self.clamp_max)
+        x = custom_ops.logsumexp_cuda(x)
+        x = custom_ops.mish_multiply_cuda(x)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, input_size).cuda()]
+
+def get_init_inputs():
+    return [input_size, hidden_size, scale_factor, clamp_min, clamp_max]
+
+batch_size = 1024
+input_size = 8192
+hidden_size = 8192
+scale_factor = 2.0
+clamp_min = -10.0
+clamp_max = 10.0
+```
+
+Kernel 2 (runtime: 7.34 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Fused Scale, Add (x+x), and Clamp kernel
+scale_add_clamp_cpp = "torch::Tensor scale_add_clamp_cuda(torch::Tensor input, float scale, float clamp_min, float clamp_max);"
+scale_add_clamp_cuda = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void scale_add_clamp_kernel(const float* input, float* output, float scale, float clamp_min, float clamp_max, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float val = input[idx] * scale;
+        val = fmaxf(clamp_min, fminf(clamp_max, val));
+        output[idx] = val;
+    }
+}
+
+torch::Tensor scale_add_clamp_cuda(torch::Tensor input, float scale, float clamp_min, float clamp_max) {
+    auto output = torch::empty_like(input);
+    int size = input.numel();
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    scale_add_clamp_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        scale,
+        clamp_min,
+        clamp_max,
+        size
+    );
+    return output;
+}
+"""
+
+scale_add_clamp = load_inline(
+    name='scale_add_clamp',
+    cpp_sources=scale_add_clamp_cpp,
+    cuda_sources=scale_add_clamp_cuda,
+    functions=['scale_add_clamp_cuda'],
+    verbose=True
+)
+
+# Optimized LogSumExp kernel with shared memory
+logsumexp_cpp = "torch::Tensor logsumexp_cuda(torch::Tensor input);"
+logsumexp_cuda = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void logsumexp_kernel(const float* input, float* output, int rows, int cols) {
+    extern __shared__ float shared[];
+    int row = blockIdx.x;
+    int tid = threadIdx.x;
+
+    // Find max value in row
+    float max_val = -INFINITY;
+    for(int i = tid; i < cols; i += blockDim.x) {
+        max_val = fmaxf(max_val, input[row*cols + i]);
+    }
+    
+    shared[tid] = max_val;
+    __syncthreads();
+    for(int s = blockDim.x/2; s>0; s>>=1) {
+        if(tid < s) shared[tid] = fmaxf(shared[tid], shared[tid+s]);
+        __syncthreads();
+    }
+    float row_max = shared[0];
+    __syncthreads();
+
+    // Compute sum of exps
+    float sum_exp = 0.0f;
+    for(int i = tid; i < cols; i += blockDim.x) {
+        sum_exp += expf(input[row*cols + i] - row_max);
+    }
+    
+    shared[tid] = sum_exp;
+    __syncthreads();
+    for(int s = blockDim.x/2; s>0; s>>=1) {
+        if(tid < s) shared[tid] += shared[tid+s];
+        __syncthreads();
+    }
+    
+    if(tid == 0) {
+        output[row] = logf(shared[0]) + row_max;
+    }
+}
+
+torch::Tensor logsumexp_cuda(torch::Tensor input) {
+    auto output = torch::empty({input.size(0), 1}, input.options());
+    int rows = input.size(0);
+    int cols = input.size(1);
+    int block_size = 256;
+    int shared_size = block_size * sizeof(float);
+    
+    logsumexp_kernel<<<rows, block_size, shared_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        rows,
+        cols
+    );
+    return output;
+}
+"""
+
+logsumexp = load_inline(
+    name='logsumexp',
+    cpp_sources=logsumexp_cpp,
+    cuda_sources=logsumexp_cuda,
+    functions=['logsumexp_cuda'],
+    verbose=True
+)
+
+# Fused Mish-Multiply kernel
+mish_multiply_cpp = "torch::Tensor mish_multiply_cuda(torch::Tensor input);"
+mish_multiply_cuda = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void mish_multiply_kernel(const float* input, float* output, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx < size) {
+        float x = input[idx];
+        float softplus = log1pf(expf(x));
+        float tanh_sp = tanhf(softplus);
+        output[idx] = x * x * tanh_sp;
+    }
+}
+
+torch::Tensor mish_multiply_cuda(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int size = input.numel();
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    
+    mish_multiply_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        size
+    );
+    return output;
+}
+"""
+
+mish_multiply = load_inline(
+    name='mish_multiply',
+    cpp_sources=mish_multiply_cpp,
+    cuda_sources=mish_multiply_cuda,
+    functions=['mish_multiply_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, scale_factor, clamp_min, clamp_max):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(input_size, hidden_size)
+        self.scale_factor = scale_factor * 2  # Fused scaling factor
+        self.clamp_min = clamp_min
+        self.clamp_max = clamp_max
+        self.scale_add_clamp = scale_add_clamp
+        self.logsumexp = logsumexp
+        self.mish_multiply = mish_multiply
+
+    def forward(self, x):
+        x = self.matmul(x)
+        x = self.scale_add_clamp.scale_add_clamp_cuda(x, self.scale_factor, self.clamp_min, self.clamp_max)
+        x = self.logsumexp.logsumexp_cuda(x)
+        x = self.mish_multiply.mish_multiply_cuda(x)
+        return x
+```

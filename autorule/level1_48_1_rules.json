@@ -1,0 +1,5 @@
+[
+  "The kernel uses 32-bit integer types for loop counters and indices instead of 64-bit integer types.",
+  "The kernel avoids 64-bit arithmetic operations in critical computational loops.",
+  "The kernel minimizes register usage by employing smaller data types for loop variables and indices."
+]

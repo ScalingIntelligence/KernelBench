@@ -1,0 +1,396 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 36.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernels for fused operations
+custom_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void maxpool_hardtanh_kernel(const float* input, float* output, 
+    int num_elements, int channels, int height, int width, 
+    float min_val, float max_val) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= num_elements) return;
+
+    int n = index / (channels * (height/2) * (width/2));
+    int c = (index % (channels * (height/2) * (width/2))) / ((height/2) * (width/2));
+    int hw = index % ((height/2) * (width/2));
+    int h = hw / (width/2);
+    int w = hw % (width/2);
+
+    int input_h_start = h * 2;
+    int input_w_start = w * 2;
+
+    float max_val_tmp = -INFINITY;
+    #pragma unroll
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            int input_h = input_h_start + i;
+            int input_w = input_w_start + j;
+            if (input_h < height && input_w < width) {
+                int input_idx = n * channels * height * width + c * height * width + input_h * width + input_w;
+                max_val_tmp = fmaxf(max_val_tmp, input[input_idx]);
+            }
+        }
+    }
+
+    // Apply Hardtanh with fast math operations
+    output[index] = fminf(fmaxf(max_val_tmp, min_val), max_val);
+}
+
+torch::Tensor maxpool_hardtanh_cuda(torch::Tensor input, float min_val, float max_val) {
+    auto batch_size = input.size(0);
+    auto channels = input.size(1);
+    auto height = input.size(2);
+    auto width = input.size(3);
+
+    int output_height = height / 2;
+    int output_width = width / 2;
+    int num_elements = batch_size * channels * output_height * output_width;
+
+    auto output = torch::zeros({batch_size, channels, output_height, output_width}, input.options());
+
+    const int block_size = 256;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+
+    maxpool_hardtanh_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements,
+        channels,
+        height,
+        width,
+        min_val,
+        max_val
+    );
+
+    return output;
+}
+
+__global__ void mean_tanh_kernel(const float* input, float* output, 
+    int batch_size, int channels, int height, int width, float inv_size) {
+    extern __shared__ float sdata[];
+    
+    int index = blockIdx.x;
+    int n = index / channels;
+    int c = index % channels;
+    if (n >= batch_size || c >= channels) return;
+
+    int tid = threadIdx.x;
+    const int elements_per_thread = (height * width + 4 * blockDim.x - 1) / (4 * blockDim.x);
+    float sum = 0.0f;
+
+    // Vectorized load with float4 for better memory efficiency
+    for (int i = 0; i < elements_per_thread; ++i) {
+        int elem_idx = (tid * elements_per_thread + i) * 4;
+        if (elem_idx >= height * width) break;
+
+        // Check if we can safely load 4 elements
+        if (elem_idx + 3 < height * width) {
+            int h = elem_idx / width;
+            int w = elem_idx % width;
+            int input_idx = n * channels * height * width + c * height * width + h * width + w;
+            float4 vals = *reinterpret_cast<const float4*>(&input[input_idx]);
+            sum += vals.x + vals.y + vals.z + vals.w;
+        } else { // Handle remaining elements
+            for (int j = 0; j < 4; ++j) {
+                if (elem_idx + j < height * width) {
+                    int pos = elem_idx + j;
+                    int h = pos / width;
+                    int w = pos % width;
+                    int input_idx = n * channels * height * width + c * height * width + h * width + w;
+                    sum += input[input_idx];
+                }
+            }
+        }
+    }
+
+    // Warp-level reduction using shuffle instructions
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
+
+    if (tid % 32 == 0) {
+        sdata[tid / 32] = sum;
+    }
+    __syncthreads();
+
+    // First warp reduces per-warp sums
+    if (tid < 32) {
+        float val = (tid < (blockDim.x + 31) / 32) ? sdata[tid] : 0.0f;
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            val += __shfl_down_sync(0xffffffff, val, offset);
+        }
+        if (tid == 0) {
+            output[n * channels + c] = tanhf(val * inv_size);
+        }
+    }
+}
+
+torch::Tensor mean_tanh_cuda(torch::Tensor input) {
+    auto batch_size = input.size(0);
+    auto channels = input.size(1);
+    int height = input.size(2);
+    int width = input.size(3);
+    float inv_size = 1.0f / (height * width);
+
+    auto output = torch::zeros({batch_size, channels, 1, 1}, input.options());
+
+    int num_blocks = batch_size * channels;
+    const int block_size = 1024;
+    size_t shared_mem_size = ((block_size + 31) / 32) * sizeof(float);
+
+    mean_tanh_kernel<<<num_blocks, block_size, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        height,
+        width,
+        inv_size
+    );
+
+    return output;
+}
+"""
+
+custom_ops_cpp_source = """
+torch::Tensor maxpool_hardtanh_cuda(torch::Tensor input, float min_val, float max_val);
+torch::Tensor mean_tanh_cuda(torch::Tensor input);
+"""
+
+# Load the custom CUDA operations
+custom_ops = load_inline(
+    name="custom_ops",
+    cpp_sources=custom_ops_cpp_source,
+    cuda_sources=custom_ops_source,
+    functions=["maxpool_hardtanh_cuda", "mean_tanh_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, maxpool_kernel_size, maxpool_stride, hardtanh_min, hardtanh_max):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.hardtanh_min = hardtanh_min
+        self.hardtanh_max = hardtanh_max
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = custom_ops.maxpool_hardtanh_cuda(x, self.hardtanh_min, self.hardtanh_max)
+        x = custom_ops.mean_tanh_cuda(x)
+        return x
+
+batch_size = 128
+in_channels  = 64  
+out_channels = 64  
+height = width = 256  
+kernel_size  = 3
+stride = 1
+padding = 1
+maxpool_kernel_size = 2
+maxpool_stride = 2
+hardtanh_min = -1
+hardtanh_max = 1
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, maxpool_kernel_size, maxpool_stride, hardtanh_min, hardtanh_max]
+```
+
+Kernel 2 (runtime: 36.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized CUDA kernels with parallel reductions and coalesced memory access
+custom_kernels_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+// Optimized fused MaxPool2d + Hardtanh kernel with coalesced memory access
+__global__ void fused_maxpool_hardtanh_kernel(
+    const float* __restrict__ input, float* __restrict__ output,
+    float min_val, float max_val,
+    int input_H, int input_W,
+    int output_H, int output_W,
+    int C, int N) {
+    
+    const int linear_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int total_elements = N * C * output_H * output_W;
+    if (linear_idx >= total_elements) return;
+
+    // Calculate output dimensions
+    const int n = linear_idx / (C * output_H * output_W);
+    const int c = (linear_idx % (C * output_H * output_W)) / (output_H * output_W);
+    const int h_out = (linear_idx % (output_H * output_W)) / output_W;
+    const int w_out = linear_idx % output_W;
+
+    // 2x2 pooling window
+    const int h_start = h_out * 2;
+    const int w_start = w_out * 2;
+    float max_val_window = -INFINITY;
+
+    // Optimized bounds checking and memory access
+    if (h_start < input_H && w_start < input_W) {
+        const int input_offset = n * C * input_H * input_W + c * input_H * input_W;
+        const int h_end = min(h_start + 2, input_H);
+        const int w_end = min(w_start + 2, input_W);
+        
+        for (int h = h_start; h < h_end; ++h) {
+            for (int w = w_start; w < w_end; ++w) {
+                const float val = __ldg(&input[input_offset + h * input_W + w]);
+                max_val_window = fmaxf(max_val_window, val);
+            }
+        }
+    }
+
+    // Apply Hardtanh and store
+    output[linear_idx] = fminf(fmaxf(max_val_window, min_val), max_val);
+}
+
+// Optimized fused Mean + Tanh kernel with parallel reduction
+__global__ void fused_mean_tanh_kernel(
+    const float* __restrict__ input, float* __restrict__ output,
+    int H, int W, int C, int N) {
+    
+    extern __shared__ float sdata[];
+    const int tid = threadIdx.x;
+    const int pair_idx = blockIdx.x;
+    const int n = pair_idx / C;
+    const int c = pair_idx % C;
+
+    const int elements_per_thread = (H * W + blockDim.x - 1) / blockDim.x;
+    const int start = tid * elements_per_thread;
+    const int end = min(start + elements_per_thread, H * W);
+
+    // Partial sum calculation
+    float sum = 0.0f;
+    for (int i = start; i < end; ++i) {
+        const int h = i / W;
+        const int w = i % W;
+        sum += __ldg(&input[n * C * H * W + c * H * W + h * W + w]);
+    }
+
+    sdata[tid] = sum;
+    __syncthreads();
+
+    // Parallel reduction
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    // Store final result
+    if (tid == 0) {
+        output[pair_idx] = tanhf(sdata[0] / (H * W));
+    }
+}
+
+// Wrapper functions
+torch::Tensor fused_maxpool_hardtanh_cuda(torch::Tensor input, float min_val, float max_val) {
+    const int N = input.size(0);
+    const int C = input.size(1);
+    const int input_H = input.size(2);
+    const int input_W = input.size(3);
+    
+    auto output = torch::empty({N, C, input_H/2, input_W/2}, input.options());
+    const int total_elements = N * C * (input_H/2) * (input_W/2);
+    const int block_size = 256;
+    const int grid_size = (total_elements + block_size - 1) / block_size;
+
+    fused_maxpool_hardtanh_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(), output.data_ptr<float>(),
+        min_val, max_val,
+        input_H, input_W,
+        input_H/2, input_W/2,
+        C, N
+    );
+    
+    return output;
+}
+
+torch::Tensor fused_mean_tanh_cuda(torch::Tensor input) {
+    const int N = input.size(0);
+    const int C = input.size(1);
+    const int H = input.size(2);
+    const int W = input.size(3);
+    
+    auto output = torch::empty({N, C, 1, 1}, input.options());
+    const int total_pairs = N * C;
+    const int block_size = 256;
+    const size_t shared_mem = block_size * sizeof(float);
+
+    fused_mean_tanh_kernel<<<total_pairs, block_size, shared_mem>>>(
+        input.data_ptr<float>(), output.data_ptr<float>(),
+        H, W, C, N
+    );
+    
+    return output;
+}
+"""
+
+cpp_wrappers = """
+torch::Tensor fused_maxpool_hardtanh_cuda(torch::Tensor input, float min_val, float max_val);
+torch::Tensor fused_mean_tanh_cuda(torch::Tensor input);
+"""
+
+# Load optimized kernels
+custom_ops = load_inline(
+    name='custom_ops',
+    cpp_sources=cpp_wrappers,
+    cuda_sources=custom_kernels_source,
+    functions=['fused_maxpool_hardtanh_cuda', 'fused_mean_tanh_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, maxpool_kernel_size, maxpool_stride, hardtanh_min, hardtanh_max):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.hardtanh_min = hardtanh_min
+        self.hardtanh_max = hardtanh_max
+        
+        # Validate expected pooling configuration
+        assert maxpool_kernel_size == 2 and maxpool_stride == 2, \
+            "Optimized kernel requires maxpool kernel_size=2 and stride=2"
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = custom_ops.fused_maxpool_hardtanh_cuda(x, self.hardtanh_min, self.hardtanh_max)
+        x = custom_ops.fused_mean_tanh_cuda(x)
+        return x
+
+# Parameter definitions remain unchanged
+batch_size = 128
+in_channels  = 64  
+out_channels = 64  
+height = width = 256  
+kernel_size  = 3
+stride = 1
+padding = 1
+maxpool_kernel_size = 2
+maxpool_stride = 2
+hardtanh_min = -1
+hardtanh_max = 1
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, maxpool_kernel_size, maxpool_stride, hardtanh_min, hardtanh_max]
+```

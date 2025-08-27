@@ -1,0 +1,41 @@
+REASONING TRACE:
+Okay, let's go through the reasoning provided and extract the rule-like statements. The user wants these rules to be general enough for various CUDA kernels and objectively determinable.
+
+First, the reasoning mentions that Kernel 1 uses shared memory for weights, allowing coalesced global memory access and data reuse. This implies a rule about using shared memory to reduce global memory access. So, "The kernel uses shared memory to preload and reuse weights across threads in a block, reducing global memory accesses."
+
+Next, the memory access patterns in Kernel 1 are channel-major, enabling perfect coalescing. This points to a rule about memory layout matching for coalesced access. So, "The kernel's memory access pattern is optimized for coalesced global memory access by matching the tensor's memory layout."
+
+Kernel 1's grid configuration is 2D, which is said to utilize SM resources better. The 3D grid in Kernel 2 leads to lower occupancy. This suggests a rule about grid dimensions affecting occupancy. Hence, "The kernel uses a grid configuration that maximizes occupancy and resource utilization (e.g., 2D grid instead of 3D)."
+
+The use of __ldg() intrinsics in Kernel 1 for bias access leverages the texture cache. This translates to a rule about using read-only data cache. So, "The kernel utilizes read-only data cache (e.g., via __ldg()) for frequently accessed constant data."
+
+Kernel 1 employs the -use_fast_math flag for FP optimizations. This is a compiler flag, so a rule could be about compiler optimizations. However, the user wants rules applicable to kernel code, not build flags. Maybe omit this as it's a compile-time setting, not a kernel code feature.
+
+The block size of 256 threads in Kernel 1 is mentioned as optimized. But the example given in the user's initial examples includes thread block multiples of warp size. However, 256 is a multiple of 32 (256/32=8), so maybe a rule here. But the reasoning doesn't explicitly state that as a factor. The main point was about grid structure, not block size. So perhaps not.
+
+Another point is the loop unrolling in Kernel 2 via template, but the reasoning says it didn't help as much as shared memory. However, the example given in the problem includes operator fusion, which isn't mentioned here. The key factors were shared memory, coalescing, grid config, and read-only cache.
+
+So compiling the rules from the key points:
+
+1. Shared memory for weights, reducing global accesses.
+2. Memory access pattern optimized for coalescing by matching layout.
+3. Grid configuration (2D vs 3D) affecting occupancy.
+4. Use of read-only cache (__ldg) for constant data.
+
+These are all objective and applicable to other kernels. The quantitative impact and specific numbers (like 128B transactions) are too specific, so the rules should be more general.
+
+So the final list should include these four rules as JSON array strings.
+
+
+ANSWER:
+
+
+[
+    "The kernel uses shared memory to preload and reuse weights across threads in a block, reducing global memory accesses.",
+    "The kernel's memory access pattern is optimized for coalesced global memory access by matching the tensor's memory layout.",
+    "The kernel uses a grid configuration that maximizes occupancy and resource utilization (e.g., 2D grid instead of 3D).",
+    "The kernel utilizes read-only data cache (e.g., via __ldg()) for frequently accessed constant data."
+]
+
+Usage:
+{'inputTokens': 1540, 'outputTokens': 726, 'totalTokens': 2266}

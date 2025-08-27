@@ -1,0 +1,6 @@
+[
+  "The kernel ensures input tensors are contiguous to guarantee coalesced global memory access.",
+  "The kernel avoids using __ldg for parameter loads, relying on hardware coalescing for warp-wide broadcasts of the same value.",
+  "The kernel uses straightforward index calculations that compile to efficient bitwise operations for power-of-two dimensions.",
+  "The kernel minimizes the use of explicit intrinsics (e.g., __ldg, fmaf) to reduce register pressure and improve compiler optimization flexibility."
+]

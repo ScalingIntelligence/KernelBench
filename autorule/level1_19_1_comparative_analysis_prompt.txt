@@ -1,0 +1,123 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom ReLU CUDA kernel
+relu_kernel_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void relu_forward_kernel(const float* input, float* output, int64_t n) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < n) {
+        output[index] = fmaxf(0.0f, input[index]);
+    }
+}
+
+torch::Tensor relu_forward_cuda(torch::Tensor input) {
+    auto output = torch::empty_like(input);
+    int64_t num_elements = input.numel();
+    
+    const int threads_per_block = 256;
+    const int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    relu_forward_kernel<<<num_blocks, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+relu_cpp_source = "torch::Tensor relu_forward_cuda(torch::Tensor input);"
+
+# Compile the CUDA extension
+relu_extension = load_inline(
+    name="relu_extension",
+    cpp_sources=relu_cpp_source,
+    cuda_sources=relu_kernel_source,
+    functions=["relu_forward_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return relu_extension.relu_forward_cuda(x)
+
+def get_inputs():
+    x = torch.rand(batch_size, dim).cuda()
+    return [x]
+
+def get_init_inputs():
+    return []
+
+batch_size = 4096
+dim = 393216
+```
+
+Kernel 2 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the custom CUDA kernel for ReLU activation
+relu_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void relu_kernel(const float* input, float* output, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        output[idx] = max(0.0f, input[idx]);
+    }
+}
+
+torch::Tensor relu_cuda(torch::Tensor input) {
+    auto size = input.numel();
+    auto output = torch::empty_like(input);
+
+    const int block_size = 256;
+    const int num_blocks = (size + block_size - 1) / block_size;
+
+    relu_kernel<<<num_blocks, block_size>>>(input.data_ptr<float>(), output.data_ptr<float>(), size);
+
+    return output;
+}
+"""
+
+relu_cpp_source = (
+    "torch::Tensor relu_cuda(torch::Tensor input);"
+)
+
+# Compile the inline CUDA code for ReLU
+relu = load_inline(
+    name="relu",
+    cpp_sources=relu_cpp_source,
+    cuda_sources=relu_source,
+    functions=["relu_cuda"],
+    verbose=True,
+    extra_cflags=[""],
+    extra_ldflags=[""],
+)
+
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.relu = relu
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.relu.relu_cuda(x)
+```

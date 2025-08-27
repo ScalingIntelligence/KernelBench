@@ -1,0 +1,6 @@
+[
+  "The kernel uses a larger thread block size (1024) to improve GPU occupancy and resource utilization.",
+  "The kernel performs in-place operations to reduce memory bandwidth usage and improve cache locality.",
+  "The kernel fuses multiple operations (addition and LeakyReLU) into a single kernel to reduce kernel launch overhead and memory passes.",
+  "The kernel uses thread block sizes that are multiples of warp size (32)."
+]

@@ -1,0 +1,12 @@
+[
+  "The kernel uses sub-tiling where each thread computes a 4x4 submatrix of the output.",
+  "The kernel pads shared memory arrays and avoids bank conflicts during access to optimize memory operations.",
+  "The kernel loads global memory data in coalesced patterns by ensuring consecutive threads access consecutive addresses, including for matrix B, and ensures input tensors are contiguous.",
+  "The kernel unrolls inner loops using pragma directives to reduce loop overhead.",
+  "The kernel employs a larger tile size (32x32) to reduce the number of tiles, improve data reuse, and minimize loop iterations.",
+  "The kernel configures thread blocks to match GPU warp sizes (e.g., 8x8 threads per block) and optimizes block size (e.g., 512 threads) for improved occupancy.",
+  "The kernel stores intermediate partial sums in registers rather than shared memory to reduce access latency.",
+  "The kernel is specialized for a specific data type (float) to enable compiler optimizations.",
+  "The kernel computes channel indices via fused division/modulus operations (e.g., rem = idx % (C*H*W); c = rem/(H*W)) to reduce instruction count.",
+  "The kernel avoids passing unused parameters and uses fewer parameters to reduce register pressure and improve occupancy."
+]

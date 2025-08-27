@@ -1,0 +1,6 @@
+[
+  "The kernel uses a 3D grid with 2D thread blocks to better match the output tensor structure (NCHW), keeping threads in a warp focused on adjacent spatial positions.",
+  "The kernel orders loops to prioritize sequential access to weight tensor elements (c_in first, then kh and kw), enabling coalesced memory reads.",
+  "The kernel uses 2D thread blocks (e.g., 16x16) to process nearby output pixels, improving input reuse through L1 cache for overlapping kernel positions.",
+  "The kernel avoids strided memory access patterns in weight tensor reads by maintaining sequential access through loop ordering."
+]

@@ -1,0 +1,274 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 23.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the fused operations CUDA kernel
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_ops_kernel(
+    const float* input,
+    const float* subtract_params,
+    float* output,
+    int D, int H, int W, int N
+) {
+    extern __shared__ float s_subtract[];
+
+    // Load subtract parameters into shared memory
+    for (int i = threadIdx.x; i < 16; i += blockDim.x) {
+        if (i < 16) {
+            s_subtract[i] = subtract_params[i];
+        }
+    }
+    __syncthreads();
+
+    int batch = blockIdx.x;
+    int d = blockIdx.y;
+    int h = blockIdx.z;
+    int w = threadIdx.x;
+
+    if (batch >= N || d >= D || h >= H || w >= W) {
+        return;
+    }
+
+    const int C = 16;  // Hardcoded for out_channels=16 optimization
+
+    // Load all channels for this spatial position
+    float vals[C];
+    for (int c = 0; c < C; ++c) {
+        int input_idx = batch * C * D * H * W + c * D * H * W + d * H * W + h * W + w;
+        vals[c] = input[input_idx];
+    }
+
+    // Softmax computation
+    float max_val = -INFINITY;
+    for (int c = 0; c < C; ++c) {
+        max_val = fmaxf(max_val, vals[c]);
+    }
+
+    float sum_exp = 0.0f;
+    for (int c = 0; c < C; ++c) {
+        sum_exp += expf(vals[c] - max_val);
+    }
+
+    // Combined operations
+    float max_result = -INFINITY;
+    for (int c = 0; c < C; ++c) {
+        float softmax = expf(vals[c] - max_val) / sum_exp;
+        float sub = softmax - s_subtract[c];
+        float swish = sub * (1.0f / (1.0f + expf(-sub)));
+        max_result = fmaxf(max_result, swish);
+    }
+
+    // Write final result
+    int output_idx = batch * D * H * W + d * H * W + h * W + w;
+    output[output_idx] = max_result;
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor subtract_params) {
+    TORCH_CHECK(input.dim() == 5, "Input must be 5D [N, C, D, H, W]");
+    TORCH_CHECK(subtract_params.size(0) == 16, "This kernel requires exactly 16 channels");
+
+    int N = input.size(0);
+    int D = input.size(2);
+    int H = input.size(3);
+    int W = input.size(4);
+
+    auto output = torch::zeros({N, D, H, W}, input.options());
+
+    dim3 grid(N, D, H);
+    dim3 block(W);
+    size_t shared_mem = 16 * sizeof(float);
+
+    fused_ops_kernel<<<grid, block, shared_mem>>>(
+        input.data_ptr<float>(),
+        subtract_params.data_ptr<float>(),
+        output.data_ptr<float>(),
+        D, H, W, N
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_ops_cuda(torch::Tensor input, torch::Tensor subtract_params);"
+
+# Compile the CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=['fused_ops_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, pool_kernel_size, pool_stride, pool_padding):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding, 
+            output_padding=output_padding
+        )
+        self.max_pool = nn.MaxPool3d(
+            kernel_size=pool_kernel_size,
+            stride=pool_stride,
+            padding=pool_padding
+        )
+        self.subtract = nn.Parameter(torch.randn(out_channels))
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.max_pool(x)
+        x = self.fused_ops.fused_ops_cuda(x, self.subtract)
+        return x
+```
+
+Kernel 2 (runtime: 23.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused kernel for Softmax-Subtract-Swish-Max operations
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_softmax_sub_swish_max_kernel(
+    const float* input,
+    const float* subtract,
+    float* output,
+    int batch_size,
+    int channels,
+    int depth,
+    int height,
+    int width
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int spatial_size = depth * height * width;
+    int total_elements = batch_size * spatial_size;
+    
+    if (idx >= total_elements) return;
+    
+    int b = idx / spatial_size;
+    int spatial_idx = idx % spatial_size;
+    int d = spatial_idx / (height * width);
+    int hw = spatial_idx % (height * width);
+    int h = hw / width;
+    int w = hw % width;
+
+    float max_val = -INFINITY;
+    float sum_exp = 0.0f;
+    
+    // First pass: find max and compute sum_exp
+    for(int c = 0; c < channels; ++c) {
+        int input_idx = ((b * channels + c) * depth + d) * height * width + h * width + w;
+        float val = input[input_idx];
+        max_val = fmaxf(max_val, val);
+    }
+    
+    for(int c = 0; c < channels; ++c) {
+        int input_idx = ((b * channels + c) * depth + d) * height * width + h * width + w;
+        float val = input[input_idx];
+        sum_exp += expf(val - max_val);
+    }
+
+    // Second pass: compute final values and track max
+    float final_max = -INFINITY;
+    for(int c = 0; c < channels; ++c) {
+        int input_idx = ((b * channels + c) * depth + d) * height * width + h * width + w;
+        float val = input[input_idx];
+        
+        // Softmax
+        float sm = expf(val - max_val) / sum_exp;
+        
+        // Subtract channel parameter
+        sm -= subtract[c];
+        
+        // Swish activation
+        float swish = sm * (1.0f / (1.0f + expf(-sm)));
+        
+        // Track max
+        final_max = fmaxf(final_max, swish);
+    }
+    
+    output[idx] = final_max;
+}
+
+torch::Tensor fused_operations_cuda(
+    torch::Tensor input,
+    torch::Tensor subtract
+) {
+    auto input_sizes = input.sizes();
+    int batch_size = input_sizes[0];
+    int channels = input_sizes[1];
+    int depth = input_sizes[2];
+    int height = input_sizes[3];
+    int width = input_sizes[4];
+    
+    auto output = torch::zeros({batch_size, depth, height, width}, input.options());
+    
+    int total_threads = batch_size * depth * height * width;
+    int block_size = 256;
+    int grid_size = (total_threads + block_size - 1) / block_size;
+    
+    fused_softmax_sub_swish_max_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        subtract.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        depth,
+        height,
+        width
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_operations_cuda(torch::Tensor input, torch::Tensor subtract);"
+
+# Load the custom CUDA extension
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_operations_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, pool_kernel_size, pool_stride, pool_padding):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding, 
+            output_padding=output_padding
+        )
+        self.max_pool = nn.MaxPool3d(
+            kernel_size=pool_kernel_size, 
+            stride=pool_stride, 
+            padding=pool_padding
+        )
+        self.subtract = nn.Parameter(torch.randn(out_channels))
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.max_pool(x)
+        x = fused_ops.fused_operations_cuda(x, self.subtract)
+        return x
+```

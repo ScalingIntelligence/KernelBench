@@ -1,0 +1,12 @@
+[
+  "The kernel uses a grid-stride loop pattern to process multiple elements per thread.",
+  "The kernel employs loop unrolling to reduce loop control overhead.",
+  "The kernel uses the __restrict__ qualifier to enable better compiler optimizations.",
+  "The kernel is compiled with -use_fast_math for faster approximate math operations.",
+  "The kernel inlines computations rather than using separate device functions.",
+  "The kernel adjusts grid dimensions based on elements processed per thread to improve occupancy.",
+  "The kernel structures memory access patterns to enable better memory coalescing.",
+  "The kernel utilizes register-level data reuse for intermediate values.",
+  "The kernel caps grid dimensions to stay within architectural limits.",
+  "The kernel processes multiple elements per thread iteration to increase arithmetic intensity."
+]

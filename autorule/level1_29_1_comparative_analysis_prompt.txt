@@ -1,0 +1,131 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for optimized Softplus implementation
+softplus_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void softplus_kernel(const float* x, float* out, int size) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        const float val = x[idx];
+        // PyTorch's default parameters: beta=1, threshold=20
+        if (val > 20.0f) {
+            out[idx] = val;
+        } else {
+            out[idx] = logf(1.0f + expf(val));
+        }
+    }
+}
+
+torch::Tensor softplus_cuda(torch::Tensor x) {
+    auto out = torch::empty_like(x);
+    const int size = x.numel();
+    constexpr int block_size = 256;
+    const int num_blocks = (size + block_size - 1) / block_size;
+    
+    softplus_kernel<<<num_blocks, block_size>>>(
+        x.data_ptr<float>(),
+        out.data_ptr<float>(),
+        size
+    );
+    
+    return out;
+}
+"""
+
+softplus_cpp_source = "torch::Tensor softplus_cuda(torch::Tensor x);"
+
+# Compile the CUDA extension
+softplus_extension = load_inline(
+    name='softplus',
+    cpp_sources=softplus_cpp_source,
+    cuda_sources=softplus_source,
+    functions=['softplus_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.softplus = softplus_extension.softplus_cuda
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.softplus(x)
+```
+
+Kernel 2 (runtime: 18.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+softplus_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void softplus_kernel(const float* x, float* out, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float val = x[idx];
+        // Softplus implementation with threshold optimization
+        if (val > 20.0f) {
+            out[idx] = val;  // Linear region for numerical stability
+        } else {
+            out[idx] = log1pf(expf(val));  // log1p(exp(x)) for better precision
+        }
+    }
+}
+
+torch::Tensor softplus_cuda(torch::Tensor x) {
+    TORCH_CHECK(x.is_contiguous(), "Input tensor must be contiguous");
+    TORCH_CHECK(x.device().type() == torch::kCUDA, "Input tensor must be on CUDA");
+    
+    auto out = torch::empty_like(x);
+    int64_t size = x.numel();
+    
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    
+    softplus_kernel<<<num_blocks, block_size>>>(
+        x.data_ptr<float>(),
+        out.data_ptr<float>(),
+        size
+    );
+    
+    return out;
+}
+"""
+
+softplus_cpp_source = "torch::Tensor softplus_cuda(torch::Tensor x);"
+
+softplus_extension = load_inline(
+    name='softplus',
+    cpp_sources=softplus_cpp_source,
+    cuda_sources=softplus_source,
+    functions=['softplus_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return softplus_extension.softplus_cuda(x)
+
+def get_inputs():
+    x = torch.rand(batch_size, dim).cuda()
+    return [x]
+
+def get_init_inputs():
+    return []
+
+batch_size = 4096
+dim = 393216
+```

@@ -1,0 +1,6 @@
+[
+  "The kernel loads all channel data for a spatial position into registers once and reuses it across multiple operations to reduce global memory accesses.",
+  "The kernel stores frequently accessed parameters in shared memory to minimize global memory latency.",
+  "The kernel uses thread-block mappings and indexing that enable coalesced global memory accesses by ensuring consecutive threads access consecutive memory addresses.",
+  "The kernel reduces redundant global memory reads by reusing data loaded into registers for subsequent computations instead of re-reading from global memory multiple times."
+]

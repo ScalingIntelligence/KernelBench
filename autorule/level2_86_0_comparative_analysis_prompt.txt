@@ -1,0 +1,160 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.09 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__device__ float gelu(float x) {
+    return 0.5f * x * (1.0f + tanhf(0.7978845608f * (x + 0.044715f*x*x*x)));
+}
+
+__global__ void fused_div_gelu_kernel(const float* input, float* output, float inv_divisor, int num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float val = input[idx] * inv_divisor;
+        output[idx] = gelu(val);
+    }
+}
+
+torch::Tensor fused_div_gelu_cuda(torch::Tensor input, float divisor) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    
+    float inv_divisor = 1.0f / divisor;
+    
+    const int threads_per_block = 256;
+    int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+    
+    fused_div_gelu_kernel<<<num_blocks, threads_per_block>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        inv_divisor,
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources="torch::Tensor fused_div_gelu_cuda(torch::Tensor input, float divisor);",
+    cuda_sources=fused_ops_source,
+    functions=['fused_div_gelu_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, output_size, divisor):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(input_size, output_size)
+        self.divisor = divisor
+
+    def forward(self, x):
+        x = self.linear(x.contiguous())  # Ensure contiguous tensor
+        x = fused_ops.fused_div_gelu_cuda(x, self.divisor)
+        return x
+```
+
+Kernel 2 (runtime: 7.15 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized CUDA kernel with vectorized loads/stores and fast math
+div_gelu_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__device__ inline float compute_gelu(float x) {
+    // Optimized GELU approximation with fused operations
+    const float cube = 0.044715f * x * x * x;
+    const float tanh_arg = 0.7978845608028654f * (x + cube);
+    return 0.5f * x * (1.0f + tanhf(tanh_arg));
+}
+
+__global__ void div_gelu_kernel(const float* input, float inv_divisor, float* output, int num_elements) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int idx = tid * 4;
+    
+    if (idx >= num_elements) return;
+    
+    if (idx + 3 < num_elements) {
+        // Vectorized load for 4 elements
+        float4 in = *reinterpret_cast<const float4*>(input + idx);
+        float4 out;
+        
+        // Process elements with fused multiply and GELU
+        float scaled_x = in.x * inv_divisor;
+        float scaled_y = in.y * inv_divisor;
+        float scaled_z = in.z * inv_divisor;
+        float scaled_w = in.w * inv_divisor;
+        
+        out.x = compute_gelu(scaled_x);
+        out.y = compute_gelu(scaled_y);
+        out.z = compute_gelu(scaled_z);
+        out.w = compute_gelu(scaled_w);
+        
+        // Vectorized store
+        *reinterpret_cast<float4*>(output + idx) = out;
+    } else {
+        // Handle remaining elements
+        for(int i = 0; i < 4; ++i) {
+            const int elem_idx = idx + i;
+            if(elem_idx < num_elements) {
+                output[elem_idx] = compute_gelu(input[elem_idx] * inv_divisor);
+            }
+        }
+    }
+}
+
+torch::Tensor div_gelu_cuda(torch::Tensor input, float inv_divisor) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    
+    const int block_size = 256;  // Optimal for modern GPUs
+    int threads_needed = (num_elements + 3) / 4;
+    int grid_size = (threads_needed + block_size - 1) / block_size;
+    
+    div_gelu_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        inv_divisor,
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+div_gelu_cpp_source = "torch::Tensor div_gelu_cuda(torch::Tensor input, float inv_divisor);"
+
+# Compile with fast math optimizations
+div_gelu = load_inline(
+    name='div_gelu',
+    cpp_sources=div_gelu_cpp_source,
+    cuda_sources=div_gelu_source,
+    functions=['div_gelu_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--use_fast_math']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, output_size, divisor):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(input_size, output_size)
+        self.inv_divisor = 1.0 / divisor  # Precompute inverse
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = div_gelu.div_gelu_cuda(x, self.inv_divisor)
+        return x
+```

@@ -1,0 +1,239 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 3.05 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+kl_div_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void kl_div_kernel(const float* __restrict__ predictions,
+                             const float* __restrict__ targets,
+                             float* output_sum,
+                             int num_elements) {
+    extern __shared__ float sdata[];
+    int tid = threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + tid;
+    int stride = blockDim.x * gridDim.x;
+    float sum = 0.0f;
+
+    // Grid-stride loop for coalesced memory access
+    for (int i = idx; i < num_elements; i += stride) {
+        float t = targets[i];
+        float p = predictions[i];
+        if (t > 1e-8f && p > 1e-8f) {
+            sum += t * (__logf(t) - __logf(p));
+        }
+    }
+
+    // Block-level reduction using shared memory
+    sdata[tid] = sum;
+    __syncthreads();
+
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    // Atomic add to global sum
+    if (tid == 0) {
+        atomicAdd(output_sum, sdata[0]);
+    }
+}
+
+torch::Tensor kl_div_cuda(torch::Tensor predictions, torch::Tensor targets) {
+    TORCH_CHECK(predictions.is_cuda() && targets.is_cuda(),
+               "Inputs must be CUDA tensors");
+    TORCH_CHECK(predictions.sizes() == targets.sizes(),
+               "Input shapes must match");
+    TORCH_CHECK(predictions.is_contiguous() && targets.is_contiguous(),
+               "Inputs must be contiguous");
+
+    const int num_elements = predictions.numel();
+    const int batch_size = predictions.size(0);
+    
+    auto output_sum = torch::zeros({1}, predictions.options());
+
+    // Optimized kernel launch configuration
+    const int block_size = 256;
+    const int max_blocks = 4096;
+    int grid_size = (num_elements + block_size - 1) / block_size;
+    grid_size = grid_size > max_blocks ? max_blocks : grid_size;
+
+    // Launch kernel with dynamic shared memory
+    kl_div_kernel<<<grid_size, block_size, block_size * sizeof(float)>>>(
+        predictions.data_ptr<float>(),
+        targets.data_ptr<float>(),
+        output_sum.data_ptr<float>(),
+        num_elements
+    );
+
+    return output_sum.squeeze() / batch_size;  // Ensure scalar output
+}
+"""
+
+kl_div_cpp_source = "torch::Tensor kl_div_cuda(torch::Tensor predictions, torch::Tensor targets);"
+
+kl_div_extension = load_inline(
+    name="kl_div",
+    cpp_sources=kl_div_cpp_source,
+    cuda_sources=kl_div_source,
+    functions=["kl_div_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_cuda_cflags=["--use_fast_math"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+
+    def forward(self, predictions, targets):
+        return kl_div_extension.kl_div_cuda(predictions, targets)
+```
+
+Kernel 2 (runtime: 3.07 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+kl_div_cuda_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+template <unsigned int blockSize>
+__device__ void warpReduce(float &val) {
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    }
+}
+
+__global__ void kl_div_kernel(const float* __restrict__ predictions, 
+                              const float* __restrict__ targets, 
+                              float* global_sum, 
+                              int total_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    float thread_sum = 0.0f;
+
+    // Vectorized processing (4 elements per load)
+    const int vec_size = 4;
+    int vec_iters = (total_elements + vec_size - 1) / (vec_size * stride);
+    
+    for (int i = 0; i < vec_iters; ++i) {
+        int vec_idx = idx + i * stride;
+        int base = vec_idx * vec_size;
+        
+        if (base < total_elements) {
+            int valid_elements = min(vec_size, total_elements - base);
+            float4 t4 = *reinterpret_cast<const float4*>(&targets[base]);
+            float4 p4 = *reinterpret_cast<const float4*>(&predictions[base]);
+            
+            float t[4] = {t4.x, t4.y, t4.z, t4.w};
+            float p[4] = {p4.x, p4.y, p4.z, p4.w};
+            
+            #pragma unroll
+            for (int j = 0; j < valid_elements; ++j) {
+                if (t[j] > 1e-8f && p[j] > 1e-8f) {
+                    thread_sum += t[j] * (__logf(t[j]) - __logf(p[j]));
+                }
+            }
+        }
+    }
+
+    // Scalar processing for remaining elements
+    int scalar_idx = idx + vec_iters * stride * vec_size;
+    for (; scalar_idx < total_elements; scalar_idx += stride) {
+        float t = targets[scalar_idx];
+        float p = predictions[scalar_idx];
+        if (t > 1e-8f && p > 1e-8f) {
+            thread_sum += t * (__logf(t) - __logf(p));
+        }
+    }
+
+    // Block reduction with optimized warp shuffles
+    __shared__ float shared_sum[256];
+    int tid = threadIdx.x;
+    shared_sum[tid] = thread_sum;
+    __syncthreads();
+
+    // Hierarchical reduction
+    for (int s = blockDim.x/2; s >= 32; s >>= 1) {
+        if (tid < s) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        __syncthreads();
+    }
+
+    // Final warp reduction using shuffle instructions
+    if (tid < 32) {
+        float val = shared_sum[tid];
+        warpReduce<256>(val);
+        if (tid == 0) {
+            atomicAdd(global_sum, val);
+        }
+    }
+}
+
+torch::Tensor kl_div_cuda(torch::Tensor predictions, torch::Tensor targets) {
+    TORCH_CHECK(predictions.is_cuda() && targets.is_cuda(), "Inputs must be CUDA tensors");
+    TORCH_CHECK(predictions.sizes() == targets.sizes(), "Input shapes must match");
+    
+    auto batch_size = predictions.size(0);
+    int total_elements = predictions.numel();
+    
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
+    torch::Tensor global_sum = torch::zeros(1, options);
+
+    const int block_size = 256;
+    const int vec_size = 4;
+    int grid_size = (total_elements + block_size * vec_size - 1) / (block_size * vec_size);
+
+    // Ensure contiguous memory access with proper alignment
+    torch::Tensor predictions_cont = predictions.contiguous();
+    torch::Tensor targets_cont = targets.contiguous();
+
+    kl_div_kernel<<<grid_size, block_size>>>(
+        predictions_cont.data_ptr<float>(),
+        targets_cont.data_ptr<float>(),
+        global_sum.data_ptr<float>(),
+        total_elements
+    );
+
+    // Synchronize and convert to scalar tensor
+    cudaDeviceSynchronize();
+    float result = global_sum.item<float>() / batch_size;
+
+    return torch::tensor(result, options);
+}
+"""
+
+kl_div_cpp_source = "torch::Tensor kl_div_cuda(torch::Tensor predictions, torch::Tensor targets);"
+
+kl_div_module = load_inline(
+    name='kl_div',
+    cpp_sources=kl_div_cpp_source,
+    cuda_sources=kl_div_cuda_source,
+    functions=['kl_div_cuda'],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+
+    def forward(self, predictions, targets):
+        return kl_div_module.kl_div_cuda(predictions, targets)
+```

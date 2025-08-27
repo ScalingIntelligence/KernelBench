@@ -1,0 +1,150 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.11 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom fused kernel for subtract-multiply-relu operations
+elementwise_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_ops_kernel(const float* input, float* output, int size, float sub_val, float mul_val) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float val = (input[idx] - sub_val) * mul_val;
+        output[idx] = fmaxf(val, 0.0f);
+    }
+}
+
+torch::Tensor elementwise_ops_cuda(torch::Tensor input, float sub_val, float mul_val) {
+    auto output = torch::empty_like(input);
+    int size = input.numel();
+    
+    const int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    
+    fused_ops_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        size,
+        sub_val,
+        mul_val
+    );
+    
+    return output;
+}
+"""
+
+elementwise_ops_cpp_source = "torch::Tensor elementwise_ops_cuda(torch::Tensor input, float sub_val, float mul_val);"
+
+# Compile the fused operations kernel
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=elementwise_ops_cpp_source,
+    cuda_sources=elementwise_ops_source,
+    functions=["elementwise_ops_cuda"],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, subtract_value, multiply_value):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.subtract_value = subtract_value
+        self.multiply_value = multiply_value
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_ops.elementwise_ops_cuda(x, self.subtract_value, self.multiply_value)
+        return x
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features, subtract_value, multiply_value]
+```
+
+Kernel 2 (runtime: 7.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused subtract-multiply-relu CUDA kernel
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_op_kernel(
+    const float* input,
+    float subtract_val,
+    float multiply_val,
+    float* output,
+    int num_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        float val = input[idx];
+        val = (val - subtract_val) * multiply_val;
+        output[idx] = fmaxf(val, 0.0f);
+    }
+}
+
+torch::Tensor fused_op_cuda(torch::Tensor x, float subtract_val, float multiply_val) {
+    auto output = torch::empty_like(x);
+    const int num_elements = x.numel();
+    const int block_size = 256;
+    const int grid_size = (num_elements + block_size - 1) / block_size;
+    
+    fused_op_kernel<<<grid_size, block_size>>>(
+        x.data_ptr<float>(),
+        subtract_val,
+        multiply_val,
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_cpp_source = "torch::Tensor fused_op_cuda(torch::Tensor x, float subtract_val, float multiply_val);"
+
+# Load the custom CUDA operation
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=fused_cpp_source,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_op_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, subtract_value, multiply_value):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.subtract_value = subtract_value
+        self.multiply_value = multiply_value
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = fused_op.fused_op_cuda(x, self.subtract_value, self.multiply_value)
+        return x
+
+# Original helper functions remain unchanged
+batch_size = 1024
+in_features = 8192
+out_features = 8192
+subtract_value = 2.0
+multiply_value = 1.5
+
+def get_inputs():
+    return [torch.rand(batch_size, in_features).cuda()]
+
+def get_init_inputs():
+    return [in_features, out_features, subtract_value, multiply_value]
+```

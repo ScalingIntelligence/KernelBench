@@ -1,0 +1,228 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 14.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom fused operations: Subtract+HardSwish and MaxPool+Mish
+custom_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+/***********************
+* Subtract + HardSwish *
+***********************/
+__global__ void subtract_hardswish_kernel(const float* input, float sub_val, float* output, int numel) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        float x = input[idx] - sub_val;
+        float relu = fminf(fmaxf(x + 3.0f, 0.0f), 6.0f);
+        output[idx] = x * relu / 6.0f;
+    }
+}
+
+torch::Tensor subtract_hardswish(torch::Tensor x, float sub_val) {
+    auto y = torch::empty_like(x);
+    int numel = x.numel();
+    int threads = 256;
+    int blocks = (numel + threads - 1) / threads;
+    subtract_hardswish_kernel<<<blocks, threads>>>(x.data_ptr<float>(), sub_val, y.data_ptr<float>(), numel);
+    return y;
+}
+
+/**************************
+* MaxPool + Mish Fusion *
+**************************/
+__device__ float mish(float x) {
+    float sp = log1pf(expf(x));
+    return x * tanhf(sp);
+}
+
+__global__ void maxpool_mish_kernel(const float* input, float* output,
+                                   int batch, int channels,
+                                   int in_h, int in_w,
+                                   int pool_size,
+                                   int out_h, int out_w) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = batch * channels * out_h * out_w;
+    
+    if (idx < total) {
+        int c = (idx / (out_h * out_w)) % channels;
+        int n = idx / (channels * out_h * out_w);
+        int oh = (idx / out_w) % out_h;
+        int ow = idx % out_w;
+
+        int h_start = oh * pool_size;
+        int w_start = ow * pool_size;
+        float max_val = -INFINITY;
+
+        for (int h = h_start; h < h_start + pool_size; ++h) {
+            for (int w = w_start; w < w_start + pool_size; ++w) {
+                if (h < in_h && w < in_w) {
+                    float val = input[n * channels * in_h * in_w +
+                                    c * in_h * in_w +
+                                    h * in_w + w];
+                    max_val = fmaxf(max_val, val);
+                }
+            }
+        }
+        output[idx] = mish(max_val);
+    }
+}
+
+torch::Tensor maxpool_mish(torch::Tensor x, int pool_size) {
+    int batch = x.size(0);
+    int channels = x.size(1);
+    int in_h = x.size(2);
+    int in_w = x.size(3);
+    int out_h = in_h / pool_size;
+    int out_w = in_w / pool_size;
+
+    auto y = torch::empty({batch, channels, out_h, out_w}, x.options());
+    int numel = batch * channels * out_h * out_w;
+    int threads = 256;
+    int blocks = (numel + threads - 1) / threads;
+    
+    maxpool_mish_kernel<<<blocks, threads>>>(
+        x.data_ptr<float>(), y.data_ptr<float>(),
+        batch, channels, in_h, in_w, pool_size, out_h, out_w
+    );
+    return y;
+}
+"""
+
+custom_ops = load_inline(
+    name='custom_ops',
+    cpp_sources="torch::Tensor subtract_hardswish(torch::Tensor x, float sub_val);\n"
+                "torch::Tensor maxpool_mish(torch::Tensor x, int pool_size);",
+    cuda_sources=custom_ops_source,
+    functions=['subtract_hardswish', 'maxpool_mish'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, subtract_value, pool_kernel_size):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.subtract_value = subtract_value
+        self.pool_kernel_size = pool_kernel_size
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = custom_ops.subtract_hardswish(x, self.subtract_value)
+        x = custom_ops.maxpool_mish(x, self.pool_kernel_size)
+        return x
+```
+
+Kernel 2 (runtime: 11.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused kernel for subtract, HardSwish, MaxPool2d, and Mish
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_ops_kernel(const float* input, float subtract_val, float* output,
+                                int batch_size, int channels, int height, int width) {
+    const int output_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int output_size = batch_size * channels * (height/2) * (width/2);
+    
+    if (output_idx >= output_size) return;
+
+    // Calculate 4D output indices
+    const int c_heights_widths = (height/2) * (width/2);
+    const int b = output_idx / (channels * c_heights_widths);
+    const int c = (output_idx % (channels * c_heights_widths)) / c_heights_widths;
+    const int h_out = (output_idx % c_heights_widths) / (width/2);
+    const int w_out = output_idx % (width/2);
+
+    // Input window starting indices
+    const int h_start = 2 * h_out;
+    const int w_start = 2 * w_out;
+    
+    float max_val = -INFINITY;
+    
+    // Process 2x2 window
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            const int h = h_start + i;
+            const int w = w_start + j;
+            
+            if (h < height && w < width) {
+                const int input_idx = ((b * channels + c) * height + h) * width + w;
+                float val = input[input_idx] - subtract_val;
+                
+                // HardSwish
+                val *= __fdividef(fminf(fmaxf(val + 3.0f, 0.0f), 6.0f), 6.0f);
+                
+                max_val = fmaxf(max_val, val);
+            }
+        }
+    }
+    
+    // Mish activation
+    const float softplus = log1pf(expf(max_val));
+    output[output_idx] = max_val * tanhf(softplus);
+}
+
+torch::Tensor fused_operations_cuda(torch::Tensor input, float subtract_val) {
+    const auto sizes = input.sizes();
+    const int batch_size = sizes[0];
+    const int channels = sizes[1];
+    const int height = sizes[2];
+    const int width = sizes[3];
+    
+    auto output = torch::zeros({batch_size, channels, height/2, width/2}, input.options());
+    const int num_elements = output.numel();
+    
+    const int block_size = 256;
+    const int grid_size = (num_elements + block_size - 1) / block_size;
+    
+    fused_ops_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        subtract_val,
+        output.data_ptr<float>(),
+        batch_size,
+        channels,
+        height,
+        width
+    );
+    
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_operations_cuda(torch::Tensor input, float subtract_val);"
+
+# Compile the CUDA extension
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=["fused_operations_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, subtract_value, pool_kernel_size):
+        super().__init__()
+        assert pool_kernel_size == 2, "Fused kernel only supports pool_kernel_size=2"
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.subtract_value = subtract_value
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_ops.fused_operations_cuda(x, self.subtract_value)
+        return x
+```

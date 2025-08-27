@@ -1,0 +1,205 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 12.3 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define fused kernel for min(constant) + bias + scaling operations
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_min_add_mul_kernel(
+    const float* input,
+    float constant_value,
+    const float* bias,
+    float scaling_factor,
+    float* output,
+    int num_elements,
+    int channels,
+    int hw
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+    
+    int c = (idx % (channels * hw)) / hw;
+    float val = input[idx];
+    val = fminf(val, constant_value);
+    val += bias[c];
+    val *= scaling_factor;
+    output[idx] = val;
+}
+
+torch::Tensor fused_min_add_mul_cuda(
+    torch::Tensor input,
+    float constant_value,
+    torch::Tensor bias,
+    float scaling_factor
+) {
+    auto output = torch::empty_like(input);
+    int num_elements = input.numel();
+    int channels = input.size(1);
+    int hw = input.size(2) * input.size(3);
+
+    const int block_size = 256;
+    int num_blocks = (num_elements + block_size - 1) / block_size;
+
+    fused_min_add_mul_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        constant_value,
+        bias.data_ptr<float>(),
+        scaling_factor,
+        output.data_ptr<float>(),
+        num_elements,
+        channels,
+        hw
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_min_add_mul_cuda(torch::Tensor input, float constant_value, torch::Tensor bias, float scaling_factor);"
+
+# Load the custom CUDA extension
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=["fused_min_add_mul_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=["-lcudart"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, constant_value, bias_shape, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.constant_value = constant_value
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_ops.fused_min_add_mul_cuda(
+            x,
+            self.constant_value,
+            self.bias,
+            self.scaling_factor
+        )
+        return x
+
+batch_size = 128
+in_channels = 64
+out_channels = 128
+height = width = 128
+kernel_size = 3
+constant_value = 0.5
+bias_shape = (out_channels, 1, 1)
+scaling_factor = 2.0
+
+def get_inputs():
+    return [torch.rand(batch_size, in_channels, height, width).cuda()]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, constant_value, bias_shape, scaling_factor]
+```
+
+Kernel 2 (runtime: 12.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_min_add_scale_kernel(
+    const float* input,
+    const float* bias,
+    float constant_value,
+    float scaling_factor,
+    float* output,
+    int num_elements,
+    int C,
+    int H,
+    int W
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+
+    int residual = idx % (C * H * W);
+    int c = residual / (H * W);
+    int hw = residual % (H * W);
+
+    float val = input[idx];
+    val = fminf(val, constant_value);
+    val += bias[c]; // access bias per channel
+    val *= scaling_factor;
+    output[idx] = val;
+}
+
+torch::Tensor fused_min_add_scale_cuda(
+    torch::Tensor input,
+    torch::Tensor bias,
+    float constant_value,
+    float scaling_factor
+) {
+    auto num_elements = input.numel();
+    auto sizes = input.sizes();
+    int C = sizes[1], H = sizes[2], W = sizes[3];
+
+    auto output = torch::empty_like(input);
+
+    const int block_size = 256;
+    const int num_blocks = (num_elements + block_size - 1) / block_size;
+
+    fused_min_add_scale_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        constant_value,
+        scaling_factor,
+        output.data_ptr<float>(),
+        num_elements,
+        C,
+        H,
+        W
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp = "torch::Tensor fused_min_add_scale_cuda(torch::Tensor input, torch::Tensor bias, float constant_value, float scaling_factor);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_cpp,
+    cuda_sources=fused_ops_source,
+    functions=['fused_min_add_scale_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, constant_value, bias_shape, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.constant_value = constant_value
+        self.scaling_factor = scaling_factor
+        self.fused_op = fused_ops
+
+    def forward(self, x):
+        x = self.conv(x)
+        return self.fused_op.fused_min_add_scale_cuda(
+            x, 
+            self.bias,
+            self.constant_value,
+            self.scaling_factor
+        )
+```

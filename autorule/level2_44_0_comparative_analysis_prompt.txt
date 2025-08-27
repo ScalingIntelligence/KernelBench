@@ -1,0 +1,234 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 5.55 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+template<typename T>
+__global__ void fused_scale_and_avg(
+    const T* input,
+    T* output,
+    int B,
+    int C,
+    int H,
+    int W,
+    T multiplier
+) {
+    extern __shared__ T sdata[];
+    
+    int bid = blockIdx.x;
+    int c = bid % C;
+    int b = bid / C;
+    
+    if (b >= B || c >= C) return;
+    
+    int tid = threadIdx.x;
+    int num_threads = blockDim.x;
+    
+    int total_elements = H * W;
+    T partial_sum = 0;
+    
+    for(int i = tid; i < total_elements; i += num_threads) {
+        int h = i / W;
+        int w = i % W;
+        int idx = ((b * C + c) * H + h) * W + w;
+        partial_sum += input[idx] * multiplier;
+    }
+    
+    sdata[tid] = partial_sum;
+    __syncthreads();
+    
+    for(int s = blockDim.x/2; s>0; s>>=1) {
+        if(tid < s) sdata[tid] += sdata[tid + s];
+        __syncthreads();
+    }
+    
+    if(tid == 0) {
+        output[b*C + c] = sdata[0] / static_cast<T>(total_elements);
+    }
+}
+
+torch::Tensor fused_op_cuda(torch::Tensor input, double multiplier) {
+    auto B = input.size(0);
+    auto C = input.size(1);
+    auto H = input.size(2);
+    auto W = input.size(3);
+    
+    auto output = torch::empty({B, C, 1, 1}, input.options());
+    
+    int block_size = 256;
+    int blocks_per_grid = B * C;
+    
+    dim3 grid(blocks_per_grid);
+    dim3 block(block_size);
+    
+    fused_scale_and_avg<float><<<grid, block, block_size*sizeof(float)>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        B,
+        C,
+        H,
+        W,
+        static_cast<float>(multiplier)
+    );
+    
+    return output;
+}
+"""
+
+cpp_wrapper = "torch::Tensor fused_op_cuda(torch::Tensor input, double multiplier);"
+
+fused_op = load_inline(
+    name='fused_op',
+    cpp_sources=cpp_wrapper,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_op_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding, 
+            output_padding=output_padding
+        )
+        self.multiplier = multiplier
+        self.fused_op = fused_op
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.fused_op.fused_op_cuda(x, self.multiplier)
+        return x
+```
+
+Kernel 2 (runtime: 5.54 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized fused kernel with vectorized loads, warp shuffles, and precomputed factor
+fused_kernel_source = """
+#include <torch/extension.h>
+#include <cuda_fp16.h>
+
+__global__ void fused_mean_multiply_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    float factor,
+    int H, int W,
+    int C, int B) {
+    
+    const int batch = blockIdx.x;
+    const int channel = blockIdx.y;
+    const int tid = threadIdx.x;
+    const int input_offset = batch * C * H * W + channel * H * W;
+
+    constexpr int VEC_SIZE = 4;
+    const int num_elements = H * W;
+    const int vec_remainder = num_elements % VEC_SIZE;
+
+    float sum = 0.0f;
+
+    // Vectorized loads for main blocks
+    int i = tid * VEC_SIZE;
+    while (i <= num_elements - VEC_SIZE) {
+        float4 vals = *reinterpret_cast<const float4*>(input + input_offset + i);
+        sum += vals.x + vals.y + vals.z + vals.w;
+        i += blockDim.x * VEC_SIZE;
+    }
+
+    // Handle remainder elements
+    i = tid + (num_elements - vec_remainder);
+    if (i < num_elements) {
+        sum += input[input_offset + i];
+    }
+
+    // Warp-level reduction using shuffle
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
+
+    // Store warp sums in shared memory
+    __shared__ float warp_sums[8];
+    if (tid % 32 == 0) {
+        warp_sums[tid/32] = sum;
+    }
+    __syncthreads();
+
+    // Final reduction across warps using shared memory
+    __shared__ float sdata[8];
+    if (tid < 8) {
+        sdata[tid] = warp_sums[tid];
+    }
+    __syncthreads();
+
+    for (int s = 4; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[batch * C + channel] = sdata[0] * factor;
+    }
+}
+
+torch::Tensor fused_mean_multiply_cuda(torch::Tensor input, float factor) {
+    TORCH_CHECK(input.is_contiguous(), "Input must be contiguous");
+    const auto sizes = input.sizes();
+    const int B = sizes[0], C = sizes[1], H = sizes[2], W = sizes[3];
+
+    auto output = torch::zeros({B, C, 1, 1}, input.options());
+
+    const dim3 grid(B, C);
+    const int block_size = 256;
+
+    fused_mean_multiply_kernel<<<grid, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        factor,
+        H, W,
+        C, B
+    );
+
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_mean_multiply_cuda(torch::Tensor input, float factor);"
+
+# Load the optimized CUDA extension
+fused_mean_multiply = load_inline(
+    name='fused_mean_multiply',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_source,
+    functions=['fused_mean_multiply_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding,
+            output_padding=output_padding
+        )
+        self.multiplier = multiplier
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        B, C, H, W = x.shape
+        factor = self.multiplier / (H * W)
+        x = fused_mean_multiply.fused_mean_multiply_cuda(x.contiguous(), factor)
+        return x
+```

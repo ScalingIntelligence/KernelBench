@@ -1,0 +1,192 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 300.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define the custom CUDA kernel for 4D tensor-matrix multiplication
+tensor_matmul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void tensor_matmul_kernel(
+    const float* A, const float* B, float* C,
+    int b_dim, int i_dim, int j_dim, int l_dim, int k_dim) {
+    
+    int b = blockIdx.x;
+    int i = blockIdx.y;
+    int j = blockIdx.z;
+    int k = threadIdx.x;
+
+    if (b >= b_dim || i >= i_dim || j >= j_dim || k >= k_dim) return;
+
+    int a_base = b * i_dim * j_dim * l_dim + i * j_dim * l_dim + j * l_dim;
+    int c_idx = b * i_dim * j_dim * k_dim + i * j_dim * k_dim + j * k_dim + k;
+
+    float sum = 0.0f;
+    for (int l = 0; l < l_dim; ++l) {
+        float a_val = A[a_base + l];
+        float b_val = B[l * k_dim + k];
+        sum += a_val * b_val;
+    }
+    C[c_idx] = sum;
+}
+
+torch::Tensor tensor_matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 4, "A must be a 4D tensor");
+    TORCH_CHECK(B.dim() == 2, "B must be a 2D matrix");
+    
+    int l_dim = A.size(3);
+    TORCH_CHECK(B.size(0) == l_dim, "Dimension l mismatch between A and B");
+    
+    int b_dim = A.size(0);
+    int i_dim = A.size(1);
+    int j_dim = A.size(2);
+    int k_dim = B.size(1);
+
+    auto C = torch::empty({b_dim, i_dim, j_dim, k_dim}, A.options());
+
+    dim3 grid(b_dim, i_dim, j_dim);
+    int block_size = k_dim;
+
+    tensor_matmul_kernel<<<grid, block_size>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        b_dim, i_dim, j_dim, l_dim, k_dim
+    );
+
+    return C;
+}
+"""
+
+tensor_matmul_cpp_source = "torch::Tensor tensor_matmul_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Compile the inline CUDA code
+tensor_matmul = load_inline(
+    name='tensor_matmul',
+    cpp_sources=tensor_matmul_cpp_source,
+    cuda_sources=tensor_matmul_source,
+    functions=['tensor_matmul_cuda'],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.tensor_matmul = tensor_matmul
+
+    def forward(self, A, B):
+        return self.tensor_matmul.tensor_matmul_cuda(A, B)
+```
+
+Kernel 2 (runtime: 242.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized CUDA kernel with vectorized A loads
+tensor_matmul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void tensor_matmul_kernel(
+    const float* __restrict__ A,
+    const float* __restrict__ B,
+    float* __restrict__ C,
+    int B_dim, int I_dim, int J_dim, int K_dim, int L_dim
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= B_dim * I_dim * J_dim * K_dim) return;
+
+    // Decompose index with k as fastest varying dimension
+    const int k = idx % K_dim;
+    const int j = (idx / K_dim) % J_dim;
+    const int i = (idx / (K_dim * J_dim)) % I_dim;
+    const int b = (idx / (K_dim * J_dim * I_dim)) % B_dim;
+
+    const int a_base = b * I_dim * J_dim * L_dim 
+                     + i * J_dim * L_dim 
+                     + j * L_dim;
+
+    float sum = 0.0f;
+    int l = 0;
+
+    // Vectorized processing for A (4 elements per iteration)
+    for(; l + 3 < L_dim; l += 4) {
+        const float4 a4 = *reinterpret_cast<const float4*>(A + a_base + l);
+        sum += a4.x * B[(l) * K_dim + k];
+        sum += a4.y * B[(l+1) * K_dim + k];
+        sum += a4.z * B[(l+2) * K_dim + k];
+        sum += a4.w * B[(l+3) * K_dim + k];
+    }
+
+    // Process remaining elements
+    for(; l < L_dim; ++l) {
+        sum += A[a_base + l] * B[l * K_dim + k];
+    }
+
+    // Calculate output index and write result
+    const int c_idx = b * I_dim * J_dim * K_dim 
+                    + i * J_dim * K_dim 
+                    + j * K_dim 
+                    + k;
+    
+    C[c_idx] = sum;
+}
+
+torch::Tensor tensor_matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 4, "A must be a 4D tensor");
+    TORCH_CHECK(B.dim() == 2, "B must be a 2D matrix");
+    
+    const int B_dim = A.size(0);
+    const int I_dim = A.size(1);
+    const int J_dim = A.size(2);
+    const int L_dim = A.size(3);
+    const int K_dim = B.size(1);
+    
+    TORCH_CHECK(B.size(0) == L_dim, 
+        "B's first dimension must match A's last dimension");
+    
+    auto C = torch::zeros({B_dim, I_dim, J_dim, K_dim}, A.options());
+    
+    const int total_elements = B_dim * I_dim * J_dim * K_dim;
+    const int block_size = 256;
+    const int num_blocks = (total_elements + block_size - 1) / block_size;
+    
+    tensor_matmul_kernel<<<num_blocks, block_size>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        B_dim, I_dim, J_dim, K_dim, L_dim
+    );
+    
+    return C;
+}
+"""
+
+tensor_matmul_cpp_source = "torch::Tensor tensor_matmul_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Compile the inline CUDA code
+tensor_matmul = load_inline(
+    name="tensor_matmul",
+    cpp_sources=tensor_matmul_cpp_source,
+    cuda_sources=tensor_matmul_source,
+    functions=["tensor_matmul_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[""]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.tensor_matmul = tensor_matmul
+
+    def forward(self, A, B):
+        return self.tensor_matmul.tensor_matmul_cuda(A, B)
+```

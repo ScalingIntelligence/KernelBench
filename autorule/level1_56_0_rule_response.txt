@@ -1,0 +1,16 @@
+REASONING TRACE:
+[
+    "The kernel uses __restrict__ qualifiers on pointer arguments to enable compiler optimizations by avoiding pointer aliasing.",
+    "The kernel ensures input and weight tensors are contiguous in memory before access to enable coalesced memory reads/writes.",
+    "The kernel precomputes values such as output dimensions on the host side to reduce register pressure and computational overhead in the kernel.",
+    "The kernel organizes memory access patterns to align with GPU coalescing requirements, typically by ensuring adjacent threads access contiguous memory locations."
+]
+
+
+ANSWER:
+
+
+The JSON array lists rule-like statements derived from the reasoning. These include using `__restrict__` to avoid aliasing, ensuring tensor contiguity for coalesced access, precomputing values on the host, and organizing memory access for coalescing. Each rule is objective, deterministic, and applicable to CUDA kernels generally.
+
+Usage:
+{'inputTokens': 2766, 'outputTokens': 176, 'totalTokens': 2942}

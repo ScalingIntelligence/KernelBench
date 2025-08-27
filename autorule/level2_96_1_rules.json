@@ -1,0 +1,6 @@
+[
+  "The kernel uses a 2D grid configuration to improve block scheduling and resource utilization.",
+  "The kernel precomputes base pointers for batch and channel data to reduce redundant address calculations in inner loops.",
+  "The kernel avoids division and modulus operations for batch/channel indexing by directly using blockIdx.x and blockIdx.y.",
+  "The kernel structures memory accesses to ensure contiguous reads within warps for better coalescing."
+]

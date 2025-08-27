@@ -1,0 +1,7 @@
+[
+  "The kernel loads frequently accessed read-only parameters into shared memory to reduce global memory accesses.",
+  "The kernel uses a combination of block-level and warp-level synchronization for reductions to minimize synchronization overhead.",
+  "The kernel is compiled with fast math optimizations to accelerate transcendental operations.",
+  "The kernel employs warp-level primitives for the final stages of parallel reductions.",
+  "The kernel optimizes shared memory layout to minimize usage while ensuring coalesced access patterns."
+]

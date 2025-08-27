@@ -1,0 +1,178 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 14.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused addition and HardSwish CUDA kernel
+fused_add_hardswish_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_add_hardswish_kernel(const float* a, const float* b, float* out, int n_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n_elements) {
+        float sum = a[idx] + b[idx];
+        float temp = sum + 3.0f;
+        temp = fmaxf(fminf(temp, 6.0f), 0.0f);
+        out[idx] = sum * (sum * temp / 6.0f);
+    }
+}
+
+torch::Tensor fused_add_hardswish_cuda(torch::Tensor a, torch::Tensor b) {
+    auto output = torch::empty_like(a);
+    int n_elements = a.numel();
+    const int threads_per_block = 256;
+    int blocks_per_grid = (n_elements + threads_per_block - 1) / threads_per_block;
+    
+    fused_add_hardswish_kernel<<<blocks_per_grid, threads_per_block>>>(
+        a.data_ptr<float>(),
+        b.data_ptr<float>(),
+        output.data_ptr<float>(),
+        n_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_add_hardswish_header = """
+torch::Tensor fused_add_hardswish_cuda(torch::Tensor a, torch::Tensor b);
+"""
+
+# Load the custom CUDA extension
+fused_add = load_inline(
+    name='fused_add_hardswish',
+    cpp_sources=fused_add_hardswish_header,
+    cuda_sources=fused_add_hardswish_source,
+    functions=['fused_add_hardswish_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, output_padding=output_padding
+        )
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_op = fused_add  # Reference to the loaded module
+
+    def forward(self, x, add_input):
+        x = self.conv_transpose(x)
+        x = self.fused_op.fused_add_hardswish_cuda(x, add_input)
+        return x
+```
+
+Kernel 2 (runtime: 14.9 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_add_hardswish_kernel(
+    const float* x_data,
+    const float* add_data,
+    const float* bias_data,
+    float* out_data,
+    int batch_size,
+    int channels,
+    int depth,
+    int height,
+    int width
+) {
+    const int total_elements = batch_size * channels * depth * height * width;
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int stride = batch_size * channels * depth * height * width;
+    
+    for (int i = tid; i < total_elements; i += gridDim.x * blockDim.x) {
+        const int b = i / (channels * depth * height * width);
+        const int remainder = i % (channels * depth * height * width);
+        const int c = remainder / (depth * height * width);
+        const int remainder_ch = remainder % (depth * height * width);
+        const int d = remainder_ch / (height * width);
+        const int remainder_wh = remainder_ch % (height * width);
+        const int h = remainder_wh / width;
+        const int w = remainder_wh % width;
+        
+        const int bias_idx = c;
+        const float bias_val = bias_data[bias_idx];
+        
+        const float val_x = x_data[i];
+        const float val_add = add_data[i];
+        const float sum = val_x + val_add;
+        
+        float temp = sum + 3.0f;
+        temp = fmaxf(temp, 0.0f);
+        temp = fminf(temp, 6.0f);
+        const float hs = sum * (temp / 6.0f);
+        
+        out_data[i] = sum * hs;
+    }
+}
+
+torch::Tensor fused_add_hardswish_cuda(
+    torch::Tensor x,
+    torch::Tensor add_input,
+    torch::Tensor bias
+) {
+    TORCH_CHECK(x.sizes() == add_input.sizes(), "Input tensors must have same shape");
+    TORCH_CHECK(x.size(1) == bias.size(0), "Channel mismatch between x and bias");
+
+    auto out = torch::empty_like(x);
+    const int batch_size = x.size(0);
+    const int channels = x.size(1);
+    const int depth = x.size(2);
+    const int height = x.size(3);
+    const int width = x.size(4);
+
+    const int total_elements = x.numel();
+    const int block_size = 256;
+    const int grid_size = (total_elements + block_size - 1) / block_size;
+
+    fused_add_hardswish_kernel<<<grid_size, block_size>>>(
+        x.data_ptr<float>(),
+        add_input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        out.data_ptr<float>(),
+        batch_size,
+        channels,
+        depth,
+        height,
+        width
+    );
+
+    return out;
+}
+"""
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources="torch::Tensor fused_add_hardswish_cuda(torch::Tensor x, torch::Tensor add_input, torch::Tensor bias);",
+    cuda_sources=fused_ops_source,
+    functions=['fused_add_hardswish_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, output_padding=output_padding
+        )
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_add_hardswish = fused_ops.fused_add_hardswish_cuda
+
+    def forward(self, x, add_input):
+        x = self.conv_transpose(x)
+        x = x.contiguous()
+        add_input = add_input.contiguous()
+        return self.fused_add_hardswish(x, add_input, self.bias)
+```

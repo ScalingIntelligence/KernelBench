@@ -1,0 +1,399 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 1.7 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+depthwise_conv_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define VEC 4  // Vectorization factor for memory access optimization
+
+__global__ void depthwise_conv2d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    const float* __restrict__ bias,
+    float* __restrict__ output,
+    int batch_size,
+    int in_channels,
+    int height,
+    int width,
+    int kernel_size,
+    int stride,
+    int padding,
+    int dilation,
+    int output_height,
+    int output_width
+) {
+    extern __shared__ float shared_mem[];
+    float* shared_weight = shared_mem;
+    float* shared_bias = (bias != nullptr) ? shared_mem + kernel_size : nullptr;
+
+    const int instance_idx = blockIdx.z;
+    const int b = instance_idx / in_channels;
+    const int c = instance_idx % in_channels;
+
+    const int oh = blockIdx.y * blockDim.y + threadIdx.y;
+    const int ow_start = (blockIdx.x * blockDim.x + threadIdx.x) * VEC;
+
+    if (b >= batch_size || c >= in_channels || oh >= output_height || ow_start >= output_width) return;
+
+    // Load weights and bias into shared memory
+    if (threadIdx.x < kernel_size && threadIdx.y == 0) {
+        shared_weight[threadIdx.x] = weight[c * kernel_size + threadIdx.x];
+    }
+    if (bias != nullptr && threadIdx.x == 0 && threadIdx.y == 0) {
+        shared_bias[0] = bias[c];
+    }
+    __syncthreads();
+
+    const int start_h = oh * stride - padding;
+    float sum[VEC] = {0.0f};
+
+    #pragma unroll
+    for (int k = 0; k < kernel_size; ++k) {
+        const int input_h = start_h + k * dilation;
+        if (input_h >= 0 && input_h < height) {
+            const int input_idx_base = (b * in_channels + c) * height * width + input_h * width + ow_start;
+            
+            if (ow_start + VEC <= width) {
+                // Vector load for aligned case
+                const float4 input_vals = *reinterpret_cast<const float4*>(&input[input_idx_base]);
+                #pragma unroll
+                for (int v = 0; v < VEC; ++v) {
+                    sum[v] += (&input_vals.x)[v] * shared_weight[k];
+                }
+            } else {
+                // Scalar load for boundary case
+                #pragma unroll
+                for (int v = 0; v < VEC; ++v) {
+                    const int ow = ow_start + v;
+                    if (ow < width) {
+                        sum[v] += input[input_idx_base + v] * shared_weight[k];
+                    }
+                }
+            }
+        }
+    }
+
+    if (bias != nullptr) {
+        #pragma unroll
+        for (int v = 0; v < VEC; ++v) {
+            sum[v] += shared_bias[0];
+        }
+    }
+
+    const int output_idx_base = (b * in_channels + c) * output_height * output_width + oh * output_width + ow_start;
+
+    if (ow_start + VEC <= output_width) {
+        // Vector store for aligned case
+        float4 output_vals;
+        #pragma unroll
+        for (int v = 0; v < VEC; ++v) {
+            (&output_vals.x)[v] = sum[v];
+        }
+        *reinterpret_cast<float4*>(&output[output_idx_base]) = output_vals;
+    } else {
+        // Scalar store for boundary case
+        #pragma unroll
+        for (int v = 0; v < VEC; ++v) {
+            const int ow = ow_start + v;
+            if (ow < output_width) {
+                output[output_idx_base + v] = sum[v];
+            }
+        }
+    }
+}
+
+torch::Tensor depthwise_conv2d_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int kernel_size,
+    int stride,
+    int padding,
+    int dilation,
+    int output_height,
+    int output_width
+) {
+    const auto batch_size = input.size(0);
+    const auto in_channels = input.size(1);
+    const auto height = input.size(2);
+    const auto width = input.size(3);
+
+    auto output = torch::empty({batch_size, in_channels, output_height, output_width}, input.options());
+
+    // Optimized block dimensions for vectorized access
+    const dim3 block(32, 8);  // 256 threads per block (32x8)
+    const dim3 grid(
+        (output_width + VEC * block.x - 1) / (VEC * block.x),
+        (output_height + block.y - 1) / block.y,
+        batch_size * in_channels
+    );
+
+    const int shared_mem_size = (kernel_size + (bias.defined() ? 1 : 0)) * sizeof(float);
+
+    depthwise_conv2d_kernel<<<grid, block, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        bias.defined() ? bias.data_ptr<float>() : nullptr,
+        output.data_ptr<float>(),
+        batch_size,
+        in_channels,
+        height,
+        width,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        output_height,
+        output_width
+    );
+
+    return output;
+}
+"""
+
+depthwise_conv_cpp_source = "torch::Tensor depthwise_conv2d_cuda(torch::Tensor input, torch::Tensor weight, torch::Tensor bias, int kernel_size, int stride, int padding, int dilation, int output_height, int output_width);"
+
+depthwise_conv = load_inline(
+    name='depthwise_conv',
+    cpp_sources=depthwise_conv_cpp_source,
+    cuda_sources=depthwise_conv_source,
+    functions=['depthwise_conv2d_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+        self.weight = nn.Parameter(torch.Tensor(in_channels, 1, kernel_size, 1))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(in_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, _, height, width = x.size()
+        output_height = ((height + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride) + 1
+        output_width = width  # Kernel width is 1 so output width remains same
+
+        return depthwise_conv.depthwise_conv2d_cuda(
+            x.contiguous(),
+            self.weight.view(-1).contiguous(),
+            self.bias.contiguous() if self.bias is not None else torch.tensor([], device=x.device),
+            self.kernel_size,
+            self.stride,
+            self.padding,
+            self.dilation,
+            output_height,
+            output_width
+        )
+```
+
+Kernel 2 (runtime: 1.63 ms):
+```
+import torch
+import torch.nn as nn
+import math
+from torch.utils.cpp_extension import load_inline
+
+depthwise_conv_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#define VEC 4  // Vectorization factor for memory access optimization
+
+__global__ void depthwise_conv2d_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    const float* __restrict__ bias,
+    float* __restrict__ output,
+    int batch_size,
+    int in_channels,
+    int height,
+    int width,
+    int kernel_size,
+    int stride,
+    int padding,
+    int dilation,
+    int output_height,
+    int output_width
+) {
+    extern __shared__ float shared_mem[];
+    float* shared_weight = shared_mem;
+    float* shared_bias = (bias != nullptr) ? shared_mem + kernel_size : nullptr;
+
+    const int instance_idx = blockIdx.z;
+    const int b = instance_idx / in_channels;
+    const int c = instance_idx % in_channels;
+
+    const int oh = blockIdx.y * blockDim.y + threadIdx.y;
+    const int ow_start = (blockIdx.x * blockDim.x + threadIdx.x) * VEC;
+
+    if (b >= batch_size || c >= in_channels || oh >= output_height) return;
+
+    // Load weights and bias into shared memory
+    if (threadIdx.x < kernel_size && threadIdx.y == 0) {
+        shared_weight[threadIdx.x] = weight[c * kernel_size + threadIdx.x];
+    }
+    if (bias != nullptr && threadIdx.x == 0 && threadIdx.y == 0) {
+        shared_bias[0] = bias[c];
+    }
+    __syncthreads();
+
+    const int start_h = oh * stride - padding;
+    float sum[VEC] = {0.0f};
+
+    #pragma unroll
+    for (int k = 0; k < kernel_size; ++k) {
+        const int input_h = start_h + k * dilation;
+        if (input_h >= 0 && input_h < height) {
+            const int input_idx_base = (b * in_channels + c) * height * width + input_h * width;
+            
+            // Vectorized load with boundary checks
+            for (int v = 0; v < VEC; ++v) {
+                const int ow = ow_start + v;
+                if (ow < width) {
+                    sum[v] += input[input_idx_base + ow] * shared_weight[k];
+                }
+            }
+        }
+    }
+
+    if (bias != nullptr) {
+        #pragma unroll
+        for (int v = 0; v < VEC; ++v) {
+            sum[v] += shared_bias[0];
+        }
+    }
+
+    const int output_idx_base = (b * in_channels + c) * output_height * output_width + oh * output_width;
+    
+    // Vectorized store with boundary checks
+    for (int v = 0; v < VEC; ++v) {
+        const int ow = ow_start + v;
+        if (ow < output_width) {
+            output[output_idx_base + ow] = sum[v];
+        }
+    }
+}
+
+torch::Tensor depthwise_conv2d_cuda(
+    torch::Tensor input,
+    torch::Tensor weight,
+    torch::Tensor bias,
+    int kernel_size,
+    int stride,
+    int padding,
+    int dilation,
+    int output_height,
+    int output_width
+) {
+    const auto batch_size = input.size(0);
+    const auto in_channels = input.size(1);
+    const auto height = input.size(2);
+    const auto width = input.size(3);
+
+    auto output = torch::empty({batch_size, in_channels, output_height, output_width}, input.options());
+
+    // Optimized block dimensions for memory access patterns
+    const dim3 block(16, 16);  // 256 threads per block (16x16)
+    const dim3 grid(
+        (output_width + VEC * block.x - 1) / (VEC * block.x),
+        (output_height + block.y - 1) / block.y,
+        batch_size * in_channels
+    );
+
+    const int shared_mem_size = (kernel_size + (bias.defined() ? 1 : 0)) * sizeof(float);
+
+    depthwise_conv2d_kernel<<<grid, block, shared_mem_size>>>(
+        input.data_ptr<float>(),
+        weight.data_ptr<float>(),
+        bias.defined() ? bias.data_ptr<float>() : nullptr,
+        output.data_ptr<float>(),
+        batch_size,
+        in_channels,
+        height,
+        width,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        output_height,
+        output_width
+    );
+
+    return output;
+}
+"""
+
+depthwise_conv_cpp_source = "torch::Tensor depthwise_conv2d_cuda(torch::Tensor input, torch::Tensor weight, torch::Tensor bias, int kernel_size, int stride, int padding, int dilation, int output_height, int output_width);"
+
+depthwise_conv = load_inline(
+    name='depthwise_conv',
+    cpp_sources=depthwise_conv_cpp_source,
+    cuda_sources=depthwise_conv_source,
+    functions=['depthwise_conv2d_cuda'],
+    verbose=True,
+    extra_cflags=['-O3'],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+        self.weight = nn.Parameter(torch.Tensor(in_channels, 1, kernel_size, 1))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(in_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, _, height, width = x.size()
+        output_height = ((height + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride) + 1
+        output_width = width  # Kernel width is 1 so output width remains same
+
+        return depthwise_conv.depthwise_conv2d_cuda(
+            x.contiguous(),
+            self.weight.view(-1).contiguous(),
+            self.bias.contiguous() if self.bias is not None else torch.tensor([], device=x.device),
+            self.kernel_size,
+            self.stride,
+            self.padding,
+            self.dilation,
+            output_height,
+            output_width
+        )
+```

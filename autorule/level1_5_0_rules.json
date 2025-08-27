@@ -1,0 +1,5 @@
+[
+  "The kernel ensures input tensors are contiguous to enable coalesced memory access.",
+  "The kernel uses a larger thread block size (e.g., 512) to improve GPU occupancy and latency hiding.",
+  "The kernel avoids strided memory accesses by enforcing contiguous memory layout for input tensors."
+]

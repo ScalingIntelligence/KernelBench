@@ -1,0 +1,5 @@
+[
+  "The kernel checks spatial validity (e.g., input boundaries) at outer loop levels to skip unnecessary inner loop iterations.",
+  "The kernel avoids redundant inner loop iterations by early termination when invalid spatial positions are detected in outer loops.",
+  "The kernel minimizes condition checks in innermost loops by validating spatial coordinates at higher loop levels where possible."
+]

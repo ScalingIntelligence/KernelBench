@@ -1,0 +1,3 @@
+[
+  "The kernel uses branchless operations (e.g., fmaxf) instead of conditional statements for value comparisons."
+]

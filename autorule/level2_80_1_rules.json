@@ -1,0 +1,8 @@
+[
+  "The kernel uses a block-wide shared memory reduction strategy with multiple synchronization points.",
+  "The kernel employs vectorized memory loads (e.g., float4) to improve global memory access efficiency.",
+  "The kernel uses warp-level reductions via shuffle instructions (e.g., __shfl_down_sync) for efficient intra-warp communication.",
+  "The kernel introduces branching overhead to handle unaligned data when using vectorized loads.",
+  "The kernel's use of vectorization and multi-stage reductions increases register pressure, potentially reducing occupancy.",
+  "The kernel uses a strided memory access pattern, leading to non-coalesced global memory accesses."
+]

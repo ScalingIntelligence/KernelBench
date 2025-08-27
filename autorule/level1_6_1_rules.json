@@ -1,0 +1,5 @@
+[
+  "The kernel is compiled with higher optimization flags (e.g., -O3) enabling aggressive loop unrolling and instruction scheduling.",
+  "The kernel reduces loop overhead by unrolling inner loops during compilation optimizations.",
+  "The kernel utilizes compiler optimizations to enhance register allocation and reduce memory spills."
+]

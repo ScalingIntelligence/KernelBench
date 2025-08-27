@@ -1,0 +1,193 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 6.83 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel with batch-aware indexing and fast math
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_ops_kernel(
+    const float* __restrict__ conv_out,
+    const float* __restrict__ bias,
+    float* __restrict__ output,
+    int num_elements,
+    int elements_per_channel,
+    int num_channels
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        // Calculate channel index accounting for batch dimension
+        const int c = (idx / elements_per_channel) % num_channels;
+        const float conv_val = conv_out[idx];
+        const float bias_val = bias[c] + 1.0f;
+        
+        // Optimized fused computation: 2*conv_val² + conv_val*bias_val
+        output[idx] = conv_val * (2.0f * conv_val + bias_val);
+    }
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor conv_out, torch::Tensor bias) {
+    auto output = torch::empty_like(conv_out);
+    const int num_elements = conv_out.numel();
+    const auto sizes = conv_out.sizes();
+    
+    const int elements_per_channel = sizes[2] * sizes[3] * sizes[4];
+    const int num_channels = sizes[1];
+
+    const int block_size = 256;
+    const int num_blocks = (num_elements + block_size - 1) / block_size;
+
+    fused_ops_kernel<<<num_blocks, block_size>>>(
+        conv_out.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_elements,
+        elements_per_channel,
+        num_channels
+    );
+
+    return output;
+}
+"""
+
+fused_ops_cpp = "torch::Tensor fused_ops_cuda(torch::Tensor conv_out, torch::Tensor bias);"
+
+# Load optimized CUDA operations with fast math
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp,
+    cuda_sources=fused_ops_source,
+    functions=["fused_ops_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding,
+            output_padding=output_padding
+        )
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.fused_ops.fused_ops_cuda(x, self.bias)
+        return x
+```
+
+Kernel 2 (runtime: 6.82 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_elementwise_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+template<typename scalar_t>
+__global__ void fused_elementwise_kernel(
+    const scalar_t* x,
+    const scalar_t* bias,
+    const scalar_t* orig_x,
+    scalar_t* out,
+    int N, int C, int D, int H, int W
+) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    const int total_elements = N * C * D * H * W;
+    if (index >= total_elements) return;
+
+    // Efficiently compute indices without using intermediate variables
+    const int n = index / (C * D * H * W);
+    const int rem = index % (C * D * H * W);
+    const int c = rem / (D * H * W);
+    const int d_h_w = rem % (D * H * W);
+    const int d = d_h_w / (H * W);
+    const int h_w = d_h_w % (H * W);
+    const int h = h_w / W;
+    const int w = h_w % W;
+
+    const int bias_offset = c;
+    const int orig_x_offset = n * C * D * H * W + c * D * H * W + d * H * W + h * W + w;
+
+    const scalar_t x_val = x[index];
+    const scalar_t bias_val = bias[bias_offset];
+    const scalar_t orig_x_val = orig_x[orig_x_offset];
+
+    const scalar_t temp1 = x_val + bias_val;
+    const scalar_t temp2 = temp1 + orig_x_val;
+    const scalar_t temp3 = temp2 * orig_x_val;
+    const scalar_t result = temp3 + orig_x_val;
+
+    out[index] = result;
+}
+
+torch::Tensor fused_elementwise_cuda(torch::Tensor x, torch::Tensor bias, torch::Tensor orig_x) {
+    TORCH_CHECK(x.dim() == 5, "Input x must be 5D");
+    TORCH_CHECK(bias.dim() == 1, "Bias must be 1D");
+    TORCH_CHECK(orig_x.dim() == 5, "Orig_x must be 5D");
+
+    const int N = x.size(0);
+    const int C = x.size(1);
+    const int D = x.size(2);
+    const int H = x.size(3);
+    const int W = x.size(4);
+
+    auto output = torch::empty_like(x);
+
+    const int total_elements = N * C * D * H * W;
+    const int threads_per_block = 256;
+    const int blocks_per_grid = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "fused_elementwise_cuda", ([&] {
+        fused_elementwise_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(
+            x.data_ptr<scalar_t>(),
+            bias.data_ptr<scalar_t>(),
+            orig_x.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            N, C, D, H, W
+        );
+    }));
+
+    return output;
+}
+"""
+
+fused_elementwise_cpp = """
+torch::Tensor fused_elementwise_cuda(torch::Tensor x, torch::Tensor bias, torch::Tensor orig_x);
+"""
+
+fused_elementwise = load_inline(
+    name='fused_elementwise',
+    cpp_sources=fused_elementwise_cpp,
+    cuda_sources=fused_elementwise_source,
+    functions=['fused_elementwise_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding,
+            output_padding=output_padding
+        )
+        self.bias = nn.Parameter(torch.randn(bias_shape).view(-1))  # Ensure bias is 1D
+        self.fused_op = fused_elementwise
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        original_x = x.detach().contiguous()  # Ensure contiguous memory layout
+        return self.fused_op.fused_elementwise_cuda(x, self.bias, original_x)
+```

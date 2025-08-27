@@ -1,0 +1,48 @@
+{
+  "kernel1": {
+    "problem_id": 90,
+    "sample_id": 6,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:1",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "--------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                              Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n--------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n    cumprod_kernel(float const*, float*, int, int)         0.00%       0.000us         0.00%       0.000us       0.000us      26.889ms       100.00%      26.889ms      26.889ms             1  \n                                  aten::empty_like         0.16%      47.103us         7.12%       2.058ms       2.058ms       0.000us         0.00%       0.000us       0.000us             1  \n                               aten::empty_strided         0.21%      59.437us         6.95%       2.011ms       2.011ms       0.000us         0.00%       0.000us       0.000us             1  \n                                      Unrecognized         6.75%       1.952ms         6.75%       1.952ms       1.952ms       0.000us         0.00%       0.000us       0.000us             1  \n                                  cudaLaunchKernel         0.17%      48.341us         0.17%      48.341us      48.341us       0.000us         0.00%       0.000us       0.000us             1  \n                             cudaDeviceSynchronize        92.72%      26.818ms        92.72%      26.818ms      13.409ms       0.000us         0.00%       0.000us       0.000us             2  \n--------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 28.924ms\nSelf CUDA time total: 26.889ms\n"
+    },
+    "runtime": 26.9,
+    "runtime_stats": {
+      "mean": 26.9,
+      "std": 0.0438,
+      "min": 26.8,
+      "max": 27.1,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:1"
+    },
+    "run_name": "IR_level1_DeepSeek-R1"
+  },
+  "kernel2": {
+    "problem_id": 90,
+    "sample_id": 3,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:1",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nchunk_cumprod_kernel(float const*, float*, float*, i...         0.00%       0.000us         0.00%       0.000us       0.000us      26.373ms        50.49%      26.373ms      26.373ms             1  \napply_products_kernel(float*, float const*, int, int...         0.00%       0.000us         0.00%       0.000us       0.000us      13.277ms        25.42%      13.277ms      13.277ms             1  \n                                            aten::copy_         0.05%      24.340us         0.15%      80.189us      80.189us      12.544ms        24.02%      12.544ms      12.544ms             1  \n                         Memcpy DtoD (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us      12.544ms        24.02%      12.544ms      12.544ms             1  \n           aggregate_chunks_kernel(float*, float*, int)         0.00%       0.000us         0.00%       0.000us       0.000us      24.544us         0.05%      24.544us      24.544us             1  \n                                            aten::fill_         0.03%      14.660us         0.07%      37.840us      18.920us      13.344us         0.03%      13.344us       6.672us             2  \nvoid at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      13.344us         0.03%      13.344us       6.672us             2  \n                                            aten::clone         0.07%      36.879us         1.83%     971.391us     971.391us       0.000us         0.00%      12.544ms      12.544ms             1  \n                                    aten::empty_strided         0.12%      61.260us         1.62%     859.783us     429.892us       0.000us         0.00%       0.000us       0.000us             2  \n                                           Unrecognized         1.50%     798.523us         1.50%     798.523us     798.523us       0.000us         0.00%       0.000us       0.000us             1  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 53.126ms\nSelf CUDA time total: 52.232ms\n"
+    },
+    "runtime": 50.5,
+    "runtime_stats": {
+      "mean": 50.5,
+      "std": 0.0411,
+      "min": 50.5,
+      "max": 50.7,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:1"
+    },
+    "run_name": "metr_level1_DeepSeek-R1"
+  }
+}

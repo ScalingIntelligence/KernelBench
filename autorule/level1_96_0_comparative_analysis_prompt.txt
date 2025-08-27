@@ -1,0 +1,173 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 13.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for Smooth L1 Loss with scalar output
+smooth_l1_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void smooth_l1_loss_kernel(const float* pred, const float* target, float* sum_loss, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n) return;
+
+    float x = pred[idx] - target[idx];
+    float abs_x = fabsf(x);
+    float loss = (abs_x < 1.0f) ? 0.5f * x * x : (abs_x - 0.5f);
+
+    __shared__ float shared[256];
+    int tid = threadIdx.x;
+    shared[tid] = loss;
+    __syncthreads();
+
+    // Block-wide reduction
+    for (int s = blockDim.x/2; s > 0; s >>=1) {
+        if (tid < s) {
+            shared[tid] += shared[tid + s];
+        }
+        __syncthreads();
+    }
+
+    // Atomic add to global sum
+    if (tid == 0) {
+        atomicAdd(sum_loss, shared[0]);
+    }
+}
+
+torch::Tensor smooth_l1_loss_cuda(torch::Tensor predictions, torch::Tensor targets) {
+    TORCH_CHECK(predictions.is_contiguous(), "predictions must be contiguous");
+    TORCH_CHECK(targets.is_contiguous(), "targets must be contiguous");
+    TORCH_CHECK(predictions.sizes() == targets.sizes(), "predictions and targets must have the same shape");
+    TORCH_CHECK(predictions.device().is_cuda() && targets.device().is_cuda(), "Inputs must be CUDA tensors");
+    TORCH_CHECK(predictions.scalar_type() == torch::kFloat32, "predictions must be float32");
+    TORCH_CHECK(targets.scalar_type() == torch::kFloat32, "targets must be float32");
+
+    int64_t n = predictions.numel();
+    auto sum_loss = torch::zeros({}, predictions.options()).to(torch::kFloat);  // Scalar tensor
+
+    const int block_size = 256;
+    int grid_size = (n + block_size - 1) / block_size;
+
+    smooth_l1_loss_kernel<<<grid_size, block_size>>>(
+        predictions.data_ptr<float>(),
+        targets.data_ptr<float>(),
+        sum_loss.data_ptr<float>(),
+        n
+    );
+
+    return sum_loss / n;  // Returns scalar tensor
+}
+"""
+
+smooth_l1_cpp_source = "torch::Tensor smooth_l1_loss_cuda(torch::Tensor predictions, torch::Tensor targets);"
+
+smooth_l1_ext = load_inline(
+    name='smooth_l1_loss',
+    cpp_sources=smooth_l1_cpp_source,
+    cuda_sources=smooth_l1_source,
+    functions=['smooth_l1_loss_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.smooth_l1_loss = smooth_l1_ext.smooth_l1_loss_cuda
+
+    def forward(self, predictions, targets):
+        return self.smooth_l1_loss(predictions, targets)
+```
+
+Kernel 2 (runtime: 12.1 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+smooth_l1_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void smooth_l1_loss_kernel(const float* pred, const float* target, float* sum, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    float local_sum = 0.0f;
+
+    for (int i = idx; i < n; i += stride) {
+        float diff = pred[i] - target[i];
+        float abs_diff = fabsf(diff);
+        local_sum += (abs_diff < 1.0f) ? (0.5f * diff * diff) : (abs_diff - 0.5f);
+    }
+
+    // Block-wise reduction
+    __shared__ float shared_sum[256];
+    int tid = threadIdx.x;
+    shared_sum[tid] = local_sum;
+    __syncthreads();
+
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        atomicAdd(sum, shared_sum[0]);
+    }
+}
+
+torch::Tensor smooth_l1_loss_cuda(torch::Tensor predictions, torch::Tensor targets) {
+    int n = predictions.numel();
+    auto sum_tensor = torch::zeros({1}, torch::kFloat32).to(predictions.device());
+    float* sum_ptr = sum_tensor.data_ptr<float>();
+
+    const int block_size = 256;
+    int grid_size = (n + block_size - 1) / block_size;
+    grid_size = grid_size > 65535 ? 65535 : grid_size;
+
+    smooth_l1_loss_kernel<<<grid_size, block_size>>>(predictions.data_ptr<float>(), 
+                                                     targets.data_ptr<float>(), 
+                                                     sum_ptr, n);
+    cudaDeviceSynchronize();
+    
+    float mean = sum_tensor.item<float>() / n;
+    return torch::scalar_tensor(mean, torch::kFloat32).to(predictions.device());
+}
+"""
+
+smooth_l1_cpp_source = "torch::Tensor smooth_l1_loss_cuda(torch::Tensor predictions, torch::Tensor targets);"
+
+smooth_l1_loss = load_inline(
+    name='smooth_l1_loss',
+    cpp_sources=smooth_l1_cpp_source,
+    cuda_sources=smooth_l1_source,
+    functions=['smooth_l1_loss_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.smooth_l1_loss = smooth_l1_loss
+
+    def forward(self, predictions, targets):
+        return self.smooth_l1_loss.smooth_l1_loss_cuda(predictions, targets)
+
+batch_size = 32768
+input_shape = (32768,)
+dim = 1
+
+def get_inputs():
+    scale = torch.rand(())
+    return [torch.rand(batch_size, *input_shape, device='cuda')*scale, 
+            torch.rand(batch_size, *input_shape, device='cuda')]
+
+def get_init_inputs():
+    return []
+```

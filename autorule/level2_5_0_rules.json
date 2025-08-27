@@ -1,0 +1,5 @@
+[
+  "The kernel uses a memory access pattern where consecutive threads in a warp access consecutive memory addresses within each loop iteration, ensuring coalesced memory transactions.",
+  "The kernel avoids strided memory access patterns across threads in a warp, which can lead to non-coalesced memory transactions and reduced bandwidth utilization.",
+  "The kernel structures loops to process contiguous memory blocks per iteration within a warp, optimizing memory throughput."
+]

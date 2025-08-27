@@ -1,0 +1,8 @@
+[
+  "The kernel uses subtile computation where each thread processes multiple output elements to increase arithmetic intensity.",
+  "The kernel employs larger tile sizes to reduce the number of outer loop iterations and shared memory operations.",
+  "The kernel structures global memory accesses to enable coalesced transactions through contiguous data loading patterns.",
+  "The kernel transposes matrix data in shared memory to minimize bank conflicts during computation phases.",
+  "The kernel aggressively unrolls inner loops to reduce instruction overhead and improve instruction-level parallelism.",
+  "The kernel configures thread block dimensions to optimize occupancy while maintaining high per-thread workload."
+]

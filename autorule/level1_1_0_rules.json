@@ -1,0 +1,5 @@
+[
+  "The kernel uses loop unrolling via #pragma unroll on the inner computation loop to reduce loop overhead and improve instruction-level parallelism.",
+  "The kernel omits boundary checks during shared memory tile loading when input dimensions are known to be multiples of the tile size, reducing branch instructions.",
+  "The kernel is specialized for a specific data type (e.g., float) rather than using a templated dispatch, enabling compiler optimizations tailored to the data type."
+]

@@ -1,0 +1,7 @@
+[
+  "The kernel uses contiguous memory access patterns for coalesced global memory reads.",
+  "The kernel employs a two-step hierarchical reduction strategy to minimize atomic operations in the final aggregation step.",
+  "The kernel uses smaller thread block sizes to improve GPU occupancy and parallelism.",
+  "The kernel avoids grid-strided memory access patterns that lead to non-coalesced memory transactions.",
+  "The kernel minimizes the use of atomic operations by preprocessing data into partial sums before final aggregation."
+]

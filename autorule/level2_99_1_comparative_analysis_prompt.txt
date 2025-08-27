@@ -1,0 +1,221 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 7.06 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void gelu_sigmoid_sum_kernel(float* input, float* output, int batch_size, int features) {
+    extern __shared__ float smem[];
+    int row = blockIdx.x;
+    int tid = threadIdx.x;
+    
+    if (row >= batch_size || tid >= features) return;
+
+    // GELU calculation
+    float x = input[row * features + tid];
+    float sqrt_2_over_pi = sqrt(2.f / M_PI);
+    float sigmoid_part = 1.0f / (1.0f + expf(-(x * 0.7978845608f + 0.044715f * x * x)));
+    float gelu_val = 0.5f * x * (1.0f + sigmoid_part);
+    
+    // Compute sum for normalization
+    float thread_sum = 0.0f;
+    for(int i=tid; i<features; i+=blockDim.x) {
+        thread_sum += expf(gelu_val);
+    }
+
+    // Store intermediate sum in shared memory
+    smem[tid] = thread_sum;
+    __syncthreads();
+
+    // Reduction step
+    for(int stride=blockDim.x/2; stride>0; stride>>=1) {
+        if(tid < stride) {
+            smem[tid] += smem[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // Normalize and write output
+    if(tid == 0) {
+        float inv_total = 1.0f / smem[0];
+        atomicAdd(&output[row * features + tid], expf(gelu_val) * inv_total);
+    }
+}
+
+torch::Tensor fused_gelu_softmax_cuda(torch::Tensor input) {
+    int batch_size = input.size(0);
+    int features = input.size(1);
+    auto output = torch::empty_like(input);
+    
+    const int block_size = 1024;
+    dim3 grid(batch_size);
+    size_t smem_size = block_size * sizeof(float);
+    
+    gelu_sigmoid_sum_kernel<<<grid, block_size, smem_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        batch_size,
+        features
+    );
+    
+    return output;
+}
+"""
+
+cpp_wrapper = "torch::Tensor fused_gelu_softmax_cuda(torch::Tensor input);"
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources=cpp_wrapper,
+    cuda_sources=fused_ops_source,
+    functions=['fused_gelu_softmax_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.batch_size = 1024  # Fixed from get_inputs()
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = fused_ops.fused_gelu_softmax_cuda(x.contiguous())
+        return x
+```
+
+Kernel 2 (runtime: 7.3 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom fused GELU + Softmax kernel
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+constexpr float GELU_COEF = 0.044715f;
+constexpr float SQRT_2_OVER_PI = 0.7978845608f;
+
+__device__ __forceinline__ float gelu_fast(float x) {
+    return 0.5f * x * (1.0f + tanhf(SQRT_2_OVER_PI * x * (1.0f + GELU_COEF * x * x)));
+}
+
+__global__ void fused_gelu_softmax_kernel(
+    float* input,
+    float* output,
+    int num_rows,
+    int row_size
+) {
+    extern __shared__ float shared_mem[];
+    int row_idx = blockIdx.x;
+    int tid = threadIdx.x;
+    
+    if (row_idx >= num_rows) return;
+    
+    float* row_input = input + row_idx * row_size;
+    float* row_output = output + row_idx * row_size;
+    
+    // Phase 1: Load data and compute GELU with max reduction
+    float max_val = -INFINITY;
+    for (int i = tid; i < row_size; i += blockDim.x) {
+        float val = row_input[i];
+        float gelu = gelu_fast(val);
+        shared_mem[i] = gelu;
+        max_val = fmaxf(max_val, gelu);
+    }
+    
+    // Block-wide max reduction
+    __shared__ float block_max;
+    static __shared__ float smem[256];
+    smem[tid] = max_val;
+    __syncthreads();
+    
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) smem[tid] = fmaxf(smem[tid], smem[tid + s]);
+        __syncthreads();
+    }
+    if (tid == 0) block_max = smem[0];
+    __syncthreads();
+    
+    // Phase 2: Compute exp and sum with stable softmax
+    float sum = 0.0f;
+    for (int i = tid; i < row_size; i += blockDim.x) {
+        float val = expf(shared_mem[i] - block_max);
+        shared_mem[i] = val;
+        sum += val;
+    }
+    
+    // Block-wide sum reduction
+    __shared__ float block_sum;
+    smem[tid] = sum;
+    __syncthreads();
+    
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) smem[tid] += smem[tid + s];
+        __syncthreads();
+    }
+    if (tid == 0) block_sum = smem[0];
+    __syncthreads();
+    
+    // Phase 3: Normalize and write results
+    for (int i = tid; i < row_size; i += blockDim.x) {
+        row_output[i] = shared_mem[i] / block_sum;
+    }
+}
+
+torch::Tensor fused_gelu_softmax_cuda(torch::Tensor input) {
+    TORCH_CHECK(input.dim() == 2, "Input must be 2D tensor");
+    auto output = torch::empty_like(input);
+    
+    int num_rows = input.size(0);
+    int row_size = input.size(1);
+    
+    const int block_size = 256;
+    dim3 grid(num_rows);
+    dim3 block(block_size);
+    
+    size_t shared_mem = row_size * sizeof(float);
+    
+    fused_gelu_softmax_kernel<<<grid, block, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        num_rows,
+        row_size
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_gelu_softmax_cuda(torch::Tensor input);"
+
+fused_op = load_inline(
+    name='fused_gelu_softmax',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_gelu_softmax_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.fused_op = fused_op
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_op.fused_gelu_softmax_cuda(x)
+        return x
+```

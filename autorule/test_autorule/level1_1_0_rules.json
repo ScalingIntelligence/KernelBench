@@ -1,0 +1,9 @@
+[
+  "The kernel uses sub-tiling where each thread computes a 4x4 submatrix of the output.",
+  "The kernel pads shared memory arrays to avoid bank conflicts during access.",
+  "The kernel loads global memory data in coalesced patterns by ensuring consecutive threads access consecutive addresses.",
+  "The kernel unrolls inner loops using pragma directives to reduce loop overhead.",
+  "The kernel employs a larger tile size (32x32) to reduce the number of tiles and improve data reuse.",
+  "The kernel configures thread blocks to match GPU warp sizes (8x8 threads per block) for improved occupancy.",
+  "The kernel stores intermediate partial sums in registers rather than shared memory to reduce access latency."
+]

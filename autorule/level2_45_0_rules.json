@@ -1,0 +1,10 @@
+[
+  "The kernel uses shared memory tiling to reduce global memory access.",
+  "The kernel transposes weight matrices to enable coalesced global memory reads.",
+  "The kernel uses thread block sizes that align with GPU warp/wavefront execution patterns (e.g., 32x32).",
+  "The kernel implements parallel reductions using warp-shuffle instructions and shared memory.",
+  "The kernel reuses loaded input data through shared memory across multiple computations.",
+  "The kernel employs block-level parallelism by assigning one block per data sample with multiple threads.",
+  "The kernel optimizes memory access patterns to ensure coalesced global memory operations.",
+  "The kernel uses thread block configurations that maximize warp utilization (e.g., 256 threads per block)."
+]

@@ -1,0 +1,154 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 13.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_min_gelu_mult_kernel(
+    const float* input,
+    float* output,
+    float add_val,
+    float mult_val,
+    int num_elements
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_elements) return;
+    
+    float x = input[idx] + add_val;
+    x = fminf(x, 0.0f);
+    x = 0.5f * x * (1.0f + erff(x / 1.41421356237f));
+    output[idx] = x * mult_val;
+}
+
+torch::Tensor fused_min_gelu_mult_cuda(
+    torch::Tensor input,
+    float add_val,
+    float mult_val
+) {
+    TORCH_CHECK(input.is_contiguous(), "Input must be contiguous");
+    auto output = torch::empty_like(input);
+    int numel = input.numel();
+    const int threads = 256;  // Increased block size
+    int blocks = (numel + threads - 1) / threads;
+    
+    fused_min_gelu_mult_kernel<<<blocks, threads>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        add_val,
+        mult_val,
+        numel
+    );
+    
+    return output;
+}
+"""
+
+fused_ops = load_inline(
+    name='fused_ops',
+    cpp_sources="torch::Tensor fused_min_gelu_mult_cuda(torch::Tensor input, float add_val, float mult_val);",
+    cuda_sources=fused_ops_source,
+    functions=['fused_min_gelu_mult_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, add_value, multiply_value):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride)
+        self.add_value = add_value
+        self.multiply_value = multiply_value
+
+    def forward(self, x):
+        x = self.conv_transpose(x).contiguous()
+        return fused_ops.fused_min_gelu_mult_cuda(x, self.add_value, self.multiply_value)
+```
+
+Kernel 2 (runtime: 13.5 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized fused kernel with precise numerical behavior and memory optimizations
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cmath>
+
+__global__ void fused_ops_kernel(const float* __restrict__ input,
+                                float add_value,
+                                float multiply_value,
+                                float* __restrict__ output,
+                                int num_elements) {
+    // Precisely match PyTorch's GELU constants
+    constexpr float sqrt_2_over_pi = 0.7978845608028654f;  // sqrt(2/π)
+    constexpr float gelu_coeff = 0.044715f;
+    
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        // Fused operation pipeline
+        float val = input[idx] + add_value;
+        val = fminf(val, 0.0f);
+        
+        // Precise GELU approximation matching PyTorch's implementation
+        const float cube = val * val * val;
+        const float inner = sqrt_2_over_pi * (val + gelu_coeff * cube);
+        val = 0.5f * val * (1.0f + tanhf(inner));
+        output[idx] = val * multiply_value;
+    }
+}
+
+torch::Tensor fused_ops_cuda(torch::Tensor input, float add_value, float multiply_value) {
+    auto output = torch::empty_like(input);
+    const int num_elements = input.numel();
+    
+    // Optimal block size for memory coalescing
+    const int block_size = 256;
+    const int grid_size = (num_elements + block_size - 1) / block_size;
+    
+    fused_ops_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        add_value,
+        multiply_value,
+        output.data_ptr<float>(),
+        num_elements
+    );
+    
+    return output;
+}
+"""
+
+fused_ops_cpp_source = "torch::Tensor fused_ops_cuda(torch::Tensor input, float add_value, float multiply_value);"
+
+# Compile with optimizations that preserve numerical accuracy
+fused_ops = load_inline(
+    name="fused_ops",
+    cpp_sources=fused_ops_cpp_source,
+    cuda_sources=fused_ops_source,
+    functions=["fused_ops_cuda"],
+    verbose=True,
+    extra_cuda_cflags=['-O3', '--fmad=true']
+)
+
+class ModelNew(nn.Module):
+    """
+    Optimized model with numerically accurate fused operations
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride, add_value, multiply_value):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride)
+        self.add_value = add_value
+        self.multiply_value = multiply_value
+        self.fused_ops = fused_ops
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.fused_ops.fused_ops_cuda(x, self.add_value, self.multiply_value)
+        return x
+```

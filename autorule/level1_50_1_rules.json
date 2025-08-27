@@ -1,0 +1,9 @@
+[
+  "The kernel uses compile-time constants for parameters to enable loop unrolling and constant propagation",
+  "The kernel applies #pragma unroll directives to loops with statically known bounds",
+  "The kernel uses __restrict__ qualifiers on pointer arguments to enable alias optimization",
+  "The kernel employs fast integer division/modulo operations using compile-time constants for index calculations",
+  "The kernel specializes for fixed input channel counts to eliminate boundary checks in inner loops",
+  "The kernel pre-computes memory access patterns outside inner loops to improve spatial locality",
+  "The kernel avoids template parameters for fundamental data types to enable type-specific optimizations"
+]

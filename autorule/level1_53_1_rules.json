@@ -1,0 +1,7 @@
+[
+  "The kernel uses contiguous memory access patterns for coalesced global memory reads.",
+  "The kernel avoids synchronization primitives such as __syncthreads() and inter-thread communication.",
+  "The kernel employs a grid-stride loop to reduce the number of launched blocks and improve resource utilization.",
+  "The kernel eliminates the use of shared memory for partial result storage and intermediate reductions.",
+  "The kernel minimizes instruction count by avoiding warp-level reduction operations (e.g., warp shuffles)."
+]

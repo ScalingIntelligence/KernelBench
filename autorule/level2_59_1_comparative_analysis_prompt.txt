@@ -1,0 +1,98 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 16.4 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_swish_scale_source = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_swish_scale_kernel(float* input, float scale, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        float x = input[idx];
+        float exp_x = expf(-x);
+        float sigmoid = 1.0f / (1.0f + exp_x);
+        input[idx] = x * sigmoid * scale;
+    }
+}
+
+torch::Tensor fused_swish_scale_cuda(torch::Tensor input, float scale) {
+    int n = input.numel();
+    dim3 blocks((n + 255)/256);
+    dim3 threads(256);
+    fused_swish_scale_kernel<<<blocks, threads>>>(input.data_ptr<float>(), scale, n);
+    return input;
+}
+"""
+
+fused_swish_scale = load_inline(
+    name='fused_swish_scale',
+    cpp_sources="torch::Tensor fused_swish_scale_cuda(torch::Tensor input, float scale);",
+    cuda_sources=fused_swish_scale_source,
+    functions=['fused_swish_scale_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.scale = scaling_factor
+
+    def forward(self, x):
+        x = self.linear(x)
+        return fused_swish_scale.fused_swish_scale_cuda(x, self.scale)
+```
+
+Kernel 2 (runtime: 16.3 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_swish_scale_source = """
+#include <torch/extension.h>
+#include <math.h>
+
+__global__ void fused_swish_scale_kernel(float* x, float scaling_factor, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        float xi = x[idx];
+        float sigmoid_x = 1.0f / (1.0f + expf(-xi));
+        x[idx] = xi * sigmoid_x * scaling_factor;
+    }
+}
+
+torch::Tensor fused_swish_scale_cuda(torch::Tensor x, float scaling_factor) {
+    int n = x.numel();
+    fused_swish_scale_kernel<<<(n + 255)/256, 256>>>(x.data_ptr<float>(), scaling_factor, n);
+    return x;
+}
+"""
+
+fused_swish_scale_cpp = "torch::Tensor fused_swish_scale_cuda(torch::Tensor x, float scaling_factor);"
+
+fused_swish_scale = load_inline(
+    name='fused_swish_scale',
+    cpp_sources=fused_swish_scale_cpp,
+    cuda_sources=fused_swish_scale_source,
+    functions=['fused_swish_scale_cuda'],
+    verbose=True,
+    extra_cflags=[],
+    extra_ldflags=[]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = fused_swish_scale.fused_swish_scale_cuda(x, self.scaling_factor)
+        return x
+```

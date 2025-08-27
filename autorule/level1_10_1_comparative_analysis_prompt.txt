@@ -1,0 +1,219 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 17.8 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define custom CUDA kernel for batched matrix multiplication
+batched_matmul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+#define TILE_SIZE 16
+
+__global__ void batched_matmul_kernel(const float* A, const float* B, float* C, int N, int M, int K, int L) {
+    int n = blockIdx.x;
+    int m_tile = blockIdx.y * TILE_SIZE;
+    int l_tile = blockIdx.z * TILE_SIZE;
+
+    int thread_row = threadIdx.y;
+    int thread_col = threadIdx.x;
+
+    int m = m_tile + thread_row;
+    int l = l_tile + thread_col;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float sum = 0.0f;
+
+    for (int k_tile = 0; k_tile < K; k_tile += TILE_SIZE) {
+        // Load A tile
+        int a_k = k_tile + thread_col;
+        if (m < M && a_k < K) {
+            As[thread_row][thread_col] = A[n * M * K + m * K + a_k];
+        } else {
+            As[thread_row][thread_col] = 0.0f;
+        }
+
+        // Load B tile
+        int b_k = k_tile + thread_row;
+        if (b_k < K && l < L) {
+            Bs[thread_row][thread_col] = B[b_k * L + l];
+        } else {
+            Bs[thread_row][thread_col] = 0.0f;
+        }
+
+        __syncthreads();
+
+        for (int k = 0; k < TILE_SIZE; ++k) {
+            sum += As[thread_row][k] * Bs[k][thread_col];
+        }
+
+        __syncthreads();
+    }
+
+    if (m < M && l < L) {
+        C[n * M * L + m * L + l] = sum;
+    }
+}
+
+torch::Tensor batched_matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    int N = A.size(0);
+    int M = A.size(1);
+    int K = A.size(2);
+    int L = B.size(1);
+
+    auto C = torch::zeros({N, M, L}, A.options());
+
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid(N, (M + TILE_SIZE - 1) / TILE_SIZE, (L + TILE_SIZE - 1) / TILE_SIZE);
+
+    batched_matmul_kernel<<<grid, block>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        N, M, K, L
+    );
+
+    return C;
+}
+"""
+
+batched_matmul_cpp_source = "torch::Tensor batched_matmul_cuda(torch::Tensor A, torch::Tensor B);"
+
+# Compile the inline CUDA code
+batched_matmul = load_inline(
+    name="batched_matmul",
+    cpp_sources=batched_matmul_cpp_source,
+    cuda_sources=batched_matmul_source,
+    functions=["batched_matmul_cuda"],
+    verbose=True,
+    extra_cflags=["-O3"],
+    extra_ldflags=[],
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A, B):
+        return batched_matmul.batched_matmul_cuda(A, B)
+```
+
+Kernel 2 (runtime: 17.7 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+matmul3d_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+template<int TILE_SIZE>
+__global__ void batched_matmul_kernel(const float* __restrict__ A, const float* __restrict__ B, float* __restrict__ C, 
+                                     int N, int M, int K, int L) {
+    // Batch index, output tile coordinates
+    const int batch = blockIdx.x;
+    const int tileM = blockIdx.y;
+    const int tileL = blockIdx.z;
+
+    // Thread coordinates within tile
+    const int thread_row = threadIdx.y;
+    const int thread_col = threadIdx.x;
+
+    // Tile starting positions
+    const int m_start = tileM * TILE_SIZE;
+    const int l_start = tileL * TILE_SIZE;
+
+    float sum = 0.0f;
+
+    // Loop over K dimension in tiles
+    for (int k_tile = 0; k_tile < (K + TILE_SIZE - 1) / TILE_SIZE; ++k_tile) {
+        const int k_start = k_tile * TILE_SIZE;
+
+        __shared__ float As[TILE_SIZE][TILE_SIZE];
+        __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+        // Load A tile with read-only cache
+        int a_row = m_start + thread_row;
+        int a_col = k_start + thread_col;
+        As[thread_row][thread_col] = (a_row < M && a_col < K) 
+            ? __ldg(&A[batch * M * K + a_row * K + a_col]) 
+            : 0.0f;
+
+        // Load B tile with read-only cache
+        int b_row = k_start + thread_row;
+        int b_col = l_start + thread_col;
+        Bs[thread_row][thread_col] = (b_row < K && b_col < L) 
+            ? __ldg(&B[b_row * L + b_col]) 
+            : 0.0f;
+
+        __syncthreads();
+
+        // Unrolled matrix multiplication
+        #pragma unroll
+        for (int k = 0; k < TILE_SIZE; ++k) {
+            sum += As[thread_row][k] * Bs[k][thread_col];
+        }
+
+        __syncthreads();
+    }
+
+    // Write result with coalesced access
+    const int c_row = m_start + thread_row;
+    const int c_col = l_start + thread_col;
+    if (c_row < M && c_col < L) {
+        C[batch * M * L + c_row * L + c_col] = sum;
+    }
+}
+
+torch::Tensor batched_matmul_cuda(torch::Tensor A, torch::Tensor B) {
+    TORCH_CHECK(A.dim() == 3, "A must be 3D");
+    TORCH_CHECK(B.dim() == 2, "B must be 2D");
+    
+    const int N = A.size(0);
+    const int M = A.size(1);
+    const int K = A.size(2);
+    const int L = B.size(1);
+    
+    auto C = torch::zeros({N, M, L}, A.options());
+
+    constexpr int TILE_SIZE = 32;
+    dim3 blocks(N, (M + TILE_SIZE - 1) / TILE_SIZE, (L + TILE_SIZE - 1) / TILE_SIZE);
+    dim3 threads(TILE_SIZE, TILE_SIZE);
+    
+    batched_matmul_kernel<TILE_SIZE><<<blocks, threads>>>(
+        A.contiguous().data_ptr<float>(),
+        B.contiguous().data_ptr<float>(),
+        C.data_ptr<float>(),
+        N, M, K, L
+    );
+
+    return C;
+}
+
+template __global__ void batched_matmul_kernel<32>(const float*, const float*, float*, int, int, int, int);
+"""
+
+matmul3d_cpp = "torch::Tensor batched_matmul_cuda(torch::Tensor A, torch::Tensor B);"
+
+matmul3d_ext = load_inline(
+    name="matmul3d_ext",
+    cpp_sources=matmul3d_cpp,
+    cuda_sources=matmul3d_source,
+    functions=["batched_matmul_cuda"],
+    verbose=True,
+    extra_cuda_cflags=["-O3", "--use_fast_math"]
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.matmul_op = matmul3d_ext
+
+    def forward(self, A, B):
+        return self.matmul_op.batched_matmul_cuda(A, B)
+```

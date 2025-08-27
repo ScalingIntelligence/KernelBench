@@ -1,0 +1,51 @@
+REASONING TRACE:
+Okay, let's break down the reasoning provided and extract the rule-like statements. The user wants these rules to be general enough for various CUDA kernels and objectively determinable.
+
+First, the reasoning mentions that Kernel 2 uses shared memory for weights. This is a clear optimization technique, so the rule would be about using shared memory to reduce global memory access. That's a common practice, so that's one rule.
+
+Next, the use of __ldg() intrinsic and __restrict__ keywords. These relate to caching and memory access optimization. The __ldg() function is for read-only data caching, so the rule here is about using read-only cache intrinsics. The __restrict__ keyword helps with pointer aliasing, which allows the compiler to optimize better. So another rule about using restrict qualifiers.
+
+Memory coalescing is mentioned as a factor. Kernel 2 structures loops and block dimensions to access consecutive memory locations, leading to coalesced accesses. So a rule about structuring memory accesses to be coalesced.
+
+Loop unrolling with #pragma unroll is another point. This reduces loop overhead, so a rule about using loop unrolling pragmas.
+
+Block and grid configuration differences: Kernel 2 uses a 1D grid with larger block sizes (512 threads) compared to Kernel 1's 3D grid and smaller blocks. The rule here would be about using 1D grid configurations and block sizes that improve occupancy. Also, the block size being a multiple of warp size (32) might be a factor, but the example given uses 512, which is a multiple (512/32=16). However, the reasoning doesn't explicitly mention warp size, so maybe the rule is about block size choice for better parallelism.
+
+Contiguous memory access: Kernel 2 enforces contiguous memory layout. So a rule about ensuring tensors are contiguous for optimal access.
+
+Batched output processing: Kernel 2 processes multiple outputs per thread, increasing work per thread. So a rule about processing multiple elements per thread to improve utilization.
+
+The quantitative impact section lists shared memory, coalescing, loop unrolling, etc., but these are already covered. 
+
+Now, checking for generality. Each of these points can be applied to other CUDA kernels. For example, using shared memory isn't specific to Conv1D. Similarly, loop unrolling, coalesced access, etc., are general practices.
+
+So compiling all these into rule-like statements:
+
+1. The kernel uses shared memory to reduce global memory accesses for reused data.
+2. The kernel utilizes read-only cache intrinsics (e.g., __ldg()) for global memory accesses.
+3. The kernel employs memory access patterns that enable coalesced global memory transactions.
+4. The kernel uses loop unrolling pragmas to reduce loop overhead.
+5. The kernel uses a 1D grid configuration to improve parallelism and occupancy.
+6. The kernel processes multiple output elements per thread to increase arithmetic intensity.
+7. The kernel enforces contiguous memory layout for input tensors to optimize memory access patterns.
+8. The kernel uses restrict qualifiers to enable better compiler optimizations for pointer aliasing.
+
+Each of these is objective and can be checked by looking at the kernel code. For example, checking for shared memory usage, presence of __ldg(), pragma unroll, grid configuration, etc. They are general enough to apply to various kernels.
+
+
+ANSWER:
+
+
+[
+    "The kernel uses shared memory to reduce global memory accesses for reused data.",
+    "The kernel utilizes read-only cache intrinsics (e.g., __ldg()) for global memory accesses.",
+    "The kernel employs memory access patterns that enable coalesced global memory transactions.",
+    "The kernel uses loop unrolling pragmas to reduce loop overhead.",
+    "The kernel uses a 1D grid configuration to improve parallelism and occupancy.",
+    "The kernel processes multiple output elements per thread to increase arithmetic intensity.",
+    "The kernel enforces contiguous memory layout for input tensors to optimize memory access patterns.",
+    "The kernel uses restrict qualifiers to enable better compiler optimizations for pointer aliasing."
+]
+
+Usage:
+{'inputTokens': 1556, 'outputTokens': 830, 'totalTokens': 2386}

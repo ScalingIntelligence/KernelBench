@@ -1,0 +1,8 @@
+[
+  "The kernel uses vectorized memory accesses (e.g., float4) to load/store multiple elements per thread, reducing global memory transactions.",
+  "The kernel processes multiple elements per thread, increasing arithmetic intensity and reducing the total number of threads/blocks required.",
+  "The kernel is compiled with aggressive optimization flags (e.g., -O3, --use_fast_math) to enable faster math operations and instruction scheduling.",
+  "The kernel employs memory coalescing through wider memory transactions (e.g., float4), combining adjacent threads' memory requests into fewer transactions.",
+  "The kernel uses __restrict__ qualifiers to indicate non-aliasing pointers, enabling better compiler optimizations.",
+  "The kernel specifies __launch_bounds__ to optimize register usage and improve occupancy by constraining thread block size."
+]

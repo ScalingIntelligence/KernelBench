@@ -1,0 +1,4 @@
+[
+  "The kernel uses compiler optimization flags (-O3) for the host code to reduce overhead.",
+  "The kernel explicitly links against the CUDA runtime library (-lcudart) to ensure proper linking and avoid delays."
+]

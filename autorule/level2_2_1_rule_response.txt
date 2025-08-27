@@ -1,0 +1,45 @@
+REASONING TRACE:
+Okay, let's break down the reasoning provided and extract the rule-like statements. The user wants these rules to be general enough for various CUDA kernels and objectively verifiable.
+
+First, the mathematical simplification. The reasoning mentions that Kernel 2 combines multiple clamp and scaling operations into a single clamp with a precomputed upper limit. This reduces the number of operations. So a rule here would be about reducing redundant mathematical operations through algebraic simplification.
+
+Next, vectorized memory access using float4. The example given is processing four elements per instruction. This is a common optimization, so the rule would mention using vectorized loads/stores for memory throughput.
+
+Shared memory for bias: Kernel 2 loads the bias into shared memory once per block, reducing global memory access. The rule here is using shared memory to cache data reused across threads in a block.
+
+Improved memory coalescing by organizing the grid structure. The reasoning says Kernel 2's 2D grid ensures contiguous memory access. So the rule would be about grid organization aligning with data layout for coalesced memory access.
+
+Read-only cache via __ldg(). Kernel 2 uses this intrinsic, so the rule is using read-only cache hints for data that isn't modified.
+
+Efficient grid configuration matching data layout. The 2D grid over N and C dimensions. The rule here is structuring grid dimensions to match data layout for better parallelism.
+
+Other points like handling remaining elements after vectorized processing might be too specific. The key is to generalize each optimization into a rule applicable to other kernels.
+
+Now, checking if each rule is objective and deterministic. For example, "uses vectorized memory access (e.g., float4)" can be checked by looking for data types like float4 in the code. Similarly, shared memory usage can be verified by checking for __shared__ variables.
+
+So compiling the list:
+
+1. Mathematical simplification through algebraic optimization to reduce redundant operations.
+2. Use of vectorized memory access (e.g., float4) to improve memory throughput.
+3. Utilization of shared memory to cache reused data within a thread block.
+4. Grid organization aligned with data layout to enable memory coalescing.
+5. Use of read-only cache hints (e.g., __ldg()) for immutable data.
+6. Grid dimensions structured to match data layout for optimal parallelism.
+
+These are all general and can be applied to other CUDA kernels. Each can be checked objectively by code inspection.
+
+
+ANSWER:
+
+
+[
+    "The kernel uses vectorized memory access (e.g., float4) to improve memory throughput.",
+    "The kernel utilizes shared memory to cache frequently reused data across threads in a block.",
+    "The kernel employs grid/block dimensions aligned with the data layout to ensure memory coalescing.",
+    "The kernel leverages read-only cache (e.g., via __ldg()) for accessing immutable data.",
+    "The kernel reduces redundant mathematical operations through algebraic simplification.",
+    "The kernel structures grid dimensions to match the data hierarchy (e.g., NCHW) for parallelization efficiency."
+]
+
+Usage:
+{'inputTokens': 2286, 'outputTokens': 612, 'totalTokens': 2898}

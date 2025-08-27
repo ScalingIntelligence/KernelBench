@@ -1,0 +1,48 @@
+{
+  "kernel1": {
+    "problem_id": 43,
+    "sample_id": 7,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nmax_pool3d_kernel(float const*, float*, int, int, in...         0.00%       0.000us         0.00%       0.000us       0.000us       6.675ms       100.00%       6.675ms       6.675ms             1  \n                                            aten::empty         0.70%      52.920us        11.25%     845.124us     845.124us       0.000us         0.00%       0.000us       0.000us             1  \n                                           Unrecognized        10.54%     792.204us        10.54%     792.204us     792.204us       0.000us         0.00%       0.000us       0.000us             1  \n                                       cudaLaunchKernel         0.61%      46.080us         0.61%      46.080us      46.080us       0.000us         0.00%       0.000us       0.000us             1  \n                                  cudaDeviceSynchronize        88.14%       6.623ms        88.14%       6.623ms       3.311ms       0.000us         0.00%       0.000us       0.000us             2  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 7.514ms\nSelf CUDA time total: 6.675ms\n"
+    },
+    "runtime": 6.82,
+    "runtime_stats": {
+      "mean": 6.82,
+      "std": 0.025,
+      "min": 6.69,
+      "max": 6.85,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "metr_level1_DeepSeek-R1"
+  },
+  "kernel2": {
+    "problem_id": 43,
+    "sample_id": 3,
+    "compiled": true,
+    "correctness": true,
+    "metadata": {
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "profiler_info": "-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \n                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nmax_pool_3d_kernel(float const*, float*, int, int, i...         0.00%       0.000us         0.00%       0.000us       0.000us       6.669ms       100.00%       6.669ms       6.669ms             1  \n                                            aten::empty         0.65%      52.640us        18.08%       1.468ms       1.468ms       0.000us         0.00%       0.000us       0.000us             1  \n                                           Unrecognized        17.43%       1.415ms        17.43%       1.415ms       1.415ms       0.000us         0.00%       0.000us       0.000us             1  \n                                       cudaLaunchKernel         0.51%      41.330us         0.51%      41.330us      41.330us       0.000us         0.00%       0.000us       0.000us             1  \n                                  cudaDeviceSynchronize        81.41%       6.609ms        81.41%       6.609ms       3.305ms       0.000us         0.00%       0.000us       0.000us             2  \n-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  \nSelf CPU time total: 8.118ms\nSelf CUDA time total: 6.669ms\n"
+    },
+    "runtime": 7.05,
+    "runtime_stats": {
+      "mean": 7.05,
+      "std": 0.0666,
+      "min": 6.73,
+      "max": 7.13,
+      "num_trials": 100,
+      "hardware": "NVIDIA RTX A6000",
+      "device": "cuda:2"
+    },
+    "run_name": "IR_level1_Qwen2.5-Coder-7B-Instruct-SFT"
+  }
+}

@@ -1,0 +1,5 @@
+[
+  "The kernel uses vectorized memory accesses (e.g., float4) to reduce the number of memory transactions.",
+  "The kernel ensures consecutive memory access patterns to enable memory coalescing.",
+  "The kernel processes multiple elements per loop iteration to reduce loop control overhead."
+]

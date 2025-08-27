@@ -1,0 +1,6 @@
+[
+  "The kernel uses thread block sizes that allow higher occupancy by enabling more concurrent blocks per Streaming Multiprocessor (SM).",
+  "The kernel avoids passing frequently accessed scalar parameters via global memory pointers, preferring register-resident scalars.",
+  "The kernel uses smaller thread block sizes to improve occupancy and latency hiding despite potential increases in global memory access for shared parameters.",
+  "The kernel prioritizes occupancy optimization through block size selection over micro-optimizations like fast math or division-to-multiplication substitution."
+]

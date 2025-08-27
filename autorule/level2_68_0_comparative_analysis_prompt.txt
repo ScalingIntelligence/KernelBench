@@ -1,0 +1,139 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 3.74 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Define optimized fused kernel with vectorized memory access
+fused_kernel_code = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void fused_min_subtract_kernel(const float* input, float* output, float constant, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int linear_idx = idx * 4;
+    
+    if (linear_idx >= size) return;
+    
+    if (linear_idx + 3 < size) {
+        // Vectorized load/store for 4 elements
+        float4 in_val = *reinterpret_cast<const float4*>(input + linear_idx);
+        float4 out_val;
+        out_val.x = fminf(in_val.x, constant) - constant;
+        out_val.y = fminf(in_val.y, constant) - constant;
+        out_val.z = fminf(in_val.z, constant) - constant;
+        out_val.w = fminf(in_val.w, constant) - constant;
+        *reinterpret_cast<float4*>(output + linear_idx) = out_val;
+    } else {
+        // Handle remaining elements
+        for (int i = 0; i < 4; ++i) {
+            int pos = linear_idx + i;
+            if (pos < size) {
+                output[pos] = fminf(input[pos], constant) - constant;
+            }
+        }
+    }
+}
+
+torch::Tensor fused_min_subtract_cuda(torch::Tensor input, torch::Tensor constant) {
+    float constant_val = constant.item<float>();
+    auto output = torch::empty_like(input);
+    int size = input.numel();
+    
+    const int block_size = 256;
+    int num_blocks = ((size + 3) / 4 + block_size - 1) / block_size;
+    
+    fused_min_subtract_kernel<<<num_blocks, block_size>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        constant_val,
+        size
+    );
+    
+    return output;
+}
+"""
+
+fused_kernel_cpp = "torch::Tensor fused_min_subtract_cuda(torch::Tensor input, torch::Tensor constant);"
+
+fused_op = load_inline(
+    name='fused_min_subtract',
+    cpp_sources=fused_kernel_cpp,
+    cuda_sources=fused_kernel_code,
+    functions=['fused_min_subtract_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, constant):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.constant = nn.Parameter(torch.tensor(constant))
+        self.fused_op = fused_op
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_op.fused_min_subtract_cuda(x, self.constant)
+        return x
+```
+
+Kernel 2 (runtime: 3.71 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+fused_ops_source = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void fused_min_subtract_kernel(const float* x, float* y, float c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        float val = x[idx];
+        y[idx] = fminf(val, c) - c;
+    }
+}
+
+torch::Tensor fused_min_subtract_cuda(torch::Tensor x, float c) {
+    TORCH_CHECK(x.is_cuda(), "Input must be a CUDA tensor");
+    TORCH_CHECK(x.dtype() == torch::kFloat32, "Input must be float32");
+
+    auto y = torch::empty_like(x);
+    int n = x.numel();
+
+    const int block_size = 512;
+    dim3 grid((n + block_size - 1) / block_size);
+    dim3 block(block_size);
+
+    fused_min_subtract_kernel<<<grid, block>>>(x.data_ptr<float>(), y.data_ptr<float>(), c, n);
+
+    return y;
+}
+"""
+
+fused_ops_header = "torch::Tensor fused_min_subtract_cuda(torch::Tensor x, float c);"
+
+fused_op = load_inline(
+    name='fused_ops',
+    cpp_sources=fused_ops_header,
+    cuda_sources=fused_ops_source,
+    functions=['fused_min_subtract_cuda'],
+    verbose=False
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, constant):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.constant = nn.Parameter(torch.tensor(constant, dtype=torch.float32))
+        self.fused_min_subtract = fused_op.fused_min_subtract_cuda
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.fused_min_subtract(x, self.constant.item())
+        return x
+```

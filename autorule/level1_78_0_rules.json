@@ -1,0 +1,8 @@
+[
+  "The kernel uses fixed kernel sizes and padding values to enable full loop unrolling.",
+  "The kernel utilizes compile-time constant propagation for index calculations.",
+  "The kernel's fixed parameters allow for predictable memory access patterns and better coalescing.",
+  "The kernel reduces control flow overhead by using fixed padding values for boundary checks.",
+  "The kernel improves register utilization through fixed loop bounds and constant propagation.",
+  "The kernel specializes for specific parameters to eliminate runtime checks and enable dead code elimination."
+]

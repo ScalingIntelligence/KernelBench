@@ -1,0 +1,385 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 37.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom kernel 1: Optimized Mean Pooling + Bias Addition
+mean_bias_add_cpp = """
+torch::Tensor mean_bias_add_cuda(torch::Tensor input, torch::Tensor bias);
+"""
+mean_bias_add_cuda = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void mean_bias_add_kernel(const float* input, const float* bias, float* output, 
+                                    int B, int C, int D, int H, int W) {
+    // Each warp processes one output element (b, c, h, w)
+    const int warp_size = 32;
+    int element_idx = blockIdx.x * (blockDim.x / warp_size) + (threadIdx.x / warp_size);
+    if (element_idx >= B * C * H * W) return;
+
+    // Calculate (b, c, h, w) from element_idx
+    int b = element_idx / (C * H * W);
+    int rem = element_idx % (C * H * W);
+    int c = rem / (H * W);
+    rem = rem % (H * W);
+    int h = rem / W;
+    int w = rem % W;
+
+    int lane_id = threadIdx.x % warp_size;
+    float sum = 0.0f;
+
+    // Coalesced memory access pattern for D dimension
+    for (int d = lane_id; d < D; d += warp_size) {
+        int input_offset = b * C * D * H * W + c * D * H * W + d * H * W + h * W + w;
+        sum += input[input_offset];
+    }
+
+    // Warp-level reduction
+    for (int offset = warp_size/2; offset > 0; offset >>= 1) {
+        sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
+
+    // Write result
+    if (lane_id == 0) {
+        output[element_idx] = sum/D + bias[c];
+    }
+}
+
+torch::Tensor mean_bias_add_cuda(torch::Tensor input, torch::Tensor bias) {
+    int B = input.size(0);
+    int C = input.size(1);
+    int D = input.size(2);
+    int H = input.size(3);
+    int W = input.size(4);
+    
+    auto output = torch::zeros({B, C, 1, H, W}, input.options());
+    int total_elements = B * C * H * W;
+    
+    const int warp_size = 32;
+    int threads_per_block = 256;  // 8 warps per block
+    int grid_size = (total_elements + (threads_per_block/warp_size) - 1) / (threads_per_block/warp_size);
+    
+    mean_bias_add_kernel<<<grid_size, threads_per_block>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        B, C, D, H, W
+    );
+    
+    return output;
+}
+"""
+
+# Custom kernel 2: Optimized Softmax + Tanh + Scaling
+softmax_tanh_scale_cpp = """
+torch::Tensor softmax_tanh_scale_cuda(torch::Tensor input, float scaling_factor);
+"""
+softmax_tanh_scale_cuda = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void softmax_tanh_scale_kernel(float* input, float* output, float scaling_factor,
+                                         int B, int C, int H, int W) {
+    extern __shared__ float sdata[];
+    float* max_shared = sdata;
+    float* sum_shared = &sdata[blockDim.x];
+
+    int b_hw = blockIdx.x;
+    int b = b_hw / (H * W);
+    int hw = b_hw % (H * W);
+    int h = hw / W;
+    int w = hw % W;
+
+    // Step 1: Find max value
+    float max_val = -INFINITY;
+    for(int c = threadIdx.x; c < C; c += blockDim.x) {
+        int idx = b*C*H*W + c*H*W + h*W + w;
+        max_val = fmaxf(max_val, input[idx]);
+    }
+
+    // Block-wide max reduction
+    max_shared[threadIdx.x] = max_val;
+    __syncthreads();
+    for(int s = blockDim.x/2; s > 0; s >>= 1) {
+        if(threadIdx.x < s) {
+            max_shared[threadIdx.x] = fmaxf(max_shared[threadIdx.x], max_shared[threadIdx.x + s]);
+        }
+        __syncthreads();
+    }
+    float global_max = max_shared[0];
+    __syncthreads();
+
+    // Step 2: Compute sum of exponentials
+    float sum = 0.0f;
+    for(int c = threadIdx.x; c < C; c += blockDim.x) {
+        int idx = b*C*H*W + c*H*W + h*W + w;
+        sum += expf(input[idx] - global_max);
+    }
+
+    // Block-wide sum reduction
+    sum_shared[threadIdx.x] = sum;
+    __syncthreads();
+    for(int s = blockDim.x/2; s > 0; s >>= 1) {
+        if(threadIdx.x < s) {
+            sum_shared[threadIdx.x] += sum_shared[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+    float global_sum = sum_shared[0];
+    __syncthreads();
+
+    // Step 3: Compute final values
+    for(int c = threadIdx.x; c < C; c += blockDim.x) {
+        int idx = b*C*H*W + c*H*W + h*W + w;
+        float val = expf(input[idx] - global_max) / global_sum;
+        output[idx] = tanhf(val) * scaling_factor;
+    }
+}
+
+torch::Tensor softmax_tanh_scale_cuda(torch::Tensor input, float scaling_factor) {
+    int B = input.size(0);
+    int C = input.size(1);
+    int H = input.size(3);
+    int W = input.size(4);
+    
+    auto output = torch::empty_like(input);
+    int total_blocks = B * H * W;
+    
+    // Dynamic block size based on channel dimension
+    int block_size = std::min(C, 1024);
+    block_size = (block_size + 31) / 32 * 32;  // Round to nearest multiple of 32
+    if (block_size < 32) block_size = 32;
+    size_t shared_mem = 2 * block_size * sizeof(float);
+    
+    softmax_tanh_scale_kernel<<<total_blocks, block_size, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        scaling_factor,
+        B, C, H, W
+    );
+    
+    return output;
+}
+"""
+
+# Load custom CUDA kernels
+mean_bias_add = load_inline(
+    name='mean_bias_add',
+    cpp_sources=mean_bias_add_cpp,
+    cuda_sources=mean_bias_add_cuda,
+    functions=['mean_bias_add_cuda'],
+    verbose=True
+)
+
+softmax_tanh_scale = load_inline(
+    name='softmax_tanh_scale',
+    cpp_sources=softmax_tanh_scale_cpp,
+    cuda_sources=softmax_tanh_scale_cuda,
+    functions=['softmax_tanh_scale_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.bias = nn.Parameter(torch.randn(1, out_channels, 1, 1, 1))
+        self.scaling_factor = scaling_factor
+        self.mean_bias_add = mean_bias_add
+        self.softmax_tanh_scale = softmax_tanh_scale
+
+    def forward(self, x):
+        x = self.conv_transpose(x)  # Original conv remains
+        x = self.mean_bias_add.mean_bias_add_cuda(x, self.bias)
+        x = self.softmax_tanh_scale.softmax_tanh_scale_cuda(x, self.scaling_factor)
+        return x
+```
+
+Kernel 2 (runtime: 35.0 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom kernel 1: Fused Mean Pooling + Bias Addition
+mean_bias_add_cpp = """
+torch::Tensor mean_bias_add_cuda(torch::Tensor input, torch::Tensor bias);
+"""
+mean_bias_add_cuda = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+__global__ void mean_bias_add_kernel(const float* input, const float* bias, float* output, 
+                                    int B, int C, int D, int H, int W) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = B * C * H * W;
+    if (idx >= total_elements) return;
+
+    int b = idx / (C * H * W);
+    int rem = idx % (C * H * W);
+    int c = rem / (H * W);
+    rem = rem % (H * W);
+    int h = rem / W;
+    int w = rem % W;
+
+    const int input_offset = b * C * D * H * W + c * D * H * W + h * W + w;
+    
+    float sum = 0.0f;
+    for(int d = 0; d < D; ++d) {
+        sum += input[input_offset + d * H * W];
+    }
+    output[idx] = sum/D + bias[c];
+}
+
+torch::Tensor mean_bias_add_cuda(torch::Tensor input, torch::Tensor bias) {
+    int B = input.size(0);
+    int C = input.size(1);
+    int D = input.size(2);
+    int H = input.size(3);
+    int W = input.size(4);
+    
+    auto output = torch::zeros({B, C, 1, H, W}, input.options());
+    int total_elements = B * C * H * W;
+    const int block_size = 256;
+    int grid_size = (total_elements + block_size - 1) / block_size;
+    
+    mean_bias_add_kernel<<<grid_size, block_size>>>(
+        input.data_ptr<float>(),
+        bias.data_ptr<float>(),
+        output.data_ptr<float>(),
+        B, C, D, H, W
+    );
+    
+    return output;
+}
+"""
+
+# Custom kernel 2: Fused Softmax + Tanh + Scaling (fixed reductions)
+softmax_tanh_scale_cpp = """
+torch::Tensor softmax_tanh_scale_cuda(torch::Tensor input, float scaling_factor);
+"""
+softmax_tanh_scale_cuda = """
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+__global__ void softmax_tanh_scale_kernel(float* input, float* output, float scaling_factor,
+                                         int B, int C, int H, int W) {
+    int b_hw = blockIdx.x;
+    int b = b_hw / (H * W);
+    int hw = b_hw % (H * W);
+    int h = hw / W;
+    int w = hw % W;
+
+    extern __shared__ float sdata[];
+    float* max_shared = sdata;
+    float* sum_shared = &sdata[blockDim.x];
+
+    // Step 1: Find max value
+    float max_val = -INFINITY;
+    for(int c = threadIdx.x; c < C; c += blockDim.x) {
+        int idx = b*C*H*W + c*H*W + h*W + w;
+        max_val = fmaxf(max_val, input[idx]);
+    }
+
+    // Block-wide max reduction
+    max_shared[threadIdx.x] = max_val;
+    __syncthreads();
+    for(int s = blockDim.x/2; s > 0; s >>= 1) {
+        if(threadIdx.x < s) {
+            max_shared[threadIdx.x] = fmaxf(max_shared[threadIdx.x], max_shared[threadIdx.x + s]);
+        }
+        __syncthreads();
+    }
+    float global_max = max_shared[0];
+    __syncthreads();
+
+    // Step 2: Compute sum of exponentials
+    float sum = 0.0f;
+    for(int c = threadIdx.x; c < C; c += blockDim.x) {
+        int idx = b*C*H*W + c*H*W + h*W + w;
+        sum += expf(input[idx] - global_max);
+    }
+
+    // Block-wide sum reduction
+    sum_shared[threadIdx.x] = sum;
+    __syncthreads();
+    for(int s = blockDim.x/2; s > 0; s >>= 1) {
+        if(threadIdx.x < s) {
+            sum_shared[threadIdx.x] += sum_shared[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+    float global_sum = sum_shared[0];
+    __syncthreads();
+
+    // Step 3: Compute final values
+    for(int c = threadIdx.x; c < C; c += blockDim.x) {
+        int idx = b*C*H*W + c*H*W + h*W + w;
+        float val = expf(input[idx] - global_max) / global_sum;
+        output[idx] = tanhf(val) * scaling_factor;
+    }
+}
+
+torch::Tensor softmax_tanh_scale_cuda(torch::Tensor input, float scaling_factor) {
+    int B = input.size(0);
+    int C = input.size(1);
+    int H = input.size(3);
+    int W = input.size(4);
+    
+    auto output = torch::empty_like(input);
+    int total_blocks = B * H * W;
+    const int block_size = 256;
+    size_t shared_mem = 2 * block_size * sizeof(float);
+    
+    softmax_tanh_scale_kernel<<<total_blocks, block_size, shared_mem>>>(
+        input.data_ptr<float>(),
+        output.data_ptr<float>(),
+        scaling_factor,
+        B, C, H, W
+    );
+    
+    return output;
+}
+"""
+
+# Load custom CUDA kernels
+mean_bias_add = load_inline(
+    name='mean_bias_add',
+    cpp_sources=mean_bias_add_cpp,
+    cuda_sources=mean_bias_add_cuda,
+    functions=['mean_bias_add_cuda'],
+    verbose=True
+)
+
+softmax_tanh_scale = load_inline(
+    name='softmax_tanh_scale',
+    cpp_sources=softmax_tanh_scale_cpp,
+    cuda_sources=softmax_tanh_scale_cuda,
+    functions=['softmax_tanh_scale_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.bias = nn.Parameter(torch.randn(1, out_channels, 1, 1, 1))
+        self.scaling_factor = scaling_factor
+        self.mean_bias_add = mean_bias_add
+        self.softmax_tanh_scale = softmax_tanh_scale
+
+    def forward(self, x):
+        x = self.conv_transpose(x)  # Original conv remains
+        x = self.mean_bias_add.mean_bias_add_cuda(x, self.bias)
+        x = self.softmax_tanh_scale.softmax_tanh_scale_cuda(x, self.scaling_factor)
+        return x
+```

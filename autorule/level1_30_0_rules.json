@@ -1,0 +1,5 @@
+[
+  "The kernel reduces global memory accesses by caching input values in local variables for reuse.",
+  "The kernel uses const qualifiers to provide optimization hints to the compiler.",
+  "The kernel minimizes redundant global memory reads by loading each input element once per thread."
+]

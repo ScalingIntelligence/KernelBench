@@ -1,0 +1,143 @@
+You are a kernel expert. You are given two CUDA kernels that solve the same problem. Both kernels are correct, but one is faster than the other. Analyze why one is faster than the other.
+Kernel 1 (runtime: 18.2 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Optimized CUDA kernel with coalesced memory access and compiler optimizations
+lower_tri_matmul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void lower_tri_matmul_kernel(const float* __restrict__ A,
+                                        const float* __restrict__ B_transposed,
+                                        float* __restrict__ C,
+                                        int M) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    const int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= M || j > i) return;
+
+    float sum = 0.0f;
+    const int start_k = j;
+    const int end_k = i;
+    
+    // Coalesced memory access pattern with sequential reads
+    for (int k = start_k; k <= end_k; ++k) {
+        sum += A[i * M + k] * B_transposed[j * M + k];
+    }
+    
+    C[i * M + j] = sum;
+}
+
+torch::Tensor lower_tri_matmul_cuda(torch::Tensor A, torch::Tensor B_transposed) {
+    const int M = A.size(0);
+    auto C = torch::zeros({M, M}, A.options());
+
+    // Optimal block size determined through empirical testing
+    const int BLOCK_SIZE = 16;
+    dim3 block(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 grid((M + block.x - 1) / block.x, (M + block.y - 1) / block.y);
+
+    lower_tri_matmul_kernel<<<grid, block>>>(
+        A.data_ptr<float>(),
+        B_transposed.data_ptr<float>(),
+        C.data_ptr<float>(),
+        M
+    );
+
+    return C;
+}
+"""
+
+lower_tri_matmul_cpp_source = "torch::Tensor lower_tri_matmul_cuda(torch::Tensor A, torch::Tensor B_transposed);"
+
+# Load kernel with architecture-specific optimizations
+lower_tri_matmul = load_inline(
+    name='lower_tri_matmul',
+    cpp_sources=lower_tri_matmul_cpp_source,
+    cuda_sources=lower_tri_matmul_source,
+    functions=['lower_tri_matmul_cuda'],
+    verbose=True,
+    extra_cuda_cflags=['-use_fast_math', '-Xptxas -O3', '--restrict']
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.lower_tri_matmul = lower_tri_matmul
+
+    def forward(self, A, B):
+        # Pre-transpose with memory format optimization
+        B_transposed = B.t().contiguous(memory_format=torch.contiguous_format)
+        return self.lower_tri_matmul.lower_tri_matmul_cuda(A, B_transposed)
+```
+
+Kernel 2 (runtime: 14.6 ms):
+```
+import torch
+import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
+
+# Custom CUDA kernel for lower triangular matrix multiplication
+lower_tri_matmul_source = """
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+
+__global__ void lower_tri_matmul_kernel(const float* A, const float* B, float* C, int M) {
+    // 2D grid with each thread handling one (i,j) pair
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i >= M || j > i) return;  // Only compute lower triangle
+
+    float sum = 0.0f;
+    // Only sum where k is between j and i (inclusive)
+    for (int k = j; k <= i; ++k) {
+        sum += A[i * M + k] * B[k * M + j];
+    }
+    C[i * M + j] = sum;
+}
+
+torch::Tensor lower_tri_matmul_cuda(torch::Tensor A, torch::Tensor B, int M) {
+    auto C = torch::zeros({M, M}, A.options());
+    
+    // Configure block and grid sizes
+    const int BLOCK_SIZE = 16;
+    dim3 block(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 grid((M + BLOCK_SIZE - 1) / BLOCK_SIZE, 
+              (M + BLOCK_SIZE - 1) / BLOCK_SIZE);
+
+    // Launch kernel
+    lower_tri_matmul_kernel<<<grid, block>>>(
+        A.data_ptr<float>(),
+        B.data_ptr<float>(),
+        C.data_ptr<float>(),
+        M
+    );
+
+    return C;
+}
+"""
+
+lower_tri_matmul_cpp_source = "torch::Tensor lower_tri_matmul_cuda(torch::Tensor A, torch::Tensor B, int M);"
+
+# Load the CUDA kernel as a PyTorch extension
+lower_tri_matmul = load_inline(
+    name='lower_tri_matmul',
+    cpp_sources=lower_tri_matmul_cpp_source,
+    cuda_sources=lower_tri_matmul_source,
+    functions=['lower_tri_matmul_cuda'],
+    verbose=True
+)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+        self.lower_tri_matmul = lower_tri_matmul
+
+    def forward(self, A, B):
+        M = A.size(0)
+        return self.lower_tri_matmul.lower_tri_matmul_cuda(A, B, M)
+```

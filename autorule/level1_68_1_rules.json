@@ -1,0 +1,5 @@
+[
+  "The kernel orders loops such that validity checks for kernel positions are performed before iterating over input channels, reducing redundant checks and iterations.",
+  "The kernel minimizes the number of validity checks by checking kernel positions once per output element rather than per input channel and kernel position.",
+  "The kernel reduces the number of operations by skipping entire input channel loops when kernel positions are invalid."
+]

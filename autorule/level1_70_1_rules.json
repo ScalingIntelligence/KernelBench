@@ -1,0 +1,6 @@
+[
+  "The kernel uses loop unrolling directives (e.g., #pragma unroll) on inner loops to reduce loop overhead and improve instruction-level parallelism.",
+  "The kernel checks for invalid loop iterations early and skips subsequent nested loops to reduce redundant computations.",
+  "The kernel is compiled with higher optimization levels (e.g., -O3) to enable aggressive compiler optimizations such as register reordering and memory access coalescing.",
+  "The kernel uses larger thread block sizes (e.g., 512 threads per block) to improve GPU occupancy and hardware resource utilization."
+]

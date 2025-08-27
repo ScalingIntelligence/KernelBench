@@ -1,0 +1,4 @@
+[
+  "The kernel replaces division operations with multiplication by the reciprocal where possible.",
+  "The kernel uses fmaxf and fminf in an order that may influence compiler optimization for clamp operations."
+]
