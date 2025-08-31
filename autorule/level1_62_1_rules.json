@@ -1,9 +1,0 @@
-[
-  "The kernel uses shared memory to cache weights, reducing global memory accesses.",
-  "The kernel employs 2D thread blocks and output tiling to enable memory coalescing.",
-  "The kernel unrolls loops with fixed bounds using pragma directives to reduce overhead.",
-  "The kernel combines batch and output channel dimensions in grid organization for increased parallelism.",
-  "The kernel utilizes fixed kernel dimensions to enable compile-time optimizations.",
-  "The kernel uses __restrict__ qualifiers to avoid pointer aliasing and improve compiler optimizations.",
-  "The kernel employs thread block sizes and shared memory usage that improve GPU occupancy."
-]

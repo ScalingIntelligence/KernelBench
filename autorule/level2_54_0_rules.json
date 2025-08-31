@@ -1,5 +1,0 @@
-[
-  "The kernel separates arithmetic operations into distinct steps to enable better instruction pipelining.",
-  "The kernel structures operations to reduce register pressure and improve occupancy.",
-  "The kernel's code organization allows the compiler to optimize instruction scheduling for latency hiding."
-]

@@ -1,7 +1,0 @@
-[
-  "The kernel uses sequential loops for reductions within a thread instead of parallel reductions across threads.",
-  "The kernel configures thread block sizes as multiples of the warp size (32) to optimize occupancy.",
-  "The kernel avoids shared memory for intermediate reductions by using register storage.",
-  "The kernel optimizes memory access patterns by ensuring consecutive threads access consecutive memory locations.",
-  "The kernel minimizes synchronization steps by avoiding inter-thread communication during reductions."
-]

@@ -1,7 +1,0 @@
-[
-  "The kernel avoids grid-stride loops by assigning each thread to a single element, eliminating loop overhead.",
-  "The kernel uses a block size that is a multiple of the warp size (32).",
-  "The kernel unravels indices starting from the fastest-changing dimension (e.g., width) to ensure consecutive threads access contiguous memory locations.",
-  "The kernel calculates grid size as (total_elements + block_size - 1) / block_size to cover all elements without grid-stride loops.",
-  "The kernel aligns weight tensor indexing with memory layout to improve cache utilization during access."
-]

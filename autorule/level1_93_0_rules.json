@@ -1,6 +1,0 @@
-[
-  "The kernel uses a multidimensional thread grid structure to align with data layout for efficient memory coalescing.",
-  "The kernel implicitly handles memory strides through linear index calculation to avoid explicit stride checks and branching.",
-  "The kernel configures grid and block dimensions to match the data's multidimensional structure for improved parallelism.",
-  "The kernel optimizes memory access patterns to exhibit spatial locality for better cache utilization."
-]

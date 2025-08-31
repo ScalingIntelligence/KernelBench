@@ -1,8 +1,0 @@
-[
-  "The kernel uses vectorized memory access (e.g., float4) to improve memory throughput.",
-  "The kernel utilizes shared memory to cache frequently reused data across threads in a block.",
-  "The kernel employs grid/block dimensions aligned with the data layout to ensure memory coalescing.",
-  "The kernel leverages read-only cache (e.g., via __ldg()) for accessing immutable data.",
-  "The kernel reduces redundant mathematical operations through algebraic simplification.",
-  "The kernel structures grid dimensions to match the data hierarchy (e.g., NCHW) for parallelization efficiency."
-]

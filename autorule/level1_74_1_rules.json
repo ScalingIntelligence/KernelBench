@@ -1,9 +1,0 @@
-[
-  "The kernel uses __restrict__ and __ldg() intrinsic for memory coalescing and read-only caching through the texture unit.",
-  "The kernel employs a 1D grid layout to improve memory access patterns and spatial locality.",
-  "The kernel unrolls loops using #pragma unroll to reduce loop overhead and improve instruction-level parallelism.",
-  "The kernel is compiled with aggressive optimization flags (-O3, --use_fast_math) for enhanced performance.",
-  "The kernel utilizes a weight layout that promotes better spatial locality for concurrent threads.",
-  "The kernel uses a 1D grid configuration to enhance GPU occupancy compared to multi-dimensional grid decomposition.",
-  "The kernel leverages texture cache via __ldg() for constant-like data to improve cache hit rates."
-]

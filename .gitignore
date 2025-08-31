@@ -3,6 +3,7 @@ results/*
 !results/timing/
 runs/*
 runs_v0.0/*
+autorule/*
 cache/*
 error_log.txt
 

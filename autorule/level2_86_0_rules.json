@@ -1,7 +1,0 @@
-[
-  "The kernel uses a one-thread-per-element approach to ensure coalesced memory access.",
-  "The kernel avoids conditional checks for handling non-vector-aligned elements, reducing warp divergence.",
-  "The kernel uses a higher number of threads with lower register usage per thread to improve occupancy.",
-  "The kernel minimizes control flow complexity by processing elements without vectorization-related branching.",
-  "The kernel prioritizes thread-level parallelism over per-thread workload to better hide latency in compute-bound operations."
-]

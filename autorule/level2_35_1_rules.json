@@ -1,7 +1,0 @@
-[
-  "The kernel fuses multiple operations into a single kernel to reduce kernel launch overhead.",
-  "The kernel avoids writing intermediate results to global memory, reducing global memory bandwidth usage.",
-  "The kernel uses fixed-size pooling windows to enable compiler optimizations like loop unrolling.",
-  "The kernel processes intermediate values in registers or thread-local storage instead of global memory.",
-  "The kernel combines consecutive operations to improve memory coalescing patterns."
-]

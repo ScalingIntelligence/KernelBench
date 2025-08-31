@@ -1,3 +1,0 @@
-[
-  "The kernel reduces global memory accesses by caching input values in local variables (registers) for reuse."
-]

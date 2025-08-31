@@ -1,6 +1,0 @@
-[
-  "The kernel performs in-place operations to reduce memory bandwidth requirements.",
-  "The kernel uses a single conditional check for vectorized memory access to minimize control flow divergence.",
-  "The kernel processes remaining elements with a loop after handling the main vector path, avoiding partial vector loads/stores.",
-  "The kernel utilizes pointer arithmetic directly for memory operations to enhance cache utilization."
-]

@@ -1,4 +1,0 @@
-[
-  "The kernel uses a strided memory access pattern (i += blockDim.x) to enable coalesced global memory reads.",
-  "The kernel structures memory accesses such that consecutive threads access consecutive global memory addresses within a warp."
-]

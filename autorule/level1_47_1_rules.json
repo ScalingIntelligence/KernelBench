@@ -1,8 +1,0 @@
-[
-  "The kernel uses a grid configuration that organizes threads to access consecutive elements in memory, enabling coalesced memory accesses.",
-  "The kernel avoids shared memory and inter-thread communication by computing full sums per thread, eliminating synchronization overhead.",
-  "The kernel employs loop unrolling to reduce loop overhead and improve instruction-level parallelism.",
-  "The kernel uses __restrict__ qualifiers on pointers to enable compiler optimizations by avoiding pointer aliasing analysis.",
-  "The kernel structures memory accesses to have unit strides, avoiding non-coalesced memory transactions caused by large strides.",
-  "The kernel uses a grid layout that matches the data dimensionality, improving spatial locality and GPU occupancy."
-]

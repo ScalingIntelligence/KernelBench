@@ -1,7 +1,0 @@
-[
-  "The kernel uses a grid configuration that aligns with the data geometry to improve spatial locality.",
-  "The kernel organizes threads to access contiguous memory locations within warps, enabling coalesced memory accesses.",
-  "The kernel explicitly unrolls loops to process multiple elements per iteration, increasing instruction-level parallelism.",
-  "The kernel reduces branch divergence by simplifying comparison logic and avoiding conditional checks for tie-breaking.",
-  "The kernel uses a grid layout that allows blocks to process full segments of the input data, improving cache utilization."
-]

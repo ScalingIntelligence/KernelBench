@@ -1,8 +1,0 @@
-[
-  "The kernel uses register blocking to increase arithmetic intensity and reduce global memory writes.",
-  "The kernel ensures coalesced global memory access by having consecutive threads access consecutive memory addresses.",
-  "The kernel transposes matrices in shared memory to enable conflict-free access patterns during computation.",
-  "The kernel employs larger tile sizes for output matrices to increase data reuse from shared memory.",
-  "The kernel utilizes loop unrolling to reduce loop overhead and enable compiler optimizations.",
-  "The kernel is specialized for specific data types and tile sizes to allow better compiler optimization."
-]

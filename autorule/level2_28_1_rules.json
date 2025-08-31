@@ -1,9 +1,0 @@
-[
-  "The kernel uses vectorized memory loads/stores (e.g., float4) to reduce memory transactions",
-  "The kernel utilizes warp shuffle instructions (__shfl_down_sync) for reductions instead of shared memory",
-  "The kernel minimizes shared memory usage by only storing partial sums per warp rather than per thread",
-  "The kernel employs fast math operations (e.g., rsqrt) with --use_fast_math compiler flags",
-  "The kernel structures loops to process multiple elements per iteration via vectorization",
-  "The kernel separates reduction operations into warp-level and cross-warp phases",
-  "The kernel uses 128-bit memory transactions to align with CUDA coalescing requirements"
-]

@@ -1,8 +1,0 @@
-[
-  "The kernel reduces global memory accesses by reading input data once and reusing it via shared memory for multiple operations.",
-  "The kernel computes expensive operations (e.g., expf) once per element and reuses the result across subsequent calculations.",
-  "The kernel fuses multiple computation phases (e.g., max reduction, sum reduction, normalization) into a single pass to avoid redundant global memory accesses.",
-  "The kernel uses shared memory to store intermediate values for reductions, minimizing global memory traffic.",
-  "The kernel employs a block size that matches the data dimension (e.g., num_channels) to enable coalesced memory access patterns for contiguous data.",
-  "The kernel avoids multiple passes over input data by consolidating all required computations into a single kernel launch."
-]

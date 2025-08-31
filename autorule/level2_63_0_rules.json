@@ -1,8 +1,0 @@
-[
-  "The kernel uses vectorized memory accesses (e.g., float4) to process multiple elements per thread, improving memory throughput and coalescing.",
-  "The kernel replaces division operations with multiplication by a precomputed inverse to reduce computational cost.",
-  "The kernel processes multiple elements per thread (e.g., 4 elements) to reduce the total number of threads and blocks needed, improving resource utilization.",
-  "The kernel leverages highly optimized library functions (e.g., cuBLAS via nn.Linear) for fused operations like matrix multiplication and bias addition instead of separating them into distinct kernels.",
-  "The kernel uses the __restrict__ keyword to enable better compiler optimizations by indicating no pointer aliasing.",
-  "The kernel handles both aligned (vectorized) and unaligned (scalar) elements in a single implementation to minimize wasted compute for edge cases."
-]

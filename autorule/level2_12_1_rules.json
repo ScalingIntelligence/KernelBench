@@ -1,4 +1,0 @@
-[
-  "The kernel uses in-place operations to avoid device memory allocation.",
-  "The kernel ensures input tensors are contiguous for optimal memory access patterns."
-]

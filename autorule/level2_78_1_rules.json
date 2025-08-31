@@ -1,5 +1,0 @@
-[
-  "The kernel uses loop unrolling to reduce control flow overhead.",
-  "The kernel uses the __restrict__ keyword to indicate no pointer aliasing.",
-  "The kernel precomputes memory access strides for efficient indexing."
-]

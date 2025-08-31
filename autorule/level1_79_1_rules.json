@@ -1,7 +1,0 @@
-[
-  "The kernel moves bias addition outside of the CUDA kernel to leverage optimized PyTorch operations.",
-  "The kernel orders loops with kernel elements (k) as the outer loop and input channels (in_chan) as the inner loop to enable contiguous memory access patterns.",
-  "The kernel checks validity of kernel positions (k) before iterating over input channels to skip unnecessary computations.",
-  "The kernel avoids branching within the main computation loop by handling bias externally.",
-  "The kernel optimizes memory coalescing by structuring loops to access consecutive input channels sequentially."
-]

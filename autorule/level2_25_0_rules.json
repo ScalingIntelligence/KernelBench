@@ -1,5 +1,0 @@
-[
-  "The kernel uses branchless reduction operations (e.g., fminf) instead of conditional statements for value comparisons.",
-  "The kernel avoids redundant computations or unused variables that may increase register pressure or instruction count.",
-  "The kernel precomputes base pointers for repeated memory access patterns to simplify address calculations."
-]

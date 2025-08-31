@@ -1,5 +1,0 @@
-[
-  "The kernel uses read-only memory access for input data, enabling the use of the read-only data cache (e.g., via __ldg() intrinsic).",
-  "The kernel uses explicit floating-point constants to avoid implicit type conversions and enable arithmetic optimizations.",
-  "The kernel avoids in-place modifications of input data, allowing for better memory access optimizations."
-]

@@ -1,8 +1,0 @@
-[
-  "The kernel fuses multiple operations into a single kernel to reduce kernel launch overhead.",
-  "The kernel organizes thread blocks to process contiguous memory dimensions, enabling coalesced memory access.",
-  "The kernel uses shared memory and block-level parallel reductions for efficient computation of statistics.",
-  "The kernel employs a thread block organization that matches the tensor structure to simplify indexing and improve memory locality.",
-  "The kernel avoids complex index calculations by aligning thread and block dimensions with data dimensions.",
-  "The kernel is specialized for specific tensor dimensions to enable tailored optimizations."
-]

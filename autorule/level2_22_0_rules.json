@@ -1,4 +1,0 @@
-[
-  "The kernel precomputes values during initialization to avoid redundant calculations during execution",
-  "The kernel uses intrinsic functions (e.g., fmaxf) instead of conditional branches for reduction operations to prevent warp divergence"
-]

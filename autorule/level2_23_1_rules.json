@@ -1,7 +1,0 @@
-[
-  "The kernel flattens multiple spatial dimensions into a single dimension to enable contiguous memory access.",
-  "The kernel minimizes the number of division and modulo operations for index calculations.",
-  "The kernel uses larger thread block sizes (e.g., 512 threads per block) to improve SM occupancy.",
-  "The kernel reduces the number of parameters passed to decrease register pressure.",
-  "The kernel precomputes combined dimensions (e.g., DHW) to avoid redundant calculations during index computation."
-]

@@ -1,6 +1,0 @@
-[
-  "The kernel is compiled with -O3 optimization level for both C++ and CUDA code.",
-  "The kernel uses --use_fast_math compiler flag to enable hardware-optimized approximate math instructions.",
-  "The kernel ensures input tensor contiguity before memory access to avoid irregular access patterns.",
-  "The kernel uses thread block sizes that are multiples of the warp size (32)."
-]

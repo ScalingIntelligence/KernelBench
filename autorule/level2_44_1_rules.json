@@ -1,4 +1,0 @@
-[
-  "The kernel reduces the number of arithmetic operations by moving scalar multiplications outside of reduction loops.",
-  "The kernel minimizes redundant operations by performing scalar multiplications on aggregated results instead of individual elements."
-]

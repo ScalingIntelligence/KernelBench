@@ -291,7 +291,7 @@ def process_dataset():
 
 
 def search_for_best_kernels(k):
-    for level in [1, 2]:
+    for level in [3]:
         best_k_kernels = {} # problem_id -> best kernels
         for directory in os.listdir(RUNS_DIR):
             if f"level{level}" in directory:
@@ -319,6 +319,19 @@ def search_for_best_kernels(k):
         # sort by runtime
         for problem, kernels in best_k_kernels.items():
             best_k_kernels[problem].sort(key=lambda x: x["runtime"])
+            # Only keep kernels that are at least 10% slower (longer runtime) than the previous one
+            filtered_kernels = []
+            prev_runtime = None
+            for kernel in kernels:
+                if prev_runtime is None:
+                    filtered_kernels.append(kernel)
+                    prev_runtime = kernel["runtime"]
+                else:
+                    # Only add if at least 10% slower (i.e., runtime >= prev_runtime * 1.1)
+                    if kernel["runtime"] >= prev_runtime * 1.1:
+                        filtered_kernels.append(kernel)
+                        prev_runtime = kernel["runtime"]
+            best_k_kernels[problem] = filtered_kernels
             best_k_kernels[problem] = best_k_kernels[problem][:k]
 
         with open(os.path.join(KERNEL_BENCH_PATH, f"best_k_kernels_level{level}.json"), "w") as f:
@@ -400,5 +413,5 @@ def process_correct_probems():
 
 if __name__ == "__main__":
 
-    search_for_best_kernels(8)
+    search_for_best_kernels(100)
     # process_dataset()

@@ -1,6 +1,0 @@
-[
-  "The kernel uses a grid-stride loop pattern to enable coalesced memory access.",
-  "The kernel avoids loop unrolling to reduce register pressure and improve occupancy.",
-  "The kernel uses a warp-aware shared memory reduction with fixed strides instead of transitioning to warp shuffles.",
-  "The kernel structures memory access to minimize scattered accesses by processing contiguous windows."
-]

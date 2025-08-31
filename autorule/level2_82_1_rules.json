@@ -1,6 +1,0 @@
-[
-  "The kernel preloads frequently accessed parameters (e.g., bias) into registers to reduce global memory accesses.",
-  "The kernel organizes thread blocks to process contiguous memory regions, improving memory coalescing.",
-  "The kernel uses loop unrolling pragmas to enable compiler optimizations for loops with known iteration counts.",
-  "The kernel precomputes and reuses index values within loops to reduce redundant calculations."
-]

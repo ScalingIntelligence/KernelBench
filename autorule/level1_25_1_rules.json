@@ -1,4 +1,0 @@
-[
-  "The kernel uses single-precision math functions (e.g., expf) instead of double-precision (e.g., exp) for float data types.",
-  "The kernel is compiled with high optimization flags (e.g., -O3) to enable aggressive compiler optimizations."
-]

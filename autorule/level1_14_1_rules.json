@@ -1,6 +1,0 @@
-[
-  "The kernel uses loop unrolling to reduce loop control overhead and improve instruction-level parallelism.",
-  "The kernel enables compiler optimizations such as -O2 and --use_fast_math for aggressive code optimization.",
-  "The kernel uses thread block sizes that maximize occupancy (e.g., 1024 threads per block).",
-  "The kernel aligns tile sizes with the GPU warp size (32 threads) to improve memory coalescing."
-]

@@ -1,6 +1,0 @@
-[
-  "The kernel uses a fixed thread block size to optimize occupancy and shared memory usage.",
-  "The kernel avoids dynamic block size adjustments, ensuring consistent shared memory allocation and thread utilization.",
-  "The kernel's thread block size is chosen to balance shared memory consumption and the number of concurrent blocks per streaming multiprocessor (SM).",
-  "The kernel prioritizes higher occupancy by using smaller thread block sizes to allow more active blocks per SM."
-]

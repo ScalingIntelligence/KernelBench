@@ -1,5 +1,0 @@
-[
-  "The kernel uses lower-latency transcendental functions (e.g., tanh instead of erf).",
-  "The kernel's arithmetic operations are structured to enable fused multiply-add (FMA) optimization.",
-  "The kernel exposes independent arithmetic operations to improve instruction-level parallelism."
-]

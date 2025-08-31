@@ -1,6 +1,0 @@
-[
-  "The kernel avoids using __ldg for read-only data access when the memory access pattern does not benefit from texture cache spatial locality.",
-  "The kernel uses a loop unroll factor that balances instruction-level parallelism with register pressure to avoid spills and maintain occupancy.",
-  "The kernel omits __launch_bounds__ directives to allow the compiler more flexibility in register allocation and optimization.",
-  "The kernel prioritizes L1/L2 cache usage over texture cache for strided memory access patterns to improve global memory access efficiency."
-]

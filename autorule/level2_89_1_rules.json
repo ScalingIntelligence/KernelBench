@@ -1,7 +1,0 @@
-[
-  "The kernel uses __ldg() intrinsic to leverage the read-only cache for input and parameter accesses.",
-  "The kernel replaces conditional branches with fmaxf() for max operations to avoid warp divergence.",
-  "The kernel precomputes base indices to reduce redundant index calculations during channel iterations.",
-  "The kernel accesses per-channel parameters using read-only cache to enable efficient reuse across threads.",
-  "The kernel structures memory accesses to improve coalescing by offsetting base indices with channel strides."
-]

@@ -1,9 +1,0 @@
-[
-  "The kernel uses a 1D grid configuration to maximize parallelism and GPU occupancy.",
-  "The kernel avoids loops and conditionals within the thread code to minimize instruction overhead.",
-  "The kernel leverages broadcast memory access for repeated reads of the same value across threads in a warp.",
-  "The kernel uses a grid size calculated to ensure sufficient blocks for high occupancy, particularly for large problem sizes.",
-  "The kernel accesses global memory in a coalesced manner when problem dimensions align with block size.",
-  "The kernel avoids synchronization primitives and shared memory usage to reduce overhead.",
-  "The kernel processes elements per thread without vectorization, simplifying memory access patterns."
-]

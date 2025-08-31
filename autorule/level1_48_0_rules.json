@@ -1,6 +1,0 @@
-[
-  "The kernel uses specialized implementations for specific reduction dimensions to eliminate branching and enable compiler optimizations.",
-  "The kernel organizes the grid in a 2D structure to ensure contiguous memory accesses for each reduction step, enabling full coalescing of global memory accesses.",
-  "The kernel groups threads by batch index to improve cache reuse by targeting data from the same batch repeatedly.",
-  "The kernel aligns grid configuration with problem dimensions to reduce index-mapping overhead and improve thread utilization across SMs."
-]

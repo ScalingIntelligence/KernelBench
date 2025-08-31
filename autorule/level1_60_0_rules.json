@@ -1,7 +1,0 @@
-[
-  "The kernel is specialized for groups=1, eliminating group-related index calculations and conditional checks.",
-  "The kernel uses explicit data type (float) instead of templated types, enabling compiler optimizations for the specific type.",
-  "The kernel is compiled with -O3 optimization level, enabling aggressive compiler optimizations.",
-  "The kernel reorders loops to prioritize input channel iterations before kernel dimensions, potentially improving memory access patterns.",
-  "The kernel avoids modulo/division operations for group index calculations present in the group-supporting implementation."
-]

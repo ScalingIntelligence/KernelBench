@@ -1,6 +1,0 @@
-[
-  "The kernel writes to output memory in a coalesced manner by mapping consecutive threads to consecutive memory addresses.",
-  "The kernel avoids non-coalesced global memory writes by ensuring thread indices map to contiguous output elements in row-major order.",
-  "The kernel prioritizes coalesced write patterns over read patterns when write operations are performance-critical.",
-  "The kernel organizes thread block dimensions to align output memory accesses with threadIdx.x progression for coalescing."
-]

@@ -1,5 +1,0 @@
-[
-  "The kernel is compiled with the -O3 optimization level.",
-  "The kernel is compiled with the --use_fast_math flag to enable faster approximate math operations.",
-  "The kernel enforces contiguous memory access for input tensors to ensure optimal memory access patterns."
-]

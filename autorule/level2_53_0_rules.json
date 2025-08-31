@@ -1,9 +1,0 @@
-[
-  "The kernel uses vectorized memory access (e.g., float4) to reduce global memory transactions.",
-  "The kernel employs grid-stride loops to process multiple elements per thread for better occupancy.",
-  "The kernel unrolls loops using compiler pragmas (e.g., #pragma unroll) to reduce loop overhead.",
-  "The kernel uses __restrict__ qualifiers on pointers to enable compiler optimizations.",
-  "The kernel is compiled with fast math flags (-use_fast_math) to accelerate transcendental operations.",
-  "The kernel enables memory coalescing through aligned vectorized memory access patterns.",
-  "The kernel processes multiple elements per thread to reduce total thread count and improve resource utilization."
-]

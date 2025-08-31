@@ -1,5 +1,0 @@
-[
-  "The kernel avoids initializing output memory to zero when all elements will be overwritten.",
-  "The kernel uses a specialized indexing scheme optimized for contiguous memory access along the target dimension.",
-  "The kernel eliminates redundant arithmetic operations in index calculations for common cases."
-]

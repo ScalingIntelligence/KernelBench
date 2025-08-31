@@ -1,8 +1,0 @@
-[
-  "The kernel restricts convolution parameters to specific values (stride=1, padding=0, dilation=1, groups=1) to eliminate complex index calculations",
-  "The kernel avoids conditional checks for input boundary conditions by ensuring valid padding and output dimension calculations",
-  "The kernel separates bias addition from the main convolution operation",
-  "The kernel uses simplified index calculations for input/weight tensors that improve memory coalescing",
-  "The kernel minimizes register pressure through reduced variable usage and simpler computation logic",
-  "The kernel leverages compile-time constant parameters (when applicable) to enable compiler optimizations like loop unrolling"
-]

@@ -73,6 +73,8 @@ def compute_efficiency_metrics(eval_results, baseline_results, subset=None):
             # print(f"Problem {problem_number} not in eval_results")
             continue
         eval.append(eval_results[problem_number])
+        if eval_results[problem_number]["correctness"] and eval_results[problem_number]["runtime"] < 0:
+            print(f"Alert : {problem_number}")
         baseline.append(v)
 
     is_correct = np.array([entry["correctness"] for entry in eval])

@@ -1,6 +1,0 @@
-[
-  "The kernel avoids using __ldg() for read-only parameters, relying on L1 cache coherence for warp-uniform accesses.",
-  "The kernel ensures input tensors are contiguous to guarantee memory access coalescing.",
-  "The kernel uses integer division and modulo operations optimized for powers-of-two dimensions in channel index calculation.",
-  "The kernel applies scaling factors during computation instead of during parameter loading to reduce intermediate variable storage and improve register usage."
-]

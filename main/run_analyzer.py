@@ -1,13 +1,16 @@
 import os
 import argparse
 import json
+import numpy as np
+from src.score import geometric_mean_speed_ratio_correct_only
 
-def main():
+def analyze_correct_counts():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_dir", type=str, required=True)
     args = parser.parse_args()
 
     eval_path = os.path.join(args.run_dir, "eval_results.json")
+
     with open(eval_path, "r") as f:
         eval_results = json.load(f)
 
@@ -45,6 +48,110 @@ def main():
     plt.savefig(os.path.join(args.run_dir, "correct_counts.png"))
 
     # print(f"Good problems: {good_problems}")
+
+
+def analyze_rule_speedup():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ref_run_dir", type=str, required=True)
+    parser.add_argument("--target_run_dir", type=str, required=True)
+    parser.add_argument("--hardware", default="A6000_babel")
+    args = parser.parse_args()
+
+    ref_eval_path = os.path.join(args.ref_run_dir, "eval_results.json")
+    target_eval_path = os.path.join(args.target_run_dir, "eval_results.json")
+
+    with open(ref_eval_path, "r") as f:
+        ref_eval_results = json.load(f)
+
+    with open(target_eval_path, "r") as f:
+        target_eval_results = json.load(f)
+
+
+    correct_count_ref = 0
+    correct_count_target = 0
+    correct_in_both = []
+    target_runtimes = []
+    ref_runtimes = []
+
+    for level in ref_eval_results:
+        if level not in target_eval_results:
+            continue
+        for problem_id in ref_eval_results[level]:
+            if problem_id not in target_eval_results[level]:
+                continue
+
+            # Find a sample in each run that is correct
+            ref_samples = ref_eval_results[level][problem_id]
+            target_samples = target_eval_results[level][problem_id]
+
+            # Find the correct sample in ref with the lowest runtime
+            ref_correct_sample = None
+            min_runtime = float('inf')
+            for sample_id, sample in ref_samples.items():
+                if sample.get("correctness", False):
+                    runtime = sample.get("runtime", None)
+                    if runtime is not None and runtime > 0 and runtime < min_runtime:
+                        min_runtime = runtime
+                        ref_correct_sample = sample
+            if ref_correct_sample is not None:
+                correct_count_ref += 1
+
+            # Find the correct sample in target with the lowest runtime
+            target_correct_sample = None
+            min_runtime = float('inf')
+            for sample_id, sample in target_samples.items():
+                if sample.get("correctness", False):
+                    runtime = sample.get("runtime", None)
+                    if runtime is not None and runtime > 0 and runtime < min_runtime:
+                        min_runtime = runtime
+                        target_correct_sample = sample
+            if target_correct_sample is not None:
+                correct_count_target += 1
+
+            if ref_correct_sample is not None and target_correct_sample is not None:
+                # Both have at least one correct sample
+                correct_in_both.append((level, problem_id))
+                ref_runtime = ref_correct_sample.get("runtime", None)
+                target_runtime = target_correct_sample.get("runtime", None)
+                target_runtimes.append(target_runtime)
+                ref_runtimes.append(ref_runtime)
+
+
+    print(f"Number of problems correct in ref: {correct_count_ref}")
+    print(f"Number of problems correct in target: {correct_count_target}")
+    print(f"Number of problems correct in both: {len(correct_in_both)}")
+
+    # Get baseline speed 
+    baseline_file_path = f'results/timing/{args.hardware}/baseline_time_torch.json'
+    assert os.path.exists(baseline_file_path), f"Baseline file does not exist at {baseline_file_path}"
+
+    with open(baseline_file_path, 'r') as f:
+        baseline_results = json.load(f)
+
+    baseline_results = baseline_results
+
+    baseline_runtimes = []
+    for (level, problem_id) in correct_in_both:
+        for prob_name, prob_data in baseline_results[f"level{level}"].items():
+            if prob_name.split("_")[0] == str(problem_id):
+                baseline_runtimes.append(prob_data.get("mean", None))
+                break
+
+    # Median speedup of ref over baseline
+    is_correct = np.array([1] * len(ref_runtimes))
+    geo_mean = geometric_mean_speed_ratio_correct_only(is_correct, baseline_runtimes, ref_runtimes, len(ref_runtimes))
+    print(f"Geometric mean of speedups (ref over baseline): {geo_mean:.3f}")
+
+    # Mean speedup of target over baseline
+    is_correct = np.array([1] * len(target_runtimes))
+    geo_mean = geometric_mean_speed_ratio_correct_only(is_correct, baseline_runtimes, target_runtimes, len(target_runtimes))
+    print(f"Geometric mean of speedups (target over baseline): {geo_mean:.3f}")
+
+   
+
+def main():
+    # analyze_correct_counts()
+    analyze_rule_speedup()
 
 
 if __name__ == "__main__":

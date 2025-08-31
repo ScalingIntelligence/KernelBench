@@ -1,6 +1,0 @@
-[
-  "The kernel uses shared memory to preload and reuse weights across threads in a block, reducing global memory accesses.",
-  "The kernel's memory access pattern is optimized for coalesced global memory access by matching the tensor's memory layout.",
-  "The kernel uses a grid configuration that maximizes occupancy and resource utilization (e.g., 2D grid instead of 3D).",
-  "The kernel utilizes read-only data cache (e.g., via __ldg()) for frequently accessed constant data."
-]

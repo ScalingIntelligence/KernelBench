@@ -879,7 +879,9 @@ def extract_profiler_info(prof: torch.profiler.profile, device: torch.device = N
 
     events = prof.key_averages()
     max_event_key = max(events, key=lambda x: x.device_time_total).key
-    profiler_info = f"Function {max_event_key} took the most time."
+    profiler_info = events.table(sort_by="self_cuda_time_total", row_limit=10)
+    profiler_info += f"\nFunction {max_event_key} took the most time."
+
     return profiler_info
 
 

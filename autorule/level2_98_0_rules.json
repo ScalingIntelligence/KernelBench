@@ -1,8 +1,0 @@
-[
-  "The kernel uses a faster approximation of the GELU activation function (tanh-based) instead of the exact erf-based implementation.",
-  "The kernel uses a higher number of threads per block (up to 1024) to improve parallelism and occupancy.",
-  "The kernel employs loop unrolling hints (#pragma unroll) for critical loops to reduce overhead and improve instruction scheduling.",
-  "The kernel assigns one thread per group for processing, avoiding strided access patterns and improving memory locality.",
-  "The kernel performs reductions directly in shared memory with a pattern that reduces register pressure and control divergence.",
-  "The kernel avoids vectorized memory accesses (e.g., float4) that introduce packing/unpacking overhead in favor of simpler memory operations."
-]

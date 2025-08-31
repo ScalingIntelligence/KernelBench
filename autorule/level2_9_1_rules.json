@@ -1,5 +1,0 @@
-[
-  "The kernel places scalar parameters immediately after input pointers to improve memory alignment and packing efficiency.",
-  "The kernel groups scalar parameters together in the argument list to reduce parameter buffer overhead.",
-  "The kernel orders parameters to allow earlier loading of frequently accessed scalars into registers, reducing register pressure."
-]

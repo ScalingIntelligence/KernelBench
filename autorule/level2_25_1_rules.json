@@ -1,6 +1,0 @@
-[
-  "The kernel uses thread block sizes that are multiples of warp size (32).",
-  "The kernel uses a fixed thread block size (256) to optimize occupancy regardless of input dimensions.",
-  "The kernel avoids using small thread block sizes (e.g., less than 32) that lead to underutilized warps and reduced occupancy.",
-  "The kernel configures thread block sizes independently of channel dimensions when processing spatial data."
-]

@@ -1,7 +1,0 @@
-[
-  "The kernel avoids redundant output index calculation by directly using the global thread index for contiguous output tensors.",
-  "The kernel uses uninitialized memory allocation (e.g., torch::empty) for output tensors when full initialization is unnecessary.",
-  "The kernel assumes uniform parameters (e.g., kernel size, stride, padding) across spatial dimensions to simplify loop structures and enable compiler optimizations.",
-  "The kernel computes input indices using stepwise address calculations with intermediate value reuse instead of explicit dimension product multiplications.",
-  "The kernel minimizes register usage by reducing the number of parameters and intermediate variables in per-thread calculations."
-]

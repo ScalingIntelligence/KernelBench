@@ -1,7 +1,0 @@
-[
-  "The kernel uses thread block sizes that are multiples of warp size (32).",
-  "The kernel uses shared memory tiling to reduce global memory access.",
-  "The kernel accesses global memory in a coalesced pattern for both input matrices.",
-  "The kernel's grid configuration aligns with the output matrix dimensions to minimize overhead.",
-  "The kernel optimizes for small K dimensions by reducing loop iterations and leveraging shared memory efficiently."
-]

@@ -1,6 +1,0 @@
-[
-  "The kernel uses a larger block size to reduce the number of loop iterations per thread.",
-  "The kernel minimizes loop-control overhead by decreasing the number of iterations through increased block size.",
-  "The kernel's block size is chosen to optimize memory access patterns by reducing the total number of memory transactions.",
-  "The kernel balances loop iteration efficiency against reduction phase overhead by selecting a block size that prioritizes fewer loop iterations."
-]

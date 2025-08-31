@@ -1,9 +1,0 @@
-[
-  "The kernel avoids shared memory usage to eliminate synchronization and data transfer overhead.",
-  "The kernel uses a 1D grid configuration to simplify thread scheduling and reduce boundary divergence.",
-  "The kernel hardcodes parameters to enable compile-time optimizations such as loop unrolling and constant propagation.",
-  "The kernel accesses global memory with coalesced patterns to leverage GPU cache hierarchies effectively.",
-  "The kernel minimizes shared memory usage to increase occupancy by allowing more concurrent blocks per SM.",
-  "The kernel reduces control flow complexity by using a single early-exit check to minimize warp divergence.",
-  "The kernel employs loop unrolling pragmas to reduce loop overhead and enhance instruction-level parallelism."
-]

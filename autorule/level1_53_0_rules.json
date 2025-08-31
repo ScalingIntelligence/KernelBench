@@ -1,7 +1,0 @@
-[
-  "The kernel uses coalesced global memory access patterns for efficient memory throughput.",
-  "The kernel avoids underutilization of threads by matching the number of active threads to the workload size.",
-  "The kernel minimizes synchronization points and reduction steps by avoiding unnecessary inter-thread communication.",
-  "The kernel uses a compact grid configuration to reduce scheduling overhead and improve warp utilization.",
-  "The kernel avoids shared memory usage when synchronization and memory overhead would outweigh benefits."
-]

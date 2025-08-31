@@ -1,6 +1,0 @@
-[
-  "The kernel uses the __ldg() intrinsic to leverage the read-only data cache for global memory access.",
-  "The kernel is compiled with the -O3 optimization level for aggressive compiler optimizations.",
-  "The kernel is compiled with --use_fast_math to enable faster approximate mathematical operations.",
-  "The kernel uses the __restrict__ keyword to indicate non-aliasing pointers for improved memory access optimization."
-]

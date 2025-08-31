@@ -1,9 +1,0 @@
-[
-  "The kernel uses vectorized memory access (e.g., float4) to process multiple elements per memory transaction",
-  "The kernel uses thread block sizes that are multiples of warp size (32)",
-  "The kernel uses a grid organization that matches the data layout dimensions for better memory coalescing",
-  "The kernel is compiled with fast math optimizations (e.g., --use_fast_math) to approximate transcendental functions",
-  "The kernel reduces loop iterations by processing multiple elements per loop iteration through vectorization",
-  "The kernel uses __restrict__ qualifiers on pointers to enable better compiler optimizations by avoiding pointer aliasing",
-  "The kernel optimizes shared memory layout to minimize bank conflicts during reductions"
-]

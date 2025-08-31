@@ -1,8 +1,0 @@
-[
-  "The kernel uses a grid-stride loop to process multiple elements per thread, improving thread utilization for large datasets.",
-  "The kernel includes complex index calculations involving divisions and modulos for multi-dimensional tensor access, which increases computational overhead.",
-  "The kernel ensures input tensors are contiguous to enable coalesced memory accesses.",
-  "The kernel avoids unnecessary parameter handling (e.g., unused bias) to reduce redundant computations and memory accesses.",
-  "The kernel uses a simple 1D grid/block mapping with linear indexing to maintain memory access coalescing.",
-  "The kernel minimizes arithmetic operations per thread by avoiding redundant dimension decomposition calculations."
-]

@@ -1,5 +1,0 @@
-[
-  "The kernel ensures input tensors are contiguous to enable coalesced memory access.",
-  "The kernel uses a thread block size that optimizes occupancy by allowing more concurrent blocks per Streaming Multiprocessor (SM).",
-  "The kernel utilizes CUDA intrinsic functions (e.g., fmaxf, fminf) for optimized float operations instead of generic max/min functions."
-]

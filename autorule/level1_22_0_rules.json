@@ -1,4 +1,0 @@
-[
-  "- The kernel is compiled with aggressive compiler optimizations enabled by the -O3 flag.",
-  "- The kernel uses a block size that is a power of two (256)."
-]

@@ -1,7 +1,0 @@
-[
-  "The kernel uses sequential division and modulus operations for index decomposition to reduce computational overhead.",
-  "The kernel precomputes inverse kernel volume and uses multiplication instead of division for normalization.",
-  "The kernel optimizes memory access patterns through linearized index calculations to improve cache utilization and coalescing.",
-  "The kernel enables higher compiler optimization levels (e.g., -O3) for aggressive instruction scheduling and loop unrolling.",
-  "The kernel reduces register pressure through optimized index reuse patterns in calculations."
-]

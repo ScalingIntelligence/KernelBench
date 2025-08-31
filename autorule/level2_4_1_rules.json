@@ -1,6 +1,0 @@
-[
-  "The kernel uses the --use_fast_math compiler flag to enable hardware-optimized approximate math intrinsics.",
-  "The kernel employs log1pf(expf(x)) for numerically stable softplus computation, avoiding overflow for large x values.",
-  "The kernel is compiled with -O3 optimization level for aggressive compiler optimizations.",
-  "The kernel avoids additional device guard overhead by omitting CUDAGuard in the CUDA function."
-]

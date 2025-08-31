@@ -1,9 +1,0 @@
-[
-  "The kernel uses algebraic simplification to reduce the number of arithmetic operations.",
-  "The kernel reduces index calculation complexity by avoiding full-dimensional coordinate decomposition.",
-  "The kernel groups channel-wise computations to improve memory access coalescing.",
-  "The kernel is compiled with --use_fast_math to enable hardware-optimized approximate operations.",
-  "The kernel eliminates redundant memory accesses by removing duplicate tensor inputs.",
-  "The kernel improves cache locality through batch-aware channel grouping of computations.",
-  "The kernel minimizes register pressure through operation fusion and reduced intermediate steps."
-]

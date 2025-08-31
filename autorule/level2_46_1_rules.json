@@ -1,5 +1,0 @@
-[
-  "The kernel is specialized for a fixed window size and stride, allowing loop unrolling and eliminating branching for variable parameters.",
-  "The kernel writes outputs in a coalesced manner with contiguous threads writing contiguous output elements.",
-  "The kernel avoids overhead from handling dynamic parameters or edge cases required in a general-purpose implementation."
-]

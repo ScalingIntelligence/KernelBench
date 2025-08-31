@@ -1,6 +1,0 @@
-[
-  "The kernel uses a custom approximation of mathematical functions (e.g., tanh) to reduce computation time.",
-  "The kernel is compiled with --use_fast_math to enable faster, approximate versions of math functions (e.g., expf).",
-  "The kernel avoids redundant index calculations by only computing necessary indices for the operations performed.",
-  "The kernel uses __forceinline__ to inline critical functions, reducing function call overhead."
-]

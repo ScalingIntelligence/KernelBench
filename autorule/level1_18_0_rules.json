@@ -1,7 +1,0 @@
-[
-  "The kernel uses coalesced global memory accesses for contiguous data reads/writes.",
-  "The kernel avoids non-coalesced global memory accesses that result from strided memory patterns.",
-  "The kernel minimizes synchronization overhead by reducing the use of __syncthreads().",
-  "The kernel avoids shared memory tiling when global memory access patterns are already efficient for certain operands.",
-  "The kernel prioritizes coalesced global memory access over shared memory usage when the latter introduces unoptimized memory patterns."
-]

@@ -1,6 +1,0 @@
-[
-  "The kernel uses a thread block size that optimizes occupancy by balancing register usage and the number of concurrent blocks per SM.",
-  "The kernel selects a thread block size that is a multiple of the warp size (32) but smaller to allow more blocks per SM for better load balancing.",
-  "The kernel's thread block size is chosen to reduce register pressure, enabling higher occupancy by allowing more concurrent blocks on each SM.",
-  "The kernel uses a thread block size that facilitates finer-grained load distribution across SMs, improving utilization on GPUs with many SMs."
-]

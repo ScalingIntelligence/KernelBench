@@ -1,7 +1,0 @@
-[
-  "The kernel uses warp-level reductions via shuffle instructions (e.g., __shfl_down_sync) instead of shared memory for sum and squared sum calculations.",
-  "The kernel avoids explicit synchronization barriers (e.g., __syncthreads()) by utilizing warp-synchronous operations.",
-  "The kernel minimizes shared memory usage by performing register-based communication during reductions.",
-  "The kernel ensures implicit synchronization and reduced thread divergence through warp-level operations.",
-  "The kernel broadcasts computed statistics (e.g., mean, inv_std) using register-based warp shuffles (e.g., __shfl_sync) instead of shared memory reads."
-]

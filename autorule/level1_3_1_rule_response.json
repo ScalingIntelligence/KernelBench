@@ -1,9 +1,0 @@
-{
-  "response": "\n\n[\n    \"The kernel uses compiler optimization flags (-O3) for aggressive code optimization.\",\n    \"The kernel uses const qualifiers for input pointers to enable compiler optimizations on read-only data.\"\n]",
-  "reasoning_trace": "[\n    \"The kernel uses compiler optimization flags (-O3) for aggressive code optimization.\",\n    \"The kernel uses const qualifiers for input pointers to enable compiler optimizations on read-only data.\"\n]\n",
-  "usage": {
-    "inputTokens": 7575,
-    "outputTokens": 84,
-    "totalTokens": 7659
-  }
-}

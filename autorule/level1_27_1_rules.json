@@ -1,5 +1,0 @@
-[
-  "The kernel uses the --use_fast_math compiler flag to enable faster approximate math functions.",
-  "The kernel declares constants within the active thread block to reduce register pressure.",
-  "The kernel fuses scalar multiplications to minimize redundant arithmetic operations."
-]

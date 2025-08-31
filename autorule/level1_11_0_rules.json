@@ -1,7 +1,0 @@
-[
-  "The kernel uses vectorized memory accesses (e.g., float4) to load multiple elements in a single transaction.",
-  "The kernel uses a 1D grid configuration with thread block sizes that are multiples of the warp size (32) to ensure full warp utilization.",
-  "The kernel unrolls loops to reduce loop control overhead and improve instruction-level parallelism.",
-  "The kernel ensures memory coalescing by organizing thread indices to access contiguous memory locations across a warp.",
-  "The kernel uses the __restrict__ keyword to enable compiler optimizations by guaranteeing no pointer aliasing."
-]

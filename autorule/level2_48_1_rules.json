@@ -1,4 +1,0 @@
-[
-  "The kernel precomputes parameters on the host to avoid redundant per-thread arithmetic operations in the kernel.",
-  "The kernel avoids redundant memory layout checks (e.g., .contiguous()) on tensors that are already contiguous to reduce CPU overhead."
-]

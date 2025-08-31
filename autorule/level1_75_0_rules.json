@@ -1,6 +1,0 @@
-[
-  "The kernel uses a grid organization that aligns thread blocks with output dimensions to enable coalesced memory writes.",
-  "The kernel reduces index calculation overhead by leveraging grid dimensions directly for coordinate derivation.",
-  "The kernel organizes threads to minimize divergent branches within warps by grouping similar computations together.",
-  "The kernel optimizes memory access patterns for spatial locality, improving cache utilization."
-]

@@ -1,6 +1,0 @@
-[
-  "The kernel uses shared memory to cache data reused across all threads in the block, reducing global memory accesses.",
-  "The kernel loads reused data into shared memory once per block instead of per thread, amortizing global memory access costs.",
-  "The kernel employs vectorized memory operations (e.g., float4) to improve global memory access efficiency.",
-  "The kernel optimizes memory coalescing by accessing contiguous global memory locations during data loading into shared memory."
-]

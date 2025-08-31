@@ -1,4 +1,0 @@
-[
-  "The kernel is compiled with higher optimization level (-O3) compared to lower optimization level (-O2).",
-  "The kernel uses compiler flags that enable fast math operations (--use_fast_math)."
-]

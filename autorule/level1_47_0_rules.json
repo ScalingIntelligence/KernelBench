@@ -1,5 +1,0 @@
-[
-  "The kernel uses loop unrolling via pragma directives to reduce loop control overhead.",
-  "The kernel organizes threads in a 2D grid to ensure consecutive memory accesses along a specific dimension for coalescing.",
-  "The kernel reduces the number of loop iterations through loop unrolling, improving instruction-level parallelism."
-]

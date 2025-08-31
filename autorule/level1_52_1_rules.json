@@ -1,5 +1,0 @@
-[
-  "The kernel ensures input tensors are contiguous to enable coalesced global memory accesses.",
-  "The kernel avoids strided memory accesses by using contiguous memory layout.",
-  "The kernel removes redundant argument checks to reduce overhead."
-]

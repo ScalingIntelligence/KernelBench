@@ -1,9 +1,0 @@
-{
-  "response": "[\n    \"The kernel minimizes the number of parameters passed to reduce register pressure.\",\n    \"The kernel avoids passing precomputed values as parameters to reduce register usage.\",\n    \"The kernel computes intermediate values within the thread to avoid increasing register pressure from additional parameters.\"\n]\n",
-  "reasoning_trace": "[\n    \"The kernel minimizes the number of parameters passed to reduce register pressure.\",\n    \"The kernel avoids passing precomputed values as parameters to reduce register usage.\",\n    \"The kernel computes intermediate values within the thread to avoid increasing register pressure from additional parameters.\"\n]\n",
-  "usage": {
-    "inputTokens": 5372,
-    "outputTokens": 56,
-    "totalTokens": 5428
-  }
-}

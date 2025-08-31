@@ -1,7 +1,0 @@
-[
-  "The kernel fuses multiple operations (max pooling, logsumexp, ReLU) into a single kernel to reduce global memory accesses and kernel launches.",
-  "The kernel processes spatial windows (e.g., 2x2x2) contiguously to enable coalesced memory access and improve locality.",
-  "The kernel avoids intermediate global memory writes by fusing operations that would otherwise require separate data storage.",
-  "The kernel uses the __restrict__ qualifier to enable compiler optimizations for memory access patterns.",
-  "The kernel reduces global memory traffic by eliminating redundant data transfers between separate operations."
-]

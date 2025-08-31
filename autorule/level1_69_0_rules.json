@@ -1,7 +1,0 @@
-[
-  "The kernel uses read-only data cache (__ldg()) for accessing input and weight tensors.",
-  "The kernel orders loops to prioritize input channel iterations (ic) after spatial dimensions (kh, kw) for coalesced input access in NCHW layout.",
-  "The kernel applies the __restrict__ qualifier to pointers to enable compiler optimizations by avoiding pointer aliasing.",
-  "The kernel compiles with --use_fast_math to enable faster mathematical operations at the expense of some precision.",
-  "The kernel optimizes loop order to access weight tensor elements contiguously across kernel dimensions (kh, kw) after input channels (ic)."
-]

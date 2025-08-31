@@ -10,7 +10,7 @@ def geometric_mean_speed_ratio_correct_only(is_correct: np.ndarray, baseline_spe
     prod = np.prod(speed_up)
     n_correct = np.sum(is_correct) # Count number of correct samples
 
-    return prod ** (1 / n_correct) if n_correct > 0 else 0
+    return (prod ** (1 / n_correct)) if n_correct > 0 else 0
 
 def geometric_mean_speed_ratio_correct_and_faster_only(is_correct: np.ndarray, baseline_speed: np.ndarray, actual_speed: np.ndarray, n: int) -> float:
     """
@@ -23,7 +23,7 @@ def geometric_mean_speed_ratio_correct_and_faster_only(is_correct: np.ndarray, b
     prod = np.prod(speed_up)
     n_correct_and_faster = len(speed_up)
 
-    return prod ** (1 / n_correct_and_faster) if n_correct_and_faster > 0 else 0
+    return (prod ** (1 / n_correct_and_faster)) if n_correct_and_faster > 0 else 0
 
 def fastp(is_correct: np.ndarray, baseline_speed: np.ndarray, actual_speed: np.ndarray, n: int, p: float) -> float:
     """
@@ -33,4 +33,4 @@ def fastp(is_correct: np.ndarray, baseline_speed: np.ndarray, actual_speed: np.n
     filtered_actual_speed = np.array([x for i, x in enumerate(actual_speed) if is_correct[i]])
     speed_up = filtered_baseline_speed / filtered_actual_speed
     fast_p_score = np.sum(speed_up > p)
-    return fast_p_score / n if n > 0 else 0
+    return (fast_p_score / n) if n > 0 else 0

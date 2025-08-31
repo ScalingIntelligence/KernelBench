@@ -1,6 +1,0 @@
-[
-  "The kernel uses a smaller tile size to reduce shared memory usage per block, allowing more blocks to be active on each Streaming Multiprocessor (SM).",
-  "The kernel uses thread block sizes that result in higher occupancy by fitting more blocks within the shared memory and thread count limits of the SM.",
-  "The kernel optimizes global memory access patterns by ensuring coalesced reads and writes through appropriate thread indexing and tile dimensions.",
-  "The kernel avoids shared memory bank conflicts by aligning memory accesses to different banks within a warp."
-]

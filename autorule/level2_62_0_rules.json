@@ -1,6 +1,0 @@
-[
-  "The kernel uses rsqrtf for reciprocal square root calculation instead of sqrt followed by division.",
-  "The kernel performs redundant sum and sum of squares computations across threads with broadcast-optimized shared memory access.",
-  "The kernel avoids synchronization overhead by omitting tree reduction steps in favor of warp-coherent broadcast patterns.",
-  "The kernel uses less shared memory by storing only input data rather than both data and their squares."
-]

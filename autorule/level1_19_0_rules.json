@@ -1,5 +1,0 @@
-[
-  "- The kernel is compiled with higher optimization flags (e.g., -O3) to enable aggressive compiler optimizations.",
-  "- The kernel leverages compiler optimizations such as improved instruction scheduling and loop unrolling.",
-  "- The kernel reduces runtime overhead through compiler-driven optimizations in memory access patterns."
-]

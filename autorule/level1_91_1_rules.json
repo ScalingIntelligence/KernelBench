@@ -1,7 +1,0 @@
-[
-  "The kernel uses loop unrolling via a pragma directive to reduce loop control overhead.",
-  "The kernel utilizes the __ldg intrinsic to access data through the read-only cache.",
-  "The kernel employs larger thread block sizes (e.g., 1024 threads) to improve occupancy.",
-  "The kernel uses the __restrict__ qualifier to enable more aggressive compiler optimizations by indicating non-aliasing pointers.",
-  "The kernel generalizes memory access patterns with explicit stride handling to ensure coalesced access across varying tensor dimensions."
-]

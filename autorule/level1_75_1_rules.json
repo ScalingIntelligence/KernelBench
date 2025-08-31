@@ -1,5 +1,0 @@
-[
-  "The kernel avoids using __ldg intrinsic for read-only data access when data reuse across threads is minimal.",
-  "The kernel uses a null-check on pointers instead of passing boolean flags for conditional operations.",
-  "The kernel avoids explicit contiguous memory checks in host code when tensors are already contiguous."
-]

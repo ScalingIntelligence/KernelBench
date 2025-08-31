@@ -1,8 +1,0 @@
-[
-  "The kernel uses shared memory tiling to reduce global memory access.",
-  "The kernel ensures coalesced global memory accesses during data loading phases.",
-  "The kernel reuses data loaded into shared memory across multiple computations.",
-  "The kernel avoids strided global memory accesses to improve memory efficiency.",
-  "The kernel leverages shared memory to minimize global memory latency and bandwidth consumption.",
-  "The kernel aligns thread block configuration with GPU memory hierarchy for optimal bandwidth utilization."
-]

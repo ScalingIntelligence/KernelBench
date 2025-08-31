@@ -1,9 +1,0 @@
-[
-  "The kernel uses vectorized memory access (e.g., float4) to reduce the number of memory transactions and improve bandwidth utilization.",
-  "The kernel employs a hierarchical parallel scan strategy by combining thread-local prefix sums with block-level reduction.",
-  "The kernel applies aggressive loop unrolling to eliminate loop overhead and enhance instruction-level parallelism.",
-  "The kernel eliminates boundary checks to avoid warp divergence and conditional branch penalties.",
-  "The kernel ensures perfectly coalesced memory access patterns through fixed row lengths and vector-aligned operations.",
-  "The kernel optimizes shared memory usage for small reductions using algorithms like Kogge-Stone scan.",
-  "The kernel processes multiple elements per thread with vectorization to minimize memory operations compared to scalar approaches."
-]

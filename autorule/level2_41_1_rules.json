@@ -1,6 +1,0 @@
-[
-  "The kernel precomputes batch normalization parameters (scale and shift) during evaluation mode to avoid recomputation in each forward pass.",
-  "The kernel separates training and inference paths to optimize for specific operations in each mode.",
-  "The kernel uses precomputed buffers for parameters to reduce Python/CUDA context switching and kernel launch overhead.",
-  "The kernel avoids recalculating parameters (e.g., inverse standard deviation, scale, shift) on-the-fly during inference."
-]

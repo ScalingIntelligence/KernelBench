@@ -1,8 +1,0 @@
-[
-  "The kernel uses vectorized memory access to process multiple elements per thread, improving memory coalescing.",
-  "The kernel replaces transcendental functions (e.g., erf) with polynomial approximations (e.g., tanh-based) for faster computation.",
-  "The kernel is compiled with --use_fast_math to enable approximate math optimizations and fused operations.",
-  "The kernel uses loop unrolling via pragma directives to reduce loop overhead and increase instruction-level parallelism.",
-  "The kernel employs the __restrict__ keyword to indicate no pointer aliasing, enabling more aggressive compiler optimizations.",
-  "The kernel reduces the total number of threads required by processing multiple elements per thread, improving thread efficiency and occupancy."
-]

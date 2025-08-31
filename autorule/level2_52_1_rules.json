@@ -1,5 +1,0 @@
-[
-  "The kernel uses single-precision CUDA math functions (e.g., log1pf) instead of double-precision equivalents (e.g., log1p) to avoid unnecessary type conversions and leverage faster single-precision arithmetic.",
-  "The kernel avoids implicit type promotion from single-precision (float) to double-precision (double) in mathematical operations to maintain computational efficiency.",
-  "The kernel ensures numerical stability in activation functions (e.g., softplus) to prevent overflow/underflow issues that could indirectly affect performance."
-]

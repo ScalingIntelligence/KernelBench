@@ -1,5 +1,0 @@
-[
-  "The kernel avoids redundant max operations when intermediate values are already non-negative due to prior operations.",
-  "The kernel uses a larger thread block size (e.g., 512 threads per block) to improve GPU occupancy and warp concurrency.",
-  "The kernel minimizes instruction count by eliminating unnecessary intermediate operations."
-]

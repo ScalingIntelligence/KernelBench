@@ -1,5 +1,0 @@
-[
-  "The kernel uses the --use_fast_math compiler flag to enable faster mathematical approximations.",
-  "The kernel applies -O3 optimization level to the CUDA compiler for aggressive code optimization.",
-  "The kernel avoids unnecessary header inclusions that do not contribute to the computation."
-]

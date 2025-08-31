@@ -1,4 +1,0 @@
-[
-  "- The kernel is compiled with high optimization levels (e.g., -O3) to enable aggressive compiler optimizations like loop unrolling and vectorization.",
-  "- The kernel uses fast math compiler flags (e.g., --use_fast_math) to prioritize computational speed over strict IEEE-754 precision."
-]

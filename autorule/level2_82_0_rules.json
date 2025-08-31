@@ -1,6 +1,0 @@
-[
-  "The kernel fuses multiple consecutive operations into a single kernel launch.",
-  "The kernel retains intermediate results in registers instead of global memory to reduce memory traffic.",
-  "The kernel configures grid dimensions based on the output tensor size to optimize thread count.",
-  "The kernel computes intermediate values on-the-fly during subsequent operations to avoid redundant computation."
-]

@@ -1,9 +1,0 @@
-[
-  "The kernel uses highly optimized library functions (e.g., cuBLAS) for matrix operations instead of naive implementations.",
-  "The kernel employs parallel reductions with shared memory for statistical operations like LogSumExp.",
-  "The kernel ensures stride-1 memory access patterns to improve memory coalescing.",
-  "The kernel separates fused operations to allow independent optimization of each component.",
-  "The kernel utilizes block-level parallel reductions with shared memory for efficient computation of max and sum values.",
-  "The kernel avoids sequential per-thread reductions in favor of parallelized O(log N) steps.",
-  "The kernel optimizes memory access patterns by leveraging tiling techniques in matrix multiplication."
-]

@@ -1,5 +1,0 @@
-[
-  "The kernel precomputes the total number of elements on the host and passes it as a parameter to avoid redundant per-thread computation.",
-  "The kernel reduces per-thread arithmetic operations by eliminating redundant calculations of loop-invariant values.",
-  "The kernel uses precomputed constants passed as parameters to enable compiler optimizations such as loop unrolling or register allocation."
-]

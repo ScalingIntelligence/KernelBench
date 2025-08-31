@@ -1,6 +1,0 @@
-[
-  "The kernel uses flattened loop structures for higher-dimensional data to reduce loop control overhead.",
-  "The kernel minimizes index calculations by linearizing multi-dimensional indices into a single loop variable.",
-  "The kernel enables better compiler optimizations such as loop unrolling through simplified loop structures.",
-  "The kernel reduces register pressure by simplifying address computation in memory access patterns."
-]

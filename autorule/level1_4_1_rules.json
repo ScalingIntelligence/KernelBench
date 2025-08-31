@@ -1,7 +1,0 @@
-[
-  "The kernel uses __restrict__ qualifiers on pointer parameters to enable better compiler optimizations by indicating no pointer aliasing.",
-  "The kernel enables the --restrict compiler flag to treat all pointers as restricted, enhancing memory access optimizations.",
-  "The kernel performs final reduction using a single thread with an unrolled loop instead of warp-level shuffle operations to avoid warp execution divergence.",
-  "The kernel applies the #pragma unroll directive to eliminate loop overhead in reduction phases.",
-  "The kernel avoids warp execution divergence during reduction by limiting active threads to a single thread for summation instead of partial warp participation."
-]

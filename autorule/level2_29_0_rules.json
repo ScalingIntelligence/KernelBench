@@ -1,5 +1,0 @@
-[
-  "The kernel uses conditional checks to bypass computationally expensive operations when input values exceed a certain threshold.",
-  "The kernel is compiled with higher optimization levels (e.g., -O3) to enable aggressive compiler optimizations.",
-  "The kernel uses thread block sizes that optimize occupancy by allowing more concurrent blocks on streaming multiprocessors."
-]

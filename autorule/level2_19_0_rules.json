@@ -1,7 +1,0 @@
-[
-  "The kernel uses a fast approximate activation function (e.g., tanh-based GELU) instead of a slower exact version (e.g., erf-based GELU).",
-  "The kernel is compiled with compiler flags enabling fast math optimizations (e.g., --use_fast_math).",
-  "The kernel uses a thread block size that maximizes occupancy while balancing shared memory usage and register pressure.",
-  "The kernel employs a grid configuration that aligns with the data layout (e.g., 3D grid for NCHW tensors) to improve memory locality.",
-  "The kernel uses efficient memory access patterns with coalesced reads/writes by ensuring consecutive threads access consecutive memory addresses."
-]

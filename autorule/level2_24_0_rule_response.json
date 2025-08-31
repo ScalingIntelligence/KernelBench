@@ -1,9 +1,0 @@
-{
-  "response": "\n\n[\n    \"The kernel ensures input tensors are contiguous to enable coalesced memory access.\",\n    \"The kernel orders grid dimensions to prioritize larger spatial dimensions (e.g., W, H) in the x/y axes for higher occupancy.\",\n    \"The kernel avoids template abstractions for critical operations (e.g., using direct expf/fminf instead of templated functions) to allow compiler optimizations.\"\n]",
-  "reasoning_trace": "[\n    \"The kernel ensures input tensors are contiguous to enable coalesced memory access.\",\n    \"The kernel orders grid dimensions to prioritize larger spatial dimensions (e.g., W, H) in the x/y axes for higher occupancy.\",\n    \"The kernel avoids template abstractions for critical operations (e.g., using direct expf/fminf instead of templated functions) to allow compiler optimizations.\"\n]\n",
-  "usage": {
-    "inputTokens": 8590,
-    "outputTokens": 168,
-    "totalTokens": 8758
-  }
-}

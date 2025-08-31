@@ -1,7 +1,0 @@
-[
-  "The kernel uses thread block sizes that are multiples of warp size (32).",
-  "The kernel uses logical OR (||) instead of bitwise OR (|) for boundary condition checks to enable short-circuit evaluation.",
-  "The kernel allows the compiler to automatically determine loop unrolling factors using #pragma unroll without a specified factor.",
-  "The kernel avoids unnecessary parameters and conditional checks for bias handling to reduce overhead.",
-  "The kernel uses smaller thread block sizes (e.g., 256) to optimize register pressure and occupancy rather than larger sizes (e.g., 512)."
-]

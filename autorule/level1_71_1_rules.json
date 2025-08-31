@@ -1,5 +1,0 @@
-[
-  "The kernel avoids using explicit read-only cache hints (e.g., __ldg) when memory access patterns lack spatial locality.",
-  "The kernel prefers regular global memory loads over read-only cache loads for scattered write operations.",
-  "The kernel omits read-only cache operations to enable better compiler optimization of memory access patterns."
-]

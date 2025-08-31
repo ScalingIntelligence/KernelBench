@@ -1,6 +1,0 @@
-[
-  "The kernel uses the read-only data cache (`__ldg`) for accessing input and bias tensors.",
-  "The kernel loads weights into shared memory with a coalesced global memory access pattern.",
-  "The kernel organizes thread blocks to ensure consecutive threads write to contiguous output memory locations for coalesced writes.",
-  "The kernel uses a grid configuration that groups computations by output channel to optimize shared memory usage and reduce global memory access latency."
-]

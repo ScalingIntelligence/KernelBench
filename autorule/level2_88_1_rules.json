@@ -1,8 +1,0 @@
-[
-  "The kernel fuses multiple operations into a single kernel to avoid intermediate global memory writes and reads.",
-  "The kernel performs parallel reductions for sum and squared sum using separate shared memory arrays in a single pass.",
-  "The kernel avoids unnecessary synchronization primitives (e.g., __syncthreads()) when using warp-sized thread blocks.",
-  "The kernel minimizes global memory bandwidth usage by retaining intermediate results in registers or shared memory instead of global memory.",
-  "The kernel uses thread block sizes that match the warp size (32 threads) to enable implicit warp-level synchronization.",
-  "The kernel reduces kernel launch overhead by combining multiple operations into fewer kernel launches."
-]

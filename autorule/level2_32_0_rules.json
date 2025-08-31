@@ -1,6 +1,0 @@
-[
-  "The kernel uses the __ldg intrinsic to leverage the read-only data cache for memory access.",
-  "The kernel is compiled with the -use_fast_math flag to enable faster approximate math operations and aggressive compiler optimizations.",
-  "The kernel accesses memory in a pattern that benefits from hardware-level caching for scattered reads.",
-  "The kernel utilizes compiler-driven loop unrolling and improved instruction scheduling."
-]

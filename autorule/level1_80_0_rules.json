@@ -1,8 +1,0 @@
-[
-  "The kernel uses compile-time constants for parameters such as kernel size, dilation, and padding to enable loop unrolling.",
-  "The kernel avoids runtime variables for loop bounds, allowing the compiler to statically unroll loops and reduce control overhead.",
-  "The kernel leverages compile-time known values to precompute constant expressions and optimize index calculations.",
-  "The kernel eliminates redundant arithmetic operations by specializing for fixed parameters such as stride=1.",
-  "The kernel uses fixed loop bounds to enable compiler optimizations like eliminating redundant bounds checks.",
-  "The kernel reduces control flow overhead by statically determining loop iteration counts and memory access patterns."
-]

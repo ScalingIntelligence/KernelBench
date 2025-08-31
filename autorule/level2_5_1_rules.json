@@ -1,6 +1,0 @@
-[
-  "The kernel uses shared memory to store frequently accessed data (e.g., bias values) once per block, reducing redundant global memory accesses.",
-  "The kernel organizes memory access patterns to ensure contiguous per-iteration accesses within a warp, enabling full coalescing of global memory transactions.",
-  "The kernel minimizes global memory bandwidth pressure by reusing data loaded into shared memory across all threads in a block.",
-  "The kernel employs loop unrolling with a stride that aligns with thread block dimensions to optimize memory access coalescing."
-]

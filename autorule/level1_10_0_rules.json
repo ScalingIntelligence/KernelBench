@@ -1,7 +1,0 @@
-[
-  "The kernel uses a tile size that minimizes shared memory bank conflicts during matrix multiplication.",
-  "The kernel selects a tile size that allows more concurrent blocks per streaming multiprocessor (SM) by using less shared memory per block.",
-  "The kernel uses a thread block size that balances occupancy and shared memory usage, avoiding maximum thread count per block limitations.",
-  "The kernel avoids unrolling loops with large iteration counts to reduce register pressure and improve occupancy.",
-  "The kernel organizes shared memory accesses to ensure threads within a warp access distinct memory banks, preventing bank conflicts."
-]

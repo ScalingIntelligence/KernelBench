@@ -1,7 +1,0 @@
-[
-  "The kernel uses contiguous memory access patterns to ensure optimal memory coalescing.",
-  "The kernel minimizes warp divergence by avoiding conditional checks within loops.",
-  "The kernel uses warp-level primitives for reductions to minimize synchronization overhead.",
-  "The kernel avoids excessive loop unrolling and vectorization that may increase register pressure.",
-  "The kernel structures reductions to use fewer synchronization points and shared memory operations."
-]

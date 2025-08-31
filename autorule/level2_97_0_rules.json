@@ -1,6 +1,0 @@
-[
-  "- The kernel uses division operations on uniform scalar values, which the compiler optimizes into reciprocal multiplications at runtime.",
-  "- The kernel accesses uniform scalar values from global memory using coalesced broadcasts, minimizing memory access overhead.",
-  "- The kernel employs templated code with type dispatching to generate data-type-specific optimized instructions.",
-  "- The kernel's structure allows the compiler to optimize register allocation, improving occupancy and latency hiding."
-]

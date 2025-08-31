@@ -1,6 +1,0 @@
-[
-  "The kernel avoids vectorized memory accesses which can cause misalignment and require scalar fallback handling.",
-  "The kernel uses a per-thread processing strategy that reduces register pressure, enabling higher occupancy.",
-  "The kernel processes elements without requiring alignment constraints, ensuring consistent memory access patterns.",
-  "The kernel minimizes tail effects by processing elements individually, avoiding underutilized threads from residual elements."
-]

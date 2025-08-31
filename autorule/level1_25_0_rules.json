@@ -1,4 +1,0 @@
-[
-  "The kernel avoids Python-level attribute lookup overhead by storing the CUDA function reference directly during initialization.",
-  "The kernel minimizes Python-side overhead by pre-binding the CUDA function instead of dynamically resolving it on each call."
-]

@@ -1,5 +1,0 @@
-[
-  "The kernel uses the __restrict__ qualifier on input and output pointers to enable compiler optimizations by indicating no pointer aliasing.",
-  "The kernel omits redundant boundary checks when input dimensions are known to be multiples of the tiling factor, reducing branch instructions.",
-  "The kernel leverages compile-time constant division optimization by converting division into multiplication with a precomputed reciprocal where the divisor is a known constant."
-]

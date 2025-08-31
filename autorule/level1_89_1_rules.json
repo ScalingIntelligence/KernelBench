@@ -1,9 +1,0 @@
-[
-  "The kernel uses vectorized memory access (e.g., float4) to reduce global memory transactions.",
-  "The kernel implements a hierarchical scan strategy with thread-level and block-level scans.",
-  "The kernel eliminates boundary checks by ensuring input dimensions meet specific divisibility requirements.",
-  "The kernel stores intermediate results in register memory for local computations.",
-  "The kernel uses shared memory efficiently for block-level scans with minimal storage requirements.",
-  "The kernel employs explicit loop unrolling to enhance instruction-level parallelism.",
-  "The kernel avoids conditional branches during memory access operations."
-]
