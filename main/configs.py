@@ -3,12 +3,12 @@ import os
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS_DIR = os.path.join(REPO_TOP_DIR, "runs")
-KERNEL_EVAL_BUILD_DIR = "/data/user_data/gyeongwk/KernelBench/cache"
+KERNEL_EVAL_BUILD_DIR = os.path.join(REPO_TOP_DIR, "cache")
 
 
 def add_inference_args(parser, rl_training=False):
     parser.add_argument("--server_type", type=str, default="vllm")
-    parser.add_argument("--max_tokens", type=int, default=8192)
+    parser.add_argument("--max_tokens", type=int, default=4096)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--vllm_host", type=str, default="localhost") # server_type is vllm
     parser.add_argument("--vllm_port", type=int, default=8081) # server_type is vllm
@@ -162,20 +162,4 @@ def parse_eval_server_args():
 
     args = parser.parse_args()
     args.method = "base"
-    return args
-
-
-def parse_autorule_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--_tags", type=str, default="test_autorule")
-
-    parser.add_argument("--test", action="store_true")
-    parser.add_argument("--level", type=int, required=True)
-
-    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-7B-Instruct")
-    add_inference_args(parser)
-
-    add_logging_args(parser)
-
-    args = parser.parse_args()
     return args

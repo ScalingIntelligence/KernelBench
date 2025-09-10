@@ -471,8 +471,8 @@ if __name__ == "__main__":
     # set up run directory
     run_dir = os.path.join(RUNS_DIR, config.run_name)
 
-    # with open(os.path.join(run_dir, "config.yaml"), "w") as f:
-    #     yaml.dump(vars(config), f)
+    with open(os.path.join(run_dir, "config.yaml"), "w") as f:
+        yaml.dump(vars(config), f)
  
     # set GPU arch to configure what target to build for
     set_gpu_arch(config.gpu_arch)
@@ -481,7 +481,7 @@ if __name__ == "__main__":
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
     # total_work = [WorkArgs(level=config.level, problem_id=problem_id, sample_id=sid) for problem_id in range(1, len(curr_level_dataset) + 1) for sid in range(1)] # TODO: change accordingly
-    total_work = [WorkArgs(level=config.level, problem_id=problem_id, sample_id=sid) for problem_id in range(1, 101) for sid in range(8)] # TODO: change accordingly
+    total_work = [WorkArgs(level=config.level, problem_id=problem_id, sample_id=sid) for problem_id in range(69, 70) for sid in range(1)] # TODO: change accordingly
 
     batch_eval(total_work, config, run_dir, eval_file_path)
 

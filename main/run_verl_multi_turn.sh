@@ -1,12 +1,12 @@
 set -x
 
-RUN_NAME="grpo_train_multi_turn_Qwen2.5-Coder-7B-Instruct-SFT"
-MODEL="gyeongwk/Qwen2.5-Coder-7B-Instruct-SFT"
+RUN_NAME="grpo_train_multi_turn_level2_Qwen2.5-7B-Instruct-SFT"
+MODEL="/data/user_data/gyeongwk/KernelBench/sft/Qwen2.5-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=$HOME/KernelBench/KernelBench/train_dataset.parquet \
-    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset.parquet \
+    data.train_files=$HOME/KernelBench/KernelBench/train_dataset_level2.parquet \
+    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset_level2.parquet \
     data.train_batch_size=4 \
     data.max_prompt_length=2048 \
     data.max_response_length=4096 \
@@ -56,8 +56,8 @@ python3 -m verl.trainer.main_ppo \
     trainer.val_before_train=True \
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=24 \
-    trainer.test_freq=12 \
+    trainer.save_freq=22 \
+    trainer.test_freq=11 \
     trainer.val_before_train=False \
     trainer.ray_wait_register_center_timeout=100000 \
-    trainer.total_epochs=20 $@
+    trainer.total_epochs=5 $@

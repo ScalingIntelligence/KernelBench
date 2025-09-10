@@ -126,9 +126,10 @@ def measure_program_time(
             
             model = model.cuda(device=device)
             torch.cuda.synchronize(device=device)
-            runtime_stats, _ = time_execution_with_cuda_event(
+            elapsed_times, _ = time_execution_with_cuda_event(
                 model, *inputs, num_trials=num_trials, verbose=verbose, device=device
             )
+            runtime_stats = get_timing_stats(elapsed_times, device=device)
 
             if verbose:
                 print(f"{ref_arch_name} {runtime_stats}")

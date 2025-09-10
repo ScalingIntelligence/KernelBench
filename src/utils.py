@@ -35,8 +35,7 @@ class WorkArgs:
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from together import Together
 from openai import OpenAI
-from google import genai
-from google.genai.types import GenerateContentConfig, ThinkingConfig
+import google.generativeai as genai
 import anthropic
 import boto3
 
@@ -58,7 +57,7 @@ def load_deepseek_tokenizer():
     # return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Instruct-0724")
     return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-V2", trust_remote_code=True)
 
-# Buffer because deepseek totally blocks us if we send stuff that's too long :
+# Buffer because deepseek totally blocks us if we send stuff that's too long :(
 TOO_LONG_FOR_DEEPSEEK = 115_000
 
 
@@ -138,7 +137,7 @@ def query_server(
             )
             model = model_name
         case "google":
-            client = genai.Client(api_key=GEMINI_KEY)
+            genai.configure(api_key=GEMINI_KEY)
             model = model_name
         case "together":
             client = Together(api_key=TOGETHER_KEY)
@@ -167,9 +166,12 @@ def query_server(
 
     reasoning_trace = ""
     usage = None
-
-    assert client is not None, "Client is not set, cannot proceed to generations"
-
+    if server_type != "google":
+        assert client is not None, "Client is not set, cannot proceed to generations"
+    else:
+        print(
+            f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
+        )
     # Logic to query the LLM
     if server_type == "anthropic":
         assert type(prompt) == str
@@ -200,37 +202,28 @@ def query_server(
                 top_k=top_k,
                 max_tokens=max_tokens,
             )
-        
-        usage = {"prompt_tokens": response.usage.input_tokens, "completion_tokens": response.usage.output_tokens, "total_tokens": response.usage.input_tokens + response.usage.output_tokens}
         outputs = [choice.text for choice in response.content if not hasattr(choice, 'thinking') or not choice.thinking]
 
     elif server_type == "google":
-        # assert model_name == "gemini-1.5-flash-002", "Only test this for now" 
+        # assert model_name == "gemini-1.5-flash-002", "Only test this for now"
 
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=GenerateContentConfig(
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                max_output_tokens=max_tokens,
-                response_mime_type="text/plain",
-                # thinking_config=ThinkingConfig(
-                #     thinking_budget=0
-                # )
-            )
+        generation_config = {
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "max_output_tokens": max_tokens,
+            "response_mime_type": "text/plain",
+        }
+
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_prompt,
+            generation_config=generation_config,
         )
-        try:
-            outputs = response.text
-        except Exception as e:
-            print(f"Error extracting outputs from Google response: {e}")
-            print(response.candidates[0])
-            outputs = ""
 
-        usage = response.usage_metadata
-        usage = {"prompt_tokens": usage.prompt_token_count, "completion_tokens": usage.candidates_token_count, "total_tokens": usage.total_token_count, "thinking_tokens": usage.thoughts_token_count if hasattr(usage, "thoughts_token_count") else 0}
+        response = model.generate_content(prompt)
 
+        return response.text, "", None
 
     elif server_type == "deepseek":
         

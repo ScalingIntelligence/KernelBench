@@ -111,7 +111,7 @@ def prompt_bare(ref_arch_src: str, triton=False) -> str:
 
 
 def prompt_with_one_example(
-    arc_src: str, example_arch_src: str, example_new_arch_src: str, triton=False, include_rules=False, level=1
+    arc_src: str, example_arch_src: str, example_new_arch_src: str, triton=False
 ) -> str:
     prompt = get_problem_statement(triton)
 
@@ -133,65 +133,11 @@ def prompt_with_one_example(
 {arc_src}
 ```
     """
-    
-    if include_rules:
-        if level == 1:
-            prompt += f"""Here are some good practices for writing CUDA kernels:
-- The kernel uses loop unrolling via #pragma unroll to reduce loop overhead and improve instruction-level parallelism.
-- The kernel optimizes memory access patterns to ensure coalesced global memory accesses for efficient data loading and storage.
-- The kernel employs shared memory tiling with padding and conflict-free indexing to avoid bank conflicts and reduce global memory access.
-- The kernel uses thread block configurations that balance occupancy, shared memory usage, and warp size alignment (multiples of 32).
-- The kernel leverages compiler optimizations (-O3) and fast math flags (--use_fast_math) for aggressive instruction scheduling and approximate operations.
-- The kernel specializes for specific data types and tile sizes through template specialization to enable compile-time optimizations.
-- The kernel employs register blocking and sub-tiling strategies to increase arithmetic intensity and reduce memory traffic.
-- The kernel uses __restrict__ and const qualifiers to prevent pointer aliasing and enable read-only optimizations.
-- The kernel separates vectorized processing from remainder handling using distinct loops to minimize warp divergence.
-- The kernel writes results to global memory only once after completing computations to minimize memory traffic.
-- The kernel selects tile sizes to maximize data reuse while respecting shared memory limits for concurrent block execution.
-- The kernel transposes matrix data in shared memory to optimize memory access patterns during computation phases.
-- The kernel uses hierarchical reduction strategies with warp-level primitives and shared memory to minimize synchronization overhead.
-- The kernel prioritizes contiguous memory layouts and enforces tensor contiguity to enable optimal coalescing.
-- The kernel minimizes conditional branching through early validity checks and specialized edge-case handling.
-- The kernel leverages hardware features like tensor cores and read-only data cache (__ldg) when available.
-- The kernel employs grid-stride loop patterns and workload balancing to handle arbitrary input sizes efficiently.
-- The kernel fuses operations and maintains intermediate values in registers to reduce global memory accesses.
-- The kernel uses vectorized memory operations (e.g., float4) to maximize memory bus utilization.
-- The kernel avoids atomic operations through partial sum aggregation and two-phase reduction strategies.
-- The kernel optimizes index calculations through stride precomputation and dimension linearization.
-- The kernel maintains numerical stability through fused operations and algebraic equivalence optimizations.
-- The kernel uses power-of-two thread block sizes and grid dimension clamping for occupancy optimization.
-- The kernel eliminates redundant parameters through compile-time constants and hardcoded values where applicable.
-- The kernel employs predicate-based memory access patterns instead of branching for divergent warp handling.
-"""
-        elif level == 2:
-            prompt += f"""Here are some good practices for writing CUDA kernels:
-- The kernel precomputes values on the host to avoid redundant per-thread computations and passes them as parameters.
-- The kernel minimizes arithmetic operations through algebraic simplification and loop-invariant code motion.
-- The kernel uses vectorized memory operations (e.g., float4) to improve memory throughput and coalescing.
-- The kernel employs shared memory to cache frequently accessed data and optimize reductions.
-- The kernel structures grid/block dimensions to ensure contiguous, coalesced global memory accesses.
-- The kernel leverages compiler optimizations through -O3 and --use_fast_math flags for fast math approximations.
-- The kernel uses warp-level primitives (e.g., __shfl_down_sync) instead of shared memory for efficient reductions.
-- The kernel fuses multiple operations into single kernels to reduce launch overhead and intermediate memory writes.
-- The kernel optimizes thread block sizes to balance occupancy, register pressure, and memory coalescing.
-- The kernel replaces division with precomputed reciprocal multiplication and avoids expensive index calculations.
-- The kernel ensures numerical stability through optimized mathematical formulations (e.g., log1pf for softplus).
-- The kernel uses __restrict__ qualifiers and __ldg() intrinsics to optimize pointer aliasing and read-only caching.
-- The kernel implements hierarchical reductions combining warp-level shuffles and block-level shared memory strategies.
-- The kernel processes multiple elements per thread via grid-stride loops to increase arithmetic intensity.
-- The kernel avoids branch divergence through branchless intrinsics (e.g., fmaxf) and predicated execution.
-- The kernel minimizes synchronization points through warp-synchronous operations and coalesced access patterns.
-- The kernel aligns memory operations with GPU cache hierarchies (L1/L2/texture) for optimal data reuse.
-- The kernel leverages hardware-optimized library functions (e.g., cuBLAS/cuDNN) for complex operations.
-- The kernel maintains tensor contiguity and matches memory layout to thread access patterns for locality.
-- The kernel balances register usage and shared memory consumption to maximize concurrent block execution.
-"""
-
     prompt += get_problem_instruction(triton)
     return prompt
 
 
-def prompt_base(ref_arch_src: str, triton=False, include_rules=False, level=1) -> str:
+def prompt_base(ref_arch_src: str, triton=False) -> str:
     """
     Using prompt example (an element-wise addition) for prompt templates
     The most basic form of example just to show LLM the task and the expected output format
@@ -224,10 +170,10 @@ def prompt_base(ref_arch_src: str, triton=False, include_rules=False, level=1) -
     example_arch = read_file(example_arch_path)
     example_new_arch = read_file(example_new_arch_path)
 
-    return prompt_with_one_example(arch, example_arch, example_new_arch, triton, include_rules=include_rules, level=level)
+    return prompt_with_one_example(arch, example_arch, example_new_arch, triton)
 
 
-def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu", triton=False, level=1) -> str:
+def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu", triton=False) -> str:
     """
     Generate a prompt with a CoT example following a template 
     Avaliable CoT examples: 
@@ -323,14 +269,14 @@ Here is an example architecture:\n\n
 def prompt_main(ref_arch_src: str, config, triton=False) -> str:
     match config.prompt:
         case "regular":
-            return prompt_base(ref_arch_src, triton, include_rules=("rules" in config.run_name), level=config.level)
+            return prompt_base(ref_arch_src, triton)
         case "cot":
             return prompt_cot(ref_arch_src, cot_example="ex_fuse_gelu", triton=triton)
         case _:
             raise ValueError(f"Invalid prompt type: {config.prompt}")
 
 
-def exec_result_to_exeution_feedback(exec_result: dict, profiler_info=True) -> str:
+def exec_result_to_exeution_feedback(exec_result: dict) -> str:
     if isinstance(exec_result, KernelExecResult):
         metadata = exec_result.metadata
         correctness = exec_result.correctness
@@ -358,7 +304,7 @@ Here is your Evaluation Result:
 Your kernel executed successfully and produced the correct output.
 Here is your wall clock time: {runtime} milliseconds.
 
-{metadata["profiler_info"] if profiler_info else ""}
+{metadata["profiler_info"]}
 """
 
     return evaluation_feedback
@@ -381,8 +327,8 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     return prompt
 
 
-def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]], triton=False, config=None) -> str:
-    prompt = prompt_base(ref_arch_src, triton, include_rules=("rules" in config.run_name), level=config.level)
+def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]], triton=False) -> str:
+    prompt = prompt_base(ref_arch_src, triton)
 
     for kernel_src, exec_result in history:
 
@@ -451,7 +397,7 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: s
         history.append((kernel_src, exec_result))
     
     # Construct prompt
-    prompt = prompt_refinement_from_history(ref_arch_src, history, triton, config)
+    prompt = prompt_refinement_from_history(ref_arch_src, history, triton)
     
     return prompt
 

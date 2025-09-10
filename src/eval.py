@@ -24,7 +24,6 @@ REPO_TOP_PATH = os.path.abspath(
     )
 )
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
-KERNEL_EVAL_BUILD_DIR = "/data/user_data/gyeongwk/KernelBench/cache"
 
 
 def fetch_kernel_from_database(
@@ -108,11 +107,11 @@ def load_original_model_and_inputs(
         print(f"Failed to load model due to {e}. Trying to import from the file directly.")
         if "." in model_name:
             model_name = model_name.split(".")[0]
-        tmp_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, "tmp", f"model_{model_name}.py")
+        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_name}.py")
         os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
         with open(tmp_dir, "w") as f:
             f.write(model_original_src)
-        exec("import sys; sys.path.append('" + KERNEL_EVAL_BUILD_DIR + "/tmp')", context)
+        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
         exec(f"from model_{model_name} import Model, get_init_inputs, get_inputs", context)
         Model, get_init_inputs, get_inputs = context["Model"], context["get_init_inputs"], context["get_inputs"]
         print(f"Successfully loaded model from the file directly: {tmp_dir}") 
@@ -151,11 +150,11 @@ def load_custom_model(
         print(f"Failed to load model. Trying to import from the file directly.")
         if "." in model_custom_name:
             model_custom_name = model_custom_name.split(".")[0]
-        tmp_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, "tmp", f"model_{model_custom_name}.py")
+        tmp_dir = os.path.join(REPO_TOP_PATH, "cache", "tmp", f"model_{model_custom_name}.py")
         os.makedirs(os.path.dirname(tmp_dir), exist_ok=True)
         with open(tmp_dir, "w") as f:
             f.write(model_custom_src)
-        exec("import sys; sys.path.append('" + KERNEL_EVAL_BUILD_DIR + "/tmp')", context)
+        exec("import sys; sys.path.append('" + REPO_TOP_PATH + "/cache/tmp')", context)
         exec(f"from model_{model_custom_name} import ModelNew", context)
         ModelNew = context["ModelNew"]
         print(f"Successfully loaded model from the file directly: {tmp_dir}") 
@@ -467,13 +466,14 @@ def eval_kernel_against_ref(
                 model_new = custom_model.cuda(device=device)
                 torch.cuda.synchronize(device=device)
 
-                runtime_stats, profiler_info = time_execution_with_cuda_event(
+                elapsed_times, profiler_info = time_execution_with_cuda_event(
                     model_new,
                     *inputs,
                     num_trials=num_perf_trials,
                     verbose=verbose,
                     device=device,
                 )
+                runtime_stats = get_timing_stats(elapsed_times, device=device)
 
                 if verbose:
                     print(f"[Eval] Performance Stats: {runtime_stats}")
@@ -554,13 +554,14 @@ def eval_reference_kernel(
         model = original_model.cuda(device=device)
         torch.cuda.synchronize(device=device)
 
-        runtime_stats, profiler_info = time_execution_with_cuda_event(
+        elapsed_times, profiler_info = time_execution_with_cuda_event(
             model,
             *inputs,
             num_trials=num_perf_trials,
             verbose=verbose,
             device=device,
         )
+        runtime_stats = get_timing_stats(elapsed_times, device=device)
 
         if verbose:
             print(f"[Eval] Performance Stats: {runtime_stats}")
@@ -653,18 +654,20 @@ def time_execution_with_cuda_event(
 
         # Calculate the elapsed time in milliseconds
         elapsed_time_ms = start_event.elapsed_time(end_event)
+        # if verbose:
+        #     print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
         elapsed_times.append(elapsed_time_ms)
-
-    runtime_stats = get_timing_stats(elapsed_times, device=device)
 
     # Record profiler information
     with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA], record_shapes=True) as prof:
         kernel_fn(*args)
-    torch.cuda.synchronize(device=device)
+        torch.cuda.synchronize(device=device)
 
-    profiler_info = extract_profiler_info(prof, device=device, verbose=verbose)
+    profiler_info = prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10)
+    if verbose:
+        print(f"[Profiling] Profiler Info: \n{profiler_info}")
 
-    return runtime_stats, profiler_info
+    return elapsed_times, profiler_info
 
 
 def run_and_check_correctness(
@@ -868,21 +871,6 @@ def fetch_baseline_time(
     problem_name = dataset[problem_id].split("/")[-1]
     baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
-
-
-def extract_profiler_info(prof: torch.profiler.profile, device: torch.device = None, verbose: bool = False) -> dict:
-    """
-    Extract timing statistics from a profiler
-    """
-    # Extract the total run time of each trial as a list of ints (milliseconds) for both CUDA and CPU
-    # Only steps after warmup are profiled, so we only need to process those steps
-
-    events = prof.key_averages()
-    max_event_key = max(events, key=lambda x: x.device_time_total).key
-    profiler_info = events.table(sort_by="self_cuda_time_total", row_limit=10)
-    profiler_info += f"\nFunction {max_event_key} took the most time."
-
-    return profiler_info
 
 
 def get_timing_stats(elapsed_times: list[float], device: torch.device = None) -> dict:

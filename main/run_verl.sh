@@ -1,13 +1,13 @@
 set -x
 
-RUN_NAME="grpo_single_correct_Qwen2.5-Coder-7B-Instruct-SFT"
+RUN_NAME="grpo_train_small_Qwen2.5-Coder-7B-Instruct-SFT"
 MODEL="gyeongwk/Qwen2.5-Coder-7B-Instruct-SFT"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     algorithm.norm_adv_by_std_in_grpo=False \
-    data.train_files=$HOME/KernelBench/KernelBench/train_dataset_correct.parquet \
-    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset_incorrect.parquet \
+    data.train_files=$HOME/KernelBench/KernelBench/train_dataset_small.parquet \
+    data.val_files=$HOME/KernelBench/KernelBench/eval_dataset_small.parquet \
     data.train_batch_size=8 \
     data.max_prompt_length=8192 \
     data.max_response_length=16384 \
@@ -53,7 +53,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.val_before_train=True \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=12 \
-    trainer.test_freq=12 \
+    trainer.save_freq=20 \
+    trainer.test_freq=20 \
     trainer.val_before_train=False \
-    trainer.total_epochs=10 $@
+    trainer.total_epochs=20 $@
