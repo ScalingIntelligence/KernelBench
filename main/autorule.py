@@ -7,6 +7,7 @@ from tqdm import tqdm
 from src.utils import create_inference_server_from_presets
 from src.run_utils import fetch_eval_results_for_problem
 from configs import parse_autorule_args, parse_cross_model_alignment_args
+from llm_utils import create_llm_client
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_DIR, "KernelBench")
@@ -62,22 +63,7 @@ def retrieve_kernel_source_from_run_dir(run_dir, level, problem_id, sample_id):
         return f.read()
 
 
-def comparative_analysis(config, run_dir):
-    pass
-
-
-def rule_extraction(config, run_dir):
-    pass
-
-def rule_merging(config, run_dir):
-    pass
-
-
-def rule_alignment(config, run_dir):
-    pass
-
-
-def autorule(config, epoch_run_dir, inference_server):
+def autorule(config, epoch_run_dir, llm_client):
     autorule_path = os.path.join(epoch_run_dir, "autorule")
     os.makedirs(os.path.join(autorule_path, "rule_generation"), exist_ok=True)
     os.makedirs(os.path.join(autorule_path, "rule_alignment"), exist_ok=True)
@@ -131,7 +117,7 @@ Kernel 2 (runtime: {kernel2['runtime']} ms):
         with open(os.path.join(autorule_path, "rule_generation", key, "comparative_analysis_kernels.json"), "w") as f:
             json.dump({"kernel1": value["kernel1"], "kernel2": value["kernel2"]}, f, indent=2)
 
-        response, reasoning_trace, usage = inference_server(value["prompt"])
+        response, reasoning_trace, usage = llm_client.text_completion(value["prompt"])
 
         comparative_analysis_traces[key] = {"response": response, "reasoning_trace": reasoning_trace, "usage": usage}
         with open(os.path.join(autorule_path, "rule_generation", key, "comparative_analysis_response.json"), "w") as f:
@@ -164,7 +150,7 @@ Return the list as a JSON array of strings. Do not use ``json``, just output the
 {trace['response']}
 """
 
-        rule_response, rule_reasoning_trace, rule_usage = inference_server(prompt)
+        rule_response, rule_reasoning_trace, rule_usage = llm_client.text_completion(prompt)
 
         with open(os.path.join(autorule_path, "rule_generation", key, "rule_response.json"), "w") as f:
             json.dump({"response": rule_response, "reasoning_trace": rule_reasoning_trace, "usage": rule_usage}, f, indent=2)
@@ -202,7 +188,7 @@ Return the merged list as a JSON array of strings. Do not use ``json``, just out
 [Rules]
 {rules_str}
 """
-    rule_response, rule_reasoning_trace, rule_usage = inference_server(prompt)
+    rule_response, rule_reasoning_trace, rule_usage = llm_client.text_completion(prompt)
 
     if "```json" in rule_response:
         rule_response = rule_response.split("```json")[1].split("```")[0].strip()
@@ -254,8 +240,8 @@ Return the merged list as a JSON array of strings. Do not use ``json``, just out
             kernel1_src = retrieve_kernel_source_from_run_dir(epoch_run_dir, "generation", config.level, kernels[0]["problem_id"], kernels[0]["sample_id"])
             kernel2_src = retrieve_kernel_source_from_run_dir(epoch_run_dir, "generation", config.level, kernels[1]["problem_id"], kernels[1]["sample_id"])
 
-            kernel1_is_satisfied, kernel1_usage = rule_is_satisfied(rule, kernel1_src, inference_server)
-            kernel2_is_satisfied, kernel2_usage = rule_is_satisfied(rule, kernel2_src, inference_server)
+            kernel1_is_satisfied, kernel1_usage = rule_is_satisfied(rule, kernel1_src, llm_client)
+            kernel2_is_satisfied, kernel2_usage = rule_is_satisfied(rule, kernel2_src, llm_client)
             print(f"Kernel 1 is satisfied: {kernel1_is_satisfied}, Kernel 2 is satisfied: {kernel2_is_satisfied}")
             
             if kernel1_is_satisfied and kernel2_is_satisfied:
@@ -346,13 +332,12 @@ def main(config):
     best_k_kernels = read_best_k_kernels(config.level, test=config.test)
 
     # Create inference server
-    inference_server = create_inference_server_from_presets(server_type=config.server_type,
-                                                        server_address=f"http://{config.vllm_host}:{config.vllm_port}/v1",
-                                                        model_name=config.model_name,
-                                                        temperature=config.temperature,
-                                                        max_tokens=config.max_tokens,
-                                                        verbose=config.verbose)
- 
+    llm_client = create_llm_client(os.path.join(config.run_dir, "llm_usage.json"),
+                                   default_model_name=config.model_name,
+                                   default_base_api=f"http://{config.vllm_host}:{config.vllm_port}/v1",
+                                   default_temperature=config.temperature,
+                                   default_max_tokens=config.max_tokens)
+
 
     # Step 1: get comparative analysis reasoning traces
     print("Step 1: get comparative analysis reasoning traces")
@@ -404,7 +389,7 @@ Kernel 2 (runtime: {kernel2['runtime']} ms):
         with open(os.path.join(AUTORULE_PATH, config.model_name, f"level{config.level}", "rule_generation", key, "comparative_analysis_kernels.json"), "w") as f:
             json.dump({"kernel1": value["kernel1"], "kernel2": value["kernel2"]}, f, indent=2)
 
-        response, reasoning_trace, usage = inference_server(value["prompt"])
+        response, reasoning_trace, usage = llm_client.text_completion(value["prompt"])
 
         comparative_analysis_traces[key] = {"response": response, "reasoning_trace": reasoning_trace, "usage": usage}
         with open(os.path.join(AUTORULE_PATH, config.model_name, f"level{config.level}", "rule_generation", key, "comparative_analysis_response.json"), "w") as f:
@@ -443,7 +428,7 @@ Return the list as a JSON array of strings. Do not use ``json``, just output the
 {trace['response']}
 """
 
-        rule_response, rule_reasoning_trace, rule_usage = inference_server(prompt)
+        rule_response, rule_reasoning_trace, rule_usage = llm_client.text_completion(prompt)
         if rule_usage is not None:
             total_usage["prompt_tokens"] += rule_usage["prompt_tokens"] if "prompt_tokens" in rule_usage else 0
             total_usage["completion_tokens"] += rule_usage["completion_tokens"] if "completion_tokens" in rule_usage else 0
@@ -486,7 +471,7 @@ Return the merged list as a JSON array of strings. Do not use ``json``, just out
 [Rules]
 {rules_str}
 """
-    rule_response, rule_reasoning_trace, rule_usage = inference_server(prompt)
+    rule_response, rule_reasoning_trace, rule_usage = llm_client.text_completion(prompt)
     if rule_usage is not None:
         total_usage["prompt_tokens"] += rule_usage["prompt_tokens"] if "prompt_tokens" in rule_usage else 0
         total_usage["completion_tokens"] += rule_usage["completion_tokens"] if "completion_tokens" in rule_usage else 0

@@ -207,3 +207,29 @@ def parse_evolrule_args():
     args.num_samples = 1
 
     return args
+
+def parse_autorule_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run_name", type=str, required=True)
+
+    parser.add_argument("--num_samples_per_problem", type=int, default=1)
+    parser.add_argument("--sample_best_and_worst", type=bool, default=True)
+    parser.add_argument("--num_alignment_samples", type=int, default=50)
+    parser.add_argument("--total_validation_limit", type=int, default=200)
+    parser.add_argument("--alignment_threshold", type=float, default=0.70)
+
+    args = parser.parse_args()
+    return args
+
+def parse_cross_model_alignment_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run_name", type=str, required=True)
+
+    parser.add_argument("--num_samples_per_problem", type=int, default=1)
+    parser.add_argument("--sample_best_and_worst", type=bool, default=True)
+    parser.add_argument("--num_alignment_samples", type=int, default=50)
+    parser.add_argument("--total_validation_limit", type=int, default=200)
+    parser.add_argument("--alignment_threshold", type=float, default=0.70)
+
+    args = parser.parse_args()
+    return args

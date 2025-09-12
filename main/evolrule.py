@@ -3,6 +3,7 @@ import multiprocessing as mp
 import os
 import yaml
 from datasets import load_dataset
+from llm_utils import create_llm_client, get_usage_summary
 
 from src.dataset import construct_kernelbench_dataset
 from src.utils import set_gpu_arch, create_inference_server_from_presets
@@ -58,13 +59,13 @@ def main(config):
     assert config.num_eval_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_eval_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     # Create inference function with config parameters
-    inference_server = create_inference_server_from_presets(server_type=config.server_type,
-                                                        server_address=f"http://{config.vllm_host}:{config.vllm_port}/v1",
-                                                        model_name=config.model_name,
-                                                        temperature=config.temperature,
-                                                        max_tokens=config.max_tokens,
-                                                        verbose=config.verbose)
-    
+    default_base_api = f"http://{config.vllm_host}:{config.vllm_port}/v1" if config.server_type == "vllm" else None
+    llm_client = create_llm_client(os.path.join(run_dir, "llm_usage.json"),
+                                   default_model_name=config.model_name,
+                                   default_base_api=default_base_api,
+                                   default_temperature=config.temperature,
+                                   default_max_tokens=config.max_tokens)
+        
     rule_path = None
     for epoch in range(config.num_epochs):
         print(f"Epoch {epoch}")
@@ -73,11 +74,12 @@ def main(config):
 
         # 1. Generation
         generation_dir = os.path.join(epoch_run_dir, "generation")
-        iterative_refinement(config, config.level, problem_id_range, inference_server, generation_dir, rule_path)
+        os.makedirs(generation_dir, exist_ok=True)
+        iterative_refinement(config, config.level, problem_id_range, llm_client, generation_dir, rule_path)
 
 
         # 2. AutoRule: Comparative Analysis
-        rules = autorule(config, epoch_run_dir, inference_server)
+        rules = autorule(config, epoch_run_dir, llm_client)
         print(f"Rules: {rules}")
 
         # 3. Prompt Evolution (update rule_path)

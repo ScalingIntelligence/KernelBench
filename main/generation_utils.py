@@ -11,18 +11,18 @@ from src.dataset import fetch_ref_arch_from_level_problem_id
 from src.run_utils import check_if_kernel_exists
 
 
-def generate_sample_single(work: WorkArgs, config, inference_server: callable, run_dir: str, rule_path=None) -> bool:
+def generate_sample_single(work: WorkArgs, config, llm_client, run_dir: str, rule_path=None) -> bool:
     ref_arch_src, _ = fetch_ref_arch_from_level_problem_id(work.level, work.problem_id, config.dataset_src)
 
     # Construct Prompt   
-    custom_cuda_prompt = generate_prompt(work, config, ref_arch_src, inference_server, run_dir, rule_path)
+    custom_cuda_prompt = generate_prompt(work, config, ref_arch_src, llm_client, run_dir, rule_path)
     if config.log_prompt:
         prompt_path = os.path.join(run_dir, f"level_{work.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt")
         with open(prompt_path, "w") as f:
             f.write(custom_cuda_prompt)
 
     # Query server with constructed prompt
-    custom_cuda, reasoning_trace, usage = inference_server(custom_cuda_prompt)
+    custom_cuda, reasoning_trace, usage = llm_client.text_completion(custom_cuda_prompt)
     if config.log_response:
         response_path = os.path.join(run_dir, f"level_{work.level}_problem_{work.problem_id}_sample_{work.sample_id}_response.txt")
         response = f"REASONING TRACE:\n{reasoning_trace}\n\nANSWER:\n{custom_cuda}\n\nUsage:\n{usage}"
@@ -43,9 +43,9 @@ def generate_sample_single(work: WorkArgs, config, inference_server: callable, r
     
     return True
 
-def generate_sample_launcher(work: WorkArgs, config, inference_server: callable, run_dir: str, rule_path=None):
+def generate_sample_launcher(work: WorkArgs, config, llm_client, run_dir: str, rule_path=None):
     try:
-        return generate_sample_single(work, config, inference_server, run_dir, rule_path)
+        return generate_sample_single(work, config, llm_client, run_dir, rule_path)
     except Exception as e:
         print(f"Error generating problem {work.problem_id} sample {work.sample_id}: {e}")
         print(traceback.format_exc()) 
@@ -55,7 +55,7 @@ def generate_sample_launcher(work: WorkArgs, config, inference_server: callable,
 def batch_generate(
     total_work: list[WorkArgs],
     config,
-    inference_server: callable,
+    llm_client,
     run_dir: str,
     rule_path=None
 ):
@@ -67,7 +67,7 @@ def batch_generate(
                       time_interval=config.api_query_interval, 
                       # extra args
                       config=config, 
-                      inference_server=inference_server,
+                      llm_client=llm_client,
                       run_dir=run_dir,
                       rule_path=rule_path
                       )

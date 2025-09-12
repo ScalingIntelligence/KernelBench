@@ -4,6 +4,7 @@ import torch
 import multiprocessing as mp
 from datasets import load_dataset
 import wandb
+from llm_utils import create_llm_client
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -11,7 +12,7 @@ import sys
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(REPO_TOP_DIR)
 
-from src.utils import set_gpu_arch, create_inference_server_from_presets, WorkArgs
+from src.utils import set_gpu_arch, WorkArgs
 from src.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_level_problem_id
 
 from main.configs import parse_test_time_scaling_args, RUNS_DIR
@@ -26,7 +27,7 @@ Implements basic test-time scaling approaches
 4. Stanford: NL idea gen + branching (TODO)
 """
 
-def base(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
+def base(config, level, problem_id_range: range, llm_client: callable, run_dir: str):
     """
     Base approach
     """
@@ -41,13 +42,13 @@ def base(config, level, problem_id_range: range, inference_server: callable, run
             )
         )
     
-    batch_generate(workload, config, inference_server, run_dir)    
+    batch_generate(workload, config, llm_client, run_dir)    
     
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
     batch_eval(workload, config, run_dir, eval_file_path)
 
 
-def best_of_n(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
+def best_of_n(config, level, problem_id_range: range, llm_client: callable, run_dir: str):
     """
     Best-of-N approach
     Generate num_samples for each problem independently
@@ -66,12 +67,12 @@ def best_of_n(config, level, problem_id_range: range, inference_server: callable
                 )
             )
         
-        batch_generate(workload, config, inference_server, run_dir)     
+        batch_generate(workload, config, llm_client, run_dir)     
         batch_eval(workload, config, run_dir, eval_file_path) 
 
 
 
-def iterative_refinement(config, level, problem_id_range: range, inference_server: callable, run_dir: str, rule_path=None):
+def iterative_refinement(config, level, problem_id_range: range, llm_client: callable, run_dir: str, rule_path=None):
     """
     Iterative refinement approach
     """
@@ -93,11 +94,11 @@ def iterative_refinement(config, level, problem_id_range: range, inference_serve
                     )
                 )
 
-        batch_generate(workload, config, inference_server, run_dir, rule_path)
+        batch_generate(workload, config, llm_client, run_dir, rule_path)
         batch_eval(workload, config, run_dir, eval_file_path)
 
 
-def metr(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
+def metr(config, level, problem_id_range: range, llm_client: callable, run_dir: str):
     """
     METR approach
     1. Generate 8 samples in parallel
@@ -140,7 +141,7 @@ def metr(config, level, problem_id_range: range, inference_server: callable, run
                 )
             )
     
-    batch_generate(workload, config, inference_server, run_dir)
+    batch_generate(workload, config, llm_client, run_dir)
     batch_eval(workload, config, run_dir, eval_file_path)
 
     # 2. Continue generating samples until we reach num_samples
@@ -156,11 +157,11 @@ def metr(config, level, problem_id_range: range, inference_server: callable, run
                 )
             )
             
-        batch_generate(workload, config, inference_server, run_dir)
+        batch_generate(workload, config, llm_client, run_dir)
         batch_eval(workload, config, run_dir, eval_file_path)
 
 
-def stanford(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
+def stanford(config, level, problem_id_range: range, llm_client: callable, run_dir: str):
     """
     Stanford approach: Beam Search variant
     """
@@ -180,7 +181,7 @@ def stanford(config, level, problem_id_range: range, inference_server: callable,
                     )
                 )
         
-        batch_generate(workload, config, inference_server, run_dir)
+        batch_generate(workload, config, llm_client, run_dir)
         batch_eval(workload, config, run_dir, eval_file_path)
 
 
@@ -237,26 +238,26 @@ def main(config):
     assert config.num_eval_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_eval_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     # Create inference function with config parameters
-    inference_server = create_inference_server_from_presets(server_type=config.server_type,
-                                                        server_address=f"http://{config.vllm_host}:{config.vllm_port}/v1",
-                                                        model_name=config.model_name,
-                                                        temperature=config.temperature,
-                                                        max_tokens=config.max_tokens,
-                                                        verbose=config.verbose)
+    default_base_api = f"http://{config.vllm_host}:{config.vllm_port}/v1" if config.server_type == "vllm" else None
+    llm_client = create_llm_client(os.path.join(run_dir, "llm_usage.json"),
+                                   default_model_name=config.model_name,
+                                   default_base_api=default_base_api,
+                                   default_temperature=config.temperature,
+                                   default_max_tokens=config.max_tokens)
     
 
     # Run the test-time scaling approach
     match config.method:
         case "base":
-            base(config, config.level, problem_id_range, inference_server, run_dir)
+            base(config, config.level, problem_id_range, llm_client, run_dir)
         case "best-of-N":
-            best_of_n(config, config.level, problem_id_range, inference_server, run_dir)
+            best_of_n(config, config.level, problem_id_range, llm_client, run_dir)
         case "iterative refinement":
-            iterative_refinement(config, config.level, problem_id_range, inference_server, run_dir)
+            iterative_refinement(config, config.level, problem_id_range, llm_client, run_dir)
         case "METR":
-            metr(config, config.level, problem_id_range, inference_server, run_dir)
+            metr(config, config.level, problem_id_range, llm_client, run_dir)
         case "Stanford":
-            stanford(config, config.level, problem_id_range, inference_server, run_dir)
+            stanford(config, config.level, problem_id_range, llm_client, run_dir)
         case _:
             raise ValueError(f"Invalid method: {config.method}")
  

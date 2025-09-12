@@ -35,7 +35,7 @@ class WorkArgs:
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from together import Together
 from openai import OpenAI
-import google.generativeai as genai
+from google import genai
 import anthropic
 import boto3
 
@@ -137,7 +137,8 @@ def query_server(
             )
             model = model_name
         case "google":
-            genai.configure(api_key=GEMINI_KEY)
+            # genai.configure(api_key=GEMINI_KEY)
+            client = genai.Client(api_key=GEMINI_KEY)
             model = model_name
         case "together":
             client = Together(api_key=TOGETHER_KEY)
@@ -205,23 +206,17 @@ def query_server(
         outputs = [choice.text for choice in response.content if not hasattr(choice, 'thinking') or not choice.thinking]
 
     elif server_type == "google":
-        # assert model_name == "gemini-1.5-flash-002", "Only test this for now"
-
-        generation_config = {
+        generation_config = genai.GenerationConfig({
             "temperature": temperature,
             "top_p": top_p,
             "top_k": top_k,
             "max_output_tokens": max_tokens,
             "response_mime_type": "text/plain",
-        }
+        })
 
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=system_prompt,
-            generation_config=generation_config,
-        )
-
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=model_name, contents=prompt, generation_config=generation_config
+        ) 
 
         return response.text, "", None
 

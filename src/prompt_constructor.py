@@ -393,7 +393,7 @@ Here is your idea for how to improve the kernel:
     return prompt
 
 
-def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False, rule_path=None) -> str:
+def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: str, llm_client, run_dir: str, triton=False, rule_path=None) -> str:
     if work.sample_id < config.num_parallel:
         return prompt_main(ref_arch_src, config, triton)
     
@@ -410,7 +410,7 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: s
     return prompt
 
 
-def generate_prompt_metr(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False) -> str:
+def generate_prompt_metr(work: WorkArgs, config, ref_arch_src: str, llm_client, run_dir: str, triton=False) -> str:
     if work.sample_id <= config.num_parallel:
         return prompt_main(ref_arch_src, config, triton)
     
@@ -435,7 +435,7 @@ def generate_prompt_metr(work: WorkArgs, config, ref_arch_src: str, inference_se
     return prompt_refinement_from_last_kernel(ref_arch_src, config, sampled_kernel_src, sampled_kernel_eval_result, triton)
 
 
-def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False) -> str:
+def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, llm_client, run_dir: str, triton=False) -> str:
     if work.sample_id < config.num_parallel:
         return prompt_main(ref_arch_src, config, triton)
     
@@ -459,13 +459,14 @@ def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, inferenc
 
     prompt = prompt_idea_generation(ref_arch_src, config, last_step_best_kernel_src, last_step_best_kernel, triton)
 
-    idea = inference_server(prompt)
+    idea = llm_client.text_completion(prompt)
+    idea = idea['choices'][0]['message']['content']
 
     prompt = prompt_refinement_from_idea(ref_arch_src, config, last_step_best_kernel_src, last_step_best_kernel, idea, triton)
     return prompt
 
 
-def generate_prompt(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, rule_path=None) -> str:
+def generate_prompt(work: WorkArgs, config, ref_arch_src: str, llm_client, run_dir: str, rule_path=None) -> str:
     triton = "KernelLLM" in config.model_name
     match config.method:
         case "base":
@@ -473,11 +474,11 @@ def generate_prompt(work: WorkArgs, config, ref_arch_src: str, inference_server:
         case "best-of-N":
             return prompt_main(ref_arch_src, config, triton)
         case "iterative refinement":
-            return generate_prompt_iterative_refinement(work, config, ref_arch_src, inference_server, run_dir, triton, rule_path)
+            return generate_prompt_iterative_refinement(work, config, ref_arch_src, llm_client, run_dir, triton, rule_path)
         case "METR":
-            return generate_prompt_metr(work, config, ref_arch_src, inference_server, run_dir, triton)
+            return generate_prompt_metr(work, config, ref_arch_src, llm_client, run_dir, triton)
         case "Stanford":
-            return generate_prompt_stanford(work, config, ref_arch_src, inference_server, run_dir, triton)
+            return generate_prompt_stanford(work, config, ref_arch_src, llm_client, run_dir, triton)
         case _:
             raise ValueError(f"Invalid method: {config.method}")
 
