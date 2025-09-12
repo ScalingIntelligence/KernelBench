@@ -1,6 +1,6 @@
 import os
 import random
-from .utils import read_file, WorkArgs
+from .utils import read_file, read_json_file, WorkArgs
 from .run_utils import fetch_kernel_from_disk, fetch_eval_results_for_problem, fetch_eval_result_from_disk
 from .eval import KernelExecResult
 
@@ -111,7 +111,7 @@ def prompt_bare(ref_arch_src: str, triton=False) -> str:
 
 
 def prompt_with_one_example(
-    arc_src: str, example_arch_src: str, example_new_arch_src: str, triton=False
+    arc_src: str, example_arch_src: str, example_new_arch_src: str, triton=False, rule_path=None
 ) -> str:
     prompt = get_problem_statement(triton)
 
@@ -126,6 +126,14 @@ def prompt_with_one_example(
 {example_new_arch_src}
 ``` \n
         """
+    
+    if rule_path is not None:
+        rules = read_json_file(rule_path)
+        rules_str = "\n".join(rules)
+
+        prompt += f"""Here are guidelines for writing efficient CUDA kernels: \n
+{rules_str}
+"""
 
     prompt += f"""
     You are given the following architecture: \n
@@ -137,7 +145,7 @@ def prompt_with_one_example(
     return prompt
 
 
-def prompt_base(ref_arch_src: str, triton=False) -> str:
+def prompt_base(ref_arch_src: str, triton=False, rule_path=None) -> str:
     """
     Using prompt example (an element-wise addition) for prompt templates
     The most basic form of example just to show LLM the task and the expected output format
@@ -170,7 +178,7 @@ def prompt_base(ref_arch_src: str, triton=False) -> str:
     example_arch = read_file(example_arch_path)
     example_new_arch = read_file(example_new_arch_path)
 
-    return prompt_with_one_example(arch, example_arch, example_new_arch, triton)
+    return prompt_with_one_example(arch, example_arch, example_new_arch, triton, rule_path)
 
 
 def prompt_cot(ref_arch_src: str, cot_example: str = "ex_fuse_gelu", triton=False) -> str:
@@ -266,10 +274,10 @@ Here is an example architecture:\n\n
     return prompt
 
 
-def prompt_main(ref_arch_src: str, config, triton=False) -> str:
+def prompt_main(ref_arch_src: str, config, triton=False, rules=None) -> str:
     match config.prompt:
         case "regular":
-            return prompt_base(ref_arch_src, triton)
+            return prompt_base(ref_arch_src, triton, rules)
         case "cot":
             return prompt_cot(ref_arch_src, cot_example="ex_fuse_gelu", triton=triton)
         case _:
@@ -308,7 +316,7 @@ Here is your wall clock time: {runtime} milliseconds.
 """
 
     return evaluation_feedback
-
+ 
 
 def prompt_refinement_from_last_kernel(ref_arch_src: str, config, last_kernel_src: str, last_exec_result: KernelExecResult, triton=False) -> str:
     prompt = prompt_main(ref_arch_src, config, triton)
@@ -327,8 +335,8 @@ Your generated architecture ModelNew and kernel was evaluated on GPU and checked
     return prompt
 
 
-def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]], triton=False) -> str:
-    prompt = prompt_base(ref_arch_src, triton)
+def prompt_refinement_from_history(ref_arch_src: str, history: list[tuple[str, KernelExecResult]], triton=False, rule_path=None) -> str:
+    prompt = prompt_base(ref_arch_src, triton, rule_path)
 
     for kernel_src, exec_result in history:
 
@@ -385,7 +393,7 @@ Here is your idea for how to improve the kernel:
     return prompt
 
 
-def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False) -> str:
+def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, triton=False, rule_path=None) -> str:
     if work.sample_id < config.num_parallel:
         return prompt_main(ref_arch_src, config, triton)
     
@@ -397,7 +405,7 @@ def generate_prompt_iterative_refinement(work: WorkArgs, config, ref_arch_src: s
         history.append((kernel_src, exec_result))
     
     # Construct prompt
-    prompt = prompt_refinement_from_history(ref_arch_src, history, triton)
+    prompt = prompt_refinement_from_history(ref_arch_src, history, triton, rule_path)
     
     return prompt
 
@@ -457,7 +465,7 @@ def generate_prompt_stanford(work: WorkArgs, config, ref_arch_src: str, inferenc
     return prompt
 
 
-def generate_prompt(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str) -> str:
+def generate_prompt(work: WorkArgs, config, ref_arch_src: str, inference_server: callable, run_dir: str, rule_path=None) -> str:
     triton = "KernelLLM" in config.model_name
     match config.method:
         case "base":
@@ -465,7 +473,7 @@ def generate_prompt(work: WorkArgs, config, ref_arch_src: str, inference_server:
         case "best-of-N":
             return prompt_main(ref_arch_src, config, triton)
         case "iterative refinement":
-            return generate_prompt_iterative_refinement(work, config, ref_arch_src, inference_server, run_dir, triton)
+            return generate_prompt_iterative_refinement(work, config, ref_arch_src, inference_server, run_dir, triton, rule_path)
         case "METR":
             return generate_prompt_metr(work, config, ref_arch_src, inference_server, run_dir, triton)
         case "Stanford":

@@ -529,6 +529,14 @@ def read_file(file_path) -> str:
         print(f"Error reading file {file_path}: {e}")
         return ""
 
+def read_json_file(file_path) -> dict:
+    if not os.path.exists(file_path):
+        print(f"File {file_path} does not exist")
+        return {}
+    
+    with open(file_path, "r") as file:
+        return json.load(file)
+
 
 def print_messages(messages):
     for message in messages:

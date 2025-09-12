@@ -67,10 +67,11 @@ def best_of_n(config, level, problem_id_range: range, inference_server: callable
             )
         
         batch_generate(workload, config, inference_server, run_dir)     
-        batch_eval(workload, config, run_dir, eval_file_path)
+        batch_eval(workload, config, run_dir, eval_file_path) 
 
 
-def iterative_refinement(config, level, problem_id_range: range, inference_server: callable, run_dir: str):
+
+def iterative_refinement(config, level, problem_id_range: range, inference_server: callable, run_dir: str, rule_path=None):
     """
     Iterative refinement approach
     """
@@ -92,7 +93,7 @@ def iterative_refinement(config, level, problem_id_range: range, inference_serve
                     )
                 )
 
-        batch_generate(workload, config, inference_server, run_dir)
+        batch_generate(workload, config, inference_server, run_dir, rule_path)
         batch_eval(workload, config, run_dir, eval_file_path)
 
 

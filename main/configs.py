@@ -163,3 +163,47 @@ def parse_eval_server_args():
     args = parser.parse_args()
     args.method = "base"
     return args
+
+
+def parse_evolrule_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run_name", type=str, required=True)
+
+    parser.add_argument("--num_epochs", type=int, default=2)
+    parser.add_argument("--autorule_num_samples_per_problem", type=int, default=1)
+    parser.add_argument("--autorule_sample_best_and_worst", type=bool, default=True)
+    parser.add_argument("--autorule_num_alignment_samples", type=int, default=50)
+    parser.add_argument("--autorule_total_validation_limit", type=int, default=200)
+    parser.add_argument("--autorule_alignment_threshold", type=float, default=0.70)
+
+    # Test-time Scaling Methods
+    parser.add_argument("--num_parallel", type=int, default=8)
+    parser.add_argument("--num_iterations", type=int, default=4)
+
+    # Dataset
+    parser.add_argument("--dataset_src", type=str, default="local")
+    parser.add_argument("--dataset_name", type=str, default="ScalingIntelligence/KernelBench")
+    parser.add_argument("--level", type=int, required=True)
+    parser.add_argument("--subset", type=str, default="(None, None)")
+
+    # Inference Server
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-0.5B-Instruct")
+    add_inference_args(parser)
+    
+    # Eval
+    parser.add_argument("--eval_mode", type=str, default="local") # should be local
+    parser.add_argument("--eval_server_host", type=str, default="localhost") # eval_mode is remote
+    parser.add_argument("--eval_server_port", type=int, default=12345) # eval_mode is remote
+    add_eval_args(parser)
+
+    add_logging_args(parser)
+
+    args = parser.parse_args()
+
+    # Post processing
+    args = post_process_dataset_args(args)
+    args.method = "iterative refinement"
+    args.prompt = "regular"
+    args.num_samples = 1
+
+    return args
