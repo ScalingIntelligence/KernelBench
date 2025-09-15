@@ -240,8 +240,8 @@ def main(config):
     # Create inference function with config parameters
     default_base_api = f"http://{config.vllm_host}:{config.vllm_port}/v1" if config.server_type == "vllm" else None
     llm_client = create_llm_client(os.path.join(run_dir, "llm_usage.json"),
-                                   default_model_name=config.model_name,
-                                   default_base_api=default_base_api,
+                                   default_model=config.model_name,
+                                   default_api_base=default_base_api,
                                    default_temperature=config.temperature,
                                    default_max_tokens=config.max_tokens)
     

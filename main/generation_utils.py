@@ -8,7 +8,7 @@ import traceback
 from src.utils import maybe_multithread, extract_last_code, WorkArgs
 from src.prompt_constructor import generate_prompt
 from src.dataset import fetch_ref_arch_from_level_problem_id
-from src.run_utils import check_if_kernel_exists
+from src.run_utils import check_if_response_exists
 
 
 def generate_sample_single(work: WorkArgs, config, llm_client, run_dir: str, rule_path=None) -> bool:
@@ -22,12 +22,11 @@ def generate_sample_single(work: WorkArgs, config, llm_client, run_dir: str, rul
             f.write(custom_cuda_prompt)
 
     # Query server with constructed prompt
-    custom_cuda, reasoning_trace, usage = llm_client.text_completion(custom_cuda_prompt)
+    custom_cuda = llm_client.text_completion(custom_cuda_prompt, reasoning_effort="low")["choices"][0]["message"]["content"]
     if config.log_response:
         response_path = os.path.join(run_dir, f"level_{work.level}_problem_{work.problem_id}_sample_{work.sample_id}_response.txt")
-        response = f"REASONING TRACE:\n{reasoning_trace}\n\nANSWER:\n{custom_cuda}\n\nUsage:\n{usage}"
         with open(response_path, "w") as f:
-            f.write(response)
+            f.write(custom_cuda)
     custom_cuda = extract_last_code(custom_cuda, ["python", "cpp"])
 
     # check LLM is able to generate custom CUDA code
@@ -59,7 +58,7 @@ def batch_generate(
     run_dir: str,
     rule_path=None
 ):
-    total_work = [work for work in total_work if not check_if_kernel_exists(run_dir, work.level, work.problem_id, work.sample_id)]
+    total_work = [work for work in total_work if not check_if_response_exists(run_dir, work.level, work.problem_id, work.sample_id)]
     return maybe_multithread(generate_sample_launcher, 
                       total_work, 
                       config.num_workers, 

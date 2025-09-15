@@ -29,7 +29,7 @@ class WorkArgs:
     sample_id: int
     device: torch.device
 
-def compile_single_sample(work_args: WorkArgs, config: dict) -> tuple[bool, str]:
+def compile_single_sample(work_args: WorkArgs, config: dict, run_dir=None) -> tuple[bool, str]:
     level, problem_id, sample_id = work_args.level, work_args.problem_id, work_args.sample_id
     verbose = config["verbose"]
     
@@ -37,7 +37,8 @@ def compile_single_sample(work_args: WorkArgs, config: dict) -> tuple[bool, str]
 
     build_dir = os.path.join(KERNEL_EVAL_BUILD_DIR, config["run_name"], f"level_{level}", f"{problem_id}", f"{sample_id}")
 
-    run_dir = os.path.join(RUNS_DIR, config["run_name"])
+    if run_dir is None:
+        run_dir = os.path.join(RUNS_DIR, config["run_name"])
     kernel_src_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py")
 
     if not os.path.exists(kernel_src_path):
@@ -72,7 +73,7 @@ def remove_cache_dir(config, level, problem_id, sample_id):
         except Exception as e:
             print(f"\n[WARNING] Failed to remove cache directory {cache_dir}: {str(e)}")
 
-def batch_compile(total_work: list[tuple[int, int, int]], config: dict):
+def batch_compile(total_work: list[tuple[int, int, int]], config: dict, run_dir=None):
     """
     Batch compile cache across CPUs, assume config has num_cpu_workers
     """
@@ -84,7 +85,7 @@ def batch_compile(total_work: list[tuple[int, int, int]], config: dict):
         with mp.Pool(config["num_cpu_workers"]) as pool:
             # Create work args for each task
             work_args = [
-                (WorkArgs(level=level, problem_id=p_id, sample_id=s_idx, device=None), config)
+                (WorkArgs(level=level, problem_id=p_id, sample_id=s_idx, device=None), config, run_dir)
                 for level, p_id, s_idx in total_work
             ]
 
