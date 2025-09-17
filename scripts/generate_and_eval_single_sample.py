@@ -37,9 +37,12 @@ class EvalConfig(Config):
         # Evaluation
         # local (requires a GPU), modal (cloud GPU) coming soon
         self.eval_mode = "local"
-        # Construct this from mapping from architecture name to torch cuda arch list in the future
-        # you can either specify SM version or just use the name
-        self.gpu_arch = ["Ada"]
+        # GPU Architecture target(s) for compilation.
+        # Previously hard-coded to ["Ada"], which caused kernels to be built for SM89 on older GPUs (e.g. SM75 Turing),
+        # producing: CUDA error: no kernel image is available for execution on the device.
+        # We now auto-detect the current device's compute capability and map it to a friendly name.
+        # You can still override via CLI: gpu_arch=["75"] or gpu_arch=["Turing"].
+        self.gpu_arch = None  # defer detection until main()
 
         # Inference config
         self.server_type = "deepseek"
@@ -75,6 +78,45 @@ def main(config: EvalConfig):
 
     # Configurations
 
+    # --- GPU Arch Auto-Detection -------------------------------------------------
+    # If user did not supply gpu_arch, detect current device and set both config.gpu_arch
+    # (for logging / reproducibility) and export TORCH_CUDA_ARCH_LIST so torch cpp_extension
+    # produces SASS+PTX for the correct SM. If the user already exported TORCH_CUDA_ARCH_LIST
+    # we preserve it unless it mismatches the detected arch (warn but keep user's setting).
+    if config.gpu_arch in (None, [], [None]):
+        if torch.cuda.is_available():
+            cc = torch.cuda.get_device_capability()
+            major, minor = cc
+            sm_str = f"{major}{minor}"
+            # Friendly name mapping (extend as needed)
+            sm_name_map = {
+                "75": "Turing",  # e.g. GTX 16xx / RTX 20xx
+                "80": "Ampere",  # A100 (SM80)
+                "86": "Ampere",  # RTX 30xx GA10x
+                "89": "Ada",     # L40S / some Ada datacenter
+                "90": "Hopper",  # H100
+                "102": "Blackwell"  # example future mapping
+            }
+            friendly = sm_name_map.get(sm_str, f"SM{sm_str}")
+            config.gpu_arch = [friendly]
+
+            env_arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST")
+            desired_arch_list = sm_str
+            if env_arch_list is None:
+                os.environ["TORCH_CUDA_ARCH_LIST"] = desired_arch_list
+                if config.verbose:
+                    print(f"[GPU ARCH] Auto-set TORCH_CUDA_ARCH_LIST={desired_arch_list} ({friendly})")
+            else:
+                # check if current sm present; normalize to handle forms like '7.5' vs '75'
+                normalized_env = env_arch_list.replace(".", "")
+                if sm_str not in normalized_env:
+                    print(f"[GPU ARCH][WARNING] Detected SM {sm_str} ({friendly}) not in existing TORCH_CUDA_ARCH_LIST='{env_arch_list}'.\n"
+                          f"Compilation may target the wrong architecture. Consider: export TORCH_CUDA_ARCH_LIST={sm_str}")
+        else:
+            print("[GPU ARCH][WARNING] CUDA not available; proceeding without setting gpu_arch")
+
+    # If still no gpu_arch (e.g., CPU only) leave unset so build uses default (all arch PTX) or fails fast.
+
     if config.dataset_src == "huggingface":
         dataset = load_dataset(config.dataset_name)
         curr_level_dataset = dataset[f"level_{config.level}"]
@@ -82,7 +124,8 @@ def main(config: EvalConfig):
         curr_level_dataset = construct_kernelbench_dataset(config.level)
 
     if config.gpu_arch:
-        set_gpu_arch(config.gpu_arch)  # otherwise build for all architectures
+        # Accept either friendly names or raw SM numbers
+        set_gpu_arch(config.gpu_arch)  # sets TORCH_CUDA_ARCH_LIST if provided as list of names / numbers
 
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)

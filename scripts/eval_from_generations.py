@@ -55,9 +55,8 @@ class EvalConfig(Config):
         # Evaluation Mode: local (requires GPU), see modal (cloud GPU) in the modal file
         self.eval_mode = "local"
 
-        # Construct this from mapping from architecture name to torch cuda arch list in the future
-        # you can either specify SM version or just use the name
-        self.gpu_arch = ["Ada"]
+        # GPU Arch targets; previously hard-coded to ["Ada"]. We now auto-detect if left None.
+        self.gpu_arch = None
 
         # Logging
         # Top Directory to Store Runs
@@ -409,8 +408,29 @@ def main(config: EvalConfig):
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
 
-    # set GPU arch to configure what target to build for
-    set_gpu_arch(config.gpu_arch)
+    # Auto-detect GPU arch if not supplied, mirroring single-sample script logic
+    if config.gpu_arch in (None, [], [None]):
+        if torch.cuda.is_available():
+            cc = torch.cuda.get_device_capability(0)
+            major, minor = cc
+            sm_str = f"{major}{minor}"
+            sm_name_map = {"75": "Turing", "80": "Ampere", "86": "Ampere", "89": "Ada", "90": "Hopper", "102": "Blackwell"}
+            friendly = sm_name_map.get(sm_str, f"SM{sm_str}")
+            config.gpu_arch = [friendly]
+            env_arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST")
+            if env_arch_list is None:
+                os.environ["TORCH_CUDA_ARCH_LIST"] = sm_str
+                if config.verbose:
+                    print(f"[GPU ARCH] Auto-set TORCH_CUDA_ARCH_LIST={sm_str} ({friendly})")
+            else:
+                normalized_env = env_arch_list.replace(".", "")
+                if sm_str not in normalized_env:
+                    print(f"[GPU ARCH][WARNING] Detected SM {sm_str} ({friendly}) not in TORCH_CUDA_ARCH_LIST='{env_arch_list}'. Consider: export TORCH_CUDA_ARCH_LIST={sm_str}")
+        else:
+            print("[GPU ARCH][WARNING] CUDA not available; proceeding without gpu_arch override")
+
+    if config.gpu_arch:
+        set_gpu_arch(config.gpu_arch)
     assert config.num_gpu_devices <= torch.cuda.device_count(), f"Number of GPUs requested ({config.num_gpu_devices}) is greater than the number of available GPUs ({torch.cuda.device_count()})"
 
     # To Debug
