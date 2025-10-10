@@ -1,3 +1,9 @@
+'''
+Example Usage:
+python scripts/generate_and_eval_single_sample_modal.py dataset_src=huggingfac level=1 problem_id=1 eval_mode=modal gpu=L40S 
+    server_type=deepseek model_name=deepseek-coder max_tokens=4096 temperature=0.0
+'''
+
 import pydra
 from pydra import REQUIRED, Config
 import os, sys
@@ -99,7 +105,9 @@ image = (
         "pytest",
         "ninja",
         "utils",
+        "python-dotenv",
     )
+    .add_local_python_source("src") 
 )
 
 @app.cls(image=image)
