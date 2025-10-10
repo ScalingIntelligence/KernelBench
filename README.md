@@ -16,21 +16,25 @@ A benchmark for evaluating LLMs' ability to generate efficient GPU kernels
 We structure the problem for LLM to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity it desires to.
 ![KernelBenchMascot](./assets/figures/KernelBenchWorkFlow.png)
 
-We construct KernelBench to have 4 Levels of categories:
-- **Level 1 🧱**:  Single-kernel operators (100 Problems)
-    The foundational building blocks of neural nets (Convolutions, Matrix multiplies, Layer normalization)
-- **Level 2 🔗**:  Simple fusion patterns (100 Problems)
-    A fused kernel would be faster than separated kernels (Conv + Bias + ReLU, Matmul + Scale + Sigmoid)
-- **Level 3 ⚛️**:  Full model architectures (50 Problems)
-    Optimize entire model architectures end-to-end (MobileNet, VGG, MiniGPT, Mamba) 
-- **Level 4 🤗**:  Level Hugging Face 
-    Optimize whole model architectures from HuggingFace
+**KernelBench** is organized into four levels of increasing complexity:
+
+### 🧱 Level 1: Single-Kernel Operators (100 problems)
+The foundational building blocks of neural networks — including operations like convolutions, matrix multiplications, and layer normalization.
+
+### 🔗 Level 2: Fusion Patterns (100 problems)
+Focuses on common fused operations that benefit from being executed as a single kernel, such as Conv + Bias + ReLU or MatMul + Scale + Sigmoid.
+
+### ⚛️ Level 3: Full Model Architectures (50 problems)
+Targets end-to-end optimization of entire models, such as MobileNet, VGG, MiniGPT, and Mamba.
+
+### 🤗 Level 4: Hugging Face Models
+Kernel optimization of full model architectures sourced from Hugging Face.
 
 ## ⚖️ Evaluation
 #### Methodology
-To evaluate model-generated kernels, we need to check if they:
-- **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
-- **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
+To evaluate model-generated kernels, we need to check if they are:
+- **correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
+- **performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
 
 Check out `src/eval.py` for details on how we implement correctness check and timing. 
 
@@ -69,7 +73,7 @@ KernelBench/
 ├── runs/ # where your runs will be stored
 ```
 
-## 🔧 Set up
+## 🔧 Set Up
 ```
 conda create --name kernel-bench python=3.10
 conda activate kernel-bench
@@ -104,10 +108,10 @@ python3 scripts/generate_samples.py run_name=test_hf_level_1 dataset_src=hugging
 # 2. Evaluate on all generated kernels in runs/{run_name} directory
 python3 scripts/eval_from_generations.py run_name=test_hf_level_1 dataset_src=local level=1 num_gpu_devices=8 timeout=300
 
-# If you like to speedup evaluation, you can use parallelize compilation on CPUs before getting to evluation on GPUs
+# If you like to speedup evaluation, you can use parallelize compilation on CPUs before getting to evaluation on GPUs
 # add build_cache=True and num_cpu_workers=<num_cpu_workers> to the command
 ```
-### Analyze the eval results to compute Benchmark Performance
+### Analyze the eval results to compute benchmark performance
 We provide `scripts/benchmark_eval_analysis.py` to analyze the eval results to compute success rate, timing metric, and overall benchmark performance  `fast_p`. 
 
 ```
@@ -116,18 +120,14 @@ python3 scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=1 hard
 If you are using a different hardware, you can generate the baseline time with `scripts/generate_baseline_time.py` script.
 We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
 
-### Multi-Turn Framework
-We have also releaed the test-time framework [Caesar](https://github.com/simonguozirui/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems. 
-
 ## 🛣️ Upcoming Roadmap
-- [ ] Triton Variant (To be merged)
-- [ ] Easy to use CoLab Notebook Example
+- [ ] Triton variant (To be merged)
+- [ ] Easy to use Colab notebook example
 - [ ] Push button flow on Modal / Cloud Provider 
 - [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
 - [ ] Add backward pass
 - [ ] Integrate with toolchains such as NCU
 See Issues for the ongoing roadmap and directions.
-
 
 
 ## 🔍 Known Usage
