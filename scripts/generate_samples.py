@@ -11,6 +11,7 @@ from pydra import Config, REQUIRED
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
+from src.prompt_constructor_multilang import get_prompt_for_backend
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
@@ -50,7 +51,7 @@ class GenerationConfig(Config):
         self.run_name = REQUIRED  # name of the run
 
         # num of thread pool to call inference server in parallel
-        self.num_workers = 64
+        self.num_workers = 1
         self.api_query_interval = 0.0
 
         # Inference config
@@ -66,10 +67,13 @@ class GenerationConfig(Config):
         self.verbose = False
         self.store_type = "local"  # TODO: add Database Integration
 
-        # Number of samples to generate per problem for pass@k analysis
-        self.num_samples = 1  # Default to 1 sample per problem
+        # Future support
+        # Migrate Monkeys code base to KernelBench
+        # self.num_samples = 0 # for sampling multiple samples per problem
 
         self.log_prompt = False
+
+        self.backend = "cuda"
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -117,7 +121,16 @@ def generate_sample_single(
     ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
 
     # Construct Prompt
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    if config.backend == "cuda":
+        custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(
+            ref_arch_src
+        )
+    elif config.backend in ["triton", "tilelang", "cute"]:
+        custom_cuda_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
+    else:
+        raise ValueError(
+            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'tilelang', or 'cute'."
+        )
     if config.log_prompt:
         prompt_path = os.path.join(
             run_dir,
@@ -200,7 +213,7 @@ def main(config: GenerationConfig):
         problem_id_range = range(config.subset[0], config.subset[1])
 
     print(
-        f"Generating {config.num_samples} sample(s) each for level {config.level} problems: {problem_id_range}"
+        f"Generating on 1 sample each for level {config.level} problems: {problem_id_range}"
     )
 
     # set up run directory
@@ -216,11 +229,11 @@ def main(config: GenerationConfig):
     for problem_id in range(
         problem_id_range.start, problem_id_range.stop + 1
     ):  # end index is inclusive
-        for sample_id in range(config.num_samples):
-            if not check_kernel_exists(run_dir, config.level, problem_id, sample_id):
-                problems_to_run.append(
-                    WorkArgs(problem_id=int(problem_id), sample_id=sample_id)
-                )
+        # assume sample id is 0 for now
+        if not check_kernel_exists(run_dir, config.level, problem_id, sample_id=0):
+            problems_to_run.append(
+                WorkArgs(problem_id=int(problem_id), sample_id=0)  # fix to 0 for now
+            )
 
     # Create inference function with config parameters
     # We provide some presets in utils but you can also pass in your own, see query_server for more details
