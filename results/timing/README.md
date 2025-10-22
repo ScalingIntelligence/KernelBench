@@ -31,6 +31,7 @@ We profile baseline KernelBench problem times on a variety of hardware, across d
 | Modal | NVIDIA L4 | 24 GB | 72W | Ada |
 | Modal | NVIDIA T4 | 16 GB | 70W | Turing |
 | Modal | NVIDIA A10G | 24 GB | 300W | Ampere |
+| Lambda Labs | NVIDIA H100 PCIe | 80 GB | 350W | Hopper |
 
 Check the `timing` directory which have the timing results for each of the above hardware.
 

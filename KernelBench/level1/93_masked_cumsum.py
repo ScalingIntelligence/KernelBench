@@ -24,12 +24,12 @@ class Model(nn.Module):
         """
         return torch.cumsum(x * mask, dim=self.dim)
 
-batch_size = 128
-input_shape = (4000,)
+batch_size = 32768
+input_shape = (32768,)
 dim = 1
 
 def get_inputs():
-    x = torch.randn(batch_size, *input_shape)
+    x = torch.rand(batch_size, *input_shape)
     mask = torch.randint(0, 2, x.shape).bool()  # Random boolean mask
     return [x, mask]
 

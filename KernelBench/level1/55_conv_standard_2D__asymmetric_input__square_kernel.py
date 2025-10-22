@@ -32,15 +32,17 @@ class Model(nn.Module):
         return self.conv2d(x)
 
 # Test code
-batch_size = 16
-in_channels = 3
-out_channels = 64
+batch_size = 8
+# smaller spatial dims
+height = 512
+width = 1024
+in_channels = 64  # increased channels
+out_channels = 128
 kernel_size = 3
-width = 256
-height = 128  # Asymmetric input
+# asymmetric input: make width considerably larger than height
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, height, width)
+    x = torch.rand(batch_size, in_channels, height, width)
     return [x]
 
 def get_init_inputs():

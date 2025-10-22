@@ -32,14 +32,14 @@ class Model(nn.Module):
         return self.conv1d(x)
 
 # Test code
-batch_size = 16
-in_channels = 3
-out_channels = 64
+batch_size = 32
+in_channels = 64
+out_channels = 128
 kernel_size = 3
-length = 512
+length = 131072
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, length)
+    x = torch.rand(batch_size, in_channels, length)
     return [x]
 
 def get_init_inputs():

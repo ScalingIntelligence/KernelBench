@@ -29,7 +29,7 @@ groups = 4
 eps = 1e-5
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, depth, height, width)]
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, groups, eps]

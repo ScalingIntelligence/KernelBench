@@ -31,18 +31,18 @@ class Model(nn.Module):
         return self.conv2d(x)
 
 # Test code
-batch_size = 16
-in_channels = 3
+batch_size = 8
+in_channels = 32
 out_channels = 64
-kernel_size = (3, 5) # Asymmetric kernel
-width = 256
-height = 256
+kernel_size = (5, 9)
+width = 512
+height = 512
 stride = 1
-padding = (1, 2) # Asymmetric padding
-dilation = (2, 1) # Asymmetric dilation
+padding = (2, 4)
+dilation = (2, 3)
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, height, width)
+    x = torch.rand(batch_size, in_channels, height, width)
     return [x]
 
 def get_init_inputs():

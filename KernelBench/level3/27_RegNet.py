@@ -66,7 +66,7 @@ output_classes = 10
 
 def get_inputs():
     """ Generates random input tensor of shape (batch_size, input_channels, height, width) """
-    return [torch.randn(batch_size, input_channels, image_height, image_width)]
+    return [torch.rand(batch_size, input_channels, image_height, image_width)]
 
 def get_init_inputs():
     """ Initializes model parameters """

@@ -16,15 +16,15 @@ class Model(nn.Module):
         x = torch.tanh(x)
         return x
 
-batch_size = 128
-in_channels = 32
-out_channels = 16
-height, width = 16, 16
+batch_size = 32
+in_channels  = 64  
+out_channels = 64  
+height = width = 256 
 kernel_size = 4
 bias_shape = (out_channels, 1, 1)
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, bias_shape]

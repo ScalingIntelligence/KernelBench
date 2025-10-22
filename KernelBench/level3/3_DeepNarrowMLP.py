@@ -31,13 +31,13 @@ class Model(nn.Module):
         return self.network(x)
 
 # Test code
-batch_size = 1
-input_size = 1000
-hidden_layer_sizes = [50, 50, 50, 50, 50, 50, 50, 50]  # Example of deep and narrow layers
-output_size = 10
+batch_size = 1024
+input_size = 8192
+hidden_layer_sizes = [1024] * 16  # deep network with wider layers
+output_size = 8192
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    return [torch.rand(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, hidden_layer_sizes, output_size]

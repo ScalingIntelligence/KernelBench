@@ -83,11 +83,13 @@ image = (
         "ninja",
         "utils",
         "einops",
+        "python-dotenv",
     )
     .add_local_dir(
         KERNEL_BENCH_PATH,
         remote_path="/root/KernelBench"
     )
+    .add_local_python_source("src") 
 )
 
 def write_batch_to_json(entries_to_write: list, f_path: str):

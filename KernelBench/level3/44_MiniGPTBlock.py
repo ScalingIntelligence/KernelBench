@@ -91,7 +91,7 @@ attn_pdrop = 0.0
 resid_pdrop = 0.0
 
 def get_inputs():
-    return [torch.randn(batch_size, seq_len, n_embd)]
+    return [torch.rand(batch_size, seq_len, n_embd)]
 
 def get_init_inputs():
     return [n_embd, n_head, attn_pdrop, resid_pdrop, max_seqlen]

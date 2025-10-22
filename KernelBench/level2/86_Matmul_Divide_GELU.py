@@ -22,13 +22,13 @@ class Model(nn.Module):
         x = torch.nn.functional.gelu(x)
         return x
 
-batch_size = 128
-input_size = 512
-output_size = 1024
+batch_size = 1024
+input_size = 8192
+output_size = 8192
 divisor = 10.0
 
 def get_inputs():
-    return [torch.randn(batch_size, input_size)]
+    return [torch.rand(batch_size, input_size)]
 
 def get_init_inputs():
     return [input_size, output_size, divisor]

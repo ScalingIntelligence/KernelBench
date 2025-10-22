@@ -33,8 +33,8 @@ class Model(nn.Module):
         return torch.cumsum(x, dim=self.dim)
 
 # Define input dimensions and parameters
-batch_size = 128
-input_shape = (4000,)  # Example shape (arbitrary)
+batch_size = 32768
+input_shape = (32768,)
 dim = 1
 
 def get_inputs():
@@ -45,7 +45,7 @@ def get_inputs():
         list: A list containing a single randomly generated tensor with shape 
               (batch_size, *input_shape).
     """
-    return [torch.randn(batch_size, *input_shape)]
+    return [torch.rand(batch_size, *input_shape)]
 
 def get_init_inputs():
     """

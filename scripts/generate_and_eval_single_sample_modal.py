@@ -114,8 +114,7 @@ image = (
         "nvidia-cutlass-dsl",
         
     )
-    #.add_local_dir(os.path.join(REPO_TOP_DIR, "KernelBench"), remote_path="/root/KernelBench")
-    .add_local_dir(os.path.join(REPO_TOP_DIR, "src"), remote_path="/root/src")
+    .add_local_python_source("src") 
 )
 
 @app.cls(image=image)

@@ -33,7 +33,7 @@ scale2 = 1.0
 bias_shape = (out_channels, 1, 1, 1)
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, depth, height, width)]
+    return [torch.rand(batch_size, in_channels, depth, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, scale1, scale2, bias_shape]

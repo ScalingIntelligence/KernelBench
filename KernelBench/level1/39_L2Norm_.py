@@ -26,11 +26,12 @@ class Model(nn.Module):
         """
         return x / torch.norm(x, p=2, dim=1, keepdim=True)
 
-batch_size = 16
-dim = 16384
+batch_size = 32768
+# choose dim so total <2^31
+dim = 65535
 
 def get_inputs():
-    x = torch.randn(batch_size, dim)
+    x = torch.rand(batch_size, dim)
     return [x]
 
 def get_init_inputs():

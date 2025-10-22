@@ -21,13 +21,14 @@ class Model(nn.Module):
         Returns:
             torch.Tensor: Output tensor with L1 normalization applied, same shape as input.
         """
-        return x / torch.sum(torch.abs(x), dim=1, keepdim=True)
+        return x / torch.mean(torch.abs(x), dim=1, keepdim=True)
 
-batch_size = 16
-dim = 16384
+batch_size = 32768
+# choose dim so total <2^31
+dim = 65535
 
 def get_inputs():
-    x = torch.randn(batch_size, dim)
+    x = torch.rand(batch_size, dim)
     return [x]
 
 def get_init_inputs():

@@ -41,7 +41,7 @@ height = 64
 depth = 64
 
 def get_inputs():
-    x = torch.randn(batch_size, in_channels, width, height, depth)
+    x = torch.rand(batch_size, in_channels, width, height, depth)
     return [x]
 
 def get_init_inputs():

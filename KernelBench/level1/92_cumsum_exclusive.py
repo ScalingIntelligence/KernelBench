@@ -17,12 +17,12 @@ class Model(nn.Module):
         exclusive_cumsum = torch.cat((torch.zeros_like(x.select(self.dim, 0).unsqueeze(self.dim)), x), dim=self.dim)[:-1]
         return torch.cumsum(exclusive_cumsum, dim=self.dim)
 
-batch_size = 128
-input_shape = (4000,)
+batch_size = 32768
+input_shape = (32768,)
 dim = 1
 
 def get_inputs():
-    return [torch.randn(batch_size, *input_shape)]
+    return [torch.rand(batch_size, *input_shape)]
 
 def get_init_inputs():
     return [dim]

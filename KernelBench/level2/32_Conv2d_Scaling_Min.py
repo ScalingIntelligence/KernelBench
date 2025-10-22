@@ -22,15 +22,15 @@ class Model(nn.Module):
         x = torch.min(x, dim=1, keepdim=True)[0]  # Minimum along channel dimension
         return x
 
-batch_size = 128
-in_channels = 3
-out_channels = 16
-height, width = 32, 32
+batch_size = 64
+in_channels = 64
+out_channels = 128
+height = width = 256
 kernel_size = 3
 scale_factor = 2.0
 
 def get_inputs():
-    return [torch.randn(batch_size, in_channels, height, width)]
+    return [torch.rand(batch_size, in_channels, height, width)]
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, scale_factor]

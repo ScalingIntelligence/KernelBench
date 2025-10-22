@@ -14,9 +14,8 @@ class Model(nn.Module):
         super(Model, self).__init__()
         
         self.gru = nn.GRU(input_size, hidden_size, num_layers, bias, batch_first, dropout=0, bidirectional=False)
-        self.h0 = torch.randn((num_layers, batch_size, hidden_size))
     
-    def forward(self, x):
+    def forward(self, x,h0):
         """
         :param x: The input tensor, shape (seq_len, batch_size, input_size) if batch_first=False, otherwise (batch_size, seq_len, input_size)
         :param h_0: The initial hidden state for the input sequence, shape (num_layers * num_directions, batch_size, hidden_size) (default: None)
@@ -24,8 +23,7 @@ class Model(nn.Module):
             - output: The output features (h_t) from the last layer of the GRU, for each t, shape (seq_len, batch_size, num_directions * hidden_size) if batch_first=False, otherwise (batch_size, seq_len, num_directions * hidden_size)
             - h_n: The hidden state for t = seq_len, shape (num_layers * num_directions, batch_size, hidden_size)
         """
-        self.h0 = self.h0.to(x.device)
-        output, h_n = self.gru(x, self.h0)
+        output, h_n = self.gru(x, h0)
         return h_n
 
 # Test code
@@ -36,7 +34,7 @@ hidden_size = 256
 num_layers = 6
 
 def get_inputs():
-    return [torch.randn(seq_len, batch_size, input_size)]
+    return [torch.rand(seq_len, batch_size, input_size),torch.rand((num_layers, batch_size, hidden_size))]
 
 def get_init_inputs():
     return [input_size, hidden_size, num_layers]
