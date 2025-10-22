@@ -11,9 +11,7 @@ from pydra import Config, REQUIRED
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_triton import (
-    prompt_generate_custom_triton_from_prompt_template,
-)
+from src.prompt_constructor_multilang import get_prompt_for_backend
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
@@ -127,9 +125,11 @@ def generate_sample_single(
         custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(
             ref_arch_src
         )
-    elif config.backend == "triton":
-        custom_cuda_prompt = prompt_generate_custom_triton_from_prompt_template(
-            ref_arch_src
+    elif config.backend in ["triton", "cute"]:  # removed "tilelang"
+        custom_cuda_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
+    else:
+        raise ValueError(
+            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', or 'cute'."
         )
     if config.log_prompt:
         prompt_path = os.path.join(

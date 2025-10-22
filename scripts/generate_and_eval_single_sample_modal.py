@@ -10,7 +10,7 @@ from datasets import load_dataset
 #from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_triton import prompt_generate_custom_triton_from_prompt_template
+from src.prompt_constructor_multilang import get_prompt_for_backend
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
@@ -102,7 +102,14 @@ image = (
         "pytest",
         "ninja",
         "utils",
+        # "tilelang",  # commented out - not working currently
+        #"apache-tvm",
+        "python-dotenv",
+        "nvidia-cutlass-dsl",
+        
     )
+    #.add_local_dir(os.path.join(REPO_TOP_DIR, "KernelBench"), remote_path="/root/KernelBench")
+    .add_local_dir(os.path.join(REPO_TOP_DIR, "src"), remote_path="/root/src")
 )
 
 @app.cls(image=image)
@@ -182,10 +189,10 @@ def main(config: EvalConfig):
     # Use appropriate prompt constructor based on backend
     if config.backend == "cuda":
         custom_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
-    elif config.backend == "triton":
-        custom_prompt = prompt_generate_custom_triton_from_prompt_template(ref_arch_src)
+    elif config.backend in ["triton", "cute"]:  # removed "tilelang"
+        custom_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
     else:
-        raise ValueError(f"Unsupported backend: {config.backend}. Must be 'cuda' or 'triton'.")
+        raise ValueError(f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', or 'cute'.")
         
     if config.log_prompt:
         with open(os.path.join(config.logdir, f"prompt_level_{config.level}_problem_{config.problem_id}.txt"), "w") as f:
