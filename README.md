@@ -26,6 +26,8 @@ We construct KernelBench to have 4 Levels of categories:
 - **Level 4 🤗**:  Level Hugging Face 
     Optimize whole model architectures from HuggingFace
 
+We are actively extending KernelBench to other DSLs beyond `cuda` as well.
+
 ## ⚖️ Evaluation
 #### Methodology
 To evaluate model-generated kernels, we need to check if they:
@@ -46,6 +48,7 @@ Some examples to illustrate this metric that filters based on speedups:
 * `fast_0` is the fraction of tasks that LM-generated kernels are **correct**. (same as correctness rate)
 
 You can increase speedup threshold `p` to make the task more challenging.
+
 
 #### Compute Overall Benchmark Performance
 
@@ -95,6 +98,8 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 # add .verbose_logging for more visbility
 ```
 
+We are also supporting other GPU programming languages beyond `cuda`. Simply specify `backend=triton`. For now we support (`cuda`, `triton`, `cute`).
+
 ### Run on all problems 
 
 ```
@@ -120,25 +125,10 @@ We provide some reference baseline times a variety of NVIDIA GPUs across generat
 We have also releaed the test-time framework [Caesar](https://github.com/simonguozirui/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems. 
 
 ## 🛣️ Upcoming Roadmap
-- [ ] Triton Variant (To be merged)
-- [ ] Easy to use CoLab Notebook Example
-- [ ] Push button flow on Modal / Cloud Provider 
-- [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
-- [ ] Add backward pass
-- [ ] Integrate with toolchains such as NCU
-See Issues for the ongoing roadmap and directions.
-
-
+Check out our [roadmap](https://github.com/ScalingIntelligence/KernelBench/issues/74) for what we plan to add as features. We welcome community contirbutions in these directions. 
 
 ## 🔍 Known Usage
-- [NVIDIA](https://developer.nvidia.com/blog/automating-gpu-kernel-generation-with-deepseek-r1-and-inference-time-scaling/) - Automating GPU Kernel Generation with DeepSeek-R1 and Inference Time Scaling
-- [METR](https://metr.org/blog/2025-02-14-measuring-automated-kernel-engineering/) - Measuring Automated Kernel Engineering
-- [Sakana AI](https://sakana.ai/ai-cuda-engineer/) - AI Cuda Engineer
-- [Project Popcorn](https://www.youtube.com/watch?v=mdDVkBeFy9A) - Triton Support for KernelBench, Data Scaling + SFT'd Kernel LLM
-- [Kevin](https://cognition.ai/blog/kevin-32b) - Kevin-32B: Multi-Turn RL for Writing CUDA Kernels
-- [Simple Test-Time Search](https://scalingintelligence.stanford.edu/blogs/fastkernels/) - by @anneouyang
-
-If you are using KernelBench, we love to hear more about it!
+Since release, we have gotten a lot of interest from researchers, research labs, and companies that use KernelBench to explore this direction. We have documented [known usage](https://docs.google.com/document/d/e/2PACX-1vTjS-UMH1HB5n_PENq2k-3YRfXIXkqKIKeNC2zcWMyLPdl4Jrwvdk4dNDVSsM8ybKrCxZB7GJq1slZF/pub) of KernelBench and related efforts towards automated kernel generations. If you are using KernelBench, we love to hear more about it!
 
 ## 🪪 License
 MIT. Check `LICENSE.md` for more details.

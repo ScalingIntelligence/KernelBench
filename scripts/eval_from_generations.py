@@ -3,6 +3,8 @@ import multiprocessing as mp
 import os
 import shutil
 import time
+from dataclasses import dataclass
+
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -12,15 +14,19 @@ import torch
 
 from datasets import load_dataset
 from pydra import Config, REQUIRED
+
+# Import only what we need
 from src import compile, eval, utils
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import (
     build_compile_cache,
+    get_error_name,
     check_metadata_serializable_all_types,
     eval_kernel_against_ref,
     KernelExecResult,
 )
+
 from src.utils import read_file, set_gpu_arch
 from tqdm import tqdm
 
@@ -137,6 +143,8 @@ class EvalConfig(Config):
         # number of GPUs to do batch evaluation
         self.num_gpu_devices = 1
 
+        # Backend to use for kernel implementation (cuda or triton)
+        self.backend = "cuda"
         # Number of samples per problem to evaluate for pass@k analysis
         self.num_samples_per_problem = 1  # Default to 1 sample per problem
 
@@ -312,6 +320,7 @@ def evaluate_single_sample(
             num_perf_trials=configs.num_perf_trials,
             build_dir=build_dir,
             device=device,
+            backend=configs.backend,
         )
         return eval_result
     except Exception as e:
@@ -322,6 +331,7 @@ def evaluate_single_sample(
             # NOTE: count this as compilation failure as it is not runnable code
             metadata = {
                 "cuda_error": f"CUDA Error: {str(e)}",
+                "cuda_error_name": get_error_name(e),
                 "hardware": torch.cuda.get_device_name(device=device),
                 "device": str(device),
             }  # log this for debugging as this usually signifies illegal memory access
@@ -332,6 +342,7 @@ def evaluate_single_sample(
         else:
             metadata = {
                 "other_error": f"error: {str(e)}",
+                "other_error_name": get_error_name(e),
                 "hardware": torch.cuda.get_device_name(device=device),
                 "device": str(device),
             }  # for debugging
@@ -387,10 +398,9 @@ def cuda_single_eval_wrapper(curr_work: WorkArgs, configs: dict, dataset, run_di
             pool.terminate()
             pool.join()
             raise
-        except mp.TimeoutError:
+        except mp.TimeoutError as e:
             print(
-                f"[WARNING] Evaluation TIMED OUT for Problem ID: {curr_work.problem_id},"
-                f" Sample ID: {curr_work.sample_id}"
+                f"[WARNING] Evaluation TIMED OUT for Problem ID: {curr_work.problem_id}, Sample ID: {curr_work.sample_id}\nException: {e}"
             )
 
         print(
@@ -691,7 +701,7 @@ def add_to_eval_results_file(
         os.makedirs(os.path.dirname(eval_file_path), exist_ok=True)
 
     with open(eval_file_path, "w") as f:
-        json.dump(eval_results, f)
+        json.dump(eval_results, f, indent=4)
 
 
 def single_eval_example(
