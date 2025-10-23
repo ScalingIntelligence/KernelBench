@@ -1,0 +1,28 @@
+# Frameworks
+torch==2.5.0
+# we shall upgrade torch for blackwell when it is stable
+transformers
+datasets
+modal
+
+# DSLs
+nvidia-cutlass-dsl
+
+# helper
+tqdm
+packaging
+pydra_config
+pytest
+ninja
+
+# Numerics
+einops
+dotenv
+numpy
+
+# to deprecate with litellm
+google-generativeai
+together
+openai
+anthropic
+
