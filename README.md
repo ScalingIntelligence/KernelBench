@@ -26,6 +26,8 @@ We construct KernelBench to have 4 Levels of categories:
 - **Level 4 🤗**:  Level Hugging Face 
     Optimize whole model architectures from HuggingFace
 
+We are actively extending KernelBench to other DSLs beyond `cuda` as well.
+
 ## ⚖️ Evaluation
 #### Methodology
 To evaluate model-generated kernels, we need to check if they:
@@ -46,6 +48,7 @@ Some examples to illustrate this metric that filters based on speedups:
 * `fast_0` is the fraction of tasks that LM-generated kernels are **correct**. (same as correctness rate)
 
 You can increase speedup threshold `p` to make the task more challenging.
+
 
 #### Compute Overall Benchmark Performance
 
@@ -94,6 +97,8 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 # dataset_src could be "local" or "huggingface"
 # add .verbose_logging for more visbility
 ```
+
+We are also supporting other GPU programming languages beyond `cuda`. Simply specify `backend=triton`. For now we support (`cuda`, `triton`, `cute`).
 
 ### Run on all problems 
 
