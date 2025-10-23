@@ -186,7 +186,7 @@ def check_kernel_exists(
     return os.path.exists(kernel_path)
 
 
-@pydra.main(base=Generation.)
+@pydra.main(base=GenerationConfig)
 def main(config: GenerationConfig):
     """
     Batch Generate Samples for Particular Level
