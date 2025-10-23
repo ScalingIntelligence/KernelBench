@@ -1,0 +1,49 @@
+{
+    "level1": {
+        "1_Square_matrix_multiplication_.py": {
+            "mean": 2.92,
+            "std": 0.175,
+            "min": 2.57,
+            "max": 3.05,
+            "num_trials": 100,
+            "hardware": "NVIDIA L40S",
+            "device": "cuda:0"
+        },
+        "2_Standard_matrix_multiplication_.py": {
+            "mean": 2.86,
+            "std": 0.103,
+            "min": 2.6,
+            "max": 2.99,
+            "num_trials": 100,
+            "hardware": "NVIDIA L40S",
+            "device": "cuda:0"
+        },
+        "3_Batched_matrix_multiplication.py": {
+            "mean": 8.12,
+            "std": 0.508,
+            "min": 6.53,
+            "max": 8.39,
+            "num_trials": 100,
+            "hardware": "NVIDIA L40S",
+            "device": "cuda:0"
+        },
+        "4_Matrix_vector_multiplication_.py": {
+            "mean": 11.4,
+            "std": 0.0047,
+            "min": 11.4,
+            "max": 11.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA L40S",
+            "device": "cuda:0"
+        },
+        "5_Matrix_scalar_multiplication.py": {
+            "mean": 12.6,
+            "std": 0.0144,
+            "min": 12.6,
+            "max": 12.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA L40S",
+            "device": "cuda:0"
+        }
+    }
+}
