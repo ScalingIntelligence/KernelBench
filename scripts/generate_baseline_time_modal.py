@@ -15,6 +15,8 @@ from tqdm import tqdm
 import multiprocessing as mp
 import time
 import einops
+import pydra
+from pydra import Config, REQUIRED
 
 """
 Generate baseline time for KernelBench
@@ -36,6 +38,11 @@ https://pytorch.org/docs/main/generated/torch.compile.html
 In addition to default Torch Compile backend, you can always use other or your custom backends
 https://pytorch.org/docs/stable/torch.compiler.html
 - torch.compile: backend="cudagraphs" (CUDA graphs with AOT Autograd)
+
+Usage:
+```
+python scripts/generate_baseline_time_modal.py gpu=L40S level=1 subset="[1,5]"
+```
 """
 
 REPO_TOP_PATH = os.path.abspath(
@@ -47,6 +54,19 @@ REPO_TOP_PATH = os.path.abspath(
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
 TIMING_DIR = os.path.join(REPO_TOP_PATH, "results", "timing")
+
+
+class BaselineConfig(Config):
+    def __init__(self):
+        self.gpu = "L40S"  # GPU type (L40S, A10G, H100, A100, etc.)
+        self.level = 1  # KernelBench level to evaluate (1, 2, or 3)
+        self.subset = None  # Subset of problems to evaluate, e.g., "[1,5]" for problems 1-5
+        self.hardware_name = ""  # Optional: override hardware name, defaults to {gpu}_modal
+        self.batch_size = 10  # Number of problems to process in parallel
+        self.timeout = 1800  # Timeout per batch in seconds
+        
+    def __repr__(self):
+        return f"BaselineConfig({self.to_dict()})"
 
 # Modal Infra
 import modal
@@ -144,7 +164,7 @@ def fetch_ref_arch_from_dataset(dataset: list[str],
     ref_arch_name = ref_arch_path.split("/")[-1]
     return (ref_arch_path, ref_arch_name, ref_arch_src)
 
-@app.cls(image=image, container_idle_timeout=5)
+@app.cls(image=image, scaledown_window=5)
 class EvalFunc:
 
     @modal.method()
@@ -209,7 +229,8 @@ def measure_program_time_wrapper(*args, **kwargs):
     with app.run():
         return EvalFunc.with_options(gpu=gpu)().measure_program_time.remote(*args, **kwargs)
 
-def record_baseline_times(use_torch_compile: bool = False, 
+def record_baseline_times(config: BaselineConfig,
+                          use_torch_compile: bool = False, 
                           torch_compile_backend: str="inductor", 
                           torch_compile_options: str="default",
                           file_name: str="baseline_time.json"):
@@ -219,17 +240,42 @@ def record_baseline_times(use_torch_compile: bool = False,
     save to specified file
     """
     json_results = []
+    
+    # Parse subset if provided
+    subset_problems = None
+    if config.subset:
+        # config.subset is already parsed by pydra as a list
+        subset_range = config.subset
+        if isinstance(subset_range, str):
+            # Handle case where it's passed as a string (shouldn't happen with pydra, but just in case)
+            import ast
+            subset_range = ast.literal_eval(subset_range)
+        
+        if isinstance(subset_range, list) and len(subset_range) == 2:
+            subset_problems = list(range(subset_range[0], subset_range[1] + 1))
+        else:
+            subset_problems = subset_range
 
-    for level in [1, 2, 3]:
+    # Determine which levels to process
+    levels_to_process = [config.level] if config.level else [1, 2, 3]
+
+    for level in levels_to_process:
         PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
         dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
         num_problems = len(dataset)
-        total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in list(range(1, num_problems + 1))]
+        
+        # Filter by subset if specified
+        if subset_problems:
+            problem_ids = [i for i in subset_problems if i <= num_problems]
+        else:
+            problem_ids = list(range(1, num_problems + 1))
+        
+        total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in problem_ids]
 
-        with tqdm(total=len(total_work), desc="Processing batches") as pbar:
+        with tqdm(total=len(total_work), desc=f"Processing level {level}") as pbar:
             while len(total_work) > 0:
-                curr_work_batch = total_work[:batch_size]
-                total_work = total_work[batch_size:]  # pop the first batch_size elements
+                curr_work_batch = total_work[:config.batch_size]
+                total_work = total_work[config.batch_size:]  # pop the first batch_size elements
 
                 with mp.Pool() as pool:
 
@@ -255,7 +301,7 @@ def record_baseline_times(use_torch_compile: bool = False,
                             pool.apply_async(measure_program_time_wrapper, work_arg)
                         )
 
-                    batch_timeout = timeout
+                    batch_timeout = config.timeout
                     for i, async_result in enumerate(async_results):
                         problem_id, _, ref_arch_name, _ = curr_work_batch[i]
 
@@ -284,53 +330,60 @@ def record_baseline_times(use_torch_compile: bool = False,
     return json_results
 
 
-if __name__ == "__main__":
-    # DEBUG and simple testing
-    # test_measure_particular_program(2, 28)
-    gpu = "A10G"
-    # Replace this with whatever hardware you are running on 
-    hardware_name = f"{gpu}_modal"
+@pydra.main(base=BaselineConfig)
+def main(config: BaselineConfig):
+    # Set global variables from config
+    global gpu, batch_size, timeout
+    gpu = config.gpu
+    batch_size = config.batch_size
+    timeout = config.timeout
+    
+    # Determine hardware name
+    hardware_name = config.hardware_name if config.hardware_name and config.hardware_name != "" else f"{gpu}_modal"
+    
     print(f"Generating baseline time for {hardware_name}")
-    # input(f"You are about to start recording baseline time for {hardware_name}, press Enter to continue...")
-    # # Systematic recording of baseline time
-
-    # if os.path.exists(os.path.join(TIMING_DIR, hardware_name)):
-    #     input(f"Directory {hardware_name} already exists, Are you sure you want to overwrite? Enter to continue...")
+    print(f"Configuration: {config}")
+    
+    # Check if directory exists
+    if os.path.exists(os.path.join(TIMING_DIR, hardware_name)):
+        print(f"[WARNING] Directory {hardware_name} already exists and will be updated/overwritten.")
 
     # 1. Record Torch Eager
-    record_baseline_times(use_torch_compile=False, 
+    print("\n[1/2] Recording Torch Eager baseline...")
+    record_baseline_times(config,
+                        use_torch_compile=False, 
                         torch_compile_backend=None,
                         torch_compile_options=None, 
                         file_name=f"{hardware_name}/baseline_time_torch.json")
     
-    record_baseline_times(use_torch_compile=True, 
+    # 2. Record Torch Compile with Inductor (default mode)
+    print("\n[2/2] Recording Torch Compile (inductor, default) baseline...")
+    record_baseline_times(config,
+                        use_torch_compile=True, 
                         torch_compile_backend="inductor",
                         torch_compile_options="default", 
                         file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_default.json")
     
-    # 2. Record Torch Compile using Inductor
-    # for torch_compile_mode in ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]:
-    #     record_baseline_times(use_torch_compile=True, 
+    print(f"\n✓ Baseline generation complete! Results saved to: results/timing/{hardware_name}/")
+    
+    # Optional: Record additional Torch Compile modes (uncomment if needed)
+    # for torch_compile_mode in ["reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]:
+    #     record_baseline_times(config,
+    #                           use_torch_compile=True, 
     #                           torch_compile_backend="inductor",
     #                           torch_compile_options=torch_compile_mode, 
     #                           file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_{torch_compile_mode}.json")
  
-    # 3. Record Torch Compile using cudagraphs
-    # record_baseline_times(use_torch_compile=True, 
+    # Optional: Record Torch Compile using cudagraphs (uncomment if needed)
+    # record_baseline_times(config,
+    #                       use_torch_compile=True, 
     #                       torch_compile_backend="cudagraphs",
     #                       torch_compile_options=None, 
     #                       file_name=f"{hardware_name}/baseline_time_torch_compile_cudagraphs.json")
-    
 
 
-
-    # Random debuging
-    # get_torch_compile_triton(2, 12)
-    # record_baseline_times()
-
-    # run_profile(2, 43)
-    # get_time(2, 43, torch_compile=False)
-    # get_time(2, 43, torch_compile=True)
+if __name__ == "__main__":
+    main()
 
 
 
