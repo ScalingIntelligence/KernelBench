@@ -3,7 +3,7 @@
 
 This folder contains a set of baseline timing results for the KernelBench problems.
 
-Since KernelBench measures the speedup between Runtime(refernece architecture) and Runtime(LLM-generated architecture), it is important to measure the baseline reference module runtime.
+Since KernelBench measures the speedup between Runtime(reference architecture) and Runtime(LLM-generated architecture), it is important to measure the baseline reference module runtime.
 
 We have provided a set of baseline results for the KernelBench problems on a variety of hardware as well as various PyTorch configurations.
 All baseline are ran with PyTorch `2.5.0+cu124` and CUDA `12.4`.
