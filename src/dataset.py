@@ -57,9 +57,92 @@ def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
     return DATASET
 
 
-def construct_kernelbench_dataset(level: int) -> list[str]:
-    return construct_problem_dataset_from_problem_dir(
-        os.path.join(KERNEL_BENCH_PATH, f"level{level}")
+################################################################################
+# KernelBenchDataset Class
+# Provides a robust object-oriented interface for accessing problems by their
+# logical 1-indexed problem_id, eliminating off-by-one errors
+################################################################################
+
+
+def check_id_matches_name(problem_id: int, problem_name: str) -> bool:
+    """Check if the problem_id matches the ID in the problem_name"""
+    return problem_id == int(os.path.basename(problem_name).split('_')[0])
+
+
+class KernelBenchDataset():
+    """
+    Dataset object for easy access to KernelBench problems by their logical 1-indexed problem_id.
+    
+    This class eliminates the fragile 0-indexed list access pattern and provides explicit,
+    robust methods for accessing problems by their logical ID.
+    
+    Args:
+        dataset_name: Name of the dataset (e.g., "KernelBench")
+        level: Level number (1, 2, 3, or 4)
+        use_subset: Whether to use a subset of problems
+        dataset: List of problem file paths (full dataset)
+        subset_dataset: List of problem file paths (subset)
+    """
+    
+    def __init__(self, dataset_name: str, level: int, use_subset=False, dataset=[], subset_dataset=[]):
+        self.dataset_name = dataset_name
+        
+        if use_subset:
+            self.problems = subset_dataset
+        else:
+            self.problems = dataset
+
+        self.level = level
+        self.use_subset = use_subset
+
+    def __len__(self):
+        """Return the number of problems in the dataset"""
+        return len(self.problems)
+
+    def get_problem_by_id(self, problem_id: int) -> str:
+        """
+        Get problem file path by its logical 1-indexed problem_id.
+        
+        Args:
+            problem_id: Logical 1-indexed problem ID (matches the number in the filename)
+        
+        Returns:
+            str: Full path to the problem file
+        
+        Raises:
+            ValueError: If problem_id is not found in the dataset
+        """
+        for problem in self.problems:
+            if check_id_matches_name(problem_id, problem):
+                return problem
+        raise ValueError(f"Problem ID {problem_id} not found in dataset")
+    
+    def get_problem_ids(self) -> list[int]:
+        """
+        Get list of all problem IDs in the dataset.
+        
+        Returns:
+            list[int]: Sorted list of problem IDs
+        """
+        return [int(os.path.basename(problem).split('_')[0]) for problem in self.problems]
+
+
+def construct_kernelbench_dataset(level: int) -> KernelBenchDataset:
+    """
+    Construct a KernelBenchDataset object for the specified level.
+    
+    Args:
+        level: Level number (1, 2, 3, or 4)
+    
+    Returns:
+        KernelBenchDataset: Dataset object with robust 1-indexed access
+    """
+    problem_dir = os.path.join(KERNEL_BENCH_PATH, f"level{level}")
+    problem_list = construct_problem_dataset_from_problem_dir(problem_dir)
+    return KernelBenchDataset(
+        dataset_name="KernelBench",
+        level=level,
+        dataset=problem_list
     )
 
 

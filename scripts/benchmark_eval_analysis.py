@@ -48,7 +48,7 @@ def patch(eval_results, dataset):
     """
     Patch the eval results with the dataset
     """
-    for pid in range(1, len(dataset) + 1):
+    for pid in dataset.get_problem_ids():
         if str(pid) not in eval_results:
             eval_results[str(pid)] = {
                 "sample_id": 0,

@@ -139,30 +139,6 @@ def write_batch_to_json(entries_to_write: list, f_path: str):
     
     print(f"[INFO] Wrote {len(entries_to_write)} entries to {f_path}")
 
-def fetch_ref_arch_from_dataset(dataset: list[str], 
-                                problem_id: int) -> tuple[str, str, str]:
-    """
-    Fetch the reference architecture from the problem directory
-    problem_id should be logical index (1-indexed), matching the problem_id in the problem_name
-
-    Returns:
-        ref_arch_path: str, the path to the reference architecture
-        ref_arch_name: str, the name of the reference architecture
-        ref_arch_src: str, the source code of the reference architecture
-    """
-    ref_arch_path = None
-    
-    for file in dataset:
-        if file.split("/")[-1].split("_")[0] == str(problem_id):
-            ref_arch_path = file
-            break
-    if ref_arch_path is None:
-        raise ValueError(f"No reference architecture found for problem_id {problem_id}")
-    
-    ref_arch_src = read_file(ref_arch_path)
-
-    ref_arch_name = ref_arch_path.split("/")[-1]
-    return (ref_arch_path, ref_arch_name, ref_arch_src)
 
 @app.cls(image=image, scaledown_window=5)
 class EvalFunc:
@@ -260,17 +236,24 @@ def record_baseline_times(config: BaselineConfig,
     levels_to_process = [config.level] if config.level else [1, 2, 3]
 
     for level in levels_to_process:
-        PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-        dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
-        num_problems = len(dataset)
+        dataset = construct_kernelbench_dataset(level)
+        
+        # Get actual problem IDs from dataset
+        all_problem_ids = dataset.get_problem_ids()
         
         # Filter by subset if specified
         if subset_problems:
-            problem_ids = [i for i in subset_problems if i <= num_problems]
+            problem_ids = [pid for pid in all_problem_ids if pid in subset_problems]
         else:
-            problem_ids = list(range(1, num_problems + 1))
+            problem_ids = all_problem_ids
         
-        total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in problem_ids]
+        # Prepare work items with problem metadata
+        total_work = []
+        for problem_id in problem_ids:
+            ref_arch_path = dataset.get_problem_by_id(problem_id)
+            ref_arch_name = os.path.basename(ref_arch_path)
+            ref_arch_src = read_file(ref_arch_path)
+            total_work.append((problem_id, ref_arch_path, ref_arch_name, ref_arch_src))
 
         with tqdm(total=len(total_work), desc=f"Processing level {level}") as pbar:
             while len(total_work) > 0:
