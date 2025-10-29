@@ -1,3 +1,27 @@
+"""
+Batch Generate Samples for KernelBench Problems
+
+Generates LLM-based kernel optimizations for a specified level of problems.
+
+USAGE:
+------
+Basic usage (recommended):
+    python scripts/generate_samples.py run_name=my_experiment level=1 server_type=deepseek
+
+With multiple samples per problem:
+    python scripts/generate_samples.py run_name=my_exp level=1 server_type=openai num_samples=5
+
+PROVIDERS:
+----------
+Set server_type to: deepseek, deepseek-coder, openai, anthropic, google, together, sambanova, fireworks
+See README for full provider list and model names.
+
+API KEYS:
+---------
+Set API keys in .env file (see .env.example) or as environment variables.
+Example: OPENAI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, etc.
+"""
+
 import json
 import os, sys
 from dataclasses import dataclass

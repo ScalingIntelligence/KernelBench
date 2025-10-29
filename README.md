@@ -80,12 +80,47 @@ pip install -r requirements.txt
 pip install -e . 
 ```
 
-To call LLM API providers, set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
+### API Keys Setup
+To use LLM providers, configure your API keys:
+
+```bash
+# Copy the example environment file
+cp env.example .env
+
+# Edit .env and add your API keys
+# You only need to add keys for providers you plan to use
+```
+
+Example `.env` file:
+```bash
+OPENAI_API_KEY=sk-...
+DEEPSEEK_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-...
+GEMINI_API_KEY=...
+# Add others as needed
+```
 
 Running and profiling kernels require a GPU. 
 If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
 
 ## 🚀 Usage
+
+### LLM Provider Configuration
+KernelBench uses [LiteLLM](https://github.com/BerriAI/litellm) for unified access to multiple LLM providers. Set `server_type` to select a provider preset:
+
+| Provider | `server_type` | Default Model | Notes |
+|----------|---------------|---------------|-------|
+| DeepSeek | `deepseek` | `deepseek/deepseek-chat` | For chat model |
+| DeepSeek | `deepseek-coder` | `deepseek/deepseek-coder` | For code-specialized model |
+| OpenAI | `openai` | `gpt-4o-2024-08-06` | |
+| Anthropic | `anthropic` | `claude-3-5-sonnet-20241022` | |
+| Google | `google` | `gemini/gemini-1.5-flash-002` | |
+| Together AI | `together` | `together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` | |
+| Sambanova | `sambanova` | `sambanova/Meta-Llama-3.1-405B-Instruct` | |
+| Fireworks | `fireworks` | `fireworks_ai/accounts/fireworks/models/llama-v3p1-70b-instruct` | |
+
+**Tip:** Use `server_type` without `model_name` to use the preset. If you need to override, use LiteLLM format (e.g., `model_name=deepseek/deepseek-chat`).
+
 ### Run on a single problem 
 It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample.
 
@@ -104,13 +139,31 @@ We are also supporting other GPU programming languages beyond `cuda`. Simply spe
 
 ```
 # 1. Generate responses and store kernels locally to runs/{run_name} directory
-python3 scripts/generate_samples.py run_name=test_hf_level_1 dataset_src=huggingface level=1 num_workers=50 server_type=deepseek model_name=deepseek-chat temperature=0
+python3 scripts/generate_samples.py \
+    run_name=test_hf_level_1 \
+    dataset_src=huggingface \
+    level=1 \
+    num_workers=50 \
+    server_type=deepseek \
+    temperature=0.8
 
 # 2. Evaluate on all generated kernels in runs/{run_name} directory
 python3 scripts/eval_from_generations.py run_name=test_hf_level_1 dataset_src=local level=1 num_gpu_devices=8 timeout=300
 
 # If you like to speedup evaluation, you can use parallelize compilation on CPUs before getting to evluation on GPUs
 # add build_cache=True and num_cpu_workers=<num_cpu_workers> to the command
+```
+
+**More examples:**
+```bash
+# Use a different provider (OpenAI)
+python3 scripts/generate_samples.py run_name=openai_test level=1 server_type=openai
+
+# Override model (use LiteLLM format)
+python3 scripts/generate_samples.py run_name=custom_model level=1 server_type=deepseek model_name=deepseek/deepseek-coder
+
+# Generate with Triton backend instead of CUDA
+python3 scripts/generate_samples.py run_name=triton_test level=1 backend=triton server_type=deepseek
 ```
 ### Analyze the eval results to compute Benchmark Performance
 We provide `scripts/benchmark_eval_analysis.py` to analyze the eval results to compute success rate, timing metric, and overall benchmark performance  `fast_p`. 
