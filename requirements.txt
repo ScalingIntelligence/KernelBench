@@ -20,9 +20,12 @@ einops
 dotenv
 numpy
 
-# to deprecate with litellm
-google-generativeai
-together
-openai
-anthropic
+# Unified LLM Interface
+litellm[proxy]
+
+# Legacy (to deprecate after litellm migration is complete)
+# google-generativeai
+# together
+# openai
+# anthropic
 

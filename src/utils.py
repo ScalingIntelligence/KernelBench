@@ -16,11 +16,14 @@ import os
 import json
 from tqdm import tqdm
 
-# API clients
-from together import Together
-from openai import OpenAI
-import google.generativeai as genai
-import anthropic
+# Unified LLM Interface
+from litellm import completion
+
+# Legacy API clients (kept for backwards compatibility during migration)
+# from together import Together
+from openai import OpenAI  # Still needed for OpenAI-compatible endpoints (SGLang, Fireworks, etc.)
+# import google.generativeai as genai
+# import anthropic
 
 # from datasets import load_dataset
 import numpy as np
@@ -35,15 +38,21 @@ import hashlib
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Define API key access
-TOGETHER_KEY = os.environ.get("TOGETHER_API_KEY")
-DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY")
-OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
-SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
-FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
+# API Keys
+# Note: LiteLLM automatically reads API keys from environment variables:
+# - OPENAI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.
+# We only explicitly load SGLANG_KEY for local server handling
+SGLANG_KEY = os.environ.get("SGLANG_API_KEY", "EMPTY")  # for Local Deployment
+
+# Legacy keys (no longer directly used, kept for backwards compatibility)
+# LiteLLM reads these automatically from environment variables
+# TOGETHER_KEY = os.environ.get("TOGETHER_API_KEY")
+# DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY")
+# OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
+# GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+# ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
+# SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
+# FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
 
 
 ########################################################
@@ -84,316 +93,177 @@ def set_gpu_arch(arch_list: list[str]):
     os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
 
 def query_server(
-    prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,
-    system_prompt: str = "You are a helpful assistant",  # only used for chat prompts
+    prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt
+    system_prompt: str = "You are a helpful assistant",
     temperature: float = 0.0,
-    top_p: float = 1.0, # nucleus sampling
-    top_k: int = 50, 
-    max_tokens: int = 128,  # max output tokens to generate
+    top_p: float = 1.0,
+    top_k: int = 50,
+    max_tokens: int = 128,
     num_completions: int = 1,
-    server_port: int = 30000,  # only for local server hosted on SGLang
+    server_port: int = 30000,  # only for local SGLang server
     server_address: str = "localhost",
-    server_type: str = "sglang",
-    model_name: str = "default",  # specify model type
-
+    server_type: str = "sglang",  # kept for SGLang compatibility
+    model_name: str = "default",
+    
     # for reasoning models
-    is_reasoning_model: bool = False, # indiactor of using reasoning models
-    budget_tokens: int = 0, # for claude thinking
-    reasoning_effort: str = None, # only for o1 and o3 / more reasoning models in the future
+    is_reasoning_model: bool = False,
+    budget_tokens: int = 0,  # for claude thinking
+    reasoning_effort: str = None,  # for o1/o3 models
 ):
     """
-    Query various sort of LLM inference API providers
-    Supports:
-    - OpenAI
-    - Deepseek
-    - Together
-    - Sambanova
-    - Anthropic
-    - Gemini / Google AI Studio
-    - Fireworks (OpenAI compatbility)
-    - SGLang (Local Server)
+    Query LLM inference providers using LiteLLM's unified interface.
+    
+    LiteLLM handles routing to different providers based on the model_name format:
+    - "openai/gpt-4o" -> OpenAI
+    - "deepseek/deepseek-chat" -> DeepSeek
+    - "anthropic/claude-..." or "claude-..." -> Anthropic
+    - "gemini/..." -> Google Gemini
+    - "together_ai/..." -> Together AI
+    - "sambanova/..." -> Sambanova
+    - "fireworks_ai/..." -> Fireworks AI
+    
+    Special case: SGLang (local server) uses custom OpenAI client
     """
-    # Select model and client based on arguments
-    match server_type:
-        case "sglang":
-            url = f"http://{server_address}:{server_port}"
-            client = OpenAI(
-                api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
-            )
-            model = "default"
-        case "deepseek":
-            client = OpenAI(
-                api_key=DEEPSEEK_KEY,
-                base_url="https://api.deepseek.com",
-                timeout=10000000,
-                max_retries=3,
-            )
-            model = model_name
-            assert model in ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"], "Only support deepseek-chat or deepseek-coder for now"
-            if not is_safe_to_send_to_deepseek(prompt):
-                raise RuntimeError("Prompt is too long for DeepSeek")
-        case "fireworks":
-            client = OpenAI(
-                api_key=FIREWORKS_API_KEY,
-                base_url="https://api.fireworks.ai/inference/v1",
-                timeout=10000000,
-                max_retries=3,
-            )
-            model = model_name
-
-        case "anthropic":
-            client = anthropic.Anthropic(
-                api_key=ANTHROPIC_KEY,
-            )
-            model = model_name
-        case "google":
-            genai.configure(api_key=GEMINI_KEY)
-            model = model_name
-        case "together":
-            client = Together(api_key=TOGETHER_KEY)
-            model = model_name
-        case "sambanova":
-            client = OpenAI(api_key=SAMBANOVA_API_KEY, base_url="https://api.sambanova.ai/v1")
-            model = model_name
-            
-        case "openai":
-            client = OpenAI(api_key=OPENAI_KEY)
-            model = model_name
-        case _:
-            raise NotImplementedError
-
-    if server_type != "google":
-        assert client is not None, "Client is not set, cannot proceed to generations"
-    else:
-        print(
-            f"Querying {server_type} {model} with temp {temperature} max tokens {max_tokens}"
+    
+    # Special handling for SGLang (local server with OpenAI-compatible API)
+    if server_type == "sglang":
+        url = f"http://{server_address}:{server_port}"
+        client = OpenAI(
+            api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
         )
-    # Logic to query the LLM
-    if server_type == "anthropic":
-        assert type(prompt) == str
-
-        if is_reasoning_model:
-            # Use beta endpoint with thinking enabled for reasoning models
-            response = client.beta.messages.create(
-                model=model,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=max_tokens,
-                # Claude thinking requires budget_tokens for thinking (reasoning)
-                thinking={"type": "enabled", "budget_tokens": budget_tokens},
-                betas=["output-128k-2025-02-19"],
-            )
-        else:
-            # Use standard endpoint for normal models
-            response = client.messages.create(
-                model=model,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                max_tokens=max_tokens,
-            )
-        outputs = [choice.text for choice in response.content if not hasattr(choice, 'thinking') or not choice.thinking]
-
-    elif server_type == "google":
-        # assert model_name == "gemini-1.5-flash-002", "Only test this for now"
-
-        generation_config = {
-            "temperature": temperature,
-            "top_p": top_p,
-            "top_k": top_k,
-            "max_output_tokens": max_tokens,
-            "response_mime_type": "text/plain",
-        }
-
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=system_prompt,
-            generation_config=generation_config,
-        )
-
-        response = model.generate_content(prompt)
-
-        return response.text
-
-    elif server_type == "deepseek":
         
-        if model in ["deepseek-chat", "deepseek-coder"]:
-            # regular deepseek model 
-            response = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                stream=False,
-                temperature=temperature,
-                n=num_completions,
-                max_tokens=max_tokens,
-                top_p=top_p,
-            )
-
-        else: # deepseek reasoner
-            assert is_reasoning_model, "Only support deepseek-reasoner for now"
-            assert model == "deepseek-reasoner", "Only support deepseek-reasoner for now"
-            response = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                stream=False,
-                n=num_completions,
-                max_tokens=max_tokens,
-                # do not use temperature or top_p
-            )
-        outputs = [choice.message.content for choice in response.choices]
-    elif server_type == "openai":
-        if is_reasoning_model:
-            assert "o1" in model or "o3" in model, "Only support o1 and o3 for now"
-            print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
-            print(f"Using OpenAI reasoning model: {model} with reasoning effort {reasoning_effort}")
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "user", "content": prompt},
-                ],
-                reasoning_effort=reasoning_effort,
-            )
+        # Format messages for OpenAI-compatible API
+        if isinstance(prompt, str):
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
         else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                stream=False,
-                temperature=temperature,
-                n=num_completions,
-                max_tokens=max_tokens,
-                top_p=top_p,
-            )
-        outputs = [choice.message.content for choice in response.choices]
-    elif server_type == "together":
+            messages = prompt
+        
         response = client.chat.completions.create(
-            model=model,
-            max_tokens=max_tokens,
+            model="default",
+            messages=messages,
             temperature=temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            top_p=top_p,
-            top_k=top_k,
-            # repetition_penalty=1,
-            stop=["<|eot_id|>", "<|eom_id|>"],
-            # truncate=32256,
-            stream=False,
-        )
-        outputs = [choice.message.content for choice in response.choices]
-    elif server_type == "fireworks":
-        response = client.chat.completions.create(
-            model=model,
+            n=num_completions,
             max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            # top_p=top_p,
-            # top_k=top_k,
-            # repetition_penalty=1,
-            stop=["<|eot_id|>", "<|eom_id|>"],
-            # truncate=32256,
-            stream=False,
-        )
-        outputs = [choice.message.content for choice in response.choices]
-    elif server_type == "sambanova":
-        response = client.chat.completions.create(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
             top_p=top_p,
         )
         outputs = [choice.message.content for choice in response.choices]
-    # for all other kinds of servers, use standard API
+        
+        return outputs[0] if len(outputs) == 1 else outputs
+    
+    # For all other providers, use LiteLLM's unified interface
+    # Format messages for LiteLLM (OpenAI format)
+    if isinstance(prompt, str):
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
     else:
-        if type(prompt) == str:
-            response = client.completions.create(
-                model=model,
-                prompt=prompt,
-                temperature=temperature,
-                n=num_completions,
-                max_tokens=max_tokens,
-                top_p=top_p,
-            )
-            outputs = [choice.text for choice in response.choices]
-        else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=prompt,
-                temperature=temperature,
-                n=num_completions,
-                max_tokens=max_tokens,
-                top_p=top_p,
-            )
-            outputs = [choice.message.content for choice in response.choices]
-
-    # output processing
-    if len(outputs) == 1:
-        return outputs[0]
-    else:
-        return outputs
+        messages = prompt
+    
+    # Check for DeepSeek-specific token limit
+    if "deepseek" in model_name.lower():
+        if not is_safe_to_send_to_deepseek(messages if isinstance(prompt, str) else prompt):
+            raise RuntimeError("Prompt is too long for DeepSeek")
+    
+    # Prepare kwargs for litellm.completion()
+    completion_kwargs = {
+        "model": model_name,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+        "n": num_completions,
+    }
+    
+    # Handle reasoning models (o1, o3, claude-thinking, deepseek-reasoner)
+    if is_reasoning_model:
+        if "o1" in model_name or "o3" in model_name:
+            # OpenAI reasoning models
+            if reasoning_effort:
+                completion_kwargs["reasoning_effort"] = reasoning_effort
+            # Remove system message for o1/o3 (they don't support it)
+            completion_kwargs["messages"] = [msg for msg in messages if msg["role"] != "system"]
+        elif "claude" in model_name and budget_tokens > 0:
+            # Anthropic thinking (extended thinking)
+            completion_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget_tokens}
+        elif "deepseek-reasoner" in model_name:
+            # DeepSeek reasoner doesn't use temperature/top_p
+            completion_kwargs.pop("temperature", None)
+            completion_kwargs.pop("top_p", None)
+    
+    # Only add top_k if the provider supports it
+    # LiteLLM will handle this, but we can pass it for providers that support it
+    if top_k != 50:  # Only include if non-default
+        completion_kwargs["top_k"] = top_k
+    
+    # Make the LiteLLM call
+    try:
+        response = completion(**completion_kwargs)
+    except Exception as e:
+        print(f"Error calling LiteLLM with model {model_name}: {e}")
+        raise
+    
+    # Extract outputs from response (OpenAI format)
+    outputs = [choice.message.content for choice in response.choices]
+    
+    # Return single output or list based on num_completions
+    return outputs[0] if len(outputs) == 1 else outputs
 
 
 # a list of presets for API server configs
+# LiteLLM format: "provider/model-name" (LiteLLM handles routing based on the prefix)
 SERVER_PRESETS = {
     "deepseek": {
         "temperature": 1.6, 
-        "model_name": "deepseek",
+        "model_name": "deepseek/deepseek-chat",  # LiteLLM format
+        "max_tokens": 4096
+    },
+    "deepseek-coder": {
+        "temperature": 1.6, 
+        "model_name": "deepseek/deepseek-coder",  # LiteLLM format
         "max_tokens": 4096
     },
     "google": {
-        "model_name": "gemini-1.5-flash-002",
-        "temperature": 0.7, # need to experiment with temperature
+        "model_name": "gemini/gemini-1.5-flash-002",  # LiteLLM format
+        "temperature": 0.7,
         "max_tokens": 8192,
     },
-    "together": { # mostly for Llama 3.1
-        "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
-        # "model_name": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+    "together": {  # for Llama 3.1 via Together AI
+        "model_name": "together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",  # LiteLLM format
         "temperature": 0.7,
         "max_tokens": 4096,
     },
     "sglang": {  # this is for running locally, mostly for Llama
-        "temperature": 0.8, # human eval pass@N temperature
+        # SGLang is a local server - kept for special handling
+        "temperature": 0.8,
         "server_port": 10210,
         "server_address": "matx2.stanford.edu",
         "max_tokens": 8192,
+        "model_name": "hosted",  # Will use custom OpenAI client for local server
     },
     "anthropic": {  # for Claude 3.5 Sonnet
-        "model_name": "claude-3-5-sonnet-20241022",
+        "model_name": "claude-3-5-sonnet-20241022",  # LiteLLM supports both anthropic/ prefix or direct model name
         "temperature": 0.8,
         "max_tokens": 4096,
     },
     "openai": {
-        "model_name": "gpt-4o-2024-08-06",
+        "model_name": "gpt-4o-2024-08-06",  # LiteLLM supports both openai/ prefix or direct model name
         # "model_name": "o1-preview-2024-09-12", # be careful with this one
         "temperature": 0.0,
         "max_tokens": 4096,
     },
     "sambanova": {
-        "model_name": "Meta-Llama-3.1-405B-Instruct",
+        "model_name": "sambanova/Meta-Llama-3.1-405B-Instruct",  # LiteLLM format
         "temperature": 0.1,
         "max_tokens": 8192,
+    },
+    "fireworks": {
+        "model_name": "fireworks_ai/accounts/fireworks/models/llama-v3p1-70b-instruct",  # LiteLLM format
+        "temperature": 0.7,
+        "max_tokens": 4096,
     },
 }
 
@@ -405,7 +275,17 @@ def create_inference_server_from_presets(server_type: str = None,
                                          **kwargs,
                                          ) -> callable:
     """
-    Return a callable function that queries LLM with given settings
+    Return a callable function that queries LLM with given settings using LiteLLM.
+    
+    Args:
+        server_type: Key from SERVER_PRESETS (e.g., "deepseek", "openai", "anthropic")
+        greedy_sample: If True, use temperature=0.0 for deterministic output
+        verbose: If True, print query details
+        time_generation: If True, print timing information
+        **kwargs: Override any preset parameters (e.g., model_name, temperature, max_tokens)
+    
+    Returns:
+        Callable that takes a prompt and returns the model response
     """
     def _query_llm(prompt: str | list[dict]):
         server_args = SERVER_PRESETS[server_type].copy()
@@ -417,7 +297,8 @@ def create_inference_server_from_presets(server_type: str = None,
             server_args["top_p"] = 1.0
             server_args["top_k"] = 1
         if verbose:
-            print(f"Querying server {server_type} with args: {server_args}")
+            print(f"Querying {server_type} with LiteLLM model: {server_args.get('model_name', 'N/A')}")
+            print(f"  Args: temp={server_args.get('temperature')}, max_tokens={server_args.get('max_tokens')}")
         
         if time_generation:
             start_time = time.time()
