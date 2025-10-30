@@ -55,10 +55,10 @@ class GenerationConfig(Config):
         self.api_query_interval = 0.0
 
         # Inference config
-        self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
-        self.max_tokens = 4096
-        self.temperature = 0.0
+        self.server_type = None
+        self.model_name = None
+        self.max_tokens = None
+        self.temperature = None
 
         # Logging
         # Top Directory to Store Runs
@@ -192,6 +192,17 @@ def main(config: GenerationConfig):
     Batch Generate Samples for Particular Level
     Store generated kernels in the specified run directory
     """
+    from src.utils import SERVER_PRESETS
+    
+    if config.server_type and config.server_type in SERVER_PRESETS:
+        preset = SERVER_PRESETS[config.server_type]
+        if config.model_name is None or config.model_name == "None":
+            config.model_name = preset.get("model_name", "None")
+        if config.max_tokens is None or config.max_tokens == "None":
+            config.max_tokens = preset.get("max_tokens", "None")
+        if config.temperature is None or config.temperature == "None":
+            config.temperature = preset.get("temperature", "None")
+    
     print(f"Starting Batch Generation with config: {config}")
 
     # Dataset Configurations

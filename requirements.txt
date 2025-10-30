@@ -25,4 +25,5 @@ google-generativeai
 together
 openai
 anthropic
+litellm[proxy]
 
