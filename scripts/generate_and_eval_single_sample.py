@@ -54,6 +54,11 @@ class EvalConfig(Config):
         self.model_name = None
         self.max_tokens = None
         self.temperature = None
+        
+        # Reasoning model specific parameters
+        self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
+        self.reasoning_effort = None  # for o1/o3: "low", "medium", "high"
+        self.budget_tokens = 0  # for Claude extended thinking mode
 
         # Logging
         self.logdir = os.path.join(REPO_TOP_DIR, "results/eval_logs")
@@ -91,6 +96,10 @@ def main(config: EvalConfig):
             config.max_tokens = preset.get("max_tokens", "None")
         if config.temperature is None or config.temperature == "None":
             config.temperature = preset.get("temperature", "None")
+    
+    # Convert string boolean to actual boolean for reasoning model flag
+    if isinstance(config.is_reasoning_model, str):
+        config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
     
     print(f"Starting Eval with config: {config}")
 
@@ -154,6 +163,9 @@ def main(config: EvalConfig):
         max_tokens=config.max_tokens,
         verbose=config.verbose,
         time_generation=True,
+        is_reasoning_model=config.is_reasoning_model,
+        reasoning_effort=config.reasoning_effort,
+        budget_tokens=config.budget_tokens,
     )
 
     # Use appropriate prompt constructor based on backend

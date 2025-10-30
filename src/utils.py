@@ -160,14 +160,24 @@ def query_server(
         completion_kwargs = {
             "model": model_name,
             "messages": messages,
-            "temperature": temperature,
-            "top_p": top_p,
             "max_tokens": max_tokens,
             "n": num_completions,
         }
         
-        if "openai/" not in model_name.lower() and "gpt" not in model_name.lower():
-            completion_kwargs["top_k"] = top_k
+        # Reasoning models (o1, o3, etc.) don't support standard sampling params
+        if is_reasoning_model:
+            # Note: o1/o3 models don't support temperature, top_p, top_k
+            # reasoning_effort is not supported in the API yet
+            # Claude extended thinking uses budget_tokens but through different mechanism
+            pass
+        else:
+            # Standard models support temperature and top_p
+            completion_kwargs["temperature"] = temperature
+            completion_kwargs["top_p"] = top_p
+            
+            # top_k is not supported by OpenAI models
+            if "openai/" not in model_name.lower() and "gpt" not in model_name.lower():
+                completion_kwargs["top_k"] = top_k
         
         response = completion(**completion_kwargs)
         
