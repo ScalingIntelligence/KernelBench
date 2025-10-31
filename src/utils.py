@@ -17,10 +17,7 @@ import json
 from tqdm import tqdm
 
 # API clients
-from together import Together
 from openai import OpenAI
-import google.generativeai as genai
-import anthropic
 from litellm import completion
 
 # from datasets import load_dataset
@@ -36,42 +33,12 @@ import hashlib
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Define API key access
-TOGETHER_KEY = os.environ.get("TOGETHER_API_KEY")
-DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY")
-OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-SGLANG_KEY = os.environ.get("SGLANG_API_KEY")  # for Local Deployment
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
-SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY")
-FIREWORKS_API_KEY = os.environ.get("FIREWORKS_API_KEY")
+SGLANG_KEY = os.environ.get("SGLANG_API_KEY")
 
 
 ########################################################
 # Inference Helpers
 ########################################################
-
-@cache
-def load_deepseek_tokenizer():
-    # TODO: Should we update this for new deepseek? Same tokenizer?
-    # return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Instruct-0724")
-    return AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-V2", trust_remote_code=True)
-
-# Buffer because deepseek totally blocks us if we send stuff that's too long :(
-TOO_LONG_FOR_DEEPSEEK = 115_000
-
-
-def is_safe_to_send_to_deepseek(prompt):
-    tokenizer = load_deepseek_tokenizer()
-    # print(f"Prompt: {len(prompt)}")
-    # print(f"Prompt length: {len(tokenizer(prompt, verbose=False)['input_ids'])}")
-    
-    if type(prompt) == str:
-        return (
-            len(tokenizer(prompt, verbose=False)["input_ids"]) < TOO_LONG_FOR_DEEPSEEK
-        )
-    else:
-        return len(tokenizer.apply_chat_template(prompt)) < TOO_LONG_FOR_DEEPSEEK
 
 def set_gpu_arch(arch_list: list[str]):
     """
@@ -112,10 +79,10 @@ def query_server(
     - Anthropic
     - Gemini / Google AI Studio
     - Fireworks (OpenAI compatbility)
-    - SGLang (Local Server)
+    - Local Server (SGLang, vLLM, Tokasaurus)
     """
-    # SGLang (Local Server) - special handling
-    if server_type == "sglang":
+    # Local Server (SGLang, vLLM, Tokasaurus) - special handling
+    if server_type == "local":
         url = f"http://{server_address}:{server_port}"
         client = OpenAI(
             api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
@@ -148,13 +115,20 @@ def query_server(
             return outputs
     
     # All other providers - use LiteLLM unified interface
-    if isinstance(prompt, str):
-        messages = [{"role": "user", "content": prompt}]
-    else:
-        messages = prompt
+    # Build messages list with system prompt first
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
     
-    if system_prompt and (not messages or messages[0].get("role") != "system"):
-        messages.insert(0, {"role": "system", "content": system_prompt})
+    if isinstance(prompt, str):
+        messages.append({"role": "user", "content": prompt})
+    else:
+        # If prompt is already a list of messages, extend it
+        # But check if it already has a system prompt to avoid duplicates
+        if prompt and prompt[0].get("role") == "system":
+            messages = prompt
+        else:
+            messages.extend(prompt)
     
     try:
         completion_kwargs = {
@@ -167,9 +141,13 @@ def query_server(
         # Reasoning models (o1, o3, etc.) don't support standard sampling params
         if is_reasoning_model:
             # Note: o1/o3 models don't support temperature, top_p, top_k
-            # reasoning_effort is not supported in the API yet
-            # Claude extended thinking uses budget_tokens but through different mechanism
-            pass
+            # LiteLLM will pass through reasoning_effort for OpenAI o1/o3 models
+            if reasoning_effort:
+                completion_kwargs["reasoning_effort"] = reasoning_effort
+            # Claude extended thinking uses "thinking" parameter with dict structure
+            # Format: {"type": "enabled", "budget_tokens": <int>}
+            if budget_tokens > 0 and "anthropic" in model_name.lower():
+                completion_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget_tokens}
         else:
             # Standard models support temperature and top_p
             completion_kwargs["temperature"] = temperature
@@ -215,7 +193,7 @@ SERVER_PRESETS = {
         "temperature": 0.7,
         "max_tokens": 4096,
     },
-    "sglang": {  # this is for running locally, mostly for Llama
+    "local": {  # this is for running locally (SGLang, vLLM, Tokasaurus), mostly for Llama
         "temperature": 0.8, # human eval pass@N temperature
         "server_port": 10210,
         "server_address": "matx2.stanford.edu",
@@ -231,11 +209,6 @@ SERVER_PRESETS = {
         # "model_name": "o1-preview-2024-09-12", # be careful with this one
         "temperature": 0.0,
         "max_tokens": 4096,
-    },
-    "sambanova": {
-        "model_name": "sambanova/Meta-Llama-3.1-405B-Instruct",
-        "temperature": 0.1,
-        "max_tokens": 8192,
     },
     "fireworks": {
         "model_name": "fireworks_ai/llama-v3p1-70b-instruct",
