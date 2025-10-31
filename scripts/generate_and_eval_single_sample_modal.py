@@ -99,7 +99,6 @@ image = (
                 "clang" # note i skip a step 
                 )
     .pip_install(  # required to build flash-attn
-        "anthropic",
         "numpy",
         "openai",
         "packaging",
@@ -108,8 +107,6 @@ image = (
         "tqdm",
         "datasets",
         "transformers",
-        "google-generativeai",
-        "together",
         "pytest",
         "ninja",
         "utils",
@@ -117,6 +114,8 @@ image = (
         #"apache-tvm",
         "python-dotenv",
         "nvidia-cutlass-dsl",
+        "litellm[proxy]",  # Unified LLM interface
+        "einops",  # for numerics
         
     )
     .add_local_python_source("src") 

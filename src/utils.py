@@ -115,18 +115,21 @@ def query_server(
             return outputs
     
     # All other providers - use LiteLLM unified interface
-    # Build messages list with system prompt first
+    # Build messages list with system prompt first (if not already present)
     messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
     
-    if isinstance(prompt, str):
-        messages.append({"role": "user", "content": prompt})
+    # Check if prompt is already a list with a system message
+    if isinstance(prompt, list) and prompt and prompt[0].get("role") == "system":
+        # Prompt already has system message, use it directly
+        messages = prompt
     else:
-        # If prompt is already a list of messages, extend it
-        # But check if it already has a system prompt to avoid duplicates
-        if prompt and prompt[0].get("role") == "system":
-            messages = prompt
+        # Add system prompt first if provided
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        
+        # Then add the actual prompt
+        if isinstance(prompt, str):
+            messages.append({"role": "user", "content": prompt})
         else:
             messages.extend(prompt)
     
