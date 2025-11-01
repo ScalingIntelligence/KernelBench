@@ -58,11 +58,11 @@ class GenerationConfig(Config):
         self.server_type = None
         self.model_name = None
         self.max_tokens = None
-        self.temperature = None
+        self.temperature = 0.0
         
         # Reasoning model specific parameters
         self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
-        self.reasoning_effort = None  # for o1/o3: "low", "medium", "high"
+        self.reasoning_effort = "low"  # for o1/o3: "low", "medium", "high"
         self.budget_tokens = 0  # for Claude extended thinking mode
 
         # Logging
