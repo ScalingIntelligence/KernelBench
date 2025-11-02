@@ -90,14 +90,10 @@ def analyze_greedy_eval(run_name, hardware, baseline, level, subset=None):
         else:
             subset_problems = subset_range
         
-        # Filter dataset to only include subset problems
-        filtered_dataset = []
-        for file_path in dataset:
-            problem_id = int(file_path.split("/")[-1].split("_")[0])
-            if problem_id in subset_problems:
-                filtered_dataset.append(file_path)
-        dataset = filtered_dataset
-        print(f"[INFO] Filtered dataset to subset: problems {subset_problems}, total: {len(dataset)} problems")
+        dataset = dataset.create_subset(subset_problems)
+        print(
+            f"[INFO] Filtered dataset to subset: problems {subset_problems}, total: {len(dataset)} problems"
+        )
 
     # load json
     eval_file_path = f"runs/{run_name}/eval_results.json"
@@ -130,7 +126,10 @@ def analyze_greedy_eval(run_name, hardware, baseline, level, subset=None):
     if subset:
         level_key = f"level{level}"
         filtered_baseline = {}
-        problem_names = [file_path.split("/")[-1] for file_path in dataset]
+        problem_names = [
+            os.path.basename(dataset.get_problem_by_id(pid))
+            for pid in dataset.get_problem_ids()
+        ]
         
         for problem_name in problem_names:
             if problem_name in baseline_results[level_key]:

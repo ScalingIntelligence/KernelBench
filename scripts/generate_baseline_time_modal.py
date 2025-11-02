@@ -7,7 +7,7 @@ from src.eval import (
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.dataset import construct_problem_dataset_from_problem_dir
+from src.dataset import construct_kernelbench_dataset
 from src.utils import read_file
 import os
 import json

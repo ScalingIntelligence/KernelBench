@@ -99,6 +99,18 @@ class KernelBenchDataset():
         """Return the number of problems in the dataset"""
         return len(self.problems)
 
+    def __iter__(self):
+        """Iterate over problem file paths."""
+        return iter(self.problems)
+
+    def __getitem__(self, idx: int) -> str:
+        """
+        Return problem file path by 0-indexed position. Supports negative indexing to
+        mirror list behaviour. This is primarily for backwards compatibility with the
+        previous list-based implementation.
+        """
+        return self.problems[idx]
+
     def get_problem_by_id(self, problem_id: int) -> str:
         """
         Get problem file path by its logical 1-indexed problem_id.
@@ -125,6 +137,26 @@ class KernelBenchDataset():
             list[int]: Sorted list of problem IDs
         """
         return [int(os.path.basename(problem).split('_')[0]) for problem in self.problems]
+
+    def create_subset(self, problem_ids: list[int]) -> "KernelBenchDataset":
+        """
+        Create a new KernelBenchDataset containing only the specified problem IDs.
+
+        Args:
+            problem_ids: Logical 1-indexed problem IDs to include.
+
+        Returns:
+            KernelBenchDataset: New dataset instance restricted to the provided IDs.
+        """
+
+        subset_dataset = [self.get_problem_by_id(pid) for pid in problem_ids]
+        return KernelBenchDataset(
+            dataset_name=self.dataset_name,
+            level=self.level,
+            use_subset=True,
+            dataset=self.problems,
+            subset_dataset=subset_dataset,
+        )
 
 
 def construct_kernelbench_dataset(level: int) -> KernelBenchDataset:

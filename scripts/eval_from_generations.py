@@ -241,11 +241,16 @@ def fetch_ref_arch_from_problem_id(
     Either from Hugging Face or Local Dataset
     """
     if dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(
-            lambda x: x["problem_id"] == problem_id, num_proc=1, desc=None
-        )
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
+        ref_arch_src = None
+        problem_name = None
+        for row in dataset:
+            if int(row["problem_id"]) == int(problem_id):
+                ref_arch_src = row["code"]
+                problem_name = row["name"]
+                break
+
+        if ref_arch_src is None:
+            raise ValueError(f"Problem ID {problem_id} not found in HuggingFace dataset")
 
     elif dataset_src == "local":
         ref_arch_path = dataset.get_problem_by_id(problem_id)
