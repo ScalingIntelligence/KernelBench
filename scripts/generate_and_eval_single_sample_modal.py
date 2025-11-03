@@ -53,7 +53,7 @@ class EvalConfig(Config):
         # you can either specify SM version or just use the name
         self.gpu = "L40S"
         self.gpu_arch = ['Ada']
-
+        self.precision = "fp32" # options ["fp32", "fp16", "bf16"]
 
         # Inference config
         self.server_type = "deepseek"
@@ -121,17 +121,18 @@ image = (
 class EvalFunc:
 
     @modal.method()
-    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend):
+    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend, precision):
         # 3. Evaluate Kernel
         # NOTE: no need to wrap around process here as only a single sample
         # see batch eval for examples of process isolation
         from src.eval import eval_kernel_against_ref
+        from src.eval import get_torch_dtype_from_string
         # Use utility function to set the GPU architecture in the modal environment
         from src.utils import set_gpu_arch as modal_set_gpu_arch
         modal_set_gpu_arch(gpu_arch)
         return eval_kernel_against_ref(
             ref_arch_src, custom_kernel, verbose=verbose, measure_performance=True, 
-            num_correct_trials=5, num_perf_trials=100, backend=backend
+            num_correct_trials=5, num_perf_trials=100, backend=backend, precision=get_torch_dtype_from_string(precision)
         )
 
 @pydra.main(base=EvalConfig)
@@ -216,7 +217,7 @@ def main(config: EvalConfig):
 
     with app.run():
         kernel_exec_result = EvalFunc.with_options(gpu=config.gpu)().eval_single_sample_modal.remote(
-            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend
+            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend, config.precision
         )
         
         print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")

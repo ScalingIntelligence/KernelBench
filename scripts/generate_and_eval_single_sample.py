@@ -18,7 +18,7 @@ from src.utils import (
     read_file,
     set_gpu_arch,
 )
-
+from src.eval import get_torch_dtype_from_string
 """
 Generate and evaluate a single sample
 Easiest way to get started, to test a single problem for experimentation or debugging
@@ -48,6 +48,7 @@ class EvalConfig(Config):
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
+        self.precision = "fp32" # options ["fp32", "fp16", "bf16"]
 
         # Inference config
         self.server_type = "deepseek"
@@ -196,6 +197,7 @@ def main(config: EvalConfig):
         num_correct_trials=5,
         num_perf_trials=100,
         backend=config.backend,
+        precision=get_torch_dtype_from_string(config.precision),
     )
 
     print(
