@@ -55,10 +55,15 @@ class GenerationConfig(Config):
         self.api_query_interval = 0.0
 
         # Inference config
-        self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
-        self.max_tokens = 4096
+        self.server_type = None
+        self.model_name = None
+        self.max_tokens = None
         self.temperature = 0.0
+        
+        # Reasoning model specific parameters
+        self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
+        self.reasoning_effort = "low"  # for o1/o3: "low", "medium", "high"
+        self.budget_tokens = 0  # for Claude extended thinking mode
 
         # Logging
         # Top Directory to Store Runs
@@ -192,6 +197,21 @@ def main(config: GenerationConfig):
     Batch Generate Samples for Particular Level
     Store generated kernels in the specified run directory
     """
+    from src.utils import SERVER_PRESETS
+    
+    if config.server_type and config.server_type in SERVER_PRESETS:
+        preset = SERVER_PRESETS[config.server_type]
+        if config.model_name is None or config.model_name == "None":
+            config.model_name = preset.get("model_name", "None")
+        if config.max_tokens is None or config.max_tokens == "None":
+            config.max_tokens = preset.get("max_tokens", "None")
+        if config.temperature is None or config.temperature == "None":
+            config.temperature = preset.get("temperature", "None")
+    
+    # Convert string boolean to actual boolean for reasoning model flag
+    if isinstance(config.is_reasoning_model, str):
+        config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
+    
     print(f"Starting Batch Generation with config: {config}")
 
     # Dataset Configurations
@@ -217,6 +237,10 @@ def main(config: GenerationConfig):
 
     # set up run directory
     run_dir = os.path.join(config.runs_dir, config.run_name)
+    run_exists = os.path.exists(run_dir)
+    if run_exists:
+        print(f"\n⚠️  WARNING: Run directory already exists: {run_dir}")
+        print(f"   Existing kernels will be skipped. Use a different run_name for a fresh run.\n")
     os.makedirs(run_dir, exist_ok=True)
     pydra.save_yaml(config.to_dict(), os.path.join(run_dir, "generation_config.yaml"))
 
@@ -225,14 +249,22 @@ def main(config: GenerationConfig):
     ), "supporting local file-system based storage for now"  # database integreation coming soon, need to migrate from CUDA Monkeys code
 
     problems_to_run = []
+    total_problems = 0
+    already_completed = 0
     for problem_id in range(
         problem_id_range.start, problem_id_range.stop + 1
     ):  # end index is inclusive
         for sample_id in range(config.num_samples):
+            total_problems += 1
             if not check_kernel_exists(run_dir, config.level, problem_id, sample_id):
                 problems_to_run.append(
                     WorkArgs(problem_id=int(problem_id), sample_id=sample_id)
                 )
+            else:
+                already_completed += 1
+    
+    if already_completed > 0:
+        print(f"📁 Found {already_completed}/{total_problems} kernels already generated. Generating remaining {len(problems_to_run)} kernels.")
 
     # Create inference function with config parameters
     # We provide some presets in utils but you can also pass in your own, see query_server for more details
@@ -242,6 +274,9 @@ def main(config: GenerationConfig):
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         verbose=config.verbose,
+        is_reasoning_model=config.is_reasoning_model,
+        reasoning_effort=config.reasoning_effort,
+        budget_tokens=config.budget_tokens,
     )
 
     # Launch workers
@@ -258,11 +293,16 @@ def main(config: GenerationConfig):
     )
 
     num_generated_samples = len(generation_results)
-    total_problems = len(problems_to_run)
-    num_failed_problems = total_problems - num_generated_samples
-    print(
-        f"Generated {num_generated_samples} samples for total {total_problems} problems, Please retry for the {num_failed_problems} failed problems."
-    )
+    num_attempted = len(problems_to_run)
+    num_failed_problems = num_attempted - num_generated_samples
+    
+    if num_attempted == 0:
+        print(f"\n✅ All {total_problems} kernels already exist in {run_dir}")
+        print(f"   Use a different run_name if you want to generate fresh samples.\n")
+    else:
+        print(
+            f"\nGenerated {num_generated_samples} samples for total {num_attempted} problems, Please retry for the {num_failed_problems} failed problems."
+        )
 
 
 if __name__ == "__main__":
