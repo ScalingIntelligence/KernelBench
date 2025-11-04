@@ -265,118 +265,116 @@ def prompt_fix_correctness_triton(ref_arch_src, custom_kernel, metadata):
 
 
 ################################################################################
-# TileLang Backend - COMMENTED OUT (not working currently)
+# TileLang Backend
 ################################################################################
 
-# TILELANG_PROBLEM_STATEMENT = """You write custom TileLang kernels to replace the pytorch operators in the given architecture to get speedups. \n
-#     You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom TileLang kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.\n
-# """
-# 
-# TILELANG_PROBLEM_INSTRUCTION = """
-# Optimize the architecture named Model with custom TileLang kernels! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
-# """
-# 
-# TILELANG_PROBLEM_STATEMENT_CLEANED = """You write custom TileLang kernels to replace the pytorch operators in the given architecture to get speedups.\n\nYou have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom TileLang kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.\n
-# """
-# 
-# TILELANG_PROBLEM_INSTRUCTION_CLEANED = """
-# Optimize the architecture named Model with custom TileLang kernels! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
-# """
-# 
-# 
-# def prompt_generate_custom_tilelang(
-#     arc_src: str, example_arch_src: str, example_new_arch_src: str
-# ) -> str:
-#     prompt = TILELANG_PROBLEM_STATEMENT
-# 
-#     if example_arch_src != "" and example_new_arch_src != "":
-#         prompt += f"""
-#         Here's an example to show you the syntax of inline embedding custom TileLang kernels in torch: The example given architecture is: \n
-#         ``` \n
-#         {example_arch_src}
-#         ``` \n
-#         The example new arch with custom TileLang kernels looks like this: \n
-#         ```
-#         {example_new_arch_src}
-#         ``` \n
-#         """
-# 
-#     prompt += f"""
-#     You are given the following architecture: \n
-#     ```
-#     {arc_src}
-#     ```
-#     """
-#     prompt += TILELANG_PROBLEM_INSTRUCTION
-#     return prompt
-# 
-# 
-# def prompt_generate_custom_tilelang_from_prompt_template(ref_arch_src: str) -> str:
-#     """
-#     Using prompt example for TileLang
-#     Note: You'll need to create a TileLang example file similar to the Triton one
-#     """
-#     arch = ref_arch_src
-# 
-#     # TODO: Create model_new_ex_add_tilelang.py example file
-#     example_arch_path = os.path.join(REPO_TOP_PATH, f"src/prompts/model_ex_add.py")
-#     example_new_arch_path = os.path.join(
-#         REPO_TOP_PATH, f"src/prompts/model_new_ex_add_tilelang.py"
-#     )
-# 
-#     if not os.path.exists(example_arch_path):
-#         raise FileNotFoundError(
-#             f"Example architecture file not found: {example_arch_path}"
-#         )
-#     if not os.path.exists(example_new_arch_path):
-#         # For now, use a basic template without examples if file doesn't exist
-#         return prompt_generate_custom_tilelang(arch, "", "")
-# 
-#     example_arch = read_file(example_arch_path)
-#     example_new_arch = read_file(example_new_arch_path)
-# 
-#     return prompt_generate_custom_tilelang(arch, example_arch, example_new_arch)
-# 
-# 
-# def prompt_fix_compile_tilelang(ref_arch_src, custom_kernel, metadata):
-#     prompt = TILELANG_PROBLEM_STATEMENT
-#     prompt += f"""
-#     With the following architecture:
-#     ```
-#     {ref_arch_src}
-#     ```
-#     You generated the following solution and it failed to compile:
-#     ```
-#     {custom_kernel}
-#     ```
-#     Here's the metadata of the compilation error:
-#     ```
-#     {metadata}
-#     ```
-#     
-#     Please fix the compilation error in the new model code. Please output the corrected code in codeblocks.
-#     """
-#     return prompt
-# 
-# 
-# def prompt_fix_correctness_tilelang(ref_arch_src, custom_kernel, metadata):
-#     prompt = TILELANG_PROBLEM_STATEMENT
-#     prompt += f"""
-#     With the following architecture:
-#     ```
-#     {ref_arch_src}
-#     ```
-#     You generated the following solution and it failed correctness:
-#     ```
-#     {custom_kernel}
-#     ```
-#     Here's the metadata of the correctness error:
-#     ```
-#     {metadata}
-#     ```
-#     Please consider how your custom TileLang kernels are implemented, how it is different from the reference implementation, and fix the correctness error in the new model code. Please output the corrected code in codeblocks.
-#     """
-#     return prompt
+TILELANG_PROBLEM_STATEMENT = """You write custom TileLang kernels to replace the pytorch operators in the given architecture to get speedups. \n
+    You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom TileLang kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.\n
+"""
+
+TILELANG_PROBLEM_INSTRUCTION = """
+Optimize the architecture named Model with custom TileLang kernels! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
+"""
+
+TILELANG_PROBLEM_STATEMENT_CLEANED = """You write custom TileLang kernels to replace the pytorch operators in the given architecture to get speedups.\n\nYou have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom TileLang kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.\n
+"""
+
+TILELANG_PROBLEM_INSTRUCTION_CLEANED = """
+Optimize the architecture named Model with custom TileLang kernels! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
+"""
+
+
+def prompt_generate_custom_tilelang(
+    arc_src: str, example_arch_src: str, example_new_arch_src: str
+) -> str:
+    prompt = TILELANG_PROBLEM_STATEMENT
+
+    if example_arch_src != "" and example_new_arch_src != "":
+        prompt += f"""
+        Here's an example to show you the syntax of inline embedding custom TileLang kernels in torch: The example given architecture is: \n
+        ``` \n
+        {example_arch_src}
+        ``` \n
+        The example new arch with custom TileLang kernels looks like this: \n
+        ```
+        {example_new_arch_src}
+        ``` \n
+        """
+
+    prompt += f"""
+    You are given the following architecture: \n
+    ```
+    {arc_src}
+    ```
+    """
+    prompt += TILELANG_PROBLEM_INSTRUCTION
+    return prompt
+
+
+def prompt_generate_custom_tilelang_from_prompt_template(ref_arch_src: str) -> str:
+    """
+    Using prompt example for TileLang
+    """
+    arch = ref_arch_src
+
+    example_arch_path = os.path.join(REPO_TOP_PATH, f"src/prompts/model_ex_add.py")
+    example_new_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_new_ex_add_tilelang.py"
+    )
+
+    if not os.path.exists(example_arch_path):
+        raise FileNotFoundError(
+            f"Example architecture file not found: {example_arch_path}"
+        )
+    if not os.path.exists(example_new_arch_path):
+        # For now, use a basic template without examples if file doesn't exist
+        return prompt_generate_custom_tilelang(arch, "", "")
+
+    example_arch = read_file(example_arch_path)
+    example_new_arch = read_file(example_new_arch_path)
+
+    return prompt_generate_custom_tilelang(arch, example_arch, example_new_arch)
+
+
+def prompt_fix_compile_tilelang(ref_arch_src, custom_kernel, metadata):
+    prompt = TILELANG_PROBLEM_STATEMENT
+    prompt += f"""
+    With the following architecture:
+    ```
+    {ref_arch_src}
+    ```
+    You generated the following solution and it failed to compile:
+    ```
+    {custom_kernel}
+    ```
+    Here's the metadata of the compilation error:
+    ```
+    {metadata}
+    ```
+    
+    Please fix the compilation error in the new model code. Please output the corrected code in codeblocks.
+    """
+    return prompt
+
+
+def prompt_fix_correctness_tilelang(ref_arch_src, custom_kernel, metadata):
+    prompt = TILELANG_PROBLEM_STATEMENT
+    prompt += f"""
+    With the following architecture:
+    ```
+    {ref_arch_src}
+    ```
+    You generated the following solution and it failed correctness:
+    ```
+    {custom_kernel}
+    ```
+    Here's the metadata of the correctness error:
+    ```
+    {metadata}
+    ```
+    Please consider how your custom TileLang kernels are implemented, how it is different from the reference implementation, and fix the correctness error in the new model code. Please output the corrected code in codeblocks.
+    """
+    return prompt
 
 
 ################################################################################
@@ -504,7 +502,7 @@ def get_prompt_for_backend(ref_arch_src: str, backend: str = "triton") -> str:
     
     Args:
         ref_arch_src: Reference architecture source code
-        backend: One of 'triton', 'cute'  (tilelang removed - not working)
+        backend: One of 'triton', 'tilelang', 'cute'
     
     Returns:
         Prompt string for the specified backend
@@ -513,13 +511,13 @@ def get_prompt_for_backend(ref_arch_src: str, backend: str = "triton") -> str:
     
     if backend_lower == "triton":
         return prompt_generate_custom_triton_from_prompt_template(ref_arch_src)
-    # elif backend_lower == "tilelang":
-    #     return prompt_generate_custom_tilelang_from_prompt_template(ref_arch_src)
+    elif backend_lower == "tilelang":
+        return prompt_generate_custom_tilelang_from_prompt_template(ref_arch_src)
     elif backend_lower == "cute":
         return prompt_generate_custom_cute_from_prompt_template(ref_arch_src)
     else:
         raise ValueError(
-            f"Unsupported backend: {backend}. Must be one of: 'triton', 'cute'"
+            f"Unsupported backend: {backend}. Must be one of: 'triton', 'tilelang', 'cute'"
         )
 
 

@@ -177,42 +177,6 @@ def load_custom_model_with_tempfile(model_custom_src, entry_point="ModelNew"):
     return ModelNew, temp_file
 
 
-# TODO: fix by @nathan
-# def load_tilelang_model(
-#     model_custom_src: str,
-#     context: dict,
-#     build_directory: str | None = None
-# ):
-#     """
-#     Load TileLang model using linecache instead of tempfile.
-#     This registers the source code in memory so inspect.getsource() works,
-#     which is needed for TileLang's JIT decorator.
-#     """
-#     if build_directory:
-#         model_custom_src = (
-#             "import os\n"
-#             f"os.environ['TORCH_EXTENSIONS_DIR'] = '{build_directory}'\n"
-#             + model_custom_src
-#         )
-#
-#     # Register source so inspect.getsource works
-#     fake_fname = (
-#         f"/tmp/tilelang_kernel_"
-#         f"{hashlib.md5(model_custom_src.encode()).hexdigest()}.py"
-#     )
-#     # linecache expects a list with trailing newlines
-#     linecache.cache[fake_fname] = (
-#         len(model_custom_src),
-#         None,
-#         model_custom_src.splitlines(True),
-#         fake_fname,
-#     )
-#
-#     code_obj = compile(model_custom_src, fake_fname, "exec")
-#     exec(code_obj, context)
-#     return context["ModelNew"]
-
-
 def load_custom_model(
     model_custom_src: str, context: dict, build_directory: str = None
 ) -> nn.Module:
@@ -418,17 +382,6 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     
     # cast to the desired percision dtype for activations
     input_tensor = input.to(dtype=precision)
-
-    # @Nathan what is going on here?
-    # NOTE: to come back to this
-    # # Preserve integer dtypes for labels/targets (e.g., classification losses)
-    # if tensor.dtype in [torch.int32, torch.int64, torch.long]:
-    #     return tensor.to(device=device)
-    
-    # Apply backend-specific dtype casting for float tensors
-    # NOTE: for tilelang is it all fp16? 
-    # if backend.lower() == "tilelang":
-    #     return tensor.to(device=device, dtype=torch.float16)
     
     # Default for all other backends and float types
     return input_tensor.to(device=device)
@@ -446,7 +399,7 @@ def eval_kernel_against_ref(
     device: Union[torch.device, int] = (
         torch.cuda.current_device() if torch.cuda.is_available() else None
     ),  # have to run on GPU
-    backend: str = "cuda",  # can be 'cuda', 'triton', or 'cute'
+    backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype = torch.float32,
 ) -> KernelExecResult:
     """
@@ -455,14 +408,14 @@ def eval_kernel_against_ref(
     num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
     num_perf_trials: run the evalutation many times to take the average
     device: GPU (cuda) device to run the evalutation on
-    backend: str, one of 'cuda', 'triton', or 'cute'
+    backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
+    precision: torch.dtype for computation (note: tilelang only supports fp16)
     """
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
     
-    # SET DEFAULT DTYPE TO FLOAT16 ONLY FOR TILELANG
-    # if backend.lower() == "tilelang":
-    #     torch.set_default_dtype(torch.float16)
+    if backend.lower() == "tilelang":
+        assert precision == torch.float16 or precision == torch.bfloat16, "TileLang only supports fp16 or bfloat16"
     
     torch.set_printoptions(
         precision=4,  # Decimal places
@@ -475,7 +428,8 @@ def eval_kernel_against_ref(
     torch.cuda.set_device(device)
     
     # Backends that use tempfile approach and need CUDA_VISIBLE_DEVICES
-    uses_tempfile = backend.lower() in ["triton", "cute"]  # removed "tilelang"
+    # TileLang, Triton, and CuTe all use tempfile for proper module loading
+    uses_tempfile = backend.lower() in ["triton", "tilelang", "cute"]
     
     metadata = {}  # for storing result metadata
     metadata["hardware"] = torch.cuda.get_device_name(device=device)
@@ -527,11 +481,9 @@ def eval_kernel_against_ref(
         # add hash for later to distinguish between multi-turn kernels
         
         backend_lower = backend.lower()
-        # if backend_lower == "tilelang":
-        #     # Use linecache approach for TileLang
-        #     ModelNew = load_tilelang_model(custom_model_src, context, build_dir)
-        if backend_lower in ["triton", "cute"]:
-            # Use tempfile approach for triton and cute
+        if backend_lower in ["triton", "tilelang", "cute"]:
+            # Use tempfile approach for triton, tilelang, and cute
+            # These DSLs require proper module import for JIT decorators to work
             ModelNew, tempfile = load_custom_model_with_tempfile(
                 custom_model_src, entry_point="ModelNew"
             )
@@ -567,25 +519,6 @@ def eval_kernel_against_ref(
             set_seed(seed_num)  # set seed for reproducible weights
             custom_model = ModelNew(*init_inputs)
             assert hasattr(custom_model, "forward")
-            # Move models to GPU with float16 dtype (only for TileLang)
-            # if backend.lower() == "tilelang":
-            #     try:
-            #         original_model = original_model.to(device=device, dtype=torch.float16)
-            #     except Exception as e:
-            #         # TileLang JIT kernels may not support .to(), already on GPU
-            #         if verbose:
-            #             print(f"[Info] Could not call .to() on original model (TileLang), using as-is: {e}")
-            #             print("[Traceback]:")
-            #             traceback.print_exc()
-            #     try:
-            #         custom_model = custom_model.to(device=device, dtype=torch.float16)
-            #     except Exception as e:
-            #         # TileLang JIT kernels may not support .to(), already on GPU
-            #         if verbose:
-            #             print(f"[Info] Could not call .to() on custom model (TileLang), using as-is: {e}")
-            #             print("[Traceback]:")
-            #             traceback.print_exc()
-            # else:
             original_model = original_model.to(device=device, dtype=precision)
             custom_model = custom_model.to(device=device, dtype=precision)
             torch.cuda.synchronize(device=device)
@@ -641,18 +574,6 @@ def eval_kernel_against_ref(
                 inputs = get_inputs()
                 # Convert inputs for performance measurement
                 inputs = [_process_input_tensor(x, device, backend, precision) for x in inputs]
-                
-                # if backend.lower() == "tilelang":
-                #     try:
-                #         model_new = custom_model.to(device=device, dtype=torch.float16)
-                #     except Exception as e:
-                #         # TileLang JIT kernels may not support .to(), already on GPU
-                #         if verbose:
-                #             print(f"[Info] Line 616 - Could not call .to() on custom model for perf measurement (TileLang): {e}")
-                #             print("[Traceback] From performance measurement - line 616:")
-                #             traceback.print_exc()
-                #         model_new = custom_model
-                # else:
                 model_new = custom_model.to(device=device, dtype=precision)
                 torch.cuda.synchronize(device=device)
 
@@ -797,10 +718,6 @@ def run_and_check_correctness(
             trial_seed = correctness_trial_seeds[trial]
             if verbose:
                 print(f"[Eval] Generating Random Input with seed {trial_seed}")
-            
-            # @Nathan, let's find a cleaner way to handle tilelang dtype etc
-            # if backend.lower() == "tilelang":
-            #     torch.set_default_dtype(torch.float16)
 
             set_seed(trial_seed)
             inputs = get_inputs_fn()
@@ -808,31 +725,11 @@ def run_and_check_correctness(
             inputs = [_process_input_tensor(x, device, backend, precision) for x in inputs]
 
             set_seed(trial_seed)
-            # if backend.lower() == "tilelang":
-            #     try:
-            #         model = original_model_instance.to(device=device, dtype=torch.float16)
-            #     except Exception as e:
-            #         # TileLang JIT kernels may not support .to(), already on GPU
-            #         if verbose:
-            #             print(f"[Info] Line 771 - Could not call .to() on original model (TileLang): {e}")
-            #             print("[Traceback] From run_and_check_correctness - line 771:")
-            #             traceback.print_exc()
-            #         model = original_model_instance
-            # else:
+    
             model = original_model_instance.to(device=device, dtype=precision)
 
             set_seed(trial_seed)
-            # if backend.lower() == "tilelang":
-            #     try:
-            #         model_new = new_model_instance.to(device=device, dtype=torch.float16)
-            #     except Exception as e:
-            #         # TileLang JIT kernels may not support .to(), already on GPU
-            #         if verbose:
-            #             print(f"[Info] Line 777 - Could not call .to() on custom model (TileLang): {e}")
-            #             print("[Traceback] From run_and_check_correctness - line 777:")
-            #             traceback.print_exc()
-            #         model_new = new_model_instance
-            # else:
+     
             model_new = new_model_instance.to(device=device, dtype=precision)
 
             output = model(*inputs)
