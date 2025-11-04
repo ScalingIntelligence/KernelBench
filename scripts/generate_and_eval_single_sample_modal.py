@@ -167,9 +167,7 @@ def main(config: EvalConfig):
         problem_name = curr_problem_row["name"][0]
 
     elif config.dataset_src == "local":
-        problem_idx_in_dataset = config.problem_id - 1 # due to dataset list being 0-indexed locally
-        ref_arch_path = curr_level_dataset[problem_idx_in_dataset]
-
+        ref_arch_path = curr_level_dataset.get_problem_by_id(config.problem_id)
         problem_name = os.path.basename(ref_arch_path)
         ref_arch_src = read_file(ref_arch_path)
     # import pdb; pdb.set_trace()

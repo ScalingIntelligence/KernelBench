@@ -105,11 +105,7 @@ def generate_sample_single(
         problem_name = curr_problem_row["name"][0]
 
     elif config.dataset_src == "local":
-        problem_idx_in_dataset = (
-            work.problem_id - 1
-        )  # due to dataset list being 0-indexed locally
-        ref_arch_path = dataset[problem_idx_in_dataset]
-
+        ref_arch_path = dataset.get_problem_by_id(work.problem_id)
         problem_name = os.path.basename(ref_arch_path)
         ref_arch_src = read_file(ref_arch_path)
 
@@ -203,16 +199,29 @@ def main(config: GenerationConfig):
 
     num_problems_in_level = len(curr_level_dataset)
 
-    if config.subset == (None, None):
-        problem_id_range = range(1, num_problems_in_level)
+    # Get actual problem IDs from dataset (for local) or use subset logic (for HuggingFace)
+    if config.dataset_src == "local":
+        all_problem_ids = curr_level_dataset.get_problem_ids()
+        if config.subset == (None, None):
+            problem_ids_to_generate = all_problem_ids
+        else:
+            # Filter to subset range
+            problem_ids_to_generate = [
+                pid for pid in all_problem_ids 
+                if config.subset[0] <= pid <= config.subset[1]
+            ]
     else:
-        assert (
-            config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level
-        ), f"Subset range {config.subset} out of range for Level {config.level}"
-        problem_id_range = range(config.subset[0], config.subset[1])
+        # HuggingFace dataset - use range-based logic
+        if config.subset == (None, None):
+            problem_ids_to_generate = list(range(1, num_problems_in_level + 1))
+        else:
+            assert (
+                config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level
+            ), f"Subset range {config.subset} out of range for Level {config.level}"
+            problem_ids_to_generate = list(range(config.subset[0], config.subset[1] + 1))
 
     print(
-        f"Generating {config.num_samples} sample(s) each for level {config.level} problems: {problem_id_range}"
+        f"Generating {config.num_samples} sample(s) each for level {config.level} problems: {problem_ids_to_generate[:10]}{'...' if len(problem_ids_to_generate) > 10 else ''}"
     )
 
     # set up run directory
@@ -225,9 +234,7 @@ def main(config: GenerationConfig):
     ), "supporting local file-system based storage for now"  # database integreation coming soon, need to migrate from CUDA Monkeys code
 
     problems_to_run = []
-    for problem_id in range(
-        problem_id_range.start, problem_id_range.stop + 1
-    ):  # end index is inclusive
+    for problem_id in problem_ids_to_generate:
         for sample_id in range(config.num_samples):
             if not check_kernel_exists(run_dir, config.level, problem_id, sample_id):
                 problems_to_run.append(

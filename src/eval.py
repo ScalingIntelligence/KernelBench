@@ -57,13 +57,23 @@ def fetch_kernel_from_database(
 def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str:
     """
     Fetches the reference architecture in string for a given problem_id
+    
+    Args:
+        problem_id: Logical 1-indexed problem ID
+        problems: KernelBenchDataset object or list of problem paths
+        with_name: Whether to return the problem path along with the source code
     """
     if isinstance(problem_id, str):
         problem_id = int(problem_id)
 
-    problem_path = problems[problem_id]
+    # Handle both new KernelBenchDataset and old list format for backwards compatibility
+    if hasattr(problems, 'get_problem_by_id'):
+        # New KernelBenchDataset object
+        problem_path = problems.get_problem_by_id(problem_id)
+    else:
+        # Old list format - fallback (shouldn't be used anymore)
+        problem_path = problems[problem_id]
 
-    # problem_path = os.path.join(REPO_ROOT_PATH, problem)
     if not os.path.exists(problem_path):
         raise FileNotFoundError(f"Problem file at {problem_path} does not exist.")
 
@@ -75,8 +85,16 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
 
 
 def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    """
+    Fetches the reference architecture for a given level and problem_id
+    
+    Args:
+        level: Level number (1, 2, 3, or 4)
+        problem_id: Logical 1-indexed problem ID
+        with_name: Whether to return the problem path along with the source code
+    """
+    from src.dataset import construct_kernelbench_dataset
+    dataset = construct_kernelbench_dataset(level)
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 

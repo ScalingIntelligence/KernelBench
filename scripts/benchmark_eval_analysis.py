@@ -19,6 +19,12 @@ Usage:
 ```
 python3 scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline>
 ```
+
+For subset evaluation:
+```
+python3 scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline> subset="[1,5]"
+```
+
 hardware + baseline should correspond to the results/timing/hardware/baseline.json file   
 
 """
@@ -31,6 +37,8 @@ class AnalysisConfig(Config):
 
         self.hardware = REQUIRED  # hardware to evaluate
         self.baseline = REQUIRED  # baseline to compare against
+        
+        self.subset = None  # subset of problems to evaluate, e.g., "[1,5]" for problems 1-5
 
     def __repr__(self):
         return f"AnalysisConfig({self.to_dict()})"
@@ -40,7 +48,7 @@ def patch(eval_results, dataset):
     """
     Patch the eval results with the dataset
     """
-    for pid in range(1, len(dataset) + 1):
+    for pid in dataset.get_problem_ids():
         if str(pid) not in eval_results:
             eval_results[str(pid)] = {
                 "sample_id": 0,
@@ -54,12 +62,38 @@ def patch(eval_results, dataset):
     return eval_results
 
 
-def analyze_greedy_eval(run_name, hardware, baseline, level):
+def analyze_greedy_eval(run_name, hardware, baseline, level, subset=None):
     """
     Analyze the greedy eval results for a run of a particular level
+    
+    Args:
+        run_name: Name of the run to evaluate
+        hardware: Hardware to evaluate
+        baseline: Baseline to compare against
+        level: Level to evaluate
+        subset: Optional subset of problems to evaluate, e.g., "[1,5]" for problems 1-5
     """
 
     dataset = construct_kernelbench_dataset(level)
+    
+    # Filter dataset by subset if provided
+    if subset:
+        # Parse subset
+        if isinstance(subset, str):
+            import ast
+            subset_range = ast.literal_eval(subset)
+        else:
+            subset_range = subset
+            
+        if isinstance(subset_range, list) and len(subset_range) == 2:
+            subset_problems = list(range(subset_range[0], subset_range[1] + 1))
+        else:
+            subset_problems = subset_range
+        
+        dataset = dataset.create_subset(subset_problems)
+        print(
+            f"[INFO] Filtered dataset to subset: problems {subset_problems}, total: {len(dataset)} problems"
+        )
 
     # load json
     eval_file_path = f"runs/{run_name}/eval_results.json"
@@ -87,6 +121,22 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
 
     with open(baseline_file_path, "r") as f:
         baseline_results = json.load(f)
+    
+    # Filter baseline results to match the dataset (if subset is used)
+    if subset:
+        level_key = f"level{level}"
+        filtered_baseline = {}
+        problem_names = [
+            os.path.basename(dataset.get_problem_by_id(pid))
+            for pid in dataset.get_problem_ids()
+        ]
+        
+        for problem_name in problem_names:
+            if problem_name in baseline_results[level_key]:
+                filtered_baseline[problem_name] = baseline_results[level_key][problem_name]
+        
+        baseline_results[level_key] = filtered_baseline
+        print(f"[INFO] Filtered baseline to {len(filtered_baseline)} problems")
 
     # Initialize counters
     total_count = len(dataset)
@@ -160,6 +210,31 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     results = [
         [p, fastp(is_correct, baseline_speed, actual_speed, n, p)] for p in p_values
     ]
+    
+    # Create results dictionary for saving
+    analysis_results = {
+        "run_name": run_name,
+        "level": level,
+        "hardware": hardware,
+        "baseline": baseline,
+        "subset": subset,
+        "summary": {
+            "total_problems": total_count,
+            "total_evaluated": total_eval,
+            "compiled_count": compiled_count,
+            "correct_count": correct_count,
+            "compilation_rate": compiled_count / total_count,
+            "correctness_rate": correct_count / total_count,
+        },
+        "speedup_metrics": {
+            "geometric_mean_speedup": float(gmsr_correct),
+            "fast_p": {str(p): float(fastp(is_correct, baseline_speed, actual_speed, n, p)) for p in p_values}
+        }
+    }
+    
+    # Add pass@k results if available
+    if pass_at_k_results:
+        analysis_results["pass_at_k"] = pass_at_k_results
 
     # Print the results
     print("\nSpeedup Metrics:")
@@ -192,11 +267,21 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
             print("\nAverage Pass@k Metrics:")
             avg_table = [[k, v] for k, v in averages.items()]
             print(tabulate(avg_table, headers=["Metric", "Value"], tablefmt="grid"))
+    
+    # Save results to JSON file
+    analysis_file_path = f"runs/{run_name}/analysis_results.json"
+    os.makedirs(os.path.dirname(analysis_file_path), exist_ok=True)
+    with open(analysis_file_path, "w") as f:
+        json.dump(analysis_results, f, indent=2)
+    
+    print(f"\n✓ Analysis results saved to: {analysis_file_path}")
+    
+    return analysis_results
 
 
 @pydra.main(base=AnalysisConfig)
 def main(config: AnalysisConfig):
-    analyze_greedy_eval(config.run_name, config.hardware, config.baseline, config.level)
+    analyze_greedy_eval(config.run_name, config.hardware, config.baseline, config.level, config.subset)
 
 
 if __name__ == "__main__":
