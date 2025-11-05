@@ -9,7 +9,6 @@ from datasets import load_dataset
 from src import eval as kernel_eval
 from src import utils as kernel_utils
 from scripts.generate_baseline_time import measure_program_time
-
 from src.utils import read_file
 
 """
@@ -68,6 +67,8 @@ class ScriptConfig(Config):
 
         # Replace with your NVIDIA GPU architecture, e.g. ["Hopper"]
         self.gpu_arch = ["Ada"] 
+        self.precision = "fp32"
+        self.backend = "cuda"
 
     def __repr__(self):
         return f"ScriptConfig({self.to_dict()})"
@@ -97,7 +98,9 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
             num_correct_trials=num_correct_trials,
             num_perf_trials=num_perf_trials,
             build_dir=build_dir,
-            device=device
+            device=device,
+            backend=configs["backend"],
+            precision=kernel_eval.get_torch_dtype_from_string(configs["precision"])
         )
         return eval_result
     except Exception as e:

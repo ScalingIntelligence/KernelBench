@@ -145,6 +145,10 @@ class EvalConfig(Config):
 
         # Backend to use for kernel implementation (cuda or triton)
         self.backend = "cuda"
+        
+        # Precision for computation: "fp32", "fp16", "bf16"
+        self.precision = "fp32"
+        
         # Number of samples per problem to evaluate for pass@k analysis
         self.num_samples_per_problem = 1  # Default to 1 sample per problem
 
@@ -188,11 +192,13 @@ class ModalEvaluator:
         num_perf_trials: int = 100,
         measure_performance: bool = True,
         verbose: bool = False,
+        backend: str = "cuda",
+        precision: str = "fp32",
     ):
         """
         Evaluate a single sample on Modal GPU with automatic retries for GPU attachment failures
         """
-        from src.eval import eval_kernel_against_ref
+        from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
         from src.utils import set_gpu_arch
         import torch
         import time
@@ -225,6 +231,8 @@ class ModalEvaluator:
             num_perf_trials=num_perf_trials,
             build_dir=None,  # Modal doesn't need persistent build dir
             device=torch.device("cuda:0"),  # Modal has one GPU per container
+            backend=backend,
+            precision=get_torch_dtype_from_string(precision),
         )
         
         # Force cleanup and exit to prevent container reuse and memory leaks
@@ -321,6 +329,7 @@ def evaluate_single_sample(
             build_dir=build_dir,
             device=device,
             backend=configs.backend,
+            precision=eval.get_torch_dtype_from_string(configs.precision),
         )
         return eval_result
     except Exception as e:
@@ -491,6 +500,8 @@ def batch_eval_modal(
                             num_perf_trials=config.num_perf_trials,
                             measure_performance=config.measure_performance,
                             verbose=config.verbose,
+                            backend=config.backend,
+                            precision=config.precision,
                         )
                         futures.append(future)
                 

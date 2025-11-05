@@ -574,6 +574,7 @@ def eval_kernel_against_ref(
                 inputs = get_inputs()
                 # Convert inputs for performance measurement
                 inputs = [_process_input_tensor(x, device, backend, precision) for x in inputs]
+                
                 model_new = custom_model.to(device=device, dtype=precision)
                 torch.cuda.synchronize(device=device)
 
