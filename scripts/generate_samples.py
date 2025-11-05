@@ -78,6 +78,8 @@ class GenerationConfig(Config):
         self.log_prompt = False
 
         self.backend = "cuda"
+        
+        self.precision = "fp32"
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -129,11 +131,11 @@ def generate_sample_single(
         custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(
             ref_arch_src
         )
-    elif config.backend in ["triton", "cute"]:  # removed "tilelang"
+    elif config.backend in ["triton", "cute", "tilelang"]:
         custom_cuda_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
     else:
         raise ValueError(
-            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', or 'cute'."
+            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'cute', or 'tilelang'."
         )
     if config.log_prompt:
         prompt_path = os.path.join(

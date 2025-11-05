@@ -7,6 +7,8 @@ modal
 
 # DSLs
 nvidia-cutlass-dsl
+tilelang
+apache-tvm
 
 # helper
 tqdm
