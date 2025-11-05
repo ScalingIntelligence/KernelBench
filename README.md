@@ -80,7 +80,7 @@ pip install -r requirements.txt
 pip install -e . 
 ```
 
-To call LLM API providers, set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
+We use `litellm` for API calls. Please set your keys by creating a `.env` following our `.env.example`.
 
 Running and profiling kernels require a GPU. 
 If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
@@ -122,7 +122,7 @@ If you are using a different hardware, you can generate the baseline time with `
 We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
 
 ### Multi-Turn Framework
-We have also releaed the test-time framework [Caesar](https://github.com/simonguozirui/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems. 
+We have also releaed the test-time framework [Caesar](https://github.com/ScalingIntelligence/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems. 
 
 ## 🛣️ Upcoming Roadmap
 Check out our [roadmap](https://github.com/ScalingIntelligence/KernelBench/issues/74) for what we plan to add as features. We welcome community contirbutions in these directions. 

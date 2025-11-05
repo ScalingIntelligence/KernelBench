@@ -22,9 +22,6 @@ einops
 dotenv
 numpy
 
-# to deprecate with litellm
-google-generativeai
-together
 openai
-anthropic
+litellm[proxy]
 
