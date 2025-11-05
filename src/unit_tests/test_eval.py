@@ -32,3 +32,10 @@ def test_input_modification():
     """
     result = run_test_kernel("level1/1_Square_matrix_multiplication_.py", "zero_out_kernel.py")
     assert result.correctness is False
+
+def test_result_reuse():
+    """
+    Test that the eval script will flag a kernel as incorrect if it tries to reuse computation from the PyTorch reference.
+    """
+    result = run_test_kernel("level1/1_Square_matrix_multiplication_.py", "result_reuse_kernel.py")
+    assert result.correctness is False
