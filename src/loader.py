@@ -37,12 +37,6 @@ class PromptConfig:
             text_parts.append(node.strip() + "\n")
         return "\n".join(text_parts).strip() + "\n"
 
-    def get_template_node(self, backend: str, template: str) -> Dict[str, Any]:
-        try:
-            return self.data["backends"][backend]["templates"][template]
-        except KeyError as e:
-            raise KeyError(f"Unknown backend/template: {backend}/{template}") from e
-
 def _gpu_context_from_py(py_path: str, gpu_name: str) -> Dict[str, str]:
     """
     Load GPU_* dicts from a Python file (no exec of raw strings; use runpy).
@@ -79,39 +73,97 @@ def _gpu_context_from_py(py_path: str, gpu_name: str) -> Dict[str, str]:
         "gpu_best_practices_bullets": best_bullets,
     }
 
-def render_prompt(
+def render_prompt_by_option(
     *,
     prompts_toml: str,
-    backend: str,
-    template: str,
+    language: str,
+    option: str,
     context: Dict[str, str],
     gpu_specs_py: Optional[str] = None,
     gpu_name: Optional[str] = None,
 ) -> str:
+    """
+    New function that uses languages.X and options.Y structure
+    
+    Args:
+        prompts_toml: Path to the prompts.toml file
+        language: The kernel language (triton, cuda, cute)
+        option: The prompt option (basic, few_shot, hardware_info, fix_compile, fix_correctness)
+        context: Variables to fill in the prompt template
+        gpu_specs_py: Optional path to GPU specs Python file
+        gpu_name: Optional GPU name (required if option requires_gpu)
+    """
     cfg = PromptConfig.from_toml(prompts_toml)
-    node = cfg.get_template_node(backend, template)
-
+    
+    # Get language-specific content
+    try:
+        lang_data = cfg.data["languages"][language]
+    except KeyError:
+        raise KeyError(f"Unknown language: {language}")
+    
+    # Get option configuration
+    try:
+        option_data = cfg.data["options"][option]
+    except KeyError:
+        raise KeyError(f"Unknown option: {option}")
+    
+    # Get shared templates
+    shared = cfg.data.get("shared", {})
+    language_display = lang_data.get("language_display", language.upper())
+    
+    # Fill in shared templates with language-specific terms
+    problem_statement = shared.get("problem_statement", "").format(language_display=language_display)
+    instruction = shared.get("instruction", "").format(language_display=language_display)
+    
+    # Add language-specific content to context
+    context = {
+        **context,
+        "language": language.upper() if language in ["cuda", "cute"] else language.capitalize(),
+        "language_display": language_display,
+        "problem_statement": problem_statement,
+        "instruction": instruction,
+    }
+    
     # Load example files if requested
-    if node.get("requires_example"):
-        ex_arch_path = _abs_path(node["example_arch_path"])
-        ex_new_path = _abs_path(node["example_new_arch_path"])
+    if option_data.get("requires_example"):
+        # Use language-specific example arch, or fall back to shared one
+        ex_arch_path = _abs_path(
+            lang_data.get("few_shot_example_arch") or shared.get("few_shot_example_arch")
+        )
+        ex_new_path = _abs_path(lang_data["few_shot_new_arch"])
         context = {
             **context,
             "example_arch_src": read_file(ex_arch_path),
             "example_new_arch_src": read_file(ex_new_path),
         }
-
-    # Load GPU details (from .py) if requested
-    if node.get("requires_gpu"):
+    
+    # Load GPU details if requested
+    if option_data.get("requires_gpu"):
         if not (gpu_specs_py and gpu_name):
-            raise ValueError("Template requires GPU info; provide gpu_specs_py and gpu_name")
+            raise ValueError(f"Option '{option}' requires GPU info; provide gpu_specs_py and gpu_name")
         context = {**context, **_gpu_context_from_py(_abs_path(gpu_specs_py), gpu_name)}
-
-    # Compose & fill
-    compose_keys = node["compose"]
-    prompt_text = cfg.compose_blocks(compose_keys)
-
+    
+    # Build the prompt from components
+    prompt_parts = []
+    for component in option_data["components"]:
+        if component == "problem_statement":
+            # Use the already-formatted problem_statement from context
+            prompt_parts.append(context["problem_statement"])
+        elif component == "instruction":
+            # Use the already-formatted instruction from context
+            prompt_parts.append(context["instruction"])
+        elif component.startswith("hardware_"):
+            # Hardware components from templates.hardware
+            template_key = f"templates.hardware.{component}"
+            prompt_parts.append(cfg.compose_blocks([template_key]))
+        else:
+            # Other components from templates.common
+            template_key = f"templates.common.{component}"
+            prompt_parts.append(cfg.compose_blocks([template_key]))
+    
+    prompt_text = "\n".join(prompt_parts).strip() + "\n"
+    
     try:
         return prompt_text.format(**context).strip() + "\n"
     except KeyError as e:
-        raise KeyError(f"Missing placeholder in context: {e.args[0]}") from e
+        raise KeyError(f"Missing placeholder in context: {e.args[0]}. Available: {list(context.keys())}") from e

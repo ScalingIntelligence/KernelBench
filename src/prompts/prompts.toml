@@ -1,111 +1,77 @@
 [meta]
 version = "1.0"
-default_backend = "triton"
+default_language = "cuda"
 
+# -------------------------------------------------------------------------
+# Shared Templates: Used by all languages with placeholders
+# -------------------------------------------------------------------------
 [shared]
-# Centralized text blocks reused by backends
-triton_problem_statement = """
-You write custom Triton kernels to replace the pytorch operators in the given architecture to get speedups.
+problem_statement = """
+You write custom {language_display} to replace the pytorch operators in the given architecture to get speedups.
 
-You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom Triton kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.
+You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom {language_display} and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.
 """
 
-triton_instruction = """
-Optimize the architecture named Model with custom Triton kernels! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!
+instruction = """
+Optimize the architecture named Model with custom {language_display}! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!
 """
 
-cute_problem_statement = """
-You write custom CuTe (CUTLASS) kernels to replace the pytorch operators in the given architecture to get speedups.
-
-You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom CuTe kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.
-"""
-
-cute_instruction = """
-Optimize the architecture named Model with custom CuTe (CUTLASS) kernels! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!
-"""
-
-cuda_problem_statement = """
-You write custom CUDA kernels to replace the pytorch operators in the given architecture to get speedups.
-
-You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom CUDA kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.
-"""
-
-cuda_instruction = """
-Optimize the architecture named Model with custom CUDA operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!
-"""
+# Shared example architecture (same for all languages)
+few_shot_example_arch = "src/prompts/model_ex_add.py"
 
 # -------------------------------------------------------------------------
-# Backends
+# Languages: Language-specific configuration (minimal, just what varies)
 # -------------------------------------------------------------------------
+[languages.triton]
+language_display = "Triton kernels"
+few_shot_new_arch = "src/prompts/model_new_ex_add_triton.py"
 
-[backends.triton.templates.default]
-compose = ["shared.triton_problem_statement", "templates.triton.example_block", "templates.triton.arch_block", "shared.triton_instruction"]
-requires_example = true
-example_arch_path = "src/prompts/model_ex_add.py"
-example_new_arch_path = "src/prompts/model_new_ex_add_triton.py"
+[languages.cuda]
+language_display = "CUDA operators"
+few_shot_new_arch = "src/prompts/model_new_ex_add.py"
 
-[backends.triton.templates.with_hardware]
-compose = ["shared.triton_problem_statement", "templates.triton.example_block", "templates.hardware.header", "templates.hardware.specs", "templates.hardware.definitions", "templates.hardware.best_practices", "templates.triton.arch_block", "shared.triton_instruction"]
+[languages.cute]
+language_display = "CuTe (CUTLASS) kernels"
+few_shot_new_arch = "src/prompts/model_new_ex_add_cute.py"
+
+# -------------------------------------------------------------------------
+# Options: Different prompt construction modes
+# -------------------------------------------------------------------------
+[options.basic]
+# Basic prompt: problem statement + architecture + instruction
+description = "Minimal prompt with just problem statement and architecture"
+components = ["problem_statement", "arch_block", "instruction"]
+
+[options.few_shot]
+# With few-shot examples
+description = "Includes few-shot examples to demonstrate the task"
+components = ["problem_statement", "few_shot_block", "arch_block", "instruction"]
 requires_example = true
+
+[options.hardware_info]
+# Hardware-aware prompt
+description = "Includes GPU hardware specifications and best practices"
+components = ["problem_statement", "few_shot_block", "hardware_header", "hardware_specs", "hardware_definitions", "hardware_best_practices", "arch_block", "instruction"]
 requires_gpu = true
-example_arch_path = "src/prompts/model_ex_add.py"
-example_new_arch_path = "src/prompts/model_new_ex_add_triton.py"
-
-[backends.triton.templates.fix_compile]
-compose = ["shared.triton_problem_statement", "templates.triton.with_arch", "templates.triton.failed_kernel", "templates.triton.compile_metadata", "templates.triton.fix_footer"]
-
-[backends.triton.templates.fix_correctness]
-compose = ["shared.triton_problem_statement", "templates.triton.with_arch", "templates.triton.failed_kernel", "templates.triton.correctness_metadata", "templates.triton.fix_footer"]
-
-[backends.cute.templates.default]
-compose = ["shared.cute_problem_statement", "templates.cute.example_block", "templates.cute.arch_block", "shared.cute_instruction"]
 requires_example = true
-example_arch_path = "src/prompts/model_ex_add.py"
-example_new_arch_path = "src/prompts/model_new_ex_add_cute.py"
 
-[backends.cute.templates.fix_compile]
-compose = ["shared.cute_problem_statement", "templates.cute.with_arch", "templates.cute.failed_kernel", "templates.cute.compile_metadata", "templates.cute.fix_footer"]
+[options.fix_compile]
+# For fixing compilation errors
+description = "Prompt for fixing compilation errors"
+components = ["problem_statement", "arch_with_context", "failed_kernel", "compile_metadata", "fix_footer"]
 
-[backends.cute.templates.fix_correctness]
-compose = ["shared.cute_problem_statement", "templates.cute.with_arch", "templates.cute.failed_kernel", "templates.cute.correctness_metadata", "templates.cute.fix_footer"]
-
-[backends.cuda.templates.default]
-compose = ["shared.cuda_problem_statement", "templates.cuda.example_block", "templates.cuda.arch_block", "shared.cuda_instruction"]
-requires_example = true
-example_arch_path = "src/prompts/model_ex_add.py"
-example_new_arch_path = "src/prompts/model_new_ex_add.py"
-
-[backends.cuda.templates.with_hardware]
-compose = ["shared.cuda_problem_statement", "templates.cuda.example_block", "templates.hardware.header", "templates.hardware.specs", "templates.hardware.definitions", "templates.hardware.best_practices", "templates.cuda.arch_block", "shared.cuda_instruction"]
-requires_example = true
-requires_gpu = true
-example_arch_path = "src/prompts/model_ex_add.py"
-example_new_arch_path = "src/prompts/model_new_ex_add.py"
-
-[backends.cuda.templates.fix_compile]
-compose = ["shared.cuda_problem_statement", "templates.cuda.with_arch", "templates.cuda.failed_kernel", "templates.cuda.compile_metadata", "templates.cuda.fix_footer"]
-
-[backends.cuda.templates.fix_correctness]
-compose = ["shared.cuda_problem_statement", "templates.cuda.with_arch", "templates.cuda.failed_kernel", "templates.cuda.correctness_metadata", "templates.cuda.fix_footer"]
+[options.fix_correctness]
+# For fixing correctness errors
+description = "Prompt for fixing correctness errors"
+components = ["problem_statement", "arch_with_context", "failed_kernel", "correctness_metadata", "fix_footer"]
 
 # -------------------------------------------------------------------------
-# Reusable partials (templated blocks with placeholders)
+# Templates: Reusable text blocks with placeholders
 # -------------------------------------------------------------------------
+[templates.common]
 
-[templates.triton]
-example_block = """
-Here's an example to show you the syntax of inline embedding custom Triton kernels in torch: The example given architecture is:
-
-{example_arch_src}
-
-
-The example new arch with custom Triton kernels looks like this:
-
-
-{example_new_arch_src}
-
-"""
-
+# --- Architecture Presentation ---
+# Used in prompts to present the reference architecture that needs optimization
 arch_block = """
 You are given the following architecture:
 
@@ -114,7 +80,8 @@ You are given the following architecture:
 
 """
 
-with_arch = """
+# Used in fix prompts to reference the architecture with contextual phrasing
+arch_with_context = """
 With the following architecture:
 
 
@@ -122,6 +89,23 @@ With the following architecture:
 
 """
 
+# --- Few-Shot Learning ---
+# Shows an example of input architecture and its optimized version
+few_shot_block = """
+Here's an example to show you the syntax of inline embedding custom {language_display} in torch: The example given architecture is:
+
+{example_arch_src}
+
+
+The example new arch with custom {language_display} looks like this:
+
+
+{example_new_arch_src}
+
+"""
+
+# --- Error Fix Templates ---
+# Presents a kernel that failed (used in fix_compile and fix_correctness options)
 failed_kernel = """
 You generated the following solution and it failed {failure_type}:
 
@@ -150,142 +134,28 @@ fix_footer = """
 Please fix the {failure_type} in the new model code. Please output the corrected code in codeblocks.
 """
 
-[templates.cute]
-# Same structure as templates.triton but wording says CuTe (CUTLASS)
-example_block = """
-Here's an example to show you the syntax of inline embedding custom CuTe (CUTLASS) kernels in torch: The example given architecture is:
-
-{example_arch_src}
-
-
-The example new arch with custom CuTe kernels looks like this:
-
-
-{example_new_arch_src}
-
-"""
-
-arch_block = """
-You are given the following architecture:
-
-
-{ref_arch_src}
-
-"""
-
-with_arch = """
-With the following architecture:
-
-
-{ref_arch_src}
-
-"""
-
-failed_kernel = """
-You generated the following solution and it failed {failure_type}:
-
-
-{custom_kernel}
-
-"""
-
-compile_metadata = """
-Here's the metadata of the compilation error:
-
-
-{metadata}
-
-"""
-
-correctness_metadata = """
-Here's the metadata of the correctness error:
-
-
-{metadata}
-
-"""
-
-fix_footer = """
-Please fix the {failure_type} in the new model code. Please output the corrected code in codeblocks.
-"""
-
+# -------------------------------------------------------------------------
+# Hardware Templates: GPU-specific information blocks
+# -------------------------------------------------------------------------
 [templates.hardware]
-header = """
+hardware_header = """
 Here is some information about the underlying hardware that you should keep in mind.
 """
 
-specs = """
+hardware_specs = """
 The GPU that will run the kernel is NVIDIA {gpu_name}, {gpu_architecture} architecture.
 
 {gpu_specs_bullets}
 """
 
-definitions = """
+hardware_definitions = """
 Here are some concepts about the GPU architecture that could be helpful:
 
 {gpu_definitions_bullets}
 """
 
-best_practices = """
-Here are some best practices for writing Triton kernels on GPU:
+hardware_best_practices = """
+Here are some best practices for writing kernels on GPU:
 
 {gpu_best_practices_bullets}
-"""
-
-[templates.cuda]
-example_block = """
-Here's an example to show you the syntax of inline embedding custom CUDA operators in torch: The example given architecture is:
-
-{example_arch_src}
-
-
-The example new arch with custom CUDA kernels looks like this:
-
-
-{example_new_arch_src}
-
-"""
-
-arch_block = """
-You are given the following architecture:
-
-
-{ref_arch_src}
-
-"""
-
-with_arch = """
-With the following architecture:
-
-
-{ref_arch_src}
-
-"""
-
-failed_kernel = """
-You generated the following solution and it failed {failure_type}:
-
-
-{custom_kernel}
-
-"""
-
-compile_metadata = """
-Here's the metadata of the compilation error:
-
-
-{metadata}
-
-"""
-
-correctness_metadata = """
-Here's the metadata of the correctness error:
-
-
-{metadata}
-
-"""
-
-fix_footer = """
-Please fix the {failure_type} in the new model code. Please output the corrected code in codeblocks.
 """

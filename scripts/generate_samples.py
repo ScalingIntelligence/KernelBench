@@ -11,7 +11,7 @@ from pydra import Config, REQUIRED
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_multilang import get_prompt_for_backend
+from src.prompt_constructor_multilang import get_prompt_for_language
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
@@ -121,7 +121,7 @@ def generate_sample_single(
 
     # Construct Prompt
     if config.backend in ["cuda", "triton", "cute"]:
-        custom_cuda_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
+        custom_cuda_prompt = get_prompt_for_language(ref_arch_src, language=config.backend, option="few_shot")
     else:
         raise ValueError(
             f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', or 'cute'."
