@@ -39,7 +39,7 @@ image = (
         "numpy",
         "packaging",
         "pydra_config",
-        "torch==2.5.0",
+        "torch==2.9.0",
         "tqdm",
         "datasets",
         "transformers",
@@ -48,6 +48,7 @@ image = (
         "utils",
         "einops",
         "python-dotenv",
+        "openai",
         "litellm[proxy]",
     )
     .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")

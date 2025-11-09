@@ -103,7 +103,7 @@ image = (
         "openai",
         "packaging",
         "pydra_config",
-        "torch==2.5.0",
+        "torch==2.9.0",
         "tqdm",
         "datasets",
         "transformers",
@@ -115,6 +115,7 @@ image = (
         "python-dotenv",
         "nvidia-cutlass-dsl",
         "litellm[proxy]",  # Unified LLM interface
+        "openai",
         "einops",  # for numerics
         
     )
