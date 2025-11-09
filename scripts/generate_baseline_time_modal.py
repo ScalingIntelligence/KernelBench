@@ -68,17 +68,14 @@ image = (
                 "clang" # note i skip a step 
                 )
     .pip_install(  # required to build flash-attn
-        "anthropic",
+        # Let's unify these dependencies somewhere
         "numpy",
-        "openai",
         "packaging",
         "pydra_config",
         "torch==2.5.0",
         "tqdm",
         "datasets",
         "transformers",
-        "google-generativeai",
-        "together",
         "pytest",
         "ninja",
         "utils",

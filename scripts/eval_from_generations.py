@@ -68,17 +68,13 @@ image = (
                 "clang"
                 )
     .pip_install(
-        "anthropic",
         "numpy",
-        "openai",
         "packaging",
         "pydra_config",
         "torch==2.5.0",
         "tqdm",
         "datasets",
         "transformers",
-        "google-generativeai",
-        "together",
         "pytest",
         "ninja",
         "utils",
