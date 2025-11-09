@@ -39,7 +39,7 @@ To evaluate model-generated kernels, we need to check if they:
 
 Check out `src/eval.py` for details on how we implement correctness check and timing. 
 
-We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a model-generated kernel. 
+We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a kernel either locally or remotely by setting `eval_mode=local` or `eval_mode=modal`.
 
 #### Overall Benchmark Metric
 

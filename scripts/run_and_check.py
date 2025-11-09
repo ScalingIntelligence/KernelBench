@@ -36,17 +36,13 @@ image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
     .pip_install(
-        "anthropic",
         "numpy",
-        "openai",
         "packaging",
         "pydra_config",
         "torch==2.5.0",
         "tqdm",
         "datasets",
         "transformers",
-        "google-generativeai",
-        "together",
         "pytest",
         "ninja",
         "utils",
