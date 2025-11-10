@@ -65,28 +65,14 @@ image = (
     .apt_install("git",
                 "gcc-10",
                 "g++-10",
-                "clang" # note i skip a step 
+                "clang" # note i skip a step
                 )
-    .pip_install(  # required to build flash-attn
-        # Let's unify these dependencies somewhere
-        "numpy",
-        "packaging",
-        "pydra_config",
-        "torch==2.9.0",
-        "tqdm",
-        "datasets",
-        "transformers",
-        "pytest",
-        "ninja",
-        "utils",
-        "einops",
-        "python-dotenv",
-    )
+    .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
     .add_local_dir(
         KERNEL_BENCH_PATH,
         remote_path="/root/KernelBench"
     )
-    .add_local_python_source("src") 
+    .add_local_python_source("src")
 )
 
 def write_batch_to_json(entries_to_write: list, f_path: str):

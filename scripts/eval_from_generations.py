@@ -67,21 +67,7 @@ image = (
                 "g++-10",
                 "clang"
                 )
-    .pip_install(
-        "numpy",
-        "packaging",
-        "pydra_config",
-        "torch==2.9.0",
-        "tqdm",
-        "datasets",
-        "transformers",
-        "pytest",
-        "ninja",
-        "utils",
-        "einops",
-        "openai",
-        "python-dotenv",
-    )
+    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
     .add_local_dir(
         KERNEL_BENCH_PATH,
         remote_path="/root/KernelBench"
