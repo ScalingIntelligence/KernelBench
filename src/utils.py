@@ -48,7 +48,8 @@ def set_gpu_arch(arch_list: list[str]):
     for arch in arch_list:
         if arch not in valid_archs:
             raise ValueError(f"Invalid architecture: {arch}. Must be one of {valid_archs}")
-    
+    arch_list = ["Volta"] # hardcode for now for TITAN V
+    print(f"Setting TORCH_CUDA_ARCH_LIST to: {';'.join(arch_list)}")
     os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
 
 def query_server(
@@ -186,7 +187,7 @@ SERVER_PRESETS = {
         "max_tokens": 4096
     },
     "google": {
-        "model_name": "gemini/gemini-2.5-flash",
+        "model_name": "gemini/gemini-2.5-pro",
         "temperature": 0.7, # need to experiment with temperature
         "max_tokens": 16384,
     },

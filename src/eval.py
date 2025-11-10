@@ -492,9 +492,13 @@ def eval_kernel_against_ref(
             ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:
-        print(
-            f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
-        )
+        error_msg = f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
+        print(error_msg)
+        
+        # Capture full traceback for better debugging
+        import traceback
+        full_traceback = traceback.format_exc()
+        
         # TODO: add metadata for compilation error (how to we get the compilation error message?)
 
         if "lock" in str(e) or "No such file or directory" in str(e):
@@ -507,7 +511,8 @@ def eval_kernel_against_ref(
             return None
         else:
             metadata["compilation_error_name"] = get_error_name(e)
-            metadata["compilation_error"] = e
+            metadata["compilation_error"] = str(e)
+            metadata["compilation_traceback"] = full_traceback  # Store full traceback
             graceful_eval_cleanup(context, device, tempfile)
             return KernelExecResult(
                 compiled=False, metadata=metadata

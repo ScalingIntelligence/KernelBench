@@ -1,0 +1,130 @@
+# Configuration for CUDA Kernel Optimization with AIDE Tree Search
+# This extends AIDE's config.yaml with kernel-specific settings
+
+# ============================================================================
+# Problem Specification
+# ============================================================================
+kernel:
+  # Dataset source: "local" or "huggingface"
+  dataset_src: "local"
+  
+  # KernelBench level (1-4)
+  level: 1
+  
+  # Problem ID within the level
+  problem_id: 1
+  
+  # Path to KernelBench directory (if using local dataset)
+  kernelbench_path: "./KernelBench"
+
+# ============================================================================
+# GPU and Evaluation Settings
+# ============================================================================
+gpu:
+  # GPU architecture for compilation (e.g., ["Ada"], ["Ampere"], ["Volta"])
+  arch: ["Ada"]
+  
+  # Precision: "fp32", "fp16", or "bf16"
+  precision: "fp32"
+  
+  # Backend: "cuda", "triton", "tilelang", or "cute"
+  backend: "cuda"
+
+evaluation:
+  # Number of correctness trials with different random inputs
+  num_correct_trials: 5
+  
+  # Number of performance measurement trials
+  num_perf_trials: 100
+  
+  # Whether to measure performance (only if kernel is correct)
+  measure_performance: true
+  
+  # Timeout for evaluation (seconds)
+  timeout: 600
+
+# ============================================================================
+# LLM Inference Settings
+# ============================================================================
+inference:
+  # Server type: "openai", "anthropic", "google", "deepseek", "together", "local", etc.
+  server_type: "google"
+  
+  # Model name (will use preset if not specified)
+  model_name: null
+  
+  # Temperature for code generation
+  temperature: 0.7
+  
+  # Maximum tokens for generation
+  max_tokens: 8192
+  
+  # Reasoning model settings (for o1, o3, Gemini thinking mode, etc.)
+  is_reasoning_model: false
+  reasoning_effort: null  # "low", "medium", "high" for o1/o3
+  budget_tokens: 0  # For Claude extended thinking mode
+
+# ============================================================================
+# AIDE Agent Settings
+# ============================================================================
+agent:
+  # Total number of search steps
+  steps: 20
+  
+  # Code generation settings
+  code:
+    model: "gemini/gemini-2.0-flash-exp"  # Model for code generation
+    temp: 0.7  # Temperature for code generation
+  
+  # Feedback/analysis settings
+  feedback:
+    model: "gemini/gemini-2.0-flash-exp"  # Model for analyzing results
+    temp: 0.3  # Temperature for feedback
+  
+  # Tree search configuration
+  search:
+    num_drafts: 3  # Number of initial implementations to generate
+    debug_prob: 0.3  # Probability of debugging a buggy node
+    max_debug_depth: 2  # Maximum consecutive debugging attempts
+  
+  # Validation settings (not used for kernels, but kept for compatibility)
+  k_fold_validation: 1
+  expose_prediction: false
+  data_preview: false
+
+# ============================================================================
+# Execution Settings
+# ============================================================================
+exec:
+  timeout: 600  # Timeout for kernel evaluation (seconds)
+  agent_file_name: "kernel_code.py"  # Name for generated kernel file
+  format_tb_ipython: false  # Use standard Python traceback format
+
+# ============================================================================
+# Logging and Output
+# ============================================================================
+# Experiment name (auto-generated if not provided)
+exp_name: null
+
+# Log directory
+log_dir: "./logs/kernel_search"
+
+# Workspace directory for compilation artifacts
+workspace_dir: "./workspaces/kernel_search"
+
+# Generate final report
+generate_report: true
+
+report:
+  model: "gemini/gemini-2.0-flash-exp"
+  temp: 0.5
+
+# ============================================================================
+# Data Settings (not used for kernels, but kept for compatibility)
+# ============================================================================
+data_dir: null  # Not used - reference architecture loaded directly
+desc_file: null  # Not used - task description generated from problem
+goal: null  # Generated from problem metadata
+eval: null  # Generated from problem metadata
+preprocess_data: false
+copy_data: false

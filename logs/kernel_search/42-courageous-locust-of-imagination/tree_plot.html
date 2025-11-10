@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en"> 
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script
+      id="p5scripttag"
+      src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"
+      integrity="sha512-uaz5GpnQoE6t5echKlX8P52czvsIGgLPcvlzfvRubLZ1Hp8JemUDnbUiAahbVtPb+jUVrNETuXvAhDDF/N3M4w=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+
+    <script>
+      const bgCol = "#F2F0E7";
+const accentCol = "#fd4578";
+
+hljs.initHighlightingOnLoad();
+
+const updateTargetDims = () => {
+  // width is max-width of `.contentContainer` - its padding
+  // return [min(windowWidth, 900 - 80), 700]
+  return [windowWidth * (1 / 2), windowHeight];
+};
+
+const setCodeAndPlan = (code, plan) => {
+  const codeElm = document.getElementById("code");
+  if (codeElm) {
+    // codeElm.innerText = code;
+    codeElm.innerHTML = hljs.highlight(code, { language: "python" }).value;
+  }
+
+  const planElm = document.getElementById("plan");
+  if (planElm) {
+    // planElm.innerText = plan.trim();
+    planElm.innerHTML = hljs.highlight(plan, { language: "plaintext" }).value;
+  }
+};
+
+windowResized = () => {
+  resizeCanvas(...updateTargetDims());
+  awaitingPostResizeOps = true;
+};
+
+const animEase = (t) => 1 - (1 - Math.min(t, 1.0)) ** 5;
+
+// ---- global constants ----
+
+const globalAnimSpeed = 1.1;
+const scaleFactor = 0.57;
+
+// ---- global vars ----
+
+let globalTime = 0;
+let manualSelection = false;
+
+let currentElemInd = 0;
+
+let treeStructData = {"edges": [[0, 1]], "layout": [[0.5, 0.0], [0.5, 1.0]], "plan": ["Optimization plan: 1.  **Identify Bottleneck:** The primary bottleneck is the\n`torch.matmul` operation, especially for large square matrices. 2.  **Custom\nKernel Implementation:** Replace `torch.matmul` with a custom CUDA kernel using\n`torch.utils.cpp_extension.load_inline()`. 3.  **Tiled Matrix Multiplication:**\nImplement a tiled matrix multiplication kernel that leverages shared memory.\nEach thread block will be responsible for computing a tile of the output matrix\n`C`. 4.  **Shared Memory Usage:** Threads within a block will cooperatively load\nsub-matrices (tiles) of `A` and `B` into shared memory. This reduces global\nmemory accesses and promotes data reuse, which is crucial for performance. 5.\n**Synchronization:** Use `__syncthreads()` to ensure all threads in a block have\nloaded their data into shared memory before computation and finished computation\nbefore loading the next tiles.", "The optimization plan focuses on enhancing the instruction-level parallelism and\nreducing loop overhead within the core computation phase of the tiled matrix\nmultiplication. By applying `#pragma unroll` to the inner loop that accumulates\n`Cvalue`, we instruct the CUDA compiler to unroll this loop. This exposes more\nindependent instructions to the GPU's scheduler, potentially leading to better\nutilization of execution units and improved throughput for the dot product\ncalculation within each shared memory tile."], "code": ["import torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel source (includes both kernel and C++ wrapper)\ncuda_source = \"\"\"\n#include <torch/extension.h>\n#include <cuda_runtime.h>\n\n// Define the tile size for shared memory matrix multiplication\n#define TILE_SIZE 32\n\n// CUDA kernel for square matrix multiplication using shared memory tiling\n__global__ void matmul_kernel(const float* A, const float* B, float* C, int N) {\n    // Shared memory for tiles of A and B\n    // TILE_SIZE x TILE_SIZE floats = 32 * 32 * 4 bytes = 4096 bytes per shared array.\n    // Total shared memory per block = 2 * 4096 = 8192 bytes. This is well within typical limits (e.g., 48KB).\n    __shared__ float s_A[TILE_SIZE][TILE_SIZE];\n    __shared__ float s_B[TILE_SIZE][TILE_SIZE];\n\n    // Global row and column index for the current thread\n    // These determine the element of C this thread is responsible for.\n    int row = blockIdx.y * blockDim.y + threadIdx.y;\n    int col = blockIdx.x * blockDim.x + threadIdx.x;\n\n    float Cvalue = 0.0f; // Accumulator for C[row][col]\n\n    // Loop over the 'inner' dimension (k) in steps of TILE_SIZE\n    // Each iteration processes one pair of tiles from A and B\n    for (int k_idx = 0; k_idx < N; k_idx += TILE_SIZE) {\n        // Load A tile into shared memory\n        // Each thread loads one element of s_A.\n        // s_A[threadIdx.y][threadIdx.x] will hold A[row][k_idx + threadIdx.x]\n        // The condition (k_idx + threadIdx.x) < N handles potential padding if N is not a multiple of TILE_SIZE.\n        if (row < N && (k_idx + threadIdx.x) < N) {\n            s_A[threadIdx.y][threadIdx.x] = A[row * N + (k_idx + threadIdx.x)];\n        } else {\n            s_A[threadIdx.y][threadIdx.x] = 0.0f; // Pad with zeros for out-of-bounds reads\n        }\n\n        // Load B tile into shared memory\n        // Each thread loads one element of s_B.\n        // s_B[threadIdx.y][threadIdx.x] will hold B[k_idx + threadIdx.y][col]\n        // The condition (k_idx + threadIdx.y) < N handles potential padding if N is not a multiple of TILE_SIZE.\n        if (col < N && (k_idx + threadIdx.y) < N) {\n            s_B[threadIdx.y][threadIdx.x] = B[(k_idx + threadIdx.y) * N + col];\n        } else {\n            s_B[threadIdx.y][threadIdx.x] = 0.0f; // Pad with zeros for out-of-bounds reads\n        }\n\n        __syncthreads(); // Wait for all threads in the block to load their tile elements into shared memory\n\n        // Perform the dot product for the current tiles\n        // Each thread computes its part of Cvalue using the shared memory tiles.\n        for (int i = 0; i < TILE_SIZE; ++i) {\n            Cvalue += s_A[threadIdx.y][i] * s_B[i][threadIdx.x];\n        }\n\n        __syncthreads(); // Wait for all threads to finish computing with shared memory before loading next tiles\n    }\n\n    // Store the computed value to global memory\n    // No boundary check needed for C[row][col] as grid_size ensures row < N and col < N\n    // for threads that actually write to C.\n    if (row < N && col < N) {\n        C[row * N + col] = Cvalue;\n    }\n}\n\n// C++ wrapper function to launch the CUDA kernel\ntorch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B) {\n    // Input validation\n    TORCH_CHECK(A.is_cuda(), \"Input A must be a CUDA tensor.\");\n    TORCH_CHECK(B.is_cuda(), \"Input B must be a CUDA tensor.\");\n    TORCH_CHECK(A.dtype() == torch::kFloat32, \"Input A must be float32.\");\n    TORCH_CHECK(B.dtype() == torch::kFloat32, \"Input B must be float32.\");\n    TORCH_CHECK(A.dim() == 2 && B.dim() == 2, \"Inputs must be 2D matrices.\");\n    TORCH_CHECK(A.size(1) == B.size(0), \"Matrix dimensions mismatch for multiplication.\");\n    TORCH_CHECK(A.size(0) == B.size(1), \"This kernel currently supports only square matrices of same size N x N.\");\n\n    int N = A.size(0); // Assuming square matrices N x N\n    TORCH_CHECK(A.size(1) == N && B.size(0) == N && B.size(1) == N, \"Input matrices must be square and of the same size N x N.\");\n\n    // Allocate output tensor C on the same device as A.\n    auto C = torch::empty({N, N}, A.options());\n\n    // Define grid and block dimensions for the kernel launch\n    dim3 block_size(TILE_SIZE, TILE_SIZE);\n    // Calculate number of blocks needed to cover the N x N output matrix\n    dim3 grid_size((N + block_size.x - 1) / block_size.x, (N + block_size.y - 1) / block_size.y);\n\n    // Launch the CUDA kernel\n    matmul_kernel<<<grid_size, block_size>>>(\n        A.data_ptr<float>(), // Pointer to A's data\n        B.data_ptr<float>(), // Pointer to B's data\n        C.data_ptr<float>(), // Pointer to C's data\n        N                    // Size of the matrix\n    );\n\n    // Check for any CUDA errors after kernel launch\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        fprintf(stderr, \"CUDA error in matmul_kernel: %s\\\\n\", cudaGetErrorString(err));\n        TORCH_CHECK(false, \"CUDA kernel launch failed.\");\n    }\n\n    return C;\n}\n\"\"\"\n\n# C++ function declaration for load_inline\ncpp_source = \"torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B);\"\n\n# Compile the inline CUDA code extension\nmatmul_extension = load_inline(\n    name=\"matmul_extension\",  # Unique name for the compiled extension\n    cpp_sources=cpp_source,  # C++ function declarations\n    cuda_sources=cuda_source,  # CUDA kernel implementation and C++ wrapper\n    functions=[\"matmul_cuda\"],  # List of C++ functions to expose to Python\n    verbose=True,  # Enable verbose output during compilation\n)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Optimized model that replaces torch.matmul with a custom tiled CUDA kernel.\n    \"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        # Store the compiled CUDA extension's matmul_cuda function\n        self.matmul_op = matmul_extension.matmul_cuda\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication using the custom CUDA kernel.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        # Call the custom CUDA kernel through the loaded extension\n        return self.matmul_op(A, B)", "import torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel source (includes both kernel and C++ wrapper)\ncuda_source = \"\"\"\n#include <torch/extension.h>\n#include <cuda_runtime.h>\n\n// Define the tile size for shared memory matrix multiplication\n#define TILE_SIZE 32\n\n// CUDA kernel for square matrix multiplication using shared memory tiling\n__global__ void matmul_kernel(const float* A, const float* B, float* C, int N) {\n    // Shared memory for tiles of A and B\n    __shared__ float s_A[TILE_SIZE][TILE_SIZE];\n    __shared__ float s_B[TILE_SIZE][TILE_SIZE];\n\n    // Global row and column index for the current thread\n    int row = blockIdx.y * blockDim.y + threadIdx.y;\n    int col = blockIdx.x * blockDim.x + threadIdx.x;\n\n    float Cvalue = 0.0f; // Accumulator for C[row][col]\n\n    // Loop over the 'inner' dimension (k) in steps of TILE_SIZE\n    for (int k_idx = 0; k_idx < N; k_idx += TILE_SIZE) {\n        // Load A tile into shared memory\n        if (row < N && (k_idx + threadIdx.x) < N) {\n            s_A[threadIdx.y][threadIdx.x] = A[row * N + (k_idx + threadIdx.x)];\n        } else {\n            s_A[threadIdx.y][threadIdx.x] = 0.0f; // Pad with zeros for out-of-bounds reads\n        }\n\n        // Load B tile into shared memory\n        if (col < N && (k_idx + threadIdx.y) < N) {\n            s_B[threadIdx.y][threadIdx.x] = B[(k_idx + threadIdx.y) * N + col];\n        } else {\n            s_B[threadIdx.y][threadIdx.x] = 0.0f; // Pad with zeros for out-of-bounds reads\n        }\n\n        __syncthreads(); // Wait for all threads in the block to load their tile elements into shared memory\n\n        // Perform the dot product for the current tiles\n        // #pragma unroll directive to explicitly unroll this loop\n        #pragma unroll\n        for (int i = 0; i < TILE_SIZE; ++i) {\n            Cvalue += s_A[threadIdx.y][i] * s_B[i][threadIdx.x];\n        }\n\n        __syncthreads(); // Wait for all threads to finish computing with shared memory before loading next tiles\n    }\n\n    // Store the computed value to global memory\n    if (row < N && col < N) {\n        C[row * N + col] = Cvalue;\n    }\n}\n\n// C++ wrapper function to launch the CUDA kernel\ntorch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B) {\n    // Input validation\n    TORCH_CHECK(A.is_cuda(), \"Input A must be a CUDA tensor.\");\n    TORCH_CHECK(B.is_cuda(), \"Input B must be a CUDA tensor.\");\n    TORCH_CHECK(A.dtype() == torch::kFloat32, \"Input A must be float32.\");\n    TORCH_CHECK(B.dtype() == torch::kFloat32, \"Input B must be float32.\");\n    TORCH_CHECK(A.dim() == 2 && B.dim() == 2, \"Inputs must be 2D matrices.\");\n    TORCH_CHECK(A.size(1) == B.size(0), \"Matrix dimensions mismatch for multiplication.\");\n    TORCH_CHECK(A.size(0) == B.size(1), \"This kernel currently supports only square matrices of same size N x N.\");\n\n    int N = A.size(0); // Assuming square matrices N x N\n    TORCH_CHECK(A.size(1) == N && B.size(0) == N && B.size(1) == N, \"Input matrices must be square and of the same size N x N.\");\n\n    // Allocate output tensor C on the same device as A.\n    auto C = torch::empty({N, N}, A.options());\n\n    // Define grid and block dimensions for the kernel launch\n    dim3 block_size(TILE_SIZE, TILE_SIZE);\n    // Calculate number of blocks needed to cover the N x N output matrix\n    dim3 grid_size((N + block_size.x - 1) / block_size.x, (N + block_size.y - 1) / block_size.y);\n\n    // Launch the CUDA kernel\n    matmul_kernel<<<grid_size, block_size>>>(\n        A.data_ptr<float>(), // Pointer to A's data\n        B.data_ptr<float>(), // Pointer to B's data\n        C.data_ptr<float>(), // Pointer to C's data\n        N                    // Size of the matrix\n    );\n\n    // Check for any CUDA errors after kernel launch\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        fprintf(stderr, \"CUDA error in matmul_kernel: %s\\\\n\", cudaGetErrorString(err));\n        TORCH_CHECK(false, \"CUDA kernel launch failed.\");\n    }\n\n    return C;\n}\n\"\"\"\n\n# C++ function declaration for load_inline\ncpp_source = \"torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B);\"\n\n# Compile the inline CUDA code extension\nmatmul_extension = load_inline(\n    name=\"matmul_extension\",  # Unique name for the compiled extension\n    cpp_sources=cpp_source,  # C++ function declarations\n    cuda_sources=cuda_source,  # CUDA kernel implementation and C++ wrapper\n    functions=[\"matmul_cuda\"],  # List of C++ functions to expose to Python\n    verbose=True,  # Enable verbose output during compilation\n)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Optimized model that replaces torch.matmul with a custom tiled CUDA kernel.\n    \"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        # Store the compiled CUDA extension's matmul_cuda function\n        self.matmul_op = matmul_extension.matmul_cuda\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication using the custom CUDA kernel.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        # Call the custom CUDA kernel through the loaded extension\n        return self.matmul_op(A, B)"], "term_out": ["================================================================================KERNEL EVALUATION SUCCESS================================================================================\u2713 Compilation: PASSED\u2713 Correctness: PASSED  Correctness trials: (5 / 5)\n\u2713 Performance: 37.700 ms  Mean: 37.700 ms  Std:  0.047 ms  Min:  37.600 ms  Max:  37.900 ms  Trials: 100\nHardware: NVIDIA TITAN VRuntime: 0.038 seconds", "================================================================================KERNEL EVALUATION SUCCESS================================================================================\u2713 Compilation: PASSED\u2713 Correctness: PASSED  Correctness trials: (5 / 5)\n\u2713 Performance: 37.700 ms  Mean: 37.700 ms  Std:  0.484 ms  Min:  37.600 ms  Max:  41.000 ms  Trials: 100\nHardware: NVIDIA TITAN VRuntime: 0.038 seconds"], "analysis": ["Kernel implementation successful! Runtime: 37.700 ms. The kernel compiled correctly, passed all correctness checks, and was successfully profiled.", "Kernel implementation successful! Runtime: 37.700 ms. The kernel compiled correctly, passed all correctness checks, and was successfully profiled."], "exp_name": "42-courageous-locust-of-imagination", "metrics": [0, 0]}
+
+let lastClick = 0;
+let firstFrameTime = undefined;
+
+let nodes = [];
+let edges = [];
+
+let lastScrollPos = 0;
+
+setup = () => {
+  canvas = createCanvas(...updateTargetDims());
+};
+
+class Node {
+  x;
+  y;
+  size;
+  xT;
+  yT;
+  xB;
+  yB;
+  treeInd;
+  color;
+  relSize;
+  animationStart = Number.MAX_VALUE;
+  animationProgress = 0;
+  isStatic = false;
+  hasChildren = false;
+  isRootNode = true;
+  isStarred = false;
+  selected = false;
+  renderSize = 10;
+  edges = [];
+  bgCol;
+
+  constructor(x, y, relSize, treeInd) {
+    const minSize = 35;
+    const maxSize = 60;
+
+    const maxColor = 10;
+    const minColor = 125;
+
+    this.relSize = relSize;
+    this.treeInd = treeInd;
+    this.size = minSize + (maxSize - minSize) * relSize;
+    this.color = minColor + (maxColor - minColor) * relSize;
+    this.bgCol = Math.round(Math.max(this.color / 2, 0));
+
+    this.x = x;
+    this.y = y;
+    this.xT = x;
+    this.yT = y - this.size / 2;
+    this.xB = x;
+    this.yB = y + this.size / 2;
+
+    nodes.push(this);
+  }
+
+  startAnimation = (offset = 0) => {
+    if (this.animationStart == Number.MAX_VALUE)
+      this.animationStart = globalTime + offset;
+  };
+
+  child = (node) => {
+    let edge = new Edge(this, node);
+    this.edges.push(edge);
+    edges.push(edge);
+    this.hasChildren = true;
+    node.isRootNode = false;
+    return node;
+  };
+
+  render = () => {
+    if (globalTime - this.animationStart < 0) return;
+
+    const mouseXlocalCoords = (mouseX - width / 2) / scaleFactor;
+    const mouseYlocalCoords = (mouseY - height / 2) / scaleFactor;
+    const isMouseOver =
+      dist(mouseXlocalCoords, mouseYlocalCoords, this.x, this.y) <
+      this.renderSize / 1.5;
+    if (isMouseOver) cursor(HAND);
+    if (isMouseOver && mouseIsPressed) {
+      nodes.forEach((n) => (n.selected = false));
+      this.selected = true;
+      setCodeAndPlan(
+        treeStructData.code[this.treeInd],
+        treeStructData.plan[this.treeInd],
+      );
+      manualSelection = true;
+    }
+
+    this.renderSize = this.size;
+    if (!this.isStatic) {
+      this.animationProgress = animEase(
+        (globalTime - this.animationStart) / 1000,
+      );
+      if (this.animationProgress >= 1) {
+        this.isStatic = true;
+      } else {
+        this.renderSize =
+          this.size *
+          (0.8 +
+            0.2 *
+              (-3.33 * this.animationProgress ** 2 +
+                4.33 * this.animationProgress));
+      }
+    }
+
+    fill(this.color);
+    if (this.selected) {
+      fill(accentCol);
+    }
+
+    noStroke();
+    square(
+      this.x - this.renderSize / 2,
+      this.y - this.renderSize / 2,
+      this.renderSize,
+      10,
+    );
+
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(this.renderSize / 2);
+    fill(255);
+    // fill(lerpColor(color(accentCol), color(255), this.animationProgress))
+    text("{ }", this.x, this.y - 1);
+    // DEBUG PRINT:
+    // text(round(this.relSize, 2), this.x, this.y - 1)
+    // text(this.treeInd, this.x, this.y + 15)
+
+    const dotAnimThreshold = 0.85;
+    if (this.isStarred && this.animationProgress >= dotAnimThreshold) {
+      let dotAnimProgress =
+        (this.animationProgress - dotAnimThreshold) / (1 - dotAnimThreshold);
+      textSize(
+        ((-3.33 * dotAnimProgress ** 2 + 4.33 * dotAnimProgress) *
+          this.renderSize) /
+          2,
+      );
+      if (this.selected) {
+        fill(0);
+        stroke(0);
+      } else {
+        fill(accentCol);
+        stroke(accentCol);
+      }
+      strokeWeight((-(dotAnimProgress ** 2) + dotAnimProgress) * 2);
+      text("*", this.x + 20, this.y - 11);
+      noStroke();
+    }
+
+    if (!this.isStatic) {
+      fill(bgCol);
+      const progressAnimBaseSize = this.renderSize + 5;
+      rect(
+        this.x - progressAnimBaseSize / 2,
+        this.y -
+          progressAnimBaseSize / 2 +
+          progressAnimBaseSize * this.animationProgress,
+        progressAnimBaseSize,
+        progressAnimBaseSize * (1 - this.animationProgress),
+      );
+    }
+    if (this.animationProgress >= 0.9) {
+      this.edges
+        .sort((a, b) => a.color() - b.color())
+        .forEach((e, i) => {
+          e.startAnimation((i / this.edges.length) ** 2 * 1000);
+        });
+    }
+  };
+}
+
+class Edge {
+  nodeT;
+  nodeB;
+  animX = 0;
+  animY = 0;
+  animationStart = Number.MAX_VALUE;
+  animationProgress = 0;
+  isStatic = false;
+  weight = 0;
+
+  constructor(nodeT, nodeB) {
+    this.nodeT = nodeT;
+    this.nodeB = nodeB;
+    this.weight = 2 + nodeB.relSize * 1;
+  }
+
+  color = () => this.nodeB.color;
+
+  startAnimation = (offset = 0) => {
+    if (this.animationStart == Number.MAX_VALUE)
+      this.animationStart = globalTime + offset;
+  };
+
+  render = () => {
+    if (globalTime - this.animationStart < 0) return;
+
+    if (!this.isStatic) {
+      this.animationProgress = animEase(
+        (globalTime - this.animationStart) / 1000,
+      );
+      if (this.animationProgress >= 1) {
+        this.isStatic = true;
+        this.animX = this.nodeB.xT;
+        this.animY = this.nodeB.yT;
+      } else {
+        this.animX = bezierPoint(
+          this.nodeT.xB,
+          this.nodeT.xB,
+          this.nodeB.xT,
+          this.nodeB.xT,
+          this.animationProgress,
+        );
+
+        this.animY = bezierPoint(
+          this.nodeT.yB,
+          (this.nodeT.yB + this.nodeB.yT) / 2,
+          (this.nodeT.yB + this.nodeB.yT) / 2,
+          this.nodeB.yT,
+          this.animationProgress,
+        );
+      }
+    }
+    if (this.animationProgress >= 0.97) {
+      this.nodeB.startAnimation();
+    }
+
+    strokeWeight(this.weight);
+    noFill();
+    stroke(
+      lerpColor(color(bgCol), color(accentCol), this.nodeB.relSize * 1 + 0.7),
+    );
+    bezier(
+      this.nodeT.xB,
+      this.nodeT.yB,
+      this.nodeT.xB,
+      (this.nodeT.yB + this.nodeB.yT) / 2,
+      this.animX,
+      (this.nodeT.yB + this.nodeB.yT) / 2,
+      this.animX,
+      this.animY,
+    );
+  };
+}
+
+draw = () => {
+  cursor(ARROW);
+  frameRate(120);
+  if (!firstFrameTime && frameCount <= 1) {
+    firstFrameTime = millis();
+  }
+  // ---- update global animation state ----
+  const initialSpeedScalingEaseIO =
+    (cos(min((millis() - firstFrameTime) / 8000, 1.0) * PI) + 1) / 2;
+  const initialSpeedScalingEase =
+    (cos(min((millis() - firstFrameTime) / 8000, 1.0) ** (1 / 2) * PI) + 1) / 2;
+  const initAnimationSpeedFactor = 1.0 - 0.4 * initialSpeedScalingEaseIO;
+  // update global scaling-aware clock
+  globalTime += globalAnimSpeed * initAnimationSpeedFactor * deltaTime;
+
+  if (nodes.length == 0) {
+    const spacingHeight = height * 1.3;
+    const spacingWidth = width * 1.3;
+    treeStructData.layout.forEach((lay, index) => {
+      new Node(
+        spacingWidth * lay[0] - spacingWidth / 2,
+        20 + spacingHeight * lay[1] - spacingHeight / 2,
+        1 - treeStructData.metrics[index],
+        index,
+      );
+    });
+    treeStructData.edges.forEach((ind) => {
+      nodes[ind[0]].child(nodes[ind[1]]);
+    });
+    nodes.forEach((n) => {
+      if (n.isRootNode) n.startAnimation();
+    });
+    nodes[0].selected = true;
+    setCodeAndPlan(
+      treeStructData.code[0],
+      treeStructData.plan[0],
+    )
+  }
+
+  const staticNodes = nodes.filter(
+    (n) => n.isStatic || n.animationProgress >= 0.7,
+  );
+  if (staticNodes.length > 0) {
+    const largestNode = staticNodes.reduce((prev, current) =>
+      prev.relSize > current.relSize ? prev : current,
+    );
+    if (!manualSelection) {
+      if (!largestNode.selected) {
+        setCodeAndPlan(
+          treeStructData.code[largestNode.treeInd],
+          treeStructData.plan[largestNode.treeInd],
+        );
+      }
+      staticNodes.forEach((node) => {
+        node.selected = node === largestNode;
+      });
+    }
+  }
+  background(bgCol);
+  // global animation transforms
+  translate(width / 2, height / 2);
+  scale(scaleFactor);
+
+  
+  // ---- fg render ----
+  edges.forEach((e) => e.render());
+  nodes.forEach((n) => n.render());
+  
+};
+
+    </script>
+    <title>AIDE Run Visualization</title>
+    <style>
+      body,
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        overflow: scroll;
+      }
+      body {
+        background-color: #f2f0e7;
+      }
+      canvas {
+        float: left;
+        height: 100vh;
+        width: 40vw;
+      }
+      #text-container {
+        float: right;
+        height: 100vh;
+        width: 50vw;
+        background-color: #282c34;
+      }
+      #plan {
+        /* border-left: 2px solid #282c34; */
+        background-color: #282c34;
+        color: #f2f0e7;
+        min-height: 5rem;
+        padding: 1em 0 1em 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <pre
+      id="text-container"
+    ><div id="plan"></div><hr><code id="code" class="language-python"></code></pre>
+  </body>
+</html>

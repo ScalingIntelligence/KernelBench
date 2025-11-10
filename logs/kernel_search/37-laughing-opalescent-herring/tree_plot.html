@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en"> 
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script
+      id="p5scripttag"
+      src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"
+      integrity="sha512-uaz5GpnQoE6t5echKlX8P52czvsIGgLPcvlzfvRubLZ1Hp8JemUDnbUiAahbVtPb+jUVrNETuXvAhDDF/N3M4w=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+
+    <script>
+      const bgCol = "#F2F0E7";
+const accentCol = "#fd4578";
+
+hljs.initHighlightingOnLoad();
+
+const updateTargetDims = () => {
+  // width is max-width of `.contentContainer` - its padding
+  // return [min(windowWidth, 900 - 80), 700]
+  return [windowWidth * (1 / 2), windowHeight];
+};
+
+const setCodeAndPlan = (code, plan) => {
+  const codeElm = document.getElementById("code");
+  if (codeElm) {
+    // codeElm.innerText = code;
+    codeElm.innerHTML = hljs.highlight(code, { language: "python" }).value;
+  }
+
+  const planElm = document.getElementById("plan");
+  if (planElm) {
+    // planElm.innerText = plan.trim();
+    planElm.innerHTML = hljs.highlight(plan, { language: "plaintext" }).value;
+  }
+};
+
+windowResized = () => {
+  resizeCanvas(...updateTargetDims());
+  awaitingPostResizeOps = true;
+};
+
+const animEase = (t) => 1 - (1 - Math.min(t, 1.0)) ** 5;
+
+// ---- global constants ----
+
+const globalAnimSpeed = 1.1;
+const scaleFactor = 0.57;
+
+// ---- global vars ----
+
+let globalTime = 0;
+let manualSelection = false;
+
+let currentElemInd = 0;
+
+let treeStructData = {"edges": [], "layout": [[0.5, 0.0]], "plan": ["The optimization plan focuses on replacing the standard `torch.matmul` operation\nwith a custom tiled matrix multiplication CUDA kernel. This approach leverages\nshared memory to cache portions of the input matrices, significantly reducing\nglobal memory traffic and improving data reuse. Each thread block will compute a\ntile of the output matrix `C`, with threads cooperatively loading corresponding\ntiles of `A` and `B` into shared memory, performing local dot products, and\naccumulating results. This design prioritizes correctness and basic performance\ngains through efficient memory access patterns and parallelism."], "code": ["import torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel source (includes both kernel and C++ wrapper)\ncuda_source = \"\"\"\n#include <torch/extension.h>\n#include <cuda_runtime.h>\n\n// Define TILE_DIM for shared memory tiling. A common choice is 32.\n#define TILE_DIM 32\n\n__global__ void matmul_tiled_kernel(const float* A, const float* B, float* C, int N) {\n    // Shared memory for tiles of A and B\n    // Using volatile to prevent compiler from optimizing away redundant reads/writes\n    // which can happen across __syncthreads() in some older CUDA versions/compilers,\n    // though generally not strictly necessary for modern PyTorch/CUDA.\n    __shared__ float sA[TILE_DIM][TILE_DIM];\n    __shared__ float sB[TILE_DIM][TILE_DIM];\n\n    // Thread coordinates within the block\n    int tx = threadIdx.x;\n    int ty = threadIdx.y;\n\n    // Global coordinates for the C element this thread computes\n    int row = blockIdx.y * TILE_DIM + ty;\n    int col = blockIdx.x * TILE_DIM + tx;\n\n    float Cvalue = 0.0f; // Accumulator for C[row][col], stored in a register\n\n    // Loop over the K dimension (inner product)\n    // Each iteration processes a TILE_DIM x TILE_DIM block of the K dimension\n    for (int k_block_offset = 0; k_block_offset < N; k_block_offset += TILE_DIM) {\n        // Load tiles of A and B from global memory into shared memory.\n        // Each thread loads one element.\n        // sA[ty][tx] loads A[row][k_block_offset + tx]\n        // sB[ty][tx] loads B[k_block_offset + ty][col]\n        \n        // Ensure global memory accesses are within bounds of A and B\n        // For A: row index `row`, column index `k_block_offset + tx`\n        if (row < N && (k_block_offset + tx) < N) {\n            sA[ty][tx] = A[row * N + (k_block_offset + tx)];\n        } else {\n            sA[ty][tx] = 0.0f; // Pad with zero if out of bounds (handles non-multiples of TILE_DIM)\n        }\n\n        // For B: row index `k_block_offset + ty`, column index `col`\n        if ((k_block_offset + ty) < N && col < N) {\n            sB[ty][tx] = B[(k_block_offset + ty) * N + col];\n        } else {\n            sB[ty][tx] = 0.0f; // Pad with zero if out of bounds\n        }\n\n        // Synchronize to ensure all shared memory loads are complete before computation begins\n        __syncthreads();\n\n        // Perform dot product using the loaded shared memory tiles\n        for (int k_inner = 0; k_inner < TILE_DIM; ++k_inner) {\n            Cvalue += sA[ty][k_inner] * sB[k_inner][tx];\n        }\n\n        // Synchronize before loading the next set of tiles to avoid race conditions\n        __syncthreads();\n    }\n\n    // Write the accumulated result back to global memory\n    if (row < N && col < N) {\n        C[row * N + col] = Cvalue;\n    }\n}\n\n// C++ wrapper function to launch the CUDA kernel\ntorch::Tensor matmul_tiled_cuda(torch::Tensor A, torch::Tensor B) {\n    // Input validation (optional, but good practice)\n    TORCH_CHECK(A.is_cuda() && B.is_cuda(), \"Inputs must be CUDA tensors.\");\n    TORCH_CHECK(A.dim() == 2 && B.dim() == 2, \"Inputs must be 2D matrices.\");\n    TORCH_CHECK(A.size(1) == B.size(0), \"Matrix dimensions mismatch for multiplication.\");\n    TORCH_CHECK(A.size(0) == A.size(1) && B.size(0) == B.size(1) && A.size(0) == B.size(0), \n                \"Matrices must be square and of the same size.\");\n    TORCH_CHECK(A.scalar_type() == torch::kFloat && B.scalar_type() == torch::kFloat, \n                \"Inputs must be float32 (torch.float).\");\n\n    int N = A.size(0);\n    // Create output tensor C on the same device and with the same dtype as A\n    auto C = torch::zeros({N, N}, A.options());\n\n    // Define grid and block dimensions for the kernel launch\n    dim3 block_size(TILE_DIM, TILE_DIM);\n    dim3 grid_size((N + TILE_DIM - 1) / TILE_DIM, (N + TILE_DIM - 1) / TILE_DIM);\n\n    // Launch the CUDA kernel\n    matmul_tiled_kernel<<<grid_size, block_size>>>(\n        A.data_ptr<float>(),\n        B.data_ptr<float>(),\n        C.data_ptr<float>(),\n        N\n    );\n\n    return C;\n}\n\"\"\"\n\n# C++ function declaration for load_inline\ncpp_source = \"torch::Tensor matmul_tiled_cuda(torch::Tensor A, torch::Tensor B);\"\n\n# Compile the inline CUDA code\n# The 'name' argument should be unique if multiple extensions are loaded\ncustom_matmul_extension = load_inline(\n    name=\"custom_matmul_extension\",\n    cpp_sources=cpp_source,\n    cuda_sources=cuda_source,\n    functions=[\"matmul_tiled_cuda\"],\n    verbose=False,  # Set to True for debugging compilation issues\n)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Optimized model that performs a single square matrix multiplication (C = A * B)\n    using a custom tiled CUDA kernel.\n    \"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        # Store the loaded custom CUDA function as an attribute\n        self.custom_matmul_op = custom_matmul_extension.matmul_tiled_cuda\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication using the custom tiled CUDA kernel.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        # The custom CUDA kernel expects CUDA tensors, ensure inputs are on GPU.\n        # This is typically handled by the calling context, but good to be aware.\n        return self.custom_matmul_op(A, B)"], "term_out": ["================================================================================KERNEL EVALUATION SUCCESS================================================================================\u2713 Compilation: PASSED\u2713 Correctness: PASSED  Correctness trials: (5 / 5)\n\u2713 Performance: 37.600 ms  Mean: 37.600 ms  Std:  0.452 ms  Min:  37.400 ms  Max:  40.700 ms  Trials: 100\nHardware: NVIDIA TITAN VRuntime: 0.038 seconds"], "analysis": ["Kernel implementation successful! Runtime: 37.600 ms. The kernel compiled correctly, passed all correctness checks, and was successfully profiled."], "exp_name": "37-laughing-opalescent-herring", "metrics": [0]}
+
+let lastClick = 0;
+let firstFrameTime = undefined;
+
+let nodes = [];
+let edges = [];
+
+let lastScrollPos = 0;
+
+setup = () => {
+  canvas = createCanvas(...updateTargetDims());
+};
+
+class Node {
+  x;
+  y;
+  size;
+  xT;
+  yT;
+  xB;
+  yB;
+  treeInd;
+  color;
+  relSize;
+  animationStart = Number.MAX_VALUE;
+  animationProgress = 0;
+  isStatic = false;
+  hasChildren = false;
+  isRootNode = true;
+  isStarred = false;
+  selected = false;
+  renderSize = 10;
+  edges = [];
+  bgCol;
+
+  constructor(x, y, relSize, treeInd) {
+    const minSize = 35;
+    const maxSize = 60;
+
+    const maxColor = 10;
+    const minColor = 125;
+
+    this.relSize = relSize;
+    this.treeInd = treeInd;
+    this.size = minSize + (maxSize - minSize) * relSize;
+    this.color = minColor + (maxColor - minColor) * relSize;
+    this.bgCol = Math.round(Math.max(this.color / 2, 0));
+
+    this.x = x;
+    this.y = y;
+    this.xT = x;
+    this.yT = y - this.size / 2;
+    this.xB = x;
+    this.yB = y + this.size / 2;
+
+    nodes.push(this);
+  }
+
+  startAnimation = (offset = 0) => {
+    if (this.animationStart == Number.MAX_VALUE)
+      this.animationStart = globalTime + offset;
+  };
+
+  child = (node) => {
+    let edge = new Edge(this, node);
+    this.edges.push(edge);
+    edges.push(edge);
+    this.hasChildren = true;
+    node.isRootNode = false;
+    return node;
+  };
+
+  render = () => {
+    if (globalTime - this.animationStart < 0) return;
+
+    const mouseXlocalCoords = (mouseX - width / 2) / scaleFactor;
+    const mouseYlocalCoords = (mouseY - height / 2) / scaleFactor;
+    const isMouseOver =
+      dist(mouseXlocalCoords, mouseYlocalCoords, this.x, this.y) <
+      this.renderSize / 1.5;
+    if (isMouseOver) cursor(HAND);
+    if (isMouseOver && mouseIsPressed) {
+      nodes.forEach((n) => (n.selected = false));
+      this.selected = true;
+      setCodeAndPlan(
+        treeStructData.code[this.treeInd],
+        treeStructData.plan[this.treeInd],
+      );
+      manualSelection = true;
+    }
+
+    this.renderSize = this.size;
+    if (!this.isStatic) {
+      this.animationProgress = animEase(
+        (globalTime - this.animationStart) / 1000,
+      );
+      if (this.animationProgress >= 1) {
+        this.isStatic = true;
+      } else {
+        this.renderSize =
+          this.size *
+          (0.8 +
+            0.2 *
+              (-3.33 * this.animationProgress ** 2 +
+                4.33 * this.animationProgress));
+      }
+    }
+
+    fill(this.color);
+    if (this.selected) {
+      fill(accentCol);
+    }
+
+    noStroke();
+    square(
+      this.x - this.renderSize / 2,
+      this.y - this.renderSize / 2,
+      this.renderSize,
+      10,
+    );
+
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(this.renderSize / 2);
+    fill(255);
+    // fill(lerpColor(color(accentCol), color(255), this.animationProgress))
+    text("{ }", this.x, this.y - 1);
+    // DEBUG PRINT:
+    // text(round(this.relSize, 2), this.x, this.y - 1)
+    // text(this.treeInd, this.x, this.y + 15)
+
+    const dotAnimThreshold = 0.85;
+    if (this.isStarred && this.animationProgress >= dotAnimThreshold) {
+      let dotAnimProgress =
+        (this.animationProgress - dotAnimThreshold) / (1 - dotAnimThreshold);
+      textSize(
+        ((-3.33 * dotAnimProgress ** 2 + 4.33 * dotAnimProgress) *
+          this.renderSize) /
+          2,
+      );
+      if (this.selected) {
+        fill(0);
+        stroke(0);
+      } else {
+        fill(accentCol);
+        stroke(accentCol);
+      }
+      strokeWeight((-(dotAnimProgress ** 2) + dotAnimProgress) * 2);
+      text("*", this.x + 20, this.y - 11);
+      noStroke();
+    }
+
+    if (!this.isStatic) {
+      fill(bgCol);
+      const progressAnimBaseSize = this.renderSize + 5;
+      rect(
+        this.x - progressAnimBaseSize / 2,
+        this.y -
+          progressAnimBaseSize / 2 +
+          progressAnimBaseSize * this.animationProgress,
+        progressAnimBaseSize,
+        progressAnimBaseSize * (1 - this.animationProgress),
+      );
+    }
+    if (this.animationProgress >= 0.9) {
+      this.edges
+        .sort((a, b) => a.color() - b.color())
+        .forEach((e, i) => {
+          e.startAnimation((i / this.edges.length) ** 2 * 1000);
+        });
+    }
+  };
+}
+
+class Edge {
+  nodeT;
+  nodeB;
+  animX = 0;
+  animY = 0;
+  animationStart = Number.MAX_VALUE;
+  animationProgress = 0;
+  isStatic = false;
+  weight = 0;
+
+  constructor(nodeT, nodeB) {
+    this.nodeT = nodeT;
+    this.nodeB = nodeB;
+    this.weight = 2 + nodeB.relSize * 1;
+  }
+
+  color = () => this.nodeB.color;
+
+  startAnimation = (offset = 0) => {
+    if (this.animationStart == Number.MAX_VALUE)
+      this.animationStart = globalTime + offset;
+  };
+
+  render = () => {
+    if (globalTime - this.animationStart < 0) return;
+
+    if (!this.isStatic) {
+      this.animationProgress = animEase(
+        (globalTime - this.animationStart) / 1000,
+      );
+      if (this.animationProgress >= 1) {
+        this.isStatic = true;
+        this.animX = this.nodeB.xT;
+        this.animY = this.nodeB.yT;
+      } else {
+        this.animX = bezierPoint(
+          this.nodeT.xB,
+          this.nodeT.xB,
+          this.nodeB.xT,
+          this.nodeB.xT,
+          this.animationProgress,
+        );
+
+        this.animY = bezierPoint(
+          this.nodeT.yB,
+          (this.nodeT.yB + this.nodeB.yT) / 2,
+          (this.nodeT.yB + this.nodeB.yT) / 2,
+          this.nodeB.yT,
+          this.animationProgress,
+        );
+      }
+    }
+    if (this.animationProgress >= 0.97) {
+      this.nodeB.startAnimation();
+    }
+
+    strokeWeight(this.weight);
+    noFill();
+    stroke(
+      lerpColor(color(bgCol), color(accentCol), this.nodeB.relSize * 1 + 0.7),
+    );
+    bezier(
+      this.nodeT.xB,
+      this.nodeT.yB,
+      this.nodeT.xB,
+      (this.nodeT.yB + this.nodeB.yT) / 2,
+      this.animX,
+      (this.nodeT.yB + this.nodeB.yT) / 2,
+      this.animX,
+      this.animY,
+    );
+  };
+}
+
+draw = () => {
+  cursor(ARROW);
+  frameRate(120);
+  if (!firstFrameTime && frameCount <= 1) {
+    firstFrameTime = millis();
+  }
+  // ---- update global animation state ----
+  const initialSpeedScalingEaseIO =
+    (cos(min((millis() - firstFrameTime) / 8000, 1.0) * PI) + 1) / 2;
+  const initialSpeedScalingEase =
+    (cos(min((millis() - firstFrameTime) / 8000, 1.0) ** (1 / 2) * PI) + 1) / 2;
+  const initAnimationSpeedFactor = 1.0 - 0.4 * initialSpeedScalingEaseIO;
+  // update global scaling-aware clock
+  globalTime += globalAnimSpeed * initAnimationSpeedFactor * deltaTime;
+
+  if (nodes.length == 0) {
+    const spacingHeight = height * 1.3;
+    const spacingWidth = width * 1.3;
+    treeStructData.layout.forEach((lay, index) => {
+      new Node(
+        spacingWidth * lay[0] - spacingWidth / 2,
+        20 + spacingHeight * lay[1] - spacingHeight / 2,
+        1 - treeStructData.metrics[index],
+        index,
+      );
+    });
+    treeStructData.edges.forEach((ind) => {
+      nodes[ind[0]].child(nodes[ind[1]]);
+    });
+    nodes.forEach((n) => {
+      if (n.isRootNode) n.startAnimation();
+    });
+    nodes[0].selected = true;
+    setCodeAndPlan(
+      treeStructData.code[0],
+      treeStructData.plan[0],
+    )
+  }
+
+  const staticNodes = nodes.filter(
+    (n) => n.isStatic || n.animationProgress >= 0.7,
+  );
+  if (staticNodes.length > 0) {
+    const largestNode = staticNodes.reduce((prev, current) =>
+      prev.relSize > current.relSize ? prev : current,
+    );
+    if (!manualSelection) {
+      if (!largestNode.selected) {
+        setCodeAndPlan(
+          treeStructData.code[largestNode.treeInd],
+          treeStructData.plan[largestNode.treeInd],
+        );
+      }
+      staticNodes.forEach((node) => {
+        node.selected = node === largestNode;
+      });
+    }
+  }
+  background(bgCol);
+  // global animation transforms
+  translate(width / 2, height / 2);
+  scale(scaleFactor);
+
+  
+  // ---- fg render ----
+  edges.forEach((e) => e.render());
+  nodes.forEach((n) => n.render());
+  
+};
+
+    </script>
+    <title>AIDE Run Visualization</title>
+    <style>
+      body,
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        overflow: scroll;
+      }
+      body {
+        background-color: #f2f0e7;
+      }
+      canvas {
+        float: left;
+        height: 100vh;
+        width: 40vw;
+      }
+      #text-container {
+        float: right;
+        height: 100vh;
+        width: 50vw;
+        background-color: #282c34;
+      }
+      #plan {
+        /* border-left: 2px solid #282c34; */
+        background-color: #282c34;
+        color: #f2f0e7;
+        min-height: 5rem;
+        padding: 1em 0 1em 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <pre
+      id="text-container"
+    ><div id="plan"></div><hr><code id="code" class="language-python"></code></pre>
+  </body>
+</html>

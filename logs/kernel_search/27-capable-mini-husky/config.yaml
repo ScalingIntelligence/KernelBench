@@ -1,0 +1,68 @@
+kernel:
+  dataset_src: local
+  level: 1
+  problem_id: 1
+gpu:
+  arch:
+  - Ada
+  precision: fp32
+  backend: cuda
+evaluation:
+  num_correct_trials: 5
+  num_perf_trials: 100
+  measure_performance: true
+  timeout: 600
+inference:
+  server_type: google
+  model_name: null
+  temperature: 0.7
+  max_tokens: 8192
+  is_reasoning_model: false
+  reasoning_effort: null
+  budget_tokens: 0
+agent:
+  steps: 5
+  code:
+    model: gemini/gemini-2.5-flash
+    temp: 0.7
+  feedback:
+    model: gemini/gemini-2.5-flash
+    temp: 0.3
+  search:
+    num_drafts: 3
+    debug_prob: 0.3
+    max_debug_depth: 2
+  k_fold_validation: 1
+  expose_prediction: false
+  data_preview: false
+exec:
+  timeout: 600
+  agent_file_name: kernel_code.py
+  format_tb_ipython: false
+exp_name: 27-capable-mini-husky
+log_dir: !!python/object/apply:pathlib.PosixPath
+- /
+- scratch
+- sa6740
+- KernelBench
+- logs
+- kernel_search
+- 27-capable-mini-husky
+workspace_dir: !!python/object/apply:pathlib.PosixPath
+- /
+- scratch
+- sa6740
+- KernelBench
+- workspaces
+- kernel_search
+- 27-capable-mini-husky
+generate_report: true
+report:
+  model: gemini/gemini-2.5-flash
+  temp: 0.5
+data_dir: null
+desc_file: null
+goal: null
+eval: null
+preprocess_data: false
+copy_data: false
