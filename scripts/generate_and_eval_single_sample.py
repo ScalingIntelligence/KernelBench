@@ -18,7 +18,7 @@ from src.utils import (
     read_file,
     set_gpu_arch,
 )
-
+from src.eval import get_torch_dtype_from_string
 """
 Generate and evaluate a single sample
 Easiest way to get started, to test a single problem for experimentation or debugging
@@ -48,12 +48,18 @@ class EvalConfig(Config):
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
+        self.precision = "fp32" # options ["fp32", "fp16", "bf16"]
 
         # Inference config
-        self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
-        self.max_tokens = 4096
-        self.temperature = 0.0
+        self.server_type = None
+        self.model_name = None
+        self.max_tokens = None
+        self.temperature = None
+        
+        # Reasoning model specific parameters
+        self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
+        self.reasoning_effort = None  # for o1/o3: "low", "medium", "high"
+        self.budget_tokens = 0  # for Claude extended thinking mode
 
         # Logging
         self.logdir = os.path.join(REPO_TOP_DIR, "results/eval_logs")
@@ -81,6 +87,21 @@ def main(config: EvalConfig):
     """
     Keep it simple: Generate and evaluate a single sample
     """
+    from src.utils import SERVER_PRESETS
+    
+    if config.server_type and config.server_type in SERVER_PRESETS:
+        preset = SERVER_PRESETS[config.server_type]
+        if config.model_name is None or config.model_name == "None":
+            config.model_name = preset.get("model_name", "None")
+        if config.max_tokens is None or config.max_tokens == "None":
+            config.max_tokens = preset.get("max_tokens", "None")
+        if config.temperature is None or config.temperature == "None":
+            config.temperature = preset.get("temperature", "None")
+    
+    # Convert string boolean to actual boolean for reasoning model flag
+    if isinstance(config.is_reasoning_model, str):
+        config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
+    
     print(f"Starting Eval with config: {config}")
 
     # Configurations
@@ -143,16 +164,19 @@ def main(config: EvalConfig):
         max_tokens=config.max_tokens,
         verbose=config.verbose,
         time_generation=True,
+        is_reasoning_model=config.is_reasoning_model,
+        reasoning_effort=config.reasoning_effort,
+        budget_tokens=config.budget_tokens,
     )
 
     # Use appropriate prompt constructor based on backend
     if config.backend == "cuda":
         custom_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
-    elif config.backend in ["triton", "cute"]:  # removed "tilelang"
+    elif config.backend in ["triton", "tilelang", "cute"]:
         custom_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
     else:
         raise ValueError(
-            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', or 'cute'."
+            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'tilelang', or 'cute'."
         )
 
     if config.log_prompt:
@@ -196,6 +220,7 @@ def main(config: EvalConfig):
         num_correct_trials=5,
         num_perf_trials=100,
         backend=config.backend,
+        precision=get_torch_dtype_from_string(config.precision),
     )
 
     print(
