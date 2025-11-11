@@ -14,6 +14,9 @@ def _abs_path(rel: str) -> str:
         return rel
     return os.path.join(REPO_TOP_PATH, rel)
 
+PROMPTS_TOML = _abs_path("src/prompts/prompts.toml")
+HARDWARE_SPECS_TOML = _abs_path("src/prompts/hardware/hardware_specs.toml")
+
 @dataclass
 class TomlConfig:
     data: Dict[str, Any]
@@ -38,7 +41,10 @@ class TomlConfig:
             text_parts.append(node.strip() + "\n")
         return "\n".join(text_parts).strip() + "\n"
 
-def _hardware_context_from_path(specs_path: str, hardware_type: str, hardware_name: str) -> Dict[str, str]:
+prompt_cfg = TomlConfig.from_toml(PROMPTS_TOML)
+hardware_cfg = TomlConfig.from_toml(HARDWARE_SPECS_TOML)
+
+def _hardware_context_from_path(hardware_type: str, hardware_name: str) -> Dict[str, str]:
     """
     Load hardware spec dicts from a TOML file (.toml).
     - HARDWARE_SPEC_INFO = { type: { name: { ... } } }
@@ -46,14 +52,7 @@ def _hardware_context_from_path(specs_path: str, hardware_type: str, hardware_na
     For TOML files we expect structure like [hardware_type.hardware_name], plus optional
     [hardware_type.definitions], [hardware_type.best_practices], etc.
     """
-    cfg = TomlConfig.from_toml(specs_path)
-    data = cfg.data
-
-    # Resolve hardware_type default from meta if not provided
-    if not hardware_type:
-        hardware_type = data.get("meta", {}).get("default_hardware_type")
-
-    hw_section = data.get(hardware_type)
+    hw_section = hardware_cfg.data.get(hardware_type)
     if not isinstance(hw_section, dict):
         raise KeyError(f"Hardware type '{hardware_type}' not found in specs TOML")
 
@@ -61,7 +60,9 @@ def _hardware_context_from_path(specs_path: str, hardware_type: str, hardware_na
     if isinstance(hw_section.get(hardware_name), dict):
         curr = hw_section[hardware_name]
     if curr is None:
-        raise KeyError(f"Hardware '{hardware_name}' not found under type '{hardware_type}' in {specs_path}")
+        raise KeyError(
+            f"Hardware '{hardware_name}' not found under type '{hardware_type}' in {HARDWARE_SPECS_TOML}"
+        )
 
     # definitions
     definitions = {}
@@ -77,7 +78,9 @@ def _hardware_context_from_path(specs_path: str, hardware_type: str, hardware_na
     hardware_architecture = curr.get("architecture") or "Unknown"
 
     # Build human-readable bullets for specs/definitions/best practices
-    specs_bullets = "\n".join([f"- {k}: {v}" for k, v in curr.items() if k != "architecture"])
+    specs_bullets = "\n".join(
+        [f"- {k}: {v}" for k, v in curr.items() if k != "architecture"]
+    )
     defs_bullets = "\n".join([f"- {k}: {v}" for k, v in definitions.items()])
     best_bullets = "\n".join([f"- {x}" for x in best_list])
 
@@ -90,13 +93,36 @@ def _hardware_context_from_path(specs_path: str, hardware_type: str, hardware_na
         "hardware_best_practices_bullets": best_bullets,
     }
 
+def get_hardware_architecture(
+    hardware_type: str, hardware_name: str
+) -> str:
+    """
+    Convenience helper: return the architecture string for a given hardware.
+
+    Args:
+        hardware_type: Hardware type (e.g., 'GPU', 'TT').
+        hardware_name: Hardware name (e.g., 'A100', 'L4', 'Grayskull').
+
+    Returns:
+        The architecture name as a string (e.g., 'Ampere', 'Ada', 'Grayskull').
+
+    Raises:
+        KeyError / ValueError propagated from the underlying loader if the
+        hardware entry isn't found or the file is invalid. This keeps the
+        behavior explicit for callers.
+    """
+
+    # Use the existing loader to build the context and extract architecture
+    ctx = _hardware_context_from_path(hardware_type, hardware_name)
+    arch = ctx.get("hardware_architecture")
+    return arch if arch != "Unknown" else None
+
+
 def render_prompt_by_option(
     *,
-    prompts_toml: str,
     language: str,
     option: str,
     context: Dict[str, str],
-    hardware_specs_toml: Optional[str] = None,
     hardware_type: Optional[str] = None,
     hardware_name: Optional[str] = None,
 ) -> str:
@@ -112,42 +138,47 @@ def render_prompt_by_option(
         hardware_type: Hardware type (e.g., "GPU", "Tenstorrent")
         hardware_name: Hardware name (e.g., "A100", "H100")
     """
-    cfg = TomlConfig.from_toml(prompts_toml)
-    
     # Get language-specific content
     try:
-        lang_data = cfg.data["languages"][language]
+        lang_data = prompt_cfg.data["languages"][language]
     except KeyError:
         raise KeyError(f"Unknown language: {language}")
-    
+
     # Get option configuration
     try:
-        option_data = cfg.data["options"][option]
+        option_data = prompt_cfg.data["options"][option]
     except KeyError:
         raise KeyError(f"Unknown option: {option}")
-    
+
     # Get shared templates
-    shared = cfg.data.get("shared", {})
+    shared = prompt_cfg.data.get("shared", {})
     language_display = lang_data.get("language_display", language.upper())
-    
+
     # Fill in shared templates with language-specific terms
-    problem_statement = shared.get("problem_statement", "").format(language_display=language_display)
-    instruction = shared.get("instruction", "").format(language_display=language_display)
-    
+    problem_statement = shared.get("problem_statement", "").format(
+        language_display=language_display
+    )
+    instruction = shared.get("instruction", "").format(
+        language_display=language_display
+    )
+
     # Add language-specific content to context
     context = {
         **context,
-        "language": language.upper() if language in ["cuda", "cute"] else language.capitalize(),
+        "language": (
+            language.upper() if language in ["cuda", "cute"] else language.capitalize()
+        ),
         "language_display": language_display,
         "problem_statement": problem_statement,
         "instruction": instruction,
     }
-    
+
     # Load example files if requested
     if option_data.get("requires_example"):
         # Use language-specific example arch, or fall back to shared one
         ex_arch_path = _abs_path(
-            lang_data.get("few_shot_example_arch") or shared.get("few_shot_example_arch")
+            lang_data.get("few_shot_example_arch")
+            or shared.get("few_shot_example_arch")
         )
         ex_new_path = _abs_path(lang_data["few_shot_new_arch"])
         context.update(
@@ -159,9 +190,13 @@ def render_prompt_by_option(
 
     # Load hardware details if requested
     if option_data.get("requires_hardware"):
-        if not (hardware_specs_toml and hardware_type and hardware_name):
-            raise ValueError(f"Option '{option}' requires hardware info; provide hardware_specs_toml, hardware_type, and hardware_name")
-        context.update(**_hardware_context_from_path(_abs_path(hardware_specs_toml), hardware_type, hardware_name),)
+        if not (hardware_type and hardware_name):
+            raise ValueError(
+                f"Option '{option}' requires hardware info; provide hardware_type, and hardware_name"
+            )
+        context.update(
+            **_hardware_context_from_path(hardware_type, hardware_name),
+        )
 
     # Build the prompt from components
     prompt_parts = []
@@ -175,15 +210,17 @@ def render_prompt_by_option(
         elif component.startswith("hardware_"):
             # Hardware components from templates.hardware
             template_key = f"templates.hardware.{component}"
-            prompt_parts.append(cfg.compose_blocks([template_key]))
+            prompt_parts.append(prompt_cfg.compose_blocks([template_key]))
         else:
             # Other components from templates.common
             template_key = f"templates.common.{component}"
-            prompt_parts.append(cfg.compose_blocks([template_key]))
-    
+            prompt_parts.append(prompt_cfg.compose_blocks([template_key]))
+
     prompt_text = "\n".join(prompt_parts).strip() + "\n"
-    
+
     try:
         return prompt_text.format(**context).strip() + "\n"
     except KeyError as e:
-        raise KeyError(f"Missing placeholder in context: {e.args[0]}. Available: {list(context.keys())}") from e
+        raise KeyError(
+            f"Missing placeholder in context: {e.args[0]}. Available: {list(context.keys())}"
+        ) from e

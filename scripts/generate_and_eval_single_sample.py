@@ -10,6 +10,7 @@ from datasets import load_dataset
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor_multilang import get_prompt_for_language
+from src.loader import get_hardware_architecture
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
@@ -44,9 +45,14 @@ class EvalConfig(Config):
         # Evaluation
         # local (requires a GPU), modal (cloud GPU) coming soon
         self.eval_mode = "local"
+
+        self.option = "few_shot"
+        self.hardware_type = "GPU"
+        self.hardware_name = "L40S"
+
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
-        self.gpu_arch = ["Ada"]
+        self.arch = get_hardware_architecture(hardware_type=self.hardware_type, hardware_name=self.hardware_name)
 
         # Inference config
         self.server_type = "deepseek"
@@ -90,8 +96,8 @@ def main(config: EvalConfig):
     elif config.dataset_src == "local":
         curr_level_dataset = construct_kernelbench_dataset(config.level)
 
-    if config.gpu_arch:
-        set_gpu_arch(config.gpu_arch)  # otherwise build for all architectures
+    if config.hardware_type == "GPU" and config.arch:
+        set_gpu_arch(config.arch)  # otherwise build for all architectures
 
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)
@@ -145,7 +151,9 @@ def main(config: EvalConfig):
     )
 
     # Use appropriate prompt constructor based on backend
-    custom_prompt = get_prompt_for_language(ref_arch_src, language=config.backend, option="few_shot")
+    custom_prompt = get_prompt_for_language(ref_arch_src, language=config.backend,
+                                            option=config.option,
+                                            hardware_name=config.hardware_name, hardware_type=config.hardware_type)
 
     if config.log_prompt:
         with open(

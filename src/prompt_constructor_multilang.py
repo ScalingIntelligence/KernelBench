@@ -1,13 +1,12 @@
 # src/prompt_constructor_multilang.py  (new option-based prompt constructor)
 import os
-from .loader import render_prompt_by_option, _abs_path
+from .loader import render_prompt_by_option
 
-REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PROMPTS_TOML = _abs_path("src/prompts/prompts.toml")
-# Default hardware specs TOML file (contains HARDWARE_SPEC_INFO)
-HARDWARE_SPECS_TOML = _abs_path("src/prompts/hardware/hardware_specs.toml")
-
-def get_prompt_for_language(ref_arch_src: str, language: str = "triton", option: str = "few_shot") -> str:
+def get_prompt_for_language(ref_arch_src: str,
+                            language: str = "triton",
+                            option: str = "few_shot",
+                            hardware_name: str = None,
+                            hardware_type: str = None) -> str:
     """
     Generate a prompt for a specific language and option.
     
@@ -17,28 +16,9 @@ def get_prompt_for_language(ref_arch_src: str, language: str = "triton", option:
         option: The prompt option (basic, few_shot, hardware_info)
     """
     return render_prompt_by_option(
-        prompts_toml=PROMPTS_TOML,
         language=language.lower(),
         option=option,
         context={"ref_arch_src": ref_arch_src},
-    )
-
-def get_prompt_with_hardware(ref_arch_src: str, language: str, hardware_name: str, hardware_type: str = "GPU") -> str:
-    """
-    Generate a hardware-aware prompt for a specific language.
-
-    Args:
-        ref_arch_src: The reference architecture source code
-        language: The kernel language (triton, cuda, cute)
-        hardware_name: The name of the hardware (e.g., "A100", "H100", "TENSILICA")
-        hardware_type: The type of the hardware (e.g., "GPU", "Tenstorrent")
-    """
-    return render_prompt_by_option(
-        prompts_toml=PROMPTS_TOML,
-        language=language.lower(),
-        option="hardware_info",
-        context={"ref_arch_src": ref_arch_src},
-        hardware_specs_py=HARDWARE_SPECS_TOML,
         hardware_type=hardware_type,
         hardware_name=hardware_name,
     )
@@ -54,7 +34,6 @@ def prompt_fix_compile(language: str, ref_arch_src: str, custom_kernel: str, met
         metadata: Compilation error metadata
     """
     return render_prompt_by_option(
-        prompts_toml=PROMPTS_TOML,
         language=language.lower(),
         option="fix_compile",
         context={
@@ -76,7 +55,6 @@ def prompt_fix_correctness(language: str, ref_arch_src: str, custom_kernel: str,
         metadata: Correctness error metadata
     """
     return render_prompt_by_option(
-        prompts_toml=PROMPTS_TOML,
         language=language.lower(),
         option="fix_correctness",
         context={
