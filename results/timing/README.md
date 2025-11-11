@@ -8,7 +8,7 @@ Since KernelBench measures the speedup between Runtime(refernece architecture) a
 We have provided a set of baseline results for the KernelBench problems on a variety of hardware as well as various PyTorch configurations.
 All (current) baseline are ran with PyTorch `2.5.0+cu124` and CUDA `12.4`.
 
-Note: we will update it now with PyTorch `2.9.0` and CUDA `12.8`    
+Note: we will update it soon with PyTorch `2.9.0` and CUDA `12.8`    
 
 For timing, we measure wall clock time. We warm up 3 times and collect runtime statistics for 100 trials.
 
