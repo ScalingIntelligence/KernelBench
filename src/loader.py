@@ -15,11 +15,12 @@ def _abs_path(rel: str) -> str:
     return os.path.join(REPO_TOP_PATH, rel)
 
 @dataclass
-class PromptConfig:
+class TomlConfig:
     data: Dict[str, Any]
 
     @classmethod
-    def from_toml(cls, path: str) -> "PromptConfig":
+    def from_toml(cls, path: str) -> "TomlConfig":
+        """Load a TOML file and return a TomlConfig instance."""
         with open(path, "rb") as f:
             data = tomli.load(f)
         return cls(data)
@@ -37,40 +38,56 @@ class PromptConfig:
             text_parts.append(node.strip() + "\n")
         return "\n".join(text_parts).strip() + "\n"
 
-def _gpu_context_from_py(py_path: str, gpu_name: str) -> Dict[str, str]:
+def _hardware_context_from_path(specs_path: str, hardware_type: str, hardware_name: str) -> Dict[str, str]:
     """
-    Load GPU_* dicts from a Python file (no exec of raw strings; use runpy).
-    Expected globals:
-      - GPU_SPEC_INFO: dict[str, dict]
-      - GPU_DEFINITIONS: dict[str, str]
-      - GPU_BEST_PRACTICES: list[str]  OR {"list": [...]} for compatibility
+    Load hardware spec dicts from a TOML file (.toml).
+    - HARDWARE_SPEC_INFO = { type: { name: { ... } } }
+
+    For TOML files we expect structure like [hardware_type.hardware_name], plus optional
+    [hardware_type.definitions], [hardware_type.best_practices], etc.
     """
-    mod = runpy.run_path(py_path)
-    spec_info = mod.get("GPU_SPEC_INFO", {})
-    definitions = mod.get("GPU_DEFINITIONS", {})
-    best = mod.get("GPU_BEST_PRACTICES", [])
+    cfg = TomlConfig.from_toml(specs_path)
+    data = cfg.data
 
-    if not spec_info or not definitions or best is None:
-        raise ValueError("GPU_SPEC_INFO / GPU_DEFINITIONS / GPU_BEST_PRACTICES missing in gpu specs .py")
+    # Resolve hardware_type default from meta if not provided
+    if not hardware_type:
+        hardware_type = data.get("meta", {}).get("default_hardware_type")
 
-    if isinstance(best, dict) and "list" in best:
-        best = best["list"]
+    hw_section = data.get(hardware_type)
+    if not isinstance(hw_section, dict):
+        raise KeyError(f"Hardware type '{hardware_type}' not found in specs TOML")
 
-    if gpu_name not in spec_info:
-        raise KeyError(f"GPU name {gpu_name} not found in GPU_SPEC_INFO")
+    curr = None
+    if isinstance(hw_section.get(hardware_name), dict):
+        curr = hw_section[hardware_name]
+    if curr is None:
+        raise KeyError(f"Hardware '{hardware_name}' not found under type '{hardware_type}' in {specs_path}")
 
-    curr = spec_info[gpu_name]
-    gpu_architecture = curr.get("GPU Architecture", "Unknown")
-    specs_bullets = "\n".join([f"- We have {v} of {k}." for k, v in curr.items() if k != "GPU Architecture"])
+    # definitions
+    definitions = {}
+    if isinstance(hw_section.get("definitions"), dict):
+        definitions.update(hw_section.get("definitions"))
+
+    # best practices
+    best_list: List[str] = []
+    if isinstance(hw_section.get("best_practices"), dict):
+        best_list.extend(hw_section.get("best_practices", {}).get("items", []))
+
+    # Derive architecture name from common keys
+    hardware_architecture = curr.get("architecture") or "Unknown"
+
+    # Build human-readable bullets for specs/definitions/best practices
+    specs_bullets = "\n".join([f"- {k}: {v}" for k, v in curr.items() if k != "architecture"])
     defs_bullets = "\n".join([f"- {k}: {v}" for k, v in definitions.items()])
-    best_bullets = "\n".join([f"- {x}" for x in (best or [])])
+    best_bullets = "\n".join([f"- {x}" for x in best_list])
 
     return {
-        "gpu_name": gpu_name,
-        "gpu_architecture": gpu_architecture,
-        "gpu_specs_bullets": specs_bullets,
-        "gpu_definitions_bullets": defs_bullets,
-        "gpu_best_practices_bullets": best_bullets,
+        "hardware_type": hardware_type,
+        "hardware_name": hardware_name,
+        "hardware_architecture": hardware_architecture,
+        "hardware_specs_bullets": specs_bullets,
+        "hardware_definitions_bullets": defs_bullets,
+        "hardware_best_practices_bullets": best_bullets,
     }
 
 def render_prompt_by_option(
@@ -79,21 +96,23 @@ def render_prompt_by_option(
     language: str,
     option: str,
     context: Dict[str, str],
-    gpu_specs_py: Optional[str] = None,
-    gpu_name: Optional[str] = None,
+    hardware_specs_toml: Optional[str] = None,
+    hardware_type: Optional[str] = None,
+    hardware_name: Optional[str] = None,
 ) -> str:
     """
-    New function that uses languages.X and options.Y structure
-    
+    New function that uses languages.X and options.Y structure from prompts.toml
+
     Args:
         prompts_toml: Path to the prompts.toml file
         language: The kernel language (triton, cuda, cute)
         option: The prompt option (basic, few_shot, hardware_info, fix_compile, fix_correctness)
         context: Variables to fill in the prompt template
-        gpu_specs_py: Optional path to GPU specs Python file
-        gpu_name: Optional GPU name (required if option requires_gpu)
+        hardware_specs_py: Optional path to hardware specs file (.py or .toml)
+        hardware_type: Hardware type (e.g., "GPU", "Tenstorrent")
+        hardware_name: Hardware name (e.g., "A100", "H100")
     """
-    cfg = PromptConfig.from_toml(prompts_toml)
+    cfg = TomlConfig.from_toml(prompts_toml)
     
     # Get language-specific content
     try:
@@ -131,18 +150,19 @@ def render_prompt_by_option(
             lang_data.get("few_shot_example_arch") or shared.get("few_shot_example_arch")
         )
         ex_new_path = _abs_path(lang_data["few_shot_new_arch"])
-        context = {
-            **context,
-            "example_arch_src": read_file(ex_arch_path),
-            "example_new_arch_src": read_file(ex_new_path),
-        }
-    
-    # Load GPU details if requested
-    if option_data.get("requires_gpu"):
-        if not (gpu_specs_py and gpu_name):
-            raise ValueError(f"Option '{option}' requires GPU info; provide gpu_specs_py and gpu_name")
-        context = {**context, **_gpu_context_from_py(_abs_path(gpu_specs_py), gpu_name)}
-    
+        context.update(
+            {
+                "example_arch_src": read_file(ex_arch_path),
+                "example_new_arch_src": read_file(ex_new_path),
+            }
+        )
+
+    # Load hardware details if requested
+    if option_data.get("requires_hardware"):
+        if not (hardware_specs_toml and hardware_type and hardware_name):
+            raise ValueError(f"Option '{option}' requires hardware info; provide hardware_specs_toml, hardware_type, and hardware_name")
+        context.update(**_hardware_context_from_path(_abs_path(hardware_specs_toml), hardware_type, hardware_name),)
+
     # Build the prompt from components
     prompt_parts = []
     for component in option_data["components"]:

@@ -10,7 +10,6 @@ from pydra import Config, REQUIRED
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
 from src.prompt_constructor_multilang import get_prompt_for_language
 from src.utils import (
     create_inference_server_from_presets,
@@ -120,12 +119,7 @@ def generate_sample_single(
     ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
 
     # Construct Prompt
-    if config.backend in ["cuda", "triton", "cute"]:
-        custom_cuda_prompt = get_prompt_for_language(ref_arch_src, language=config.backend, option="few_shot")
-    else:
-        raise ValueError(
-            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', or 'cute'."
-        )
+    custom_cuda_prompt = get_prompt_for_language(ref_arch_src, language=config.backend, option="few_shot")
     if config.log_prompt:
         prompt_path = os.path.join(
             run_dir,

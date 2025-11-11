@@ -1,0 +1,202 @@
+[meta]
+version = "1.0"
+default_hardware_type = "GPU"
+
+# -------------------------------------------------------------------------
+# Hardware Types: GPU, Tenstorrent, etc.
+# -------------------------------------------------------------------------
+[GPU]
+description = "NVIDIA GPU specifications and best practices"
+
+[GPU.L40S]
+architecture = "Ada"
+GPU_Memory = "48GB GDDR6 with ECC"
+Memory_Bandwidth = "864 GB/s"
+RT_Core_Performance_TFLOPS = "212"
+FP32_TFLOPS = "91.6"
+TF32_Tensor_Core_TFLOPS = "183.2 (366 with sparsity)"
+FP16_Tensor_Core_TFLOPS = "362.05 (733 with sparsity)"
+FP8_Tensor_Core_TFLOPS = "733 (1466 with sparsity)"
+Peak_INT8_Tensor_TOPS = "733 (1466 with sparsity)"
+Peak_INT4_Tensor_TOPS = "733 (1466 with sparsity)"
+Register_File_Size = "64K 32-bit registers per SM"
+Maximum_registers_per_thread = "255"
+Maximum_thread_blocks_per_SM = "24"
+Shared_memory_capacity_per_SM = "100 KB"
+Maximum_shared_memory_per_thread_block = "99 KB"
+
+[GPU.H100]
+architecture = "Hopper"
+GPU_Memory = "80GB"
+Memory_Bandwidth = "3.35 TB/s"
+FP64_TFLOPS = "34"
+FP64_Tensor_Core_TFLOPS = "67"
+FP32_TFLOPS = "67"
+TF32_Tensor_Core_TFLOPS = "989 with sparsity"
+BFLOAT16_Tensor_Core_TFLOPS = "1979 with sparsity"
+FP16_Tensor_Core_TFLOPS = "1979 with sparsity"
+FP8_Tensor_Core_TFLOPS = "3958 with sparsity"
+INT8_Tensor_Core_TOPS = "3958 with sparsity"
+Register_File_Size = "64K 32-bit registers per SM"
+Maximum_registers_per_thread = "255"
+Maximum_thread_blocks_per_SM = "32"
+Shared_memory_capacity_per_SM = "228 KB"
+Maximum_shared_memory_per_thread_block = "227 KB"
+
+[GPU.A100]
+architecture = "Ampere"
+GPU_Memory = "40GB"
+Memory_Bandwidth = "1935 GB/s"
+FP64_TFLOPS = "9.7"
+FP64_Tensor_Core_TFLOPS = "19.5"
+FP32_TFLOPS = "19.5"
+TF32_Tensor_Core_TFLOPS = "156 (312 with sparsity)"
+BFLOAT16_Tensor_Core_TFLOPS = "312 (624 with sparsity)"
+FP16_Tensor_Core_TFLOPS = "312 (624 with sparsity)"
+INT8_Tensor_Core_TOPS = "624 (1248 with sparsity)"
+Register_File_Size = "64K 32-bit registers per SM"
+Maximum_registers_per_thread = "255"
+Maximum_thread_blocks_per_SM = "32"
+Shared_memory_capacity_per_SM = "164 KB"
+Maximum_shared_memory_per_thread_block = "163 KB"
+
+[GPU.A100-80GB]
+architecture = "Ampere"
+GPU_Memory = "80GB"
+Memory_Bandwidth = "1935 GB/s"
+FP64_TFLOPS = "9.7"
+FP64_Tensor_Core_TFLOPS = "19.5"
+FP32_TFLOPS = "19.5"
+TF32_Tensor_Core_TFLOPS = "156 (312 with sparsity)"
+BFLOAT16_Tensor_Core_TFLOPS = "312 (624 with sparsity)"
+FP16_Tensor_Core_TFLOPS = "312 (624 with sparsity)"
+INT8_Tensor_Core_TOPS = "624 (1248 with sparsity)"
+Register_File_Size = "64K 32-bit registers per SM"
+Maximum_registers_per_thread = "255"
+Maximum_thread_blocks_per_SM = "32"
+Shared_memory_capacity_per_SM = "164 KB"
+Maximum_shared_memory_per_thread_block = "163 KB"
+
+[GPU.L4]
+architecture = "Ada"
+GPU_Memory = "24GB"
+Memory_Bandwidth = "300 GB/s"
+FP32_TFLOPS = "30.3"
+TF32_Tensor_Core_TFLOPS = "120 with sparsity"
+BFLOAT16_Tensor_Core_TFLOPS = "242 with sparsity"
+FP8_Tensor_Core_TFLOPS = "485 with sparsity"
+INT8_Tensor_Core_TOPS = "485 with sparsity"
+Register_File_Size = "64K 32-bit registers per SM"
+Maximum_registers_per_thread = "255"
+Maximum_thread_blocks_per_SM = "24"
+Shared_memory_capacity_per_SM = "100 KB"
+Maximum_shared_memory_per_thread_block = "99 KB"
+
+[GPU.T4]
+architecture = "Turing"
+GPU_Memory = "16 GB GDDR6"
+Memory_Bandwidth = "300 GB/s"
+Single_Precision_TFLOPS = "8.1"
+Mixed_Precision_FP16_FP32_TFLOPS = "65"
+INT8_TOPS = "130"
+INT4_TOPS = "260"
+Register_File_Size = "64K 32-bit registers per SM"
+Maximum_registers_per_thread = "255"
+Maximum_thread_blocks_per_SM = "16"
+Shared_memory_capacity_per_SM = "64 KB"
+
+[GPU.A10G]
+architecture = "Ampere"
+GPU_Memory = "24GB GDDR6"
+Memory_Bandwidth = "600 GB/s"
+FP32_TFLOPS = "31.2"
+TF32_Tensor_Core_TFLOPS = "62.5 (125 with sparsity)"
+BFLOAT16_Tensor_Core_TFLOPS = "125 (250 with sparsity)"
+FP16_Tensor_Core_TFLOPS = "125 (250 with sparsity)"
+INT8_Tensor_Core_TOPS = "250 (500 with sparsity)"
+INT4_Tensor_Core_TOPS = "500 (1000 with sparsity)"
+Register_File_Size = "64K 32-bit registers per SM"
+Maximum_registers_per_thread = "255"
+Maximum_thread_blocks_per_SM = "32"
+Shared_memory_capacity_per_SM = "164 KB"
+Maximum_shared_memory_per_thread_block = "163 KB"
+
+# -------------------------------------------------------------------------
+# GPU-specific Definitions and Best Practices
+# -------------------------------------------------------------------------
+
+[GPU.definitions]
+Thread = "A thread is a single execution unit that can run a single instruction at a time."
+Thread_Block = "A thread block is a group of threads that can cooperate with each other."
+Warp = "A warp is a group of threads that are scheduled together and execute in parallel."
+Shared_Memory = "Shared memory is a memory space that can be accessed by all threads in a thread block."
+Register = "A register is a small memory space that can be accessed by a single thread."
+Memory_Hierarchy = "Memory hierarchy is a pyramid of memory types with different speeds and sizes."
+Memory_Bandwidth = "Memory bandwidth is the rate at which data can be read from or stored into memory."
+Cache = "Cache is a small memory space that stores frequently accessed data."
+HBM = "HBM is a high-bandwidth memory technology that uses 3D-stacked DRAM."
+
+[GPU.best_practices]
+items = [
+  "Find ways to parallelize sequential code.",
+  "Minimize data transfers between the host and the device.",
+  "Adjust kernel launch configuration to maximize device utilization.",
+  "Ensure that global memory accesses are coalesced.",
+  "Minimize redundant accesses to global memory whenever possible.",
+  "Avoid long sequences of diverged execution by threads within the same warp.",
+  "Use specialized instructions based on the specific GPU architecture",
+]
+
+# -------------------------------------------------------------------------
+# Tenstorrent Hardware Type (example)
+# -------------------------------------------------------------------------
+
+[TT]
+description = "Tenstorrent accelerator specifications and best practices"
+
+[TT.Wormhole]
+architecture = "Wormhole"
+compute_units = "144 Tensix cores"
+memory_capacity = "16GB LPDDR4x"
+memory_bandwidth = "100 GB/s"
+mesh_size = "12x12 mesh"
+peak_bfloat16_tops = "150 TOPS"
+peak_int8_tops = "300 TOPS"
+on_chip_network_bandwidth = "6 TB/s"
+
+[TT.Blackhole]
+architecture = "Blackhole"
+compute_units = "288 Tensix cores"
+memory_capacity = "32GB LPDDR5"
+memory_bandwidth = "200 GB/s"
+mesh_size = "18x16 mesh"
+peak_bfloat16_tops = "600 TOPS"
+peak_int8_tops = "1200 TOPS"
+on_chip_network_bandwidth = "12 TB/s"
+
+[TT.Blackhole_Pro]
+architecture = "Blackhole Pro"
+compute_units = "512 Tensix cores"
+memory_capacity = "64GB LPDDR5"
+memory_bandwidth = "400 GB/s"
+mesh_size = "24x24 mesh"
+peak_bfloat16_tops = "900 TOPS"
+peak_int8_tops = "1800 TOPS"
+on_chip_network_bandwidth = "20 TB/s"
+
+# -------------------------------------------------------------------------
+# TT-specific Definitions and Best Practices
+# -------------------------------------------------------------------------
+
+[TT.definitions]
+Thread = "A thread is a compute unit in the Tenstorrent mesh architecture."
+Tensor_Core = "A compute unit optimized for tensor operations."
+Mesh_Grid = "A 2D grid of compute units in Tenstorrent architecture."
+
+[TT.best_practices]
+items = [
+  "Optimize for tensor-parallel execution.",
+  "Maximize data locality in mesh architecture.",
+  "Use host-device data transfer efficiently.",
+  "Leverage mesh interconnect bandwidth.",
+]

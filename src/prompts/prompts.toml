@@ -34,6 +34,10 @@ few_shot_new_arch = "src/prompts/model_new_ex_add.py"
 language_display = "CuTe (CUTLASS) kernels"
 few_shot_new_arch = "src/prompts/model_new_ex_add_cute.py"
 
+[languages.pykernel]
+language_display = "Tenstorrent PyKernel kernels"
+few_shot_new_arch = "src/prompts/model_new_ex_add_pykernel.py"
+
 # -------------------------------------------------------------------------
 # Options: Different prompt construction modes
 # -------------------------------------------------------------------------
@@ -50,9 +54,9 @@ requires_example = true
 
 [options.hardware_info]
 # Hardware-aware prompt
-description = "Includes GPU hardware specifications and best practices"
+description = "Includes hardware specifications and best practices"
 components = ["problem_statement", "few_shot_block", "hardware_header", "hardware_specs", "hardware_definitions", "hardware_best_practices", "arch_block", "instruction"]
-requires_gpu = true
+requires_hardware = true
 requires_example = true
 
 [options.fix_compile]
@@ -143,19 +147,19 @@ Here is some information about the underlying hardware that you should keep in m
 """
 
 hardware_specs = """
-The GPU that will run the kernel is NVIDIA {gpu_name}, {gpu_architecture} architecture.
+The {hardware_type} that will run the kernel is {hardware_name}, {hardware_architecture} architecture.
 
-{gpu_specs_bullets}
+{hardware_specs_bullets}
 """
 
 hardware_definitions = """
-Here are some concepts about the GPU architecture that could be helpful:
+Here are some concepts about the hardware architecture that could be helpful:
 
-{gpu_definitions_bullets}
+{hardware_definitions_bullets}
 """
 
 hardware_best_practices = """
-Here are some best practices for writing kernels on GPU:
+Here are some best practices for writing kernels on this hardware:
 
-{gpu_best_practices_bullets}
+{hardware_best_practices_bullets}
 """
