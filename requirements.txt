@@ -10,8 +10,6 @@ modal
 # DSLs
 nvidia-cutlass-dsl
 tilelang
-# do we need TVM?
-apache-tvm
 
 # helper
 tqdm
