@@ -55,7 +55,7 @@ torch.set_printoptions(precision=4, threshold=10)
 app = modal.App("eval_from_generations_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
 
-cuda_version = "12.4.0"  # should be no greater than host CUDA version
+cuda_version = "12.8.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -153,17 +153,18 @@ class WorkArgs:
 # Modal Evaluation Class
 # GPU must be specified here for all instances
 # Retries are configured at the class level to handle GPU attachment failures
-# @modal.concurrent: Each container handles exactly ONE evaluation at a time - prevents memory leaks
+# scaledown_window=5 kills idle containers after 5 seconds
+# Combined with 10s sleep between batches, this prevents container reuse and GPU corruption spread
 @app.cls(
-    image=image, 
+    image=image,
     gpu="A10G",
+    scaledown_window=5,  # Kill idle containers after 5 seconds
     retries=modal.Retries(
         max_retries=3,
         backoff_coefficient=2.0,
         initial_delay=1.0,
     )
 )
-@modal.concurrent(max_inputs=1)  # One input per container - prevents GPU memory leaks
 class ModalEvaluator:
     
     @modal.method()
@@ -218,11 +219,11 @@ class ModalEvaluator:
             backend=backend,
             precision=get_torch_dtype_from_string(precision),
         )
-        
-        # Force cleanup and exit to prevent container reuse and memory leaks
+
+        # Cleanup GPU cache before returning
         torch.cuda.empty_cache()
-        
-        return result  # Never reached, but needed for type checking
+
+        return result
 
 
 def fetch_ref_arch_from_problem_id(
@@ -470,7 +471,8 @@ def batch_eval_modal(
                 evaluator_cls = ModalEvaluator.with_options(gpu=config.gpu) if config.gpu != "A10G" else ModalEvaluator
                 
                 # Spawn all tasks in parallel
-                # Each spawn creates a NEW container instance with a GPU
+                # Modal assigns these to available containers (may reuse warm containers from previous batches)
+                # To prevent GPU corruption spread, we sleep between batches to ensure containers scale down
                 futures = []
                 for item in work_items:
                     if item is None:
@@ -526,7 +528,14 @@ def batch_eval_modal(
                 
                 print("-" * 128)
                 print(f"[Modal Batch] Evaluation took {end_time - start_time:.2f} seconds")
-                
+
+                # Wait for containers to scale down before next batch
+                # This prevents container reuse and GPU corruption from spreading between batches
+                if len(total_work) > 0:  # Only sleep if there are more batches
+                    scaledown_wait = 10  # Wait 10 seconds (2x the scaledown_window) to ensure containers are killed
+                    print(f"[Modal] Waiting {scaledown_wait}s for containers to scale down before next batch...")
+                    time.sleep(scaledown_wait)
+
                 pbar.update(len(curr_work_batch))
 
 

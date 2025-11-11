@@ -86,7 +86,7 @@ class EvalConfig(Config):
     def __repr__(self):
         return f"EvalConfig({self.to_dict()})"
 
-cuda_version = "12.4.0"  # should be no greater than host CUDA version
+cuda_version = "12.8.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
