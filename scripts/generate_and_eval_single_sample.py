@@ -55,7 +55,7 @@ class EvalConfig(Config):
         self.model_name = None
         self.max_tokens = None
         self.temperature = None
-        
+
         # Reasoning model specific parameters
         self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
         self.reasoning_effort = None  # for o1/o3: "low", "medium", "high"
@@ -88,7 +88,7 @@ def main(config: EvalConfig):
     Keep it simple: Generate and evaluate a single sample
     """
     from src.utils import SERVER_PRESETS
-    
+
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
         if config.model_name is None or config.model_name == "None":
@@ -97,11 +97,11 @@ def main(config: EvalConfig):
             config.max_tokens = preset.get("max_tokens", "None")
         if config.temperature is None or config.temperature == "None":
             config.temperature = preset.get("temperature", "None")
-    
+
     # Convert string boolean to actual boolean for reasoning model flag
     if isinstance(config.is_reasoning_model, str):
         config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
-    
+
     print(f"Starting Eval with config: {config}")
 
     # Configurations

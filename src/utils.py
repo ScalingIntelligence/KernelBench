@@ -33,7 +33,7 @@ import hashlib
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-SGLANG_KEY =  "LLM|9266774690114276|L2X1k5Bhs1GiE-huni0PeON7HvI" #  os.environ.get("SGLANG_API_KEY")
+SGLANG_KEY = os.environ.get("SGLANG_API_KEY")
 
 
 ########################################################
@@ -126,14 +126,14 @@ def query_server(
         else:
             messages.extend(prompt)
 
-    if server_type == "metagen":
-        url = server_address
+    if server_type == "llama_api":
+        url = "https://api.llama.com"
         client = OpenAI(
             api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
         )
         response = client.chat.completions.create(
             model=model_name,
-            messages=prompt,
+            messages=messages,
             temperature=temperature,
             n=num_completions,
             max_tokens=max_tokens,
@@ -227,6 +227,11 @@ SERVER_PRESETS = {
         "temperature": 0.7,
         "max_tokens": 4096,
     },
+    "llama_api": {
+        "model_name": "Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "temperature": 1.0,
+        "max_tokens": 65536,
+        }
 }
 
 
