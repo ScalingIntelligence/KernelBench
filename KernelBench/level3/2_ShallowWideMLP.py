@@ -31,7 +31,7 @@ class Model(nn.Module):
         return self.network(x)
 
 # Test code
-batch_size = 128
+batch_size = 64
 input_size = 16384
 hidden_layer_sizes = [32768, 32768]
 output_size = 16384
