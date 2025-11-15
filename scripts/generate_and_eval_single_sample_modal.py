@@ -15,8 +15,7 @@ from datasets import load_dataset
 
 #from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_multilang import get_prompt_for_language
+from src.prompt_constructor_multilang import get_prompt_for_backend
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
@@ -76,6 +75,10 @@ class EvalConfig(Config):
         self.log_eval_result = False
 
         self.backend = "cuda"
+        # Prompt generation settings
+        self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
+        self.include_hardware_info = False
+        self.hardware_gpu_name = None
 
     def verbose_logging(self):
         self.log = True
@@ -194,14 +197,43 @@ def main(config: EvalConfig):
                                                         budget_tokens=config.budget_tokens)
     
 
+    # Checks if user has inputted a valid argument for how many examples they want to give as context to the model
+    prompt_option = str(config.prompt_option).lower()
+    valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
+    if prompt_option not in valid_prompt_options:
+        raise ValueError(
+            f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
+        )
 
-    # Use appropriate prompt constructor based on backend
-    if config.backend == "cuda":
-        custom_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
-    elif config.backend in ["triton", "tilelang", "cute"]:
-        custom_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
-    else:
-        raise ValueError(f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'tilelang', or 'cute'.")
+    include_hardware = config.include_hardware_info
+    if isinstance(include_hardware, str):
+        include_hardware = include_hardware.lower() in ["true", "1", "yes"]
+
+    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    backend = config.backend.lower()
+    if backend not in supported_backends:
+        raise ValueError(
+            f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
+        )
+
+    #tilelang only supports fp16 or bf16
+    if backend == "tilelang":
+        config.precision = "fp16"
+        config.hardware_gpu_name = config.hardware_gpu_name or config.gpu
+
+    if include_hardware and not config.hardware_gpu_name:
+        raise ValueError(
+            "include_hardware_info is True but hardware_gpu_name is not provided."
+        )
+
+    custom_prompt = get_prompt_for_backend(
+        ref_arch_src,
+        backend,
+        option=prompt_option,
+        precision=config.precision,
+        include_hardware=include_hardware,
+        gpu_name=config.hardware_gpu_name,
+    )
         
     if config.log_prompt:
         with open(os.path.join(config.logdir, f"prompt_level_{config.level}_problem_{config.problem_id}.txt"), "w") as f:

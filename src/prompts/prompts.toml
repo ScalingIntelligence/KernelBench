@@ -1,69 +1,88 @@
 [meta]
 version = "1.0"
-default_language = "cuda"
+default_backend = "cuda"
+default_precision = "fp32"
 
 # -------------------------------------------------------------------------
-# Shared Templates: Used by all languages with placeholders
+# Shared Templates: Used by all backends with placeholders
 # -------------------------------------------------------------------------
 [shared]
 problem_statement = """
-You write custom {language_display} to replace the pytorch operators in the given architecture to get speedups.
+You write custom {backend_display} to replace the pytorch operators in the given architecture to get speedups.
 
-You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom {language_display} and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.
+You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom {backend_display} and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.
 """
 
 instruction = """
-Optimize the architecture named Model with custom {language_display}! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!
+Optimize the architecture named Model with custom {backend_display}! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!
 """
 
-# Shared example architecture (same for all languages)
+# Shared example architecture (same for all backends)
 few_shot_example_arch = "src/prompts/model_ex_add.py"
 
 # -------------------------------------------------------------------------
-# Languages: Language-specific configuration (minimal, just what varies)
+# Backends: Backend-specific configuration (minimal, just what varies)
 # -------------------------------------------------------------------------
-[languages.triton]
-language_display = "Triton kernels"
-few_shot_new_arch = "src/prompts/model_new_ex_add_triton.py"
+[backends.cuda]
+backend_display = "CUDA operators"
+# One-shot example (baseline, always available)
+one_shot_new_arch = "src/prompts/model_new_ex_add.py"
+# Few-shot examples (optional, multiple example pairs)
+few_shot_examples = [
+    ["src/prompts/few_shot/model_ex_add.py", "src/prompts/few_shot/model_new_ex_add.py"],
+    ["src/prompts/few_shot/model_ex_fuse_gelu.py", "src/prompts/few_shot/model_new_ex_fuse_gelu.py"],
+    ["src/prompts/few_shot/model_ex_flash_attn.py", "src/prompts/few_shot/model_new_ex_flash_attn.py"],
+]
 
-[languages.cuda]
-language_display = "CUDA operators"
-few_shot_new_arch = "src/prompts/model_new_ex_add.py"
+[backends.triton]
+backend_display = "Triton kernels"
+one_shot_new_arch = "src/prompts/model_new_ex_add_triton.py"
+# No few_shot_examples - will use one-shot when few_shot option is selected
 
-[languages.cute]
-language_display = "CuTe (CUTLASS) kernels"
-few_shot_new_arch = "src/prompts/model_new_ex_add_cute.py"
+[backends.cute]
+backend_display = "CuTe (CUTLASS) kernels"
+one_shot_new_arch = "src/prompts/model_new_ex_add_cute.py"
+# No few_shot_examples - will use one-shot when few_shot option is selected
+
+[backends.tilelang]
+backend_display = "TileLang kernels"
+one_shot_new_arch = "src/prompts/model_new_ex_add_tilelang.py"
+# No few_shot_examples - will use one-shot when few_shot option is selected
+
+# -------------------------------------------------------------------------
+# Precision: Precision-specific configuration
+# -------------------------------------------------------------------------
+[precision.fp32]
+precision_display = "FP32 (32-bit floating point)"
+description = "Full precision floating point"
+
+[precision.fp16]
+precision_display = "FP16 (16-bit floating point)"
+description = "Half precision floating point"
+
+[precision.bf16]
+precision_display = "BF16 (bfloat16)"
+description = "Brain floating point 16"
 
 # -------------------------------------------------------------------------
 # Options: Different prompt construction modes
 # -------------------------------------------------------------------------
-[options.basic]
-# Basic prompt: problem statement + architecture + instruction
-description = "Minimal prompt with just problem statement and architecture"
-components = ["problem_statement", "arch_block", "instruction"]
+[options.zero_shot]
+# Zero-shot: No examples, just problem statement + architecture + precision + instruction
+description = "No examples provided - the model must understand the task from the description alone"
+components = ["problem_statement", "arch_block", "precision_note", "instruction"]
+
+[options.one_shot]
+# With one example
+description = "Includes one example to demonstrate the task"
+components = ["problem_statement", "examples_block", "arch_block", "precision_note", "instruction"]
+requires_example = "one_shot"
 
 [options.few_shot]
-# With few-shot examples
-description = "Includes few-shot examples to demonstrate the task"
-components = ["problem_statement", "few_shot_block", "arch_block", "instruction"]
-requires_example = true
-
-[options.hardware_info]
-# Hardware-aware prompt
-description = "Includes GPU hardware specifications and best practices"
-components = ["problem_statement", "few_shot_block", "hardware_header", "hardware_specs", "hardware_definitions", "hardware_best_practices", "arch_block", "instruction"]
-requires_gpu = true
-requires_example = true
-
-[options.fix_compile]
-# For fixing compilation errors
-description = "Prompt for fixing compilation errors"
-components = ["problem_statement", "arch_with_context", "failed_kernel", "compile_metadata", "fix_footer"]
-
-[options.fix_correctness]
-# For fixing correctness errors
-description = "Prompt for fixing correctness errors"
-components = ["problem_statement", "arch_with_context", "failed_kernel", "correctness_metadata", "fix_footer"]
+# With multiple examples (falls back to one-shot if few-shot not available)
+description = "Includes multiple examples to demonstrate the task (uses few-shot if available for backend, otherwise one-shot)"
+components = ["problem_statement", "examples_block", "arch_block", "precision_note", "instruction"]
+requires_example = "few_shot"
 
 # -------------------------------------------------------------------------
 # Templates: Reusable text blocks with placeholders
@@ -89,50 +108,41 @@ With the following architecture:
 
 """
 
-# --- Few-Shot Learning ---
-# Shows an example of input architecture and its optimized version
-few_shot_block = """
-Here's an example to show you the syntax of inline embedding custom {language_display} in torch: The example given architecture is:
+# --- Examples Block ---
+# Shows example(s) of input architecture and optimized versions
+# Dynamically formatted by Python code to handle single or multiple examples
+examples_block = """
+{examples_intro}
 
-{example_arch_src}
-
-
-The example new arch with custom {language_display} looks like this:
-
-
-{example_new_arch_src}
-
+{examples_entries}
 """
 
-# --- Error Fix Templates ---
-# Presents a kernel that failed (used in fix_compile and fix_correctness options)
-failed_kernel = """
-You generated the following solution and it failed {failure_type}:
-
-
-{custom_kernel}
-
+# Different introductions for code exmaples depending on if its one shot or few shot
+example_intro_one_shot = """
+Here's an example to show you the syntax of inline embedding custom {backend_display} in PyTorch:
+"""
+example_intro_few_shot = """
+Here are examples showing how to embed custom {backend_display} in PyTorch:
 """
 
-compile_metadata = """
-Here's the metadata of the compilation error:
+# Will inject an input example and output example according to the backend. 
+example_entry_template = """
+{example_label}
+Input architecture:
 
+{input_code}
 
-{metadata}
+Optimized with {backend_display}:
 
+{output_code}
 """
 
-correctness_metadata = """
-Here's the metadata of the correctness error:
-
-
-{metadata}
-
+# --- Precision Information ---
+# Specifies the target precision for optimization
+precision_note = """
+Note: The kernels should be optimized for {precision_display} precision.
 """
 
-fix_footer = """
-Please fix the {failure_type} in the new model code. Please output the corrected code in codeblocks.
-"""
 
 # -------------------------------------------------------------------------
 # Hardware Templates: GPU-specific information blocks
