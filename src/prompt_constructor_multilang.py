@@ -133,6 +133,7 @@ def render_prompt_by_option(
     gpu_name: Optional[str] = None,
     precision: Optional[str] = None,
     include_hardware: bool = False,
+    components_override: Optional[List[str]] = None,
 ) -> str:
     """
     Render a prompt using backends.X and options.Y structure from TOML.
@@ -149,6 +150,9 @@ def render_prompt_by_option(
         gpu_name: Optional GPU name (required if hardware info is included)
         precision: Optional precision string (fp32, fp16, bf16) - defaults to fp32 if not provided
         include_hardware: Whether to inject hardware guidance blocks after the examples section
+        components_override: When provided, users can arrange prompt components from the toml
+                             file in any order they want.
+                             Components must exist under templates.common or be hardware_* entries.
     
     Returns:
         The rendered prompt string
@@ -167,10 +171,18 @@ def render_prompt_by_option(
     except KeyError:
         raise KeyError(f"Unknown option: {option}")
 
-    component_sequence = list(option_data["components"])
+    component_sequence = list(components_override or option_data["components"])
     if include_hardware:
-        insert_idx = component_sequence.index("arch_block") if "arch_block" in component_sequence else len(component_sequence)
-        component_sequence[insert_idx:insert_idx] = HARDWARE_COMPONENT_KEYS
+        if components_override is None:
+            insert_idx = component_sequence.index("arch_block") if "arch_block" in component_sequence else len(component_sequence)
+            component_sequence[insert_idx:insert_idx] = HARDWARE_COMPONENT_KEYS
+        else:
+            # Custom sequences must explicitly opt-in to hardware blocks so the caller
+            # can control their ordering.
+            if not any(component in HARDWARE_COMPONENT_KEYS for component in component_sequence):
+                raise ValueError(
+                    "components_override must contain at least one hardware_* entry when include_hardware=True"
+                )
     
     # Get shared templates
     shared = cfg.data.get("shared", {})
@@ -343,9 +355,56 @@ def get_prompt_for_backend(
     )
 
 
+def get_custom_prompt(
+    custom_key: str,
+    *,
+    ref_arch_src: str,
+    prompts_toml: str = PROMPTS_TOML,
+) -> str:
+    """
+    Render a prompt defined under [custom_prompts.<custom_key>] in prompts.toml.
+
+    Custom entries must specify backend + option, and can override components,
+    precision, hardware inclusion, and GPU name. The reference architecture source
+    must be provided by the caller, just like in get_prompt_for_backend.
+    """
+    cfg = PromptConfig.from_toml(prompts_toml)
+    try:
+        custom_cfg: Dict[str, Any] = cfg.data["custom_prompts"][custom_key]
+    except KeyError as exc:
+        raise KeyError(f"Unknown custom prompt: {custom_key}") from exc
+
+    backend = custom_cfg.get("backend")
+    option = custom_cfg.get("option", "one_shot")
+    if not backend or not option:
+        raise ValueError(f"Custom prompt '{custom_key}' must define backend and option.")
+
+    precision = custom_cfg.get("precision")
+    include_hardware = bool(custom_cfg.get("include_hardware", False))
+    components_override = custom_cfg.get("components")
+    gpu_name = custom_cfg.get("gpu_name")
+    if not ref_arch_src:
+        raise ValueError(f"Custom prompt '{custom_key}' requires ref_arch_src.")
+    if include_hardware and not gpu_name:
+        raise ValueError(f"Custom prompt '{custom_key}' sets include_hardware but missing gpu_name.")
+
+    return render_prompt_by_option(
+        prompts_toml=prompts_toml,
+        backend=backend.lower(),
+        option=option,
+        context={"ref_arch_src": ref_arch_src},
+        precision=precision,
+        include_hardware=include_hardware,
+        gpu_specs_py=GPU_SPECS_PY if include_hardware else None,
+        gpu_name=gpu_name,
+        components_override=components_override,
+    )
+
+
 
 __all__ = [
     "get_prompt_for_backend",
+    "get_custom_prompt",
     "get_prompt_with_hardware",
     "render_prompt_by_option",
     "PromptConfig",

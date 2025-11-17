@@ -15,7 +15,7 @@ from datasets import load_dataset
 
 #from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor_multilang import get_prompt_for_backend
+from src.prompt_constructor_multilang import get_prompt_for_backend, get_custom_prompt
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
@@ -79,6 +79,7 @@ class EvalConfig(Config):
         self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
         self.include_hardware_info = False
         self.hardware_gpu_name = None
+        self.custom_prompt_key = None
 
     def verbose_logging(self):
         self.log = True
@@ -197,17 +198,22 @@ def main(config: EvalConfig):
                                                         budget_tokens=config.budget_tokens)
     
 
+    custom_prompt_key = getattr(config, "custom_prompt_key", None)
+    if isinstance(custom_prompt_key, str):
+        trimmed = custom_prompt_key.strip()
+        if trimmed.lower() in {"", "none"}:
+            custom_prompt_key = None
+        else:
+            custom_prompt_key = trimmed
+    config.custom_prompt_key = custom_prompt_key
+
     # Checks if user has inputted a valid argument for how many examples they want to give as context to the model
     prompt_option = str(config.prompt_option).lower()
     valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
-    if prompt_option not in valid_prompt_options:
-        raise ValueError(
-            f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
-        )
-
     include_hardware = config.include_hardware_info
     if isinstance(include_hardware, str):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
+    config.include_hardware_info = include_hardware
 
     supported_backends = {"cuda", "triton", "tilelang", "cute"}
     backend = config.backend.lower()
@@ -219,21 +225,32 @@ def main(config: EvalConfig):
     #tilelang only supports fp16 or bf16
     if backend == "tilelang":
         config.precision = "fp16"
-        config.hardware_gpu_name = config.hardware_gpu_name or config.gpu
+        config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
 
-    if include_hardware and not config.hardware_gpu_name:
-        raise ValueError(
-            "include_hardware_info is True but hardware_gpu_name is not provided."
+    if not custom_prompt_key:
+        if prompt_option not in valid_prompt_options:
+            raise ValueError(
+                f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
+            )
+        if include_hardware and not config.hardware_gpu_name:
+            raise ValueError(
+                "include_hardware_info is True but hardware_gpu_name is not provided."
+            )
+
+    if custom_prompt_key:
+        custom_prompt = get_custom_prompt(
+            custom_prompt_key,
+            ref_arch_src=ref_arch_src,
         )
-
-    custom_prompt = get_prompt_for_backend(
-        ref_arch_src,
-        backend,
-        option=prompt_option,
-        precision=config.precision,
-        include_hardware=include_hardware,
-        gpu_name=config.hardware_gpu_name,
-    )
+    else:
+        custom_prompt = get_prompt_for_backend(
+            ref_arch_src,
+            backend,
+            option=prompt_option,
+            precision=config.precision,
+            include_hardware=include_hardware,
+            gpu_name=config.hardware_gpu_name,
+        )
         
     if config.log_prompt:
         with open(os.path.join(config.logdir, f"prompt_level_{config.level}_problem_{config.problem_id}.txt"), "w") as f:

@@ -10,7 +10,7 @@ from pydra import Config, REQUIRED
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor_multilang import get_prompt_for_backend
+from src.prompt_constructor_multilang import get_prompt_for_backend, get_custom_prompt
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
@@ -82,6 +82,7 @@ class GenerationConfig(Config):
         self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
         self.include_hardware_info = False
         self.hardware_gpu_name = None
+        self.custom_prompt_key = None
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -128,14 +129,20 @@ def generate_sample_single(
         problem_number == work.problem_id
     ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
 
-    custom_prompt = get_prompt_for_backend(
-        ref_arch_src,
-        config.backend,
-        option=config.prompt_option,
-        precision=config.precision,
-        include_hardware=config.include_hardware_info,
-        gpu_name=config.hardware_gpu_name,
-    )
+    if config.custom_prompt_key:
+        custom_prompt = get_custom_prompt(
+            config.custom_prompt_key,
+            ref_arch_src=ref_arch_src,
+        )
+    else:
+        custom_prompt = get_prompt_for_backend(
+            ref_arch_src,
+            config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
+        )
     if config.log_prompt:
         prompt_path = os.path.join(
             run_dir,
@@ -213,22 +220,19 @@ def main(config: GenerationConfig):
     if isinstance(config.is_reasoning_model, str):
         config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
     
-    config.prompt_option = str(config.prompt_option).lower()
-    valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
-    if config.prompt_option not in valid_prompt_options:
-        raise ValueError(
-            f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
-        )
+    custom_prompt_key = getattr(config, "custom_prompt_key", None)
+    if isinstance(custom_prompt_key, str):
+        trimmed = custom_prompt_key.strip()
+        if trimmed.lower() in {"", "none"}:
+            custom_prompt_key = None
+        else:
+            custom_prompt_key = trimmed
+    config.custom_prompt_key = custom_prompt_key
 
     include_hardware = config.include_hardware_info
     if isinstance(include_hardware, str):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
-
-    if include_hardware and not config.hardware_gpu_name:
-        raise ValueError(
-            "include_hardware_info is True but hardware_gpu_name is not provided."
-        )
 
     supported_backends = {"cuda", "triton", "cute", "tilelang"}
     backend = config.backend.lower()
@@ -239,6 +243,18 @@ def main(config: GenerationConfig):
     config.backend = backend
     if backend == "tilelang":
         config.precision = "fp16"
+
+    config.prompt_option = str(config.prompt_option).lower()
+    valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
+    if not config.custom_prompt_key:
+        if config.prompt_option not in valid_prompt_options:
+            raise ValueError(
+                f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
+            )
+        if include_hardware and not config.hardware_gpu_name:
+            raise ValueError(
+                "include_hardware_info is True but hardware_gpu_name is not provided."
+            )
 
     print(f"Starting Batch Generation with config: {config}")
 
