@@ -1,4 +1,4 @@
-# src/prompt_constructor_multilang.py  (unified prompt constructor)
+# src/prompt_constructor_multilang.py
 import os
 import runpy
 import tomli  
@@ -177,8 +177,8 @@ def render_prompt_by_option(
             insert_idx = component_sequence.index("arch_block") if "arch_block" in component_sequence else len(component_sequence)
             component_sequence[insert_idx:insert_idx] = HARDWARE_COMPONENT_KEYS
         else:
-            # Custom sequences must explicitly opt-in to hardware blocks so the caller
-            # can control their ordering.
+            # Custom sequences must explicitly have hardware blocks present in their prompt if they 
+            # have set they are including hardware info. 
             if not any(component in HARDWARE_COMPONENT_KEYS for component in component_sequence):
                 raise ValueError(
                     "components_override must contain at least one hardware_* entry when include_hardware=True"
@@ -269,18 +269,6 @@ def render_prompt_by_option(
                 render_example_entry(input_code, output_code, "Example:")
             )
 
-        else:
-            # Legacy support: treat as boolean True (one-shot)
-            ex_arch_path = _abs_path(
-                backend_data.get("few_shot_example_arch") or shared.get("few_shot_example_arch")
-            )
-            ex_new_path = _abs_path(backend_data.get("one_shot_new_arch") or backend_data.get("few_shot_new_arch"))
-            input_code = read_file(ex_arch_path)
-            output_code = read_file(ex_new_path)
-            examples_entries.append(
-                render_example_entry(input_code, output_code, "Example:")
-            )
-
         if not examples_entries:
             raise ValueError(f"No example entries could be constructed for option '{option}'.")
 
@@ -295,7 +283,7 @@ def render_prompt_by_option(
             )
         context = {**context, **_gpu_context_from_py(_abs_path(gpu_specs_py), gpu_name)}
     
-    # Build the prompt from components in toml file
+    # Builds the prompt from the components in the toml file. 
     prompt_parts = []
     for component in component_sequence:
         if component == "problem_statement":
@@ -399,8 +387,6 @@ def get_custom_prompt(
         gpu_name=gpu_name,
         components_override=components_override,
     )
-
-
 
 __all__ = [
     "get_prompt_for_backend",
