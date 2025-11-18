@@ -215,31 +215,15 @@ class ModalEvaluator:
                 verbose=verbose,
                 num_correct_trials=num_correct_trials,
                 num_perf_trials=num_perf_trials,
-                build_dir=None,  # Modal doesn't need persistent build dir
-                device=torch.device("cuda:0"),  # Modal has one GPU per container
+                build_dir=None,
+                device=torch.device("cuda:0"),
                 backend=backend,
                 precision=get_torch_dtype_from_string(precision),
             )
         except (torch.cuda.CudaError, torch.AcceleratorError) as e:
-            # PyTorch raises these specific exceptions for GPU/CUDA errors
-            # These indicate potential GPU corruption (illegal memory access, launch failures, etc.)
-            # Modal's gpu-health system handles CRITICAL Xids (79, 48, etc.) automatically
-            # We handle user-app-level errors (Xid 13, 31, 43, etc.) here by retiring the container
-
+            # GPU error detected - retire this container to prevent contamination
             gpu_corrupted = True
-            print(f"[gpu-health] GPU error detected: {type(e).__name__}")
-            print(f"[gpu-health] Error message: {str(e)[:300]}")
-            print(f"[gpu-health] Calling stop_fetching_inputs() to retire this container...")
-
-            try:
-                modal.experimental.stop_fetching_inputs()
-                print(f"[gpu-health] ✓ Successfully called stop_fetching_inputs()")
-                print(f"[gpu-health] ✓ Container will stop accepting new tasks after this one completes")
-            except Exception as stop_error:
-                print(f"[gpu-health] ✗ WARNING: stop_fetching_inputs() failed: {stop_error}")
-
-            # Return a failed result instead of re-raising to prevent Modal retries
-            # The container is already retired via stop_fetching_inputs()
+            modal.experimental.stop_fetching_inputs()
             result = KernelExecResult(
                 compiled=False,
                 correctness=False,
@@ -251,7 +235,6 @@ class ModalEvaluator:
                 runtime_stats={},
             )
 
-        # Cleanup GPU cache before returning (skip if GPU is corrupted)
         if not gpu_corrupted:
             torch.cuda.empty_cache()
 
