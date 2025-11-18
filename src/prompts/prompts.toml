@@ -171,6 +171,7 @@ components = ["problem_statement", "arch_block", "precision_note", "instruction"
 
 [options.one_shot]
 # One-shot: Includes a single example to demonstrate the task
+# This is the default KernelBench will use for model baseline performance 
 components = ["problem_statement", "examples_block", "arch_block", "precision_note", "instruction"]
 requires_example = "one_shot"
 

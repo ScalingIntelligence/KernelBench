@@ -87,9 +87,9 @@ class PromptConfig:
         
         return "\n".join(text_parts).strip() + "\n"
 
-def _gpu_context_from_py(py_path: str, gpu_name: str) -> Dict[str, str]:
+def _gpu_context_from_gpu_specs(py_path: str, gpu_name: str) -> Dict[str, str]:
     """
-    Load GPU_* dicts from a Python file (no exec of raw strings; use runpy).
+    Load GPU_* dicts from the GPU specs file (no exec of raw strings; use runpy).
     Expected globals:
       - GPU_SPEC_INFO: dict[str, dict]
       - GPU_DEFINITIONS: dict[str, str]
@@ -281,7 +281,7 @@ def render_prompt_by_option(
             raise ValueError(
                 f"Hardware info requested for option '{option}'; provide gpu_specs_py and gpu_name"
             )
-        context = {**context, **_gpu_context_from_py(_abs_path(gpu_specs_py), gpu_name)}
+        context = {**context, **_gpu_context_from_gpu_specs(_abs_path(gpu_specs_py), gpu_name)}
     
     # Builds the prompt from the components in the toml file. 
     prompt_parts = []
@@ -395,3 +395,70 @@ __all__ = [
     "render_prompt_by_option",
     "PromptConfig",
 ]
+
+
+def log_prompt(prompt: str, dir_path: str, file_name: str):
+    os.makedirs(dir_path, exist_ok=True)
+    with open(os.path.join(dir_path, file_name), "w") as f:
+        f.write(prompt)
+
+def test_prompt():
+    """
+    Demonstrate baseline, few-shot, DSL, hardware-aware, and custom prompt
+    generation. Customize the reference architecture or custom_prompt_key
+    if you want to try different inputs.
+    """
+    REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    ref_arch_src = read_file(os.path.join(REPO_TOP_PATH, "KernelBench", "level1", "1_Square_matrix_multiplication_.py"))
+    assert len(ref_arch_src) > 0, "ref_arch_src is empty"   
+    
+    scratch_dir = os.path.join(REPO_TOP_PATH, "scratch")
+    # baseline prompt
+    baseline_prompt = get_prompt_for_backend(
+        ref_arch_src=ref_arch_src,
+        backend="cuda",
+        option="one_shot",
+        precision="fp32",
+        # GPU platform agnostic for baseline
+    )
+    log_prompt(baseline_prompt, os.path.join(scratch_dir), "baseline_prompt.txt")
+
+    # few shot prompt
+    few_shot_prompt = get_prompt_for_backend(
+        ref_arch_src=ref_arch_src,
+        backend="cuda",
+        option="few_shot",
+        precision="fp32",
+    )
+    log_prompt(few_shot_prompt, os.path.join(scratch_dir), "few_shot_prompt.txt")
+
+    # DSL prompt
+    dsl_prompt = get_prompt_for_backend(
+        ref_arch_src=ref_arch_src,
+        backend="triton",
+        option="one_shot",
+        precision="fp32",
+    )
+    log_prompt(dsl_prompt, os.path.join(scratch_dir), "dsl_prompt.txt")
+
+    # hardware prompt
+    hardware_prompt = get_prompt_for_backend(
+        ref_arch_src=ref_arch_src,
+        backend="cute",
+        option="one_shot",
+        precision="fp32",
+        include_hardware=True,
+        gpu_name="L40S",
+    )
+    log_prompt(hardware_prompt, os.path.join(scratch_dir), "hardware_prompt.txt")
+
+    # custom prompt defined in prompts.toml
+    custom_prompt = get_custom_prompt(
+        # the key is whatever you name the prompt in the custom_prompts section of the toml file
+        custom_key="custom",
+        ref_arch_src=ref_arch_src,
+    )
+    log_prompt(custom_prompt, os.path.join(scratch_dir), "custom_prompt.txt")
+    
+if __name__ == "__main__":
+    test_prompt()
