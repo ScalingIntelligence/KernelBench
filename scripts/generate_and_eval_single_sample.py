@@ -9,7 +9,7 @@ from datasets import load_dataset
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor_multilang import get_prompt_for_backend, get_custom_prompt
+from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
@@ -21,6 +21,9 @@ from src.eval import get_torch_dtype_from_string
 """
 Generate and evaluate a single sample
 Easiest way to get started, to test a single problem for experimentation or debugging
+
+Example usage:
+python3 scripts/generate_and_eval_single_sample.py dataset_src=huggingface level=1 problem_id=1 eval_mode=local server_type=google model_name=gemini/gemini-2.5-flash max_tokens=8192 temperature=0.0
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -198,7 +201,7 @@ def main(config: EvalConfig):
         )
 
     if backend == "tilelang":
-        config.precision = "fp16"
+        config.precision = "fp16" # tilelang only operates with fp16
         config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
 
     if not custom_prompt_key:

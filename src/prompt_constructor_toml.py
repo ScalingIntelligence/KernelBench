@@ -1,11 +1,18 @@
-# src/prompt_constructor_multilang.py
+# src/prompt_constructor_toml.py | toml based prompt constructor
 import os
 import runpy
 import tomli  
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from .utils import read_file 
+from src.utils import read_file 
+
+"""
+TOML-based prompt constructor for managing prompt templates and configurations.
+This module provides a way to load and compose prompt templates from a TOML configuration file.
+
+You can easily check some of the prompt templates we have provided and create your own.
+"""
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PROMPTS_TOML = os.path.join(REPO_TOP_PATH, "src/prompts/prompts.toml")

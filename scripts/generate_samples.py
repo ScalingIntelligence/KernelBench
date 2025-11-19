@@ -10,7 +10,7 @@ from pydra import Config, REQUIRED
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor_multilang import get_prompt_for_backend, get_custom_prompt
+from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
