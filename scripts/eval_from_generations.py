@@ -223,6 +223,7 @@ class ModalEvaluator:
         except (torch.cuda.CudaError, torch.AcceleratorError) as e:
             # GPU error detected - retire this container to prevent contamination
             gpu_corrupted = True
+            # TODO: Replace with more stable API in the future, thanks modal team for temp workaround.
             modal.experimental.stop_fetching_inputs()
             result = KernelExecResult(
                 compiled=False,
@@ -487,6 +488,7 @@ def batch_eval_modal(
                 
                 # Spawn all tasks in parallel
                 # Modal assigns these to available containers
+                # sometimes GPU mem state is corrupted so we will drain this container and find a new one with clean mem state.
                 # GPU corruption is handled via stop_fetching_inputs() in evaluate_single_sample_modal
                 futures = []
                 for item in work_items:
