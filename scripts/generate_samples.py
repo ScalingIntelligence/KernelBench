@@ -133,6 +133,11 @@ def generate_sample_single(
         custom_prompt = get_custom_prompt(
             config.custom_prompt_key,
             ref_arch_src=ref_arch_src,
+            backend=config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
         )
     else:
         custom_prompt = get_prompt_for_backend(

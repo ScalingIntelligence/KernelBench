@@ -241,6 +241,11 @@ def main(config: EvalConfig):
         custom_prompt = get_custom_prompt(
             custom_prompt_key,
             ref_arch_src=ref_arch_src,
+            backend=backend,
+            option=prompt_option,
+            precision=config.precision,
+            include_hardware=include_hardware,
+            gpu_name=config.hardware_gpu_name,
         )
     else:
         custom_prompt = get_prompt_for_backend(

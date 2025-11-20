@@ -189,19 +189,15 @@ requires_example = "few_shot"
 [custom_prompts.custom]
 # Use this name with the CLI: pass custom_prompt_key=custom to
 # generate_samples.py, generate_and_eval_single_sample.py, or the modal variant
-# to load this block instead of the standard backend/option combo. 
+# to load this block structure instead of the standard backend/option combo. 
 # If you want to add another prompt (e.g., [custom_prompts.custom2]), call it with
 # custom_prompt_key=custom2 instead.
 
-# You can define the usual CLI arguments here so this block is completely self-contained.
-# Any field you'd normally pass via flags (backend/option/precision/gpu/etc.)
-# can live in TOML instead.
-
-backend = "triton"
-option = "one_shot"
-precision = "fp32"
-include_hardware = true
-gpu_name = "L40S"
+# Define prompt composition here (ordering/extra sections).
+# Backend, precision, hardware info, etc. must still be set via CLI flags
+# Backend and precision in particular are required for evaluating your kernels.
+# Hardware_info information must also be defined if you use any of the hardware 
+# templates.
 
 # Order the components for the prompt in whatever way you want and use any
 # created templates you want

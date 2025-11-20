@@ -24,7 +24,7 @@ def inference_with_prompt(arch_path, inference_server: callable = None, log_to_l
         with open("./scratch/model.py", "w") as f:
             f.write(arch)
 
-    custom_cuda_prompt = get_prompt_for_backend(
+    custom_backend_prompt = get_prompt_for_backend(
         ref_arch_src=arch,
         backend="cuda",
         option="one_shot",
@@ -35,10 +35,10 @@ def inference_with_prompt(arch_path, inference_server: callable = None, log_to_l
 
     if log_to_local:    
         with open(f"./scratch/prompt.py", "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_backend_prompt)
 
     # query LLM
-    custom_cuda = inference_server(custom_cuda_prompt)
+    custom_cuda = inference_server(custom_backend_prompt)
 
     custom_cuda = utils.extract_first_code(custom_cuda, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
@@ -68,8 +68,8 @@ def sanity_check_inference(inference_server: callable):
 
 if __name__ == "__main__":
 
-    inference_server = utils.create_inference_server_from_presets(server_type="together",
-                                                        model_name="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    inference_server = utils.create_inference_server_from_presets(server_type="deepseek",
+                                                        model_name="deepseek-coder",
                                                         greedy_sample=True,
                                                         verbose=True, 
                                                         time_generation=True)

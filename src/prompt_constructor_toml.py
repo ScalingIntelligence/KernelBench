@@ -227,6 +227,12 @@ def render_prompt_by_option(
         example_entry_template = cfg.compose_blocks(["templates.common.example_entry_template"]).strip()
         intro_one_shot = cfg.compose_blocks(["templates.common.example_intro_one_shot"]).strip()
         intro_few_shot = cfg.compose_blocks(["templates.common.example_intro_few_shot"]).strip()
+        intro_one_shot = intro_one_shot.format(
+            backend_display=backend_display
+        )
+        intro_few_shot = intro_few_shot.format(
+            backend_display=backend_display
+        )
 
         def render_example_entry(input_code: str, output_code: str, example_label: str) -> str:
             return example_entry_template.format(
@@ -341,7 +347,7 @@ def get_prompt_for_backend(
     return render_prompt_by_option(
         prompts_toml=PROMPTS_TOML,
         backend=backend.lower(),
-        option=option,
+        option=option.lower(),
         context={"ref_arch_src": ref_arch_src},
         precision=precision,
         include_hardware=include_hardware,
@@ -354,39 +360,32 @@ def get_custom_prompt(
     custom_key: str,
     *,
     ref_arch_src: str,
+    backend: str,
+    option: str,
+    precision: Optional[str] = None,
+    include_hardware: bool = False,
+    gpu_name: Optional[str] = None,
     prompts_toml: str = PROMPTS_TOML,
 ) -> str:
     """
     Render a prompt defined under [custom_prompts.<custom_key>] in prompts.toml.
-
-    Custom entries must specify backend + option, and can override components,
-    precision, hardware inclusion, and GPU name. The reference architecture source
-    must be provided by the caller, just like in get_prompt_for_backend.
+    Must still provide backend/option/precision settings just like
+    get_prompt_for_backend. 
     """
+    if not ref_arch_src:
+        raise ValueError(f"Custom prompt '{custom_key}' requires ref_arch_src.")
     cfg = PromptConfig.from_toml(prompts_toml)
     try:
         custom_cfg: Dict[str, Any] = cfg.data["custom_prompts"][custom_key]
     except KeyError as exc:
         raise KeyError(f"Unknown custom prompt: {custom_key}") from exc
 
-    backend = custom_cfg.get("backend")
-    option = custom_cfg.get("option", "one_shot")
-    if not backend or not option:
-        raise ValueError(f"Custom prompt '{custom_key}' must define backend and option.")
-
-    precision = custom_cfg.get("precision")
-    include_hardware = bool(custom_cfg.get("include_hardware", False))
     components_override = custom_cfg.get("components")
-    gpu_name = custom_cfg.get("gpu_name")
-    if not ref_arch_src:
-        raise ValueError(f"Custom prompt '{custom_key}' requires ref_arch_src.")
-    if include_hardware and not gpu_name:
-        raise ValueError(f"Custom prompt '{custom_key}' sets include_hardware but missing gpu_name.")
 
     return render_prompt_by_option(
         prompts_toml=prompts_toml,
         backend=backend.lower(),
-        option=option,
+        option=option.lower(),
         context={"ref_arch_src": ref_arch_src},
         precision=precision,
         include_hardware=include_hardware,
@@ -463,7 +462,13 @@ def test_prompt():
     custom_prompt = get_custom_prompt(
         # the key is whatever you name the prompt in the custom_prompts section of the toml file
         custom_key="custom",
+        
         ref_arch_src=ref_arch_src,
+        backend="triton",
+        option="one_shot",
+        precision="fp32",
+        include_hardware=True,
+        gpu_name="L40S",
     )
     log_prompt(custom_prompt, os.path.join(scratch_dir), "custom_prompt.txt")
     
