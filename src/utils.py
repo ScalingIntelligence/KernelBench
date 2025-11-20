@@ -4,7 +4,6 @@
 
 import multiprocessing
 from dotenv import load_dotenv
-
 load_dotenv()  # Load variables from .env early so query_server can see them
 import subprocess
 import re
@@ -32,9 +31,6 @@ from functools import cache
 from transformers import AutoTokenizer
 import hashlib
 
-from metagen import MetaGenKey, thrift_platform_factory
-from metagen.metagen_platform import MetaGenPlatform
-
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 SGLANG_KEY = os.environ.get("SGLANG_API_KEY")
@@ -43,7 +39,6 @@ SGLANG_KEY = os.environ.get("SGLANG_API_KEY")
 ########################################################
 # Inference Helpers
 ########################################################
-
 
 def set_gpu_arch(arch_list: list[str]):
     """
@@ -58,7 +53,6 @@ def set_gpu_arch(arch_list: list[str]):
 
     os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
 
-
 def query_server(
     prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,
     system_prompt: str = "You are a helpful assistant",  # only used for chat prompts
@@ -71,10 +65,11 @@ def query_server(
     server_address: str = "localhost",
     server_type: str = "sglang",
     model_name: str = "default",  # specify model type
+
     # for reasoning models
-    is_reasoning_model: bool = False,  # indiactor of using reasoning models
-    budget_tokens: int = 0,  # for claude thinking
-    reasoning_effort: str = None,  # only for o1 and o3 / more reasoning models in the future
+    is_reasoning_model: bool = False, # indiactor of using reasoning models
+    budget_tokens: int = 0, # for claude thinking
+    reasoning_effort: str = None, # only for o1 and o3 / more reasoning models in the future
 ):
     """
     Query various sort of LLM inference API providers
@@ -118,6 +113,12 @@ def query_server(
     # Build messages list with system prompt first (if not already present)
     messages = []
 
+    if model_name == "cwm-v1-32b-prerc2.3-reasoning":
+        system_prompt = (
+            "You are a helpful AI assistant. You always reason before responding, "
+            "using the following format:\n\n<think>\nyour internal reasoning\n</think>\nyour external response"
+        )
+
     # Check if prompt is already a list with a system message
     if isinstance(prompt, list) and prompt and prompt[0].get("role") == "system":
         # Prompt already has system message, use it directly
@@ -138,23 +139,24 @@ def query_server(
         client = OpenAI(
             api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
         )
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            temperature=temperature,
-            n=num_completions,
-            max_tokens=max_tokens,
-            top_p=top_p,
-        )
+        # Save args as a dict to be able to tailor to a given model before calling create
+        completion_args = {
+            "model": model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "n": num_completions,
+        }
+
+        # claude-4-5-sonnet-genai error: `temperature` and `top_p` cannot both be specified for this model
+        if model_name == "claude-4-5-sonnet-genai":
+            del completion_args["top_p"]
+
+
+        response = client.chat.completions.create(**completion_args)
         output = response.completion_message["content"]["text"]
         return output
-
-    if server_type == "metagen":
-        metagen_platform: MetaGenPlatform = (
-            thrift_platform_factory.create_for_production(
-                metagen_auth_credential=MetaGenKey(key=SGLANG_KEY)
-            )
-        )
 
     try:
         completion_kwargs = {
@@ -173,10 +175,7 @@ def query_server(
             # Claude extended thinking uses "thinking" parameter with dict structure
             # Format: {"type": "enabled", "budget_tokens": <int>}
             if budget_tokens > 0 and "anthropic" in model_name.lower():
-                completion_kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": budget_tokens,
-                }
+                completion_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget_tokens}
         else:
             # Standard models support temperature and top_p
             completion_kwargs["temperature"] = temperature
@@ -192,16 +191,12 @@ def query_server(
         if num_completions == 1:
             content = response.choices[0].message.content
             if content is None:
-                raise ValueError(
-                    f"LLM returned None content for model {model_name}. finish_reason: {response.choices[0].finish_reason}"
-                )
+                raise ValueError(f"LLM returned None content for model {model_name}. finish_reason: {response.choices[0].finish_reason}")
             return content
         else:
             contents = [choice.message.content for choice in response.choices]
             if any(c is None for c in contents):
-                raise ValueError(
-                    f"LLM returned None content in one or more completions for model {model_name}"
-                )
+                raise ValueError(f"LLM returned None content in one or more completions for model {model_name}")
             return contents
     except Exception as e:
         print(f"Error in query_server for model {model_name}: {e}")
@@ -249,25 +244,23 @@ SERVER_PRESETS = {
         "max_tokens": 4096,
     },
     "llama_api": {
-        "model_name": "Llama-4-Maverick-17B-128E-Instruct-FP8",
         "temperature": 1.0,
-        "max_tokens": 65536,
+        "top_p": 0.95,
+        "max_tokens": 65_536,
     },
 }
 
 
-def create_inference_server_from_presets(
-    server_type: str = None,
-    greedy_sample: bool = False,
-    verbose: bool = False,
-    time_generation: bool = False,
-    model_name: str = None,
-    **kwargs,
-) -> callable:
+def create_inference_server_from_presets(server_type: str = None,
+                                         greedy_sample: bool = False,
+                                         verbose: bool = False,
+                                         time_generation: bool = False,
+                                         model_name: str = None,
+                                         **kwargs,
+                                         ) -> callable:
     """
     Return a callable function that queries LLM with given settings
     """
-
     def _query_llm(prompt: str | list[dict]):
         server_args = SERVER_PRESETS[server_type].copy()
 
@@ -275,9 +268,7 @@ def create_inference_server_from_presets(
             server_args["model_name"] = model_name
 
         if kwargs:
-            filtered_kwargs = {
-                k: v for k, v in kwargs.items() if v is not None and v != "None"
-            }
+            filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None and v != "None"}
             server_args.update(filtered_kwargs)
 
         if greedy_sample:
@@ -286,21 +277,22 @@ def create_inference_server_from_presets(
             server_args["top_k"] = 1
 
         if verbose:
-            print(
-                f"Querying server {server_type} with model {server_args['model_name']} and args: {server_args}"
-            )
+            print(f"Querying server {server_type} with model {server_args['model_name']} and args: {server_args}")
 
         if time_generation:
             start_time = time.time()
-            response = query_server(prompt, server_type=server_type, **server_args)
+            response = query_server(
+                prompt, server_type=server_type, **server_args
+            )
             end_time = time.time()
             print(f"[Timing] Inference took {end_time - start_time:.2f} seconds")
             return response
         else:
-            return query_server(prompt, server_type=server_type, **server_args)
+            return query_server(
+                prompt, server_type=server_type, **server_args
+            )
 
     return _query_llm
-
 
 """
 Model output processing
@@ -397,12 +389,11 @@ def extract_last_code(output_string: str, code_language_types: list[str]) -> str
 
     return None
 
-
 def extract_code_blocks(text, code_language_types: list[str]) -> str:
-    """
+    '''
     Extract all code blocks from text, combine them to return as a single string
-    """
-    pattern = r"```.*?\n(.*?)```"
+    '''
+    pattern = r'```.*?\n(.*?)```'
     matches = re.findall(pattern, text, re.DOTALL)
 
     # Combine all code blocks and remove language type headers
@@ -412,20 +403,16 @@ def extract_code_blocks(text, code_language_types: list[str]) -> str:
         # Remove any language type headers
         for lang_type in code_language_types:
             if code.startswith(lang_type):
-                code = code[len(lang_type) :].strip()
+                code = code[len(lang_type):].strip()
         combined_code.append(code)
 
     return " \n ".join(combined_code) if combined_code else ""
-
 
 ################################################################################
 # Scale up experiments in parallel
 ################################################################################
 
-
-def maybe_multithread(
-    func, instances, num_workers, time_interval=0.0, *shared_args, **shared_kwargs
-):
+def maybe_multithread(func, instances, num_workers, time_interval=0.0, *shared_args, **shared_kwargs):
     """
     Multithreaded execution of func, with optional time interval between queries
     Ideal for querying LLM APIs, does not provide process isolation
@@ -433,16 +420,22 @@ def maybe_multithread(
     output_data = []
     if num_workers not in [1, None]:
         with tqdm(total=len(instances), smoothing=0) as pbar:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=num_workers
-            ) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+
                 # Submit tasks one at a time with delay between them
                 futures = []
                 for instance in instances:
                     futures.append(
-                        executor.submit(func, instance, *shared_args, **shared_kwargs)
+                        executor.submit(
+                            func,
+                            instance,
+                            *shared_args,
+                            **shared_kwargs
+                        )
                     )
                     time.sleep(time_interval)  # sleep between submitting each task
+
+
 
                 # Wait for each future to complete
                 for future in concurrent.futures.as_completed(futures):
@@ -457,8 +450,7 @@ def maybe_multithread(
     else:
         for instance in tqdm(instances):
             output = func(instance, *shared_args, **shared_kwargs)
-            if output is not None:
-                output_data.append(output)
+            if output is not None: output_data.append(output)
 
     return output_data
 
@@ -493,18 +485,17 @@ def maybe_multiprocess_cuda(
                     continue
     return output_data
 
-
 # src/random_inputs.py
 import os, torch, itertools
 from torch.distributions import Normal, Uniform, Laplace, Exponential, LogNormal
 
 # Pick which distributions are allowed in “random” mode.
 _DEFAULT_RANDOM_POOL = (
-    ("normal", lambda shape: Normal(0, 1).sample(shape)),
-    ("uniform", lambda shape: Uniform(-1, 1).sample(shape)),
-    ("laplace", lambda shape: Laplace(0, 1).sample(shape)),
-    ("exponential", lambda shape: Exponential(1).sample(shape)),  # strictly >0
-    ("lognormal", lambda shape: LogNormal(0, 1).sample(shape)),  # strictly >0
+    ("normal",      lambda shape: Normal(0, 1).sample(shape)),
+    ("uniform",     lambda shape: Uniform(-1, 1).sample(shape)),
+    ("laplace",     lambda shape: Laplace(0, 1).sample(shape)),
+    ("exponential", lambda shape: Exponential(1).sample(shape)),   # strictly >0
+    ("lognormal",   lambda shape: LogNormal(0, 1).sample(shape)),  # strictly >0
 )
 
 
@@ -517,9 +508,7 @@ def sample(shape, mode="random"):
     """
     if mode == "random":
         # Round-robin through default pool
-        idx = int(torch.empty((), dtype=torch.int64).random_()) % len(
-            _DEFAULT_RANDOM_POOL
-        )
+        idx = int(torch.empty((), dtype=torch.int64).random_()) % len(_DEFAULT_RANDOM_POOL)
         _, fn = _DEFAULT_RANDOM_POOL[idx]
         return fn(shape)
 
@@ -534,10 +523,7 @@ def sample(shape, mode="random"):
 # Public helper: rand_mix / rand_mix_like
 # ------------------------------------------------------------------
 
-
-def rand_mix(
-    *size, dist: str = "random", device=None, dtype=None, requires_grad: bool = False
-):
+def rand_mix(*size, dist: str = "random", device=None, dtype=None, requires_grad: bool = False):
     """Return a tensor drawn from a chosen distribution (or randomly chosen).
 
     Parameters
@@ -552,9 +538,7 @@ def rand_mix(
         Forwarded to ``Tensor.to`` / ``Tensor.requires_grad_`` for convenience.
     """
     # normalise *size → shape tuple
-    shape = (
-        size[0] if len(size) == 1 and isinstance(size[0], (tuple, torch.Size)) else size
-    )
+    shape = size[0] if len(size) == 1 and isinstance(size[0], (tuple, torch.Size)) else size
 
     t = sample(shape, mode=dist)
     if dtype is not None:
@@ -565,11 +549,9 @@ def rand_mix(
         t.requires_grad_(True)
     return t
 
-
 def rand_mix_like(tensor: torch.Tensor, dist: str = "random", **kwargs):
     """rand_mix variant that infers shape from *tensor*."""
     return rand_mix(*tensor.shape, dist=dist, **kwargs)
-
 
 # Register convenience aliases under torch namespace (does not shadow existing fns)
 setattr(torch, "rand_mix", rand_mix)

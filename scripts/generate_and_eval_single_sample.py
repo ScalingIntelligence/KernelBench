@@ -19,6 +19,7 @@ from src.utils import (
     set_gpu_arch,
 )
 from src.eval import get_torch_dtype_from_string
+
 """
 Generate and evaluate a single sample
 Easiest way to get started, to test a single problem for experimentation or debugging
@@ -31,7 +32,6 @@ torch.set_printoptions(precision=4, threshold=10)
 
 class EvalConfig(Config):
     def __init__(self):
-
         self.dataset_src = REQUIRED  # either huggingface or local
 
         # name of dataset name on Hugging Face
@@ -48,7 +48,7 @@ class EvalConfig(Config):
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
-        self.precision = "fp32" # options ["fp32", "fp16", "bf16"]
+        self.precision = "fp32"  # options ["fp32", "fp16", "bf16"]
 
         # Inference config
         self.server_type = None
@@ -57,7 +57,9 @@ class EvalConfig(Config):
         self.temperature = None
 
         # Reasoning model specific parameters
-        self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
+        self.is_reasoning_model = (
+            False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
+        )
         self.reasoning_effort = None  # for o1/o3: "low", "medium", "high"
         self.budget_tokens = 0  # for Claude extended thinking mode
 
@@ -100,7 +102,11 @@ def main(config: EvalConfig):
 
     # Convert string boolean to actual boolean for reasoning model flag
     if isinstance(config.is_reasoning_model, str):
-        config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
+        config.is_reasoning_model = config.is_reasoning_model.lower() in [
+            "true",
+            "1",
+            "yes",
+        ]
 
     print(f"Starting Eval with config: {config}")
 
@@ -125,13 +131,12 @@ def main(config: EvalConfig):
         f"Start Generation + Evaluation for Level {config.level} Problem {config.problem_id}"
     )
 
-    assert (
-        config.problem_id <= num_problems
-    ), f"Problem ID {config.problem_id} out of range for Level {config.level}"
+    assert config.problem_id <= num_problems, (
+        f"Problem ID {config.problem_id} out of range for Level {config.level}"
+    )
 
     # 1. Fetch Problem
     if config.dataset_src == "huggingface":
-
         curr_problem_row = curr_level_dataset.filter(
             lambda x: x["problem_id"] == config.problem_id
         )
@@ -150,9 +155,9 @@ def main(config: EvalConfig):
 
     # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
     problem_number = int(problem_name.split("_")[0])
-    assert (
-        problem_number == config.problem_id
-    ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    assert problem_number == config.problem_id, (
+        f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    )
 
     # 2. Generate Sample
     # Create inference function with config parameters
@@ -194,9 +199,9 @@ def main(config: EvalConfig):
     custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
 
     # check LLM is able to generate custom kernel code
-    assert (
-        custom_kernel is not None
-    ), f"Custom {config.backend} kernel code generation failed"
+    assert custom_kernel is not None, (
+        f"Custom {config.backend} kernel code generation failed"
+    )
 
     # this should be optional
     if config.log:
