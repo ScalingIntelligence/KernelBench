@@ -69,7 +69,6 @@ def sanity_check_inference(inference_server: callable):
 if __name__ == "__main__":
 
     inference_server = utils.create_inference_server_from_presets(server_type="deepseek",
-                                                        model_name="deepseek-coder",
                                                         greedy_sample=True,
                                                         verbose=True, 
                                                         time_generation=True)
