@@ -47,18 +47,16 @@ def set_gpu_arch(arch_list: list[str]):
     valid_archs = ["Maxwell", "Pascal", "Volta", "Turing", "Ampere", "Hopper", "Ada"]
     for arch in arch_list:
         if arch not in valid_archs:
-            raise ValueError(
-                f"Invalid architecture: {arch}. Must be one of {valid_archs}"
-            )
-
+            raise ValueError(f"Invalid architecture: {arch}. Must be one of {valid_archs}")
+    
     os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
 
 def query_server(
     prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,
     system_prompt: str = "You are a helpful assistant",  # only used for chat prompts
     temperature: float = 0.0,
-    top_p: float = 1.0,  # nucleus sampling
-    top_k: int = 50,
+    top_p: float = 1.0, # nucleus sampling
+    top_k: int = 50, 
     max_tokens: int = 128,  # max output tokens to generate
     num_completions: int = 1,
     server_port: int = 30000,  # only for local server hosted on SGLang
@@ -102,13 +100,13 @@ def query_server(
                 top_p=top_p,
             )
             outputs = [choice.message.content for choice in response.choices]
-
+        
         # output processing
         if len(outputs) == 1:
             return outputs[0]
         else:
             return outputs
-
+    
     # All other providers - use LiteLLM unified interface
     # Build messages list with system prompt first (if not already present)
     messages = []
@@ -118,7 +116,7 @@ def query_server(
             "You are a helpful AI assistant. You always reason before responding, "
             "using the following format:\n\n<think>\nyour internal reasoning\n</think>\nyour external response"
         )
-
+    
     # Check if prompt is already a list with a system message
     if isinstance(prompt, list) and prompt and prompt[0].get("role") == "system":
         # Prompt already has system message, use it directly
@@ -127,7 +125,7 @@ def query_server(
         # Add system prompt first if provided
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-
+        
         # Then add the actual prompt
         if isinstance(prompt, str):
             messages.append({"role": "user", "content": prompt})
@@ -153,11 +151,10 @@ def query_server(
         if model_name == "claude-4-5-sonnet-genai":
             del completion_args["top_p"]
 
-
         response = client.chat.completions.create(**completion_args)
         output = response.completion_message["content"]["text"]
         return output
-
+    
     try:
         completion_kwargs = {
             "model": model_name,
@@ -165,7 +162,7 @@ def query_server(
             "max_tokens": max_tokens,
             "n": num_completions,
         }
-
+        
         # Reasoning models (o1, o3, etc.) don't support standard sampling params
         if is_reasoning_model:
             # Note: o1/o3 models don't support temperature, top_p, top_k
@@ -180,13 +177,13 @@ def query_server(
             # Standard models support temperature and top_p
             completion_kwargs["temperature"] = temperature
             completion_kwargs["top_p"] = top_p
-
+            
             # top_k is not supported by OpenAI models
             if "openai/" not in model_name.lower() and "gpt" not in model_name.lower():
                 completion_kwargs["top_k"] = top_k
-
+        
         response = completion(**completion_kwargs)
-
+        
         # output processing
         if num_completions == 1:
             content = response.choices[0].message.content
@@ -251,8 +248,8 @@ SERVER_PRESETS = {
 }
 
 
-def create_inference_server_from_presets(server_type: str = None,
-                                         greedy_sample: bool = False,
+def create_inference_server_from_presets(server_type: str = None, 
+                                         greedy_sample: bool = False,   
                                          verbose: bool = False,
                                          time_generation: bool = False,
                                          model_name: str = None,
@@ -263,22 +260,22 @@ def create_inference_server_from_presets(server_type: str = None,
     """
     def _query_llm(prompt: str | list[dict]):
         server_args = SERVER_PRESETS[server_type].copy()
-
+        
         if model_name is not None and model_name != "None":
             server_args["model_name"] = model_name
-
+        
         if kwargs:
             filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None and v != "None"}
             server_args.update(filtered_kwargs)
-
+        
         if greedy_sample:
             server_args["temperature"] = 0.0
             server_args["top_p"] = 1.0
             server_args["top_k"] = 1
-
+        
         if verbose:
             print(f"Querying server {server_type} with model {server_args['model_name']} and args: {server_args}")
-
+        
         if time_generation:
             start_time = time.time()
             response = query_server(
@@ -291,7 +288,7 @@ def create_inference_server_from_presets(server_type: str = None,
             return query_server(
                 prompt, server_type=server_type, **server_args
             )
-
+    
     return _query_llm
 
 """
@@ -304,7 +301,7 @@ def read_file(file_path) -> str:
     if not os.path.exists(file_path):
         print(f"File {file_path} does not exist")
         return ""
-
+    
     try:
         with open(file_path, "r") as file:
             return file.read()
@@ -343,7 +340,7 @@ def extract_first_code(output_string: str, code_language_types: list[str]) -> st
     """
     if output_string is None:
         return None
-
+    
     trimmed = output_string.strip()
 
     # Extracting the first occurrence of content between backticks
@@ -373,7 +370,7 @@ def extract_last_code(output_string: str, code_language_types: list[str]) -> str
 
     # Find all matches of code blocks
     code_matches = re.finditer(r"```(.*?)```", trimmed, re.DOTALL)
-
+    
     # Get the last match by converting to list and taking the last element
     matches_list = list(code_matches)
     if matches_list:
@@ -383,10 +380,10 @@ def extract_last_code(output_string: str, code_language_types: list[str]) -> str
         # Remove language type headers
         for code_type in code_language_types:
             if code.startswith(code_type):
-                code = code[len(code_type) :].strip()
+                code = code[len(code_type):].strip()
 
         return code
-
+    
     return None
 
 def extract_code_blocks(text, code_language_types: list[str]) -> str:
@@ -405,7 +402,7 @@ def extract_code_blocks(text, code_language_types: list[str]) -> str:
             if code.startswith(lang_type):
                 code = code[len(lang_type):].strip()
         combined_code.append(code)
-
+    
     return " \n ".join(combined_code) if combined_code else ""
 
 ################################################################################
