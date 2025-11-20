@@ -203,23 +203,23 @@ def query_server(
 # a list of presets for API server configs
 SERVER_PRESETS = {
     "deepseek": {
-        "temperature": 1.6,
+        "temperature": 1.6, 
         "model_name": "deepseek/deepseek-coder",
-        "max_tokens": 4096,
+        "max_tokens": 4096
     },
     "google": {
         "model_name": "gemini/gemini-2.5-flash",
-        "temperature": 0.7,  # need to experiment with temperature
+        "temperature": 0.7, # need to experiment with temperature
         "max_tokens": 16384,
     },
-    "together": {  # mostly for Llama 3.1
+    "together": { # mostly for Llama 3.1
         "model_name": "together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
         # "model_name": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
         "temperature": 0.7,
         "max_tokens": 4096,
     },
     "local": {  # this is for running locally (SGLang, vLLM, Tokasaurus), mostly for Llama
-        "temperature": 0.8,  # human eval pass@N temperature
+        "temperature": 0.8, # human eval pass@N temperature
         "server_port": 10210,
         "server_address": "matx2.stanford.edu",
         "max_tokens": 8192,
