@@ -39,48 +39,115 @@ def get_code_hash(problem_src: str) -> str:
 
 
 
-def check_id_matches_name(problem_id: int, problem_name: str):
-    """Check if the problem_id matches the ID in the problem_name"""
-    return problem_id == int(os.path.basename(problem_name).split('_')[0])
+def check_id_matches_name(problem_id: int, problem_name: str) -> bool:
+    """Check if the problem_id matches the ID in the problem_name.
+
+    Args:
+        problem_id: The problem ID to check
+        problem_name: Path to the problem file
+
+    Returns:
+        bool: True if the ID matches the filename prefix
+
+    Raises:
+        ValueError: If filename doesn't follow the expected format
+    """
+    basename = os.path.basename(problem_name)
+    parts = basename.split('_')
+
+    if not parts or not parts[0].isdigit():
+        raise ValueError(
+            f"Problem filename '{basename}' doesn't follow expected format '<id>_<name>.py'"
+        )
+
+    return problem_id == int(parts[0])
 
 
 class KernelBenchDataset():
-    def __init__(self, dataset_name: str, level: int, use_subset=False, dataset=[], subset_dataset=[]):
-        
+    """Dataset object for easy access to problems by IDs and iteration over problems.
+
+    Args:
+        dataset_name: Name of the dataset
+        level: KernelBench level (1, 2, or 3)
+        use_subset: Whether to use the subset_dataset instead of full dataset
+        dataset: List of problem file paths for the full dataset
+        subset_dataset: List of problem file paths for a subset
+    """
+
+    def __init__(
+        self,
+        dataset_name: str,
+        level: int,
+        use_subset: bool = False,
+        dataset: list[str] = None,
+        subset_dataset: list[str] = None
+    ):
         self.dataset_name = dataset_name
-        
+        self.level = level
+        self.use_subset = use_subset
+
+        # Avoid mutable default arguments
+        if dataset is None:
+            dataset = []
+        if subset_dataset is None:
+            subset_dataset = []
+
         if use_subset:
             self.problems = subset_dataset
         else:
             self.problems = dataset
 
-        self.level = level
-        self.use_subset = use_subset
+    def get_problem_by_id(self, problem_id: int) -> str:
+        """Get problem path by its ID (1-indexed logical index).
 
-        # print(f"[Initilaize Dataset Object] {self.dataset_name} with level {self.level} and use_subset {self.use_subset}")
+        Args:
+            problem_id: The problem ID to search for
 
-    def get_problem_by_id(self, problem_id=int):
-        "Logical index of problem_id (logical is 1-indexed)"
-        # Find problem with matching ID in basename
+        Returns:
+            str: Path to the problem file
 
+        Raises:
+            ValueError: If problem ID not found in dataset
+        """
         for problem in self.problems:
             if check_id_matches_name(problem_id, problem):
                 return problem
         raise ValueError(f"Problem ID {problem_id} not found in dataset")
     
-    # get the problem_ids 
-    def get_problem_ids(self):
-        # return self.whol
+    def get_problem_ids(self) -> list[int]:
+        """Get list of all problem IDs in the dataset.
+
+        Returns:
+            list[int]: Sorted list of problem IDs extracted from filenames
+        """
         return [int(os.path.basename(problem).split('_')[0]) for problem in self.problems]
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the number of problems in the dataset."""
         return len(self.problems)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> str:
+        """Get problem by index (0-indexed, for backward compatibility).
+
+        Args:
+            index: Zero-based index into the problems list
+
+        Returns:
+            str: Path to the problem file
+        """
         return self.problems[index]
-    
+
     def __iter__(self):
+        """Iterate over problem paths in the dataset."""
         return iter(self.problems)
+
+    def __repr__(self) -> str:
+        """Return string representation of the dataset."""
+        subset_str = " (subset)" if self.use_subset else ""
+        return (
+            f"KernelBenchDataset(name='{self.dataset_name}', "
+            f"level={self.level}, problems={len(self.problems)}{subset_str})"
+        )
 
 
 def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:

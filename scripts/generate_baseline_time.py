@@ -7,7 +7,7 @@ from src.eval import (
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.dataset import construct_kernelbench_dataset
+from src.dataset import construct_kernelbench_dataset, KernelBenchDataset
 from src.utils import read_file
 import os
 import json
@@ -46,22 +46,25 @@ KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 TIMING_DIR = os.path.join(REPO_TOP_PATH, "results", "timing")
 
 
-def fetch_ref_arch_from_dataset(dataset, 
-                                problem_id: int) -> tuple[str, str, str]:
-    """
-    Fetch the reference architecture from the problem directory
-    problem_id should be logical index (1-indexed), matching the problem_id in the problem_name
+def fetch_ref_arch_from_dataset(
+    dataset: KernelBenchDataset,
+    problem_id: int
+) -> tuple[str, str, str]:
+    """Fetch the reference architecture from the dataset.
+
+    Args:
+        dataset: KernelBenchDataset object
+        problem_id: Logical index (1-indexed), matching the problem_id in the problem_name
 
     Returns:
-        ref_arch_path: str, the path to the reference architecture
-        ref_arch_name: str, the name of the reference architecture
-        ref_arch_src: str, the source code of the reference architecture
+        tuple containing:
+            - ref_arch_path: Path to the reference architecture
+            - ref_arch_name: Name of the reference architecture file
+            - ref_arch_src: Source code of the reference architecture
     """
     ref_arch_path = dataset.get_problem_by_id(problem_id)
-    
     ref_arch_src = read_file(ref_arch_path)
-
-    ref_arch_name = ref_arch_path.split("/")[-1]
+    ref_arch_name = os.path.basename(ref_arch_path)
     return (ref_arch_path, ref_arch_name, ref_arch_src)
 
 
