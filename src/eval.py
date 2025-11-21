@@ -890,7 +890,8 @@ def fetch_baseline_time(
     if hasattr(dataset, "get_problem_by_id"):
         problem_path = dataset.get_problem_by_id(problem_id)
     else:
-        problem_path = dataset[problem_id]
+        # Fallback for old list-based API: problem_id is 1-indexed but lists are 0-indexed
+        problem_path = dataset[problem_id - 1]
 
     problem_name = os.path.basename(problem_path)
     baseline_time = baseline_json[level_name].get(problem_name, None)
