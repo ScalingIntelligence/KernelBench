@@ -100,7 +100,7 @@ def inspect_torch_compile_triton(level_num, problem_id):
     ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
         level_num, problem_id, with_name=True
     )
-    ref_arch_name = ref_arch_name.split("/")[-1]
+    ref_arch_name = os.path.basename(ref_arch_name)
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
         ref_arch_src, context
@@ -115,7 +115,7 @@ def inspect_baseline_torch_compile(level_num, problem_id):
         level_num, problem_id, with_name=True
     )
 
-    ref_arch_name = ref_arch_name.split("/")[-1]
+    ref_arch_name = os.path.basename(ref_arch_name)
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
         ref_arch_src, context

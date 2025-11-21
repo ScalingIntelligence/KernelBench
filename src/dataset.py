@@ -55,12 +55,19 @@ def check_id_matches_name(problem_id: int, problem_name: str) -> bool:
     basename = os.path.basename(problem_name)
     parts = basename.split('_')
 
-    if not parts or not parts[0].isdigit():
+    if len(parts) < 2:
         raise ValueError(
             f"Problem filename '{basename}' doesn't follow expected format '<id>_<name>.py'"
         )
 
-    return problem_id == int(parts[0])
+    try:
+        file_id = int(parts[0])
+    except ValueError:
+        raise ValueError(
+            f"Problem filename '{basename}' doesn't start with a numeric ID"
+        )
+
+    return problem_id == file_id
 
 
 class KernelBenchDataset():
@@ -82,6 +89,9 @@ class KernelBenchDataset():
         dataset: list[str] = None,
         subset_dataset: list[str] = None
     ):
+        if level not in [1, 2, 3]:
+            raise ValueError(f"level must be 1, 2, or 3, got {level}")
+
         self.dataset_name = dataset_name
         self.level = level
         self.use_subset = use_subset
@@ -120,7 +130,7 @@ class KernelBenchDataset():
         Returns:
             list[int]: Sorted list of problem IDs extracted from filenames
         """
-        return [int(os.path.basename(problem).split('_')[0]) for problem in self.problems]
+        return sorted([int(os.path.basename(problem).split('_')[0]) for problem in self.problems])
 
     def __len__(self) -> int:
         """Return the number of problems in the dataset."""
@@ -148,6 +158,32 @@ class KernelBenchDataset():
             f"KernelBenchDataset(name='{self.dataset_name}', "
             f"level={self.level}, problems={len(self.problems)}{subset_str})"
         )
+
+
+def fetch_ref_arch_from_dataset(
+    dataset: "KernelBenchDataset",
+    problem_id: int
+) -> tuple[str, str, str]:
+    """Fetch the reference architecture from the dataset.
+
+    This is a shared utility function to avoid duplication across scripts.
+
+    Args:
+        dataset: KernelBenchDataset object
+        problem_id: Logical index (1-indexed), matching the problem_id in the problem_name
+
+    Returns:
+        tuple containing:
+            - ref_arch_path: Path to the reference architecture
+            - ref_arch_name: Name of the reference architecture file
+            - ref_arch_src: Source code of the reference architecture
+    """
+    from .utils import read_file
+
+    ref_arch_path = dataset.get_problem_by_id(problem_id)
+    ref_arch_src = read_file(ref_arch_path)
+    ref_arch_name = os.path.basename(ref_arch_path)
+    return (ref_arch_path, ref_arch_name, ref_arch_src)
 
 
 def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:

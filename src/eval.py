@@ -49,7 +49,8 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
     if hasattr(problems, "get_problem_by_id"):
         problem_path = problems.get_problem_by_id(problem_id)
     else:
-        problem_path = problems[problem_id]
+        # Fallback for old list-based API: problem_id is 1-indexed but lists are 0-indexed
+        problem_path = problems[problem_id - 1]
 
     # problem_path = os.path.join(REPO_ROOT_PATH, problem)
     if not os.path.exists(problem_path):

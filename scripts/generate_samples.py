@@ -46,7 +46,7 @@ class GenerationConfig(Config):
         self.subset = (
             None,
             None,
-        )  # (problem_id, problem_name), these are the logical index
+        )  # (start_id, end_id), both inclusive - logical 1-indexed IDs
 
         self.run_name = REQUIRED  # name of the run
 

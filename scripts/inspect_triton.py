@@ -26,28 +26,7 @@ from src.eval import (
     set_seed,
 )
 
-from src.dataset import construct_kernelbench_dataset, KernelBenchDataset
-
-def fetch_ref_arch_from_dataset(
-    dataset: KernelBenchDataset,
-    problem_id: int
-) -> tuple[str, str, str]:
-    """Fetch the reference architecture from the dataset.
-
-    Args:
-        dataset: KernelBenchDataset object
-        problem_id: Logical index (1-indexed), matching the problem_id in the problem_name
-
-    Returns:
-        tuple containing:
-            - ref_arch_path: Path to the reference architecture
-            - ref_arch_name: Name of the reference architecture file
-            - ref_arch_src: Source code of the reference architecture
-    """
-    ref_arch_path = dataset.get_problem_by_id(problem_id)
-    ref_arch_src = read_file(ref_arch_path)
-    ref_arch_name = os.path.basename(ref_arch_path)
-    return (ref_arch_path, ref_arch_name, ref_arch_src)
+from src.dataset import construct_kernelbench_dataset, KernelBenchDataset, fetch_ref_arch_from_dataset
 
 
 def run_profile_and_save_trace(
