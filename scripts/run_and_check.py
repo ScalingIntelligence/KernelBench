@@ -81,6 +81,7 @@ class ScriptConfig(Config):
         # ref_origin is local, specify local file path
         self.ref_arch_src_path = ""
         # ref_origin is kernelbench, specify level and problem id
+        self.dataset_src = "huggingface" # either huggingface or local
         self.dataset_name = "ScalingIntelligence/KernelBench"
         self.level = ""
         self.problem_id = ""
@@ -240,16 +241,25 @@ def main(config: ScriptConfig):
         assert config.level != "", "level is required"
         assert config.problem_id != "", "problem_id is required"
 
-        # for now use the HuggingFace dataset
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
+        if config.dataset_src == "huggingface":
+            # for now use the HuggingFace dataset
+            dataset = load_dataset(config.dataset_name)
+            curr_level_dataset = dataset[f"level_{config.level}"]
 
-        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
+            curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
+            ref_arch_src = curr_problem_row["code"][0]
+            problem_name = curr_problem_row["name"][0]
+        elif config.dataset_src == "local":
+            from src.dataset import construct_kernelbench_dataset
+            dataset = construct_kernelbench_dataset(config.level)
+            ref_arch_path = dataset.get_problem_by_id(int(config.problem_id))
+            ref_arch_src = read_file(ref_arch_path)
+            problem_name = os.path.basename(ref_arch_path)
+        else:
+            raise ValueError(f"Invalid dataset_src: {config.dataset_src}")
 
         problem_number = int(problem_name.split("_")[0])
-        assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+        assert problem_number == int(config.problem_id), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
 
         print(f"Fetched problem {config.problem_id} from KernelBench level {config.level}: {problem_name}")
 

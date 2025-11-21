@@ -7,7 +7,7 @@ from src.eval import (
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.dataset import construct_problem_dataset_from_problem_dir
+from src.dataset import construct_kernelbench_dataset
 from src.utils import read_file
 import os
 import json
@@ -46,7 +46,7 @@ KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 TIMING_DIR = os.path.join(REPO_TOP_PATH, "results", "timing")
 
 
-def fetch_ref_arch_from_dataset(dataset: list[str], 
+def fetch_ref_arch_from_dataset(dataset, 
                                 problem_id: int) -> tuple[str, str, str]:
     """
     Fetch the reference architecture from the problem directory
@@ -57,14 +57,7 @@ def fetch_ref_arch_from_dataset(dataset: list[str],
         ref_arch_name: str, the name of the reference architecture
         ref_arch_src: str, the source code of the reference architecture
     """
-    ref_arch_path = None
-    
-    for file in dataset:
-        if file.split("/")[-1].split("_")[0] == str(problem_id):
-            ref_arch_path = file
-            break
-    if ref_arch_path is None:
-        raise ValueError(f"No reference architecture found for problem_id {problem_id}")
+    ref_arch_path = dataset.get_problem_by_id(problem_id)
     
     ref_arch_src = read_file(ref_arch_path)
 
@@ -143,12 +136,11 @@ def record_baseline_times(use_torch_compile: bool = False,
     json_results = {}
     
     for level in [1, 2, 3]:
-        PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-        dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+        dataset = construct_kernelbench_dataset(level)
         json_results[f"level{level}"] = {}
 
         num_problems = len(dataset)
-        for problem_id in tqdm(range(1, num_problems + 1)):
+        for problem_id in tqdm(dataset.get_problem_ids()):
             ref_arch_path, ref_arch_name, ref_arch_src = fetch_ref_arch_from_dataset(dataset, problem_id)
             runtime_stats = measure_program_time(
                 ref_arch_name=ref_arch_name,
@@ -174,8 +166,7 @@ def test_measure_particular_program(level_num: int, problem_id: int):
     """
     device = torch.device("cuda:0")
 
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level_num))
-    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    dataset = construct_kernelbench_dataset(level_num)
 
     ref_arch_path, ref_arch_name, ref_arch_src = fetch_ref_arch_from_dataset(dataset, problem_id)
 

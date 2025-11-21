@@ -10,7 +10,7 @@ from src.eval import (
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.dataset import construct_problem_dataset_from_problem_dir
+from src.dataset import construct_kernelbench_dataset
 import os, sys
 import logging
 import json
@@ -93,8 +93,7 @@ def inspect_torch_compile(fn, inputs, output_dir="results/triton_code", filename
     separator("")
     
 def fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=False):
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level_num))
-    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    dataset = construct_kernelbench_dataset(level_num)
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 def inspect_torch_compile_triton(level_num, problem_id):

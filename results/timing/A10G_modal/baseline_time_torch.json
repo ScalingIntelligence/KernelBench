@@ -1,0 +1,904 @@
+{
+    "level1": {
+        "1_Square_matrix_multiplication_.py": {
+            "mean": 5.78,
+            "std": 0.0635,
+            "min": 5.55,
+            "max": 5.91,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "2_Standard_matrix_multiplication_.py": {
+            "mean": 8.47,
+            "std": 0.293,
+            "min": 6.99,
+            "max": 9.51,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "3_Batched_matrix_multiplication.py": {
+            "mean": 14.0,
+            "std": 0.169,
+            "min": 13.5,
+            "max": 14.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "4_Matrix_vector_multiplication_.py": {
+            "mean": 25.5,
+            "std": 0.157,
+            "min": 25.0,
+            "max": 25.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "5_Matrix_scalar_multiplication.py": {
+            "mean": 17.6,
+            "std": 0.0154,
+            "min": 17.6,
+            "max": 17.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "6_Matmul_with_large_K_dimension_.py": {
+            "mean": 3.3,
+            "std": 0.0495,
+            "min": 3.1,
+            "max": 3.34,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "7_Matmul_with_small_K_dimension_.py": {
+            "mean": 14.9,
+            "std": 1.19,
+            "min": 13.3,
+            "max": 23.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "8_Matmul_with_irregular_shapes_.py": {
+            "mean": 21.0,
+            "std": 0.68,
+            "min": 20.5,
+            "max": 25.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "9_Tall_skinny_matrix_multiplication_.py": {
+            "mean": 10.9,
+            "std": 0.0388,
+            "min": 10.9,
+            "max": 11.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "10_3D_tensor_matrix_multiplication.py": {
+            "mean": 2.4,
+            "std": 0.0551,
+            "min": 2.25,
+            "max": 2.45,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "11_4D_tensor_matrix_multiplication.py": {
+            "mean": 22.2,
+            "std": 0.224,
+            "min": 21.8,
+            "max": 22.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "12_Matmul_with_diagonal_matrices_.py": {
+            "mean": 9.62,
+            "std": 0.537,
+            "min": 7.46,
+            "max": 11.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "13_Matmul_for_symmetric_matrices.py": {
+            "mean": 10.4,
+            "std": 0.889,
+            "min": 8.12,
+            "max": 15.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "14_Matmul_for_upper_triangular_matrices.py": {
+            "mean": 5.75,
+            "std": 0.0515,
+            "min": 5.71,
+            "max": 6.06,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "15_Matmul_for_lower_triangular_matrices.py": {
+            "mean": 5.71,
+            "std": 0.0196,
+            "min": 5.7,
+            "max": 5.88,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "16_Matmul_with_transposed_A.py": {
+            "mean": 8.29,
+            "std": 0.228,
+            "min": 6.84,
+            "max": 8.54,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "17_Matmul_with_transposed_B.py": {
+            "mean": 11.9,
+            "std": 0.674,
+            "min": 10.1,
+            "max": 15.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "18_Matmul_with_transposed_both.py": {
+            "mean": 8.78,
+            "std": 0.415,
+            "min": 7.41,
+            "max": 10.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "19_ReLU.py": {
+            "mean": 26.6,
+            "std": 0.0288,
+            "min": 26.5,
+            "max": 26.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "20_LeakyReLU.py": {
+            "mean": 26.4,
+            "std": 0.0369,
+            "min": 26.4,
+            "max": 26.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "21_Sigmoid.py": {
+            "mean": 26.5,
+            "std": 0.0341,
+            "min": 26.4,
+            "max": 26.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "22_Tanh.py": {
+            "mean": 26.6,
+            "std": 0.0275,
+            "min": 26.5,
+            "max": 26.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "23_Softmax.py": {
+            "mean": 51.4,
+            "std": 0.0335,
+            "min": 51.3,
+            "max": 51.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "24_LogSoftmax.py": {
+            "mean": 51.4,
+            "std": 0.0255,
+            "min": 51.3,
+            "max": 51.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "25_Swish.py": {
+            "mean": 65.9,
+            "std": 0.033,
+            "min": 65.8,
+            "max": 66.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "26_GELU_.py": {
+            "mean": 26.5,
+            "std": 0.0244,
+            "min": 26.5,
+            "max": 26.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "27_SELU_.py": {
+            "mean": 26.4,
+            "std": 0.014,
+            "min": 26.3,
+            "max": 26.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "28_HardSigmoid.py": {
+            "mean": 26.6,
+            "std": 0.0332,
+            "min": 26.5,
+            "max": 26.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "29_Softplus.py": {
+            "mean": 26.5,
+            "std": 0.0349,
+            "min": 26.5,
+            "max": 26.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "30_Softsign.py": {
+            "mean": 92.3,
+            "std": 0.0474,
+            "min": 92.2,
+            "max": 92.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "31_ELU.py": {
+            "mean": 26.4,
+            "std": 0.0291,
+            "min": 26.4,
+            "max": 26.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "32_HardTanh.py": {
+            "mean": 26.4,
+            "std": 0.0333,
+            "min": 26.4,
+            "max": 26.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "33_BatchNorm.py": {
+            "mean": 28.3,
+            "std": 0.0373,
+            "min": 28.2,
+            "max": 28.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "34_InstanceNorm.py": {
+            "mean": 47.4,
+            "std": 0.0383,
+            "min": 47.3,
+            "max": 47.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "35_GroupNorm_.py": {
+            "mean": 46.6,
+            "std": 0.0375,
+            "min": 46.5,
+            "max": 46.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "36_RMSNorm_.py": {
+            "mean": 80.9,
+            "std": 0.0425,
+            "min": 80.8,
+            "max": 81.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "37_FrobeniusNorm_.py": {
+            "mean": 45.5,
+            "std": 0.0466,
+            "min": 45.4,
+            "max": 45.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "38_L1Norm_.py": {
+            "mean": 88.2,
+            "std": 0.0341,
+            "min": 88.1,
+            "max": 88.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "39_L2Norm_.py": {
+            "mean": 53.0,
+            "std": 0.105,
+            "min": 52.9,
+            "max": 53.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "40_LayerNorm.py": {
+            "mean": 8.53,
+            "std": 0.0196,
+            "min": 8.52,
+            "max": 8.65,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "41_Max_Pooling_1D.py": {
+            "mean": 27.0,
+            "std": 0.0402,
+            "min": 26.9,
+            "max": 27.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "42_Max_Pooling_2D.py": {
+            "mean": 30.9,
+            "std": 1.31,
+            "min": 30.1,
+            "max": 40.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "43_Max_Pooling_3D.py": {
+            "mean": 12.9,
+            "std": 0.16,
+            "min": 12.2,
+            "max": 13.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "44_Average_Pooling_1D.py": {
+            "mean": 18.9,
+            "std": 0.497,
+            "min": 18.5,
+            "max": 21.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "45_Average_Pooling_2D.py": {
+            "mean": 44.0,
+            "std": 0.0797,
+            "min": 43.8,
+            "max": 44.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "46_Average_Pooling_3D.py": {
+            "mean": 18.8,
+            "std": 0.0448,
+            "min": 18.7,
+            "max": 18.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "47_Sum_reduction_over_a_dimension.py": {
+            "mean": 21.1,
+            "std": 0.0911,
+            "min": 20.8,
+            "max": 21.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "48_Mean_reduction_over_a_dimension.py": {
+            "mean": 21.0,
+            "std": 0.0635,
+            "min": 20.9,
+            "max": 21.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "49_Max_reduction_over_a_dimension.py": {
+            "mean": 20.1,
+            "std": 0.0694,
+            "min": 19.9,
+            "max": 20.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "50_conv_standard_2D__square_input__square_kernel.py": {
+            "mean": 16.1,
+            "std": 0.0699,
+            "min": 16.0,
+            "max": 16.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "51_Argmax_over_a_dimension.py": {
+            "mean": 20.9,
+            "std": 0.0814,
+            "min": 20.7,
+            "max": 21.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "52_Argmin_over_a_dimension.py": {
+            "mean": 20.9,
+            "std": 0.0777,
+            "min": 20.7,
+            "max": 21.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "53_Min_reduction_over_a_dimension.py": {
+            "mean": 20.9,
+            "std": 0.0826,
+            "min": 20.8,
+            "max": 21.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "54_conv_standard_3D__square_input__square_kernel.py": {
+            "mean": 14.4,
+            "std": 0.0301,
+            "min": 14.3,
+            "max": 14.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "55_conv_standard_2D__asymmetric_input__square_kernel.py": {
+            "mean": 83.4,
+            "std": 2.16,
+            "min": 81.5,
+            "max": 101.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "56_conv_standard_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 26.2,
+            "std": 1.92,
+            "min": 25.5,
+            "max": 43.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "57_conv_transposed_2D__square_input__square_kernel.py": {
+            "mean": 39.5,
+            "std": 0.0511,
+            "min": 39.3,
+            "max": 39.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "58_conv_transposed_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 17.4,
+            "std": 0.0441,
+            "min": 17.3,
+            "max": 17.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "59_conv_standard_3D__asymmetric_input__square_kernel.py": {
+            "mean": 13.3,
+            "std": 0.0313,
+            "min": 13.2,
+            "max": 13.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "60_conv_standard_3D__square_input__asymmetric_kernel.py": {
+            "mean": 31.5,
+            "std": 0.15,
+            "min": 31.3,
+            "max": 31.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "61_conv_transposed_3D__square_input__square_kernel.py": {
+            "mean": 27.5,
+            "std": 0.0604,
+            "min": 27.4,
+            "max": 27.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "62_conv_standard_2D__square_input__asymmetric_kernel.py": {
+            "mean": 15.1,
+            "std": 0.0803,
+            "min": 14.9,
+            "max": 15.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "63_conv_standard_2D__square_input__square_kernel.py": {
+            "mean": 43.2,
+            "std": 0.142,
+            "min": 43.1,
+            "max": 44.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "64_conv_transposed_1D.py": {
+            "mean": 32.8,
+            "std": 0.033,
+            "min": 32.7,
+            "max": 32.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "65_conv_transposed_2D__square_input__asymmetric_kernel.py": {
+            "mean": 16.0,
+            "std": 0.049,
+            "min": 15.9,
+            "max": 16.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "66_conv_standard_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 22.5,
+            "std": 0.0621,
+            "min": 22.4,
+            "max": 22.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "67_conv_standard_1D.py": {
+            "mean": 12.5,
+            "std": 0.0419,
+            "min": 12.5,
+            "max": 12.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "68_conv_transposed_3D__square_input__asymmetric_kernel.py": {
+            "mean": 393.0,
+            "std": 0.128,
+            "min": 393.0,
+            "max": 394.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "69_conv_transposed_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 23.3,
+            "std": 0.0538,
+            "min": 23.2,
+            "max": 23.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "70_conv_transposed_3D__asymmetric_input__square_kernel.py": {
+            "mean": 87.8,
+            "std": 0.0543,
+            "min": 87.6,
+            "max": 87.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "71_conv_transposed_2D__asymmetric_input__square_kernel.py": {
+            "mean": 9.27,
+            "std": 0.697,
+            "min": 8.88,
+            "max": 13.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "72_conv_transposed_3D_asymmetric_input_asymmetric_kernel___strided_padded_grouped_.py": {
+            "mean": 5.16,
+            "std": 0.0349,
+            "min": 5.14,
+            "max": 5.44,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "73_conv_transposed_3D_asymmetric_input_square_kernel__strided_padded__grouped.py": {
+            "mean": 17.8,
+            "std": 0.0655,
+            "min": 17.7,
+            "max": 18.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "74_conv_transposed_1D_dilated.py": {
+            "mean": 8.32,
+            "std": 0.285,
+            "min": 6.68,
+            "max": 8.93,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "75_conv_transposed_2D_asymmetric_input_asymmetric_kernel_strided__grouped____padded____dilated__.py": {
+            "mean": 16.9,
+            "std": 0.306,
+            "min": 16.5,
+            "max": 18.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "76_conv_standard_1D_dilated_strided__.py": {
+            "mean": 57.7,
+            "std": 2.91,
+            "min": 55.0,
+            "max": 76.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "77_conv_transposed_3D_square_input_square_kernel___padded____dilated____strided__.py": {
+            "mean": 6.14,
+            "std": 0.0596,
+            "min": 6.05,
+            "max": 6.34,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "78_conv_transposed_2D_asymmetric_input_asymmetric_kernel___padded__.py": {
+            "mean": 16.2,
+            "std": 0.143,
+            "min": 16.1,
+            "max": 17.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "79_conv_transposed_1D_asymmetric_input_square_kernel___padded____strided____dilated__.py": {
+            "mean": 10.9,
+            "std": 0.0716,
+            "min": 10.8,
+            "max": 11.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "80_conv_standard_2D_square_input_asymmetric_kernel___dilated____padded__.py": {
+            "mean": 14.7,
+            "std": 0.0183,
+            "min": 14.7,
+            "max": 14.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "81_conv_transposed_2D_asymmetric_input_square_kernel___dilated____padded____strided__.py": {
+            "mean": 6.15,
+            "std": 0.0244,
+            "min": 6.11,
+            "max": 6.27,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "82_conv_depthwise_2D_square_input_square_kernel.py": {
+            "mean": 8.39,
+            "std": 0.455,
+            "min": 6.91,
+            "max": 11.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "83_conv_depthwise_2D_square_input_asymmetric_kernel.py": {
+            "mean": 3.72,
+            "std": 0.0183,
+            "min": 3.71,
+            "max": 3.84,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "84_conv_depthwise_2D_asymmetric_input_square_kernel.py": {
+            "mean": 24.2,
+            "std": 0.0117,
+            "min": 24.2,
+            "max": 24.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "85_conv_depthwise_2D_asymmetric_input_asymmetric_kernel.py": {
+            "mean": 5.31,
+            "std": 0.0288,
+            "min": 5.3,
+            "max": 5.51,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "86_conv_depthwise_separable_2D.py": {
+            "mean": 13.0,
+            "std": 0.0413,
+            "min": 12.9,
+            "max": 13.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "87_conv_pointwise_2D.py": {
+            "mean": 27.0,
+            "std": 0.0308,
+            "min": 27.0,
+            "max": 27.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "88_MinGPTNewGelu.py": {
+            "mean": 9.99,
+            "std": 0.0291,
+            "min": 9.95,
+            "max": 10.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "89_cumsum.py": {
+            "mean": 20.3,
+            "std": 0.0552,
+            "min": 20.3,
+            "max": 20.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "90_cumprod.py": {
+            "mean": 19.9,
+            "std": 0.0804,
+            "min": 19.9,
+            "max": 20.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "91_cumsum_reverse.py": {
+            "mean": 56.1,
+            "std": 0.0691,
+            "min": 56.0,
+            "max": 56.5,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "92_cumsum_exclusive.py": {
+            "mean": 45.0,
+            "std": 0.0489,
+            "min": 44.9,
+            "max": 45.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "93_masked_cumsum.py": {
+            "mean": 40.5,
+            "std": 0.173,
+            "min": 40.5,
+            "max": 42.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "94_MSELoss.py": {
+            "mean": 52.7,
+            "std": 0.0446,
+            "min": 52.6,
+            "max": 52.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "95_CrossEntropyLoss.py": {
+            "mean": 3.09,
+            "std": 0.0109,
+            "min": 3.08,
+            "max": 3.19,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10",
+            "device": "cuda:0"
+        },
+        "96_HuberLoss.py": {
+            "mean": 34.7,
+            "std": 0.0217,
+            "min": 34.7,
+            "max": 34.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "97_ScaledDotProductAttention.py": {
+            "mean": 44.1,
+            "std": 0.0406,
+            "min": 44.0,
+            "max": 44.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "98_KLDivLoss.py": {
+            "mean": 24.3,
+            "std": 0.0332,
+            "min": 24.2,
+            "max": 24.4,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "99_TripletMarginLoss.py": {
+            "mean": 26.4,
+            "std": 0.0708,
+            "min": 26.3,
+            "max": 27.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        },
+        "100_HingeLoss.py": {
+            "mean": 61.9,
+            "std": 0.0296,
+            "min": 61.8,
+            "max": 62.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA A10G",
+            "device": "cuda:0"
+        }
+    }
+}

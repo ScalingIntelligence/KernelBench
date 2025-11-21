@@ -1,0 +1,904 @@
+{
+    "level1": {
+        "1_Square_matrix_multiplication_.py": {
+            "mean": 2.66,
+            "std": 0.00503,
+            "min": 2.66,
+            "max": 2.68,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "2_Standard_matrix_multiplication_.py": {
+            "mean": 2.67,
+            "std": 0.00828,
+            "min": 2.65,
+            "max": 2.68,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "3_Batched_matrix_multiplication.py": {
+            "mean": 5.32,
+            "std": 0.0181,
+            "min": 5.3,
+            "max": 5.37,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "4_Matrix_vector_multiplication_.py": {
+            "mean": 2.9,
+            "std": 0.00233,
+            "min": 2.9,
+            "max": 2.91,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "5_Matrix_scalar_multiplication.py": {
+            "mean": 2.88,
+            "std": 0.0132,
+            "min": 2.86,
+            "max": 2.98,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "6_Matmul_with_large_K_dimension_.py": {
+            "mean": 1.33,
+            "std": 0.00488,
+            "min": 1.33,
+            "max": 1.35,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "7_Matmul_with_small_K_dimension_.py": {
+            "mean": 4.14,
+            "std": 0.0273,
+            "min": 4.12,
+            "max": 4.35,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "8_Matmul_with_irregular_shapes_.py": {
+            "mean": 6.44,
+            "std": 0.00478,
+            "min": 6.43,
+            "max": 6.46,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "9_Tall_skinny_matrix_multiplication_.py": {
+            "mean": 2.63,
+            "std": 0.0036,
+            "min": 2.63,
+            "max": 2.65,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "10_3D_tensor_matrix_multiplication.py": {
+            "mean": 1.07,
+            "std": 0.00272,
+            "min": 1.06,
+            "max": 1.08,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "11_4D_tensor_matrix_multiplication.py": {
+            "mean": 10.8,
+            "std": 1.01,
+            "min": 10.0,
+            "max": 13.2,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "12_Matmul_with_diagonal_matrices_.py": {
+            "mean": 2.69,
+            "std": 0.0112,
+            "min": 2.68,
+            "max": 2.72,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "13_Matmul_for_symmetric_matrices.py": {
+            "mean": 2.66,
+            "std": 0.00314,
+            "min": 2.66,
+            "max": 2.68,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "14_Matmul_for_upper_triangular_matrices.py": {
+            "mean": 2.72,
+            "std": 0.0045,
+            "min": 2.72,
+            "max": 2.75,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "15_Matmul_for_lower_triangular_matrices.py": {
+            "mean": 2.73,
+            "std": 0.005,
+            "min": 2.72,
+            "max": 2.75,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "16_Matmul_with_transposed_A.py": {
+            "mean": 2.65,
+            "std": 0.00467,
+            "min": 2.64,
+            "max": 2.67,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "17_Matmul_with_transposed_B.py": {
+            "mean": 2.77,
+            "std": 0.0083,
+            "min": 2.76,
+            "max": 2.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "18_Matmul_with_transposed_both.py": {
+            "mean": 2.79,
+            "std": 0.0101,
+            "min": 2.77,
+            "max": 2.82,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "19_ReLU.py": {
+            "mean": 4.31,
+            "std": 0.00483,
+            "min": 4.29,
+            "max": 4.33,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "20_LeakyReLU.py": {
+            "mean": 4.29,
+            "std": 0.00853,
+            "min": 4.28,
+            "max": 4.33,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "21_Sigmoid.py": {
+            "mean": 4.29,
+            "std": 0.0126,
+            "min": 4.27,
+            "max": 4.39,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "22_Tanh.py": {
+            "mean": 3.07,
+            "std": 0.0213,
+            "min": 3.06,
+            "max": 3.27,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "23_Softmax.py": {
+            "mean": 8.68,
+            "std": 0.0881,
+            "min": 8.65,
+            "max": 9.55,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "24_LogSoftmax.py": {
+            "mean": 8.65,
+            "std": 0.0181,
+            "min": 8.63,
+            "max": 8.74,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "25_Swish.py": {
+            "mean": 4.28,
+            "std": 0.00737,
+            "min": 4.27,
+            "max": 4.32,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "26_GELU_.py": {
+            "mean": 4.27,
+            "std": 0.00737,
+            "min": 4.26,
+            "max": 4.29,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "27_SELU_.py": {
+            "mean": 4.27,
+            "std": 0.0127,
+            "min": 4.26,
+            "max": 4.37,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "28_HardSigmoid.py": {
+            "mean": 4.29,
+            "std": 0.03,
+            "min": 4.27,
+            "max": 4.58,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "29_Softplus.py": {
+            "mean": 4.29,
+            "std": 0.0411,
+            "min": 4.27,
+            "max": 4.58,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "30_Softsign.py": {
+            "mean": 3.06,
+            "std": 0.00498,
+            "min": 3.05,
+            "max": 3.08,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "31_ELU.py": {
+            "mean": 4.28,
+            "std": 0.0248,
+            "min": 4.27,
+            "max": 4.52,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "32_HardTanh.py": {
+            "mean": 4.29,
+            "std": 0.0059,
+            "min": 4.28,
+            "max": 4.31,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "33_BatchNorm.py": {
+            "mean": 4.24,
+            "std": 0.00629,
+            "min": 4.22,
+            "max": 4.26,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "34_InstanceNorm.py": {
+            "mean": 7.66,
+            "std": 0.027,
+            "min": 7.64,
+            "max": 7.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "35_GroupNorm_.py": {
+            "mean": 7.49,
+            "std": 0.00591,
+            "min": 7.48,
+            "max": 7.51,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "36_RMSNorm_.py": {
+            "mean": 7.8,
+            "std": 0.00398,
+            "min": 7.8,
+            "max": 7.82,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "37_FrobeniusNorm_.py": {
+            "mean": 7.32,
+            "std": 0.0091,
+            "min": 7.31,
+            "max": 7.36,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "38_L1Norm_.py": {
+            "mean": 13.0,
+            "std": 0.0182,
+            "min": 13.0,
+            "max": 13.1,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "39_L2Norm_.py": {
+            "mean": 13.4,
+            "std": 0.029,
+            "min": 13.3,
+            "max": 13.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "40_LayerNorm.py": {
+            "mean": 0.476,
+            "std": 0.0031,
+            "min": 0.472,
+            "max": 0.491,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "41_Max_Pooling_1D.py": {
+            "mean": 10.7,
+            "std": 0.0108,
+            "min": 10.7,
+            "max": 10.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "42_Max_Pooling_2D.py": {
+            "mean": 4.45,
+            "std": 0.00646,
+            "min": 4.44,
+            "max": 4.49,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "43_Max_Pooling_3D.py": {
+            "mean": 3.95,
+            "std": 0.00396,
+            "min": 3.94,
+            "max": 3.97,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "44_Average_Pooling_1D.py": {
+            "mean": 1.89,
+            "std": 0.00262,
+            "min": 1.88,
+            "max": 1.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "45_Average_Pooling_2D.py": {
+            "mean": 6.43,
+            "std": 0.0493,
+            "min": 6.36,
+            "max": 6.79,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "46_Average_Pooling_3D.py": {
+            "mean": 8.71,
+            "std": 0.0143,
+            "min": 8.69,
+            "max": 8.81,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "47_Sum_reduction_over_a_dimension.py": {
+            "mean": 3.5,
+            "std": 0.0161,
+            "min": 3.45,
+            "max": 3.54,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "48_Mean_reduction_over_a_dimension.py": {
+            "mean": 3.39,
+            "std": 0.0227,
+            "min": 3.34,
+            "max": 3.55,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "49_Max_reduction_over_a_dimension.py": {
+            "mean": 3.49,
+            "std": 0.0149,
+            "min": 3.45,
+            "max": 3.56,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "50_conv_standard_2D__square_input__square_kernel.py": {
+            "mean": 1.66,
+            "std": 0.0152,
+            "min": 1.64,
+            "max": 1.72,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "51_Argmax_over_a_dimension.py": {
+            "mean": 2.94,
+            "std": 0.00652,
+            "min": 2.93,
+            "max": 2.96,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "52_Argmin_over_a_dimension.py": {
+            "mean": 3.07,
+            "std": 0.00532,
+            "min": 3.06,
+            "max": 3.09,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "53_Min_reduction_over_a_dimension.py": {
+            "mean": 3.48,
+            "std": 0.0141,
+            "min": 3.44,
+            "max": 3.52,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "54_conv_standard_3D__square_input__square_kernel.py": {
+            "mean": 1.4,
+            "std": 0.00443,
+            "min": 1.39,
+            "max": 1.42,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "55_conv_standard_2D__asymmetric_input__square_kernel.py": {
+            "mean": 4.63,
+            "std": 0.006,
+            "min": 4.61,
+            "max": 4.64,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "56_conv_standard_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 3.68,
+            "std": 0.037,
+            "min": 3.62,
+            "max": 3.76,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "57_conv_transposed_2D__square_input__square_kernel.py": {
+            "mean": 6.56,
+            "std": 0.00741,
+            "min": 6.54,
+            "max": 6.58,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "58_conv_transposed_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 2.32,
+            "std": 0.0159,
+            "min": 2.29,
+            "max": 2.37,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "59_conv_standard_3D__asymmetric_input__square_kernel.py": {
+            "mean": 2.11,
+            "std": 0.00394,
+            "min": 2.1,
+            "max": 2.13,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "60_conv_standard_3D__square_input__asymmetric_kernel.py": {
+            "mean": 5.33,
+            "std": 0.0602,
+            "min": 5.32,
+            "max": 5.79,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "61_conv_transposed_3D__square_input__square_kernel.py": {
+            "mean": 5.51,
+            "std": 0.0104,
+            "min": 5.48,
+            "max": 5.54,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "62_conv_standard_2D__square_input__asymmetric_kernel.py": {
+            "mean": 2.68,
+            "std": 0.0374,
+            "min": 2.66,
+            "max": 3.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "63_conv_standard_2D__square_input__square_kernel.py": {
+            "mean": 13.9,
+            "std": 0.0149,
+            "min": 13.9,
+            "max": 14.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "64_conv_transposed_1D.py": {
+            "mean": 5.32,
+            "std": 0.0562,
+            "min": 5.29,
+            "max": 5.72,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "65_conv_transposed_2D__square_input__asymmetric_kernel.py": {
+            "mean": 2.72,
+            "std": 0.0112,
+            "min": 2.68,
+            "max": 2.74,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "66_conv_standard_3D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 2.65,
+            "std": 0.0043,
+            "min": 2.65,
+            "max": 2.68,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "67_conv_standard_1D.py": {
+            "mean": 2.69,
+            "std": 0.0361,
+            "min": 2.65,
+            "max": 3.01,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "68_conv_transposed_3D__square_input__asymmetric_kernel.py": {
+            "mean": 9.55,
+            "std": 0.00915,
+            "min": 9.53,
+            "max": 9.58,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "69_conv_transposed_2D__asymmetric_input__asymmetric_kernel.py": {
+            "mean": 2.74,
+            "std": 0.0113,
+            "min": 2.72,
+            "max": 2.78,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "70_conv_transposed_3D__asymmetric_input__square_kernel.py": {
+            "mean": 10.0,
+            "std": 0.0098,
+            "min": 9.98,
+            "max": 10.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "71_conv_transposed_2D__asymmetric_input__square_kernel.py": {
+            "mean": 1.59,
+            "std": 0.00411,
+            "min": 1.58,
+            "max": 1.6,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "72_conv_transposed_3D_asymmetric_input_asymmetric_kernel___strided_padded_grouped_.py": {
+            "mean": 2.93,
+            "std": 0.00823,
+            "min": 2.92,
+            "max": 2.96,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "73_conv_transposed_3D_asymmetric_input_square_kernel__strided_padded__grouped.py": {
+            "mean": 2.07,
+            "std": 0.00509,
+            "min": 2.06,
+            "max": 2.09,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "74_conv_transposed_1D_dilated.py": {
+            "mean": 1.93,
+            "std": 0.00876,
+            "min": 1.91,
+            "max": 1.95,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "75_conv_transposed_2D_asymmetric_input_asymmetric_kernel_strided__grouped____padded____dilated__.py": {
+            "mean": 6.6,
+            "std": 0.0337,
+            "min": 6.58,
+            "max": 6.91,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "76_conv_standard_1D_dilated_strided__.py": {
+            "mean": 12.4,
+            "std": 0.0826,
+            "min": 12.4,
+            "max": 12.7,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "77_conv_transposed_3D_square_input_square_kernel___padded____dilated____strided__.py": {
+            "mean": 1.98,
+            "std": 0.0146,
+            "min": 1.95,
+            "max": 2.03,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "78_conv_transposed_2D_asymmetric_input_asymmetric_kernel___padded__.py": {
+            "mean": 2.37,
+            "std": 0.0217,
+            "min": 2.35,
+            "max": 2.55,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "79_conv_transposed_1D_asymmetric_input_square_kernel___padded____strided____dilated__.py": {
+            "mean": 1.93,
+            "std": 0.00781,
+            "min": 1.92,
+            "max": 1.95,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "80_conv_standard_2D_square_input_asymmetric_kernel___dilated____padded__.py": {
+            "mean": 2.65,
+            "std": 0.0159,
+            "min": 2.63,
+            "max": 2.68,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "81_conv_transposed_2D_asymmetric_input_square_kernel___dilated____padded____strided__.py": {
+            "mean": 1.71,
+            "std": 0.00818,
+            "min": 1.7,
+            "max": 1.76,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "82_conv_depthwise_2D_square_input_square_kernel.py": {
+            "mean": 2.57,
+            "std": 0.0708,
+            "min": 2.53,
+            "max": 3.09,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "83_conv_depthwise_2D_square_input_asymmetric_kernel.py": {
+            "mean": 19.0,
+            "std": 0.273,
+            "min": 18.8,
+            "max": 20.3,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "84_conv_depthwise_2D_asymmetric_input_square_kernel.py": {
+            "mean": 9.79,
+            "std": 0.00959,
+            "min": 9.77,
+            "max": 9.81,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "85_conv_depthwise_2D_asymmetric_input_asymmetric_kernel.py": {
+            "mean": 13.9,
+            "std": 0.00974,
+            "min": 13.9,
+            "max": 14.0,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "86_conv_depthwise_separable_2D.py": {
+            "mean": 3.41,
+            "std": 0.28,
+            "min": 3.31,
+            "max": 5.34,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "87_conv_pointwise_2D.py": {
+            "mean": 10.6,
+            "std": 0.098,
+            "min": 10.5,
+            "max": 10.9,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "88_MinGPTNewGelu.py": {
+            "mean": 0.161,
+            "std": 0.00496,
+            "min": 0.154,
+            "max": 0.178,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "89_cumsum.py": {
+            "mean": 2.69,
+            "std": 0.0867,
+            "min": 2.66,
+            "max": 3.45,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "90_cumprod.py": {
+            "mean": 2.64,
+            "std": 0.0149,
+            "min": 2.63,
+            "max": 2.73,
+            "num_trials": 100,
+            "hardware": "NVIDIA H200",
+            "device": "cuda:0"
+        },
+        "91_cumsum_reverse.py": {
+            "mean": 5.87,
+            "std": 0.00331,
+            "min": 5.86,
+            "max": 5.88,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "92_cumsum_exclusive.py": {
+            "mean": 5.67,
+            "std": 0.01,
+            "min": 5.66,
+            "max": 5.75,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "93_masked_cumsum.py": {
+            "mean": 3.31,
+            "std": 0.0057,
+            "min": 3.3,
+            "max": 3.33,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "94_MSELoss.py": {
+            "mean": 2.78,
+            "std": 0.00263,
+            "min": 2.78,
+            "max": 2.79,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "95_CrossEntropyLoss.py": {
+            "mean": 0.234,
+            "std": 0.0313,
+            "min": 0.223,
+            "max": 0.541,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "96_HuberLoss.py": {
+            "mean": 2.79,
+            "std": 0.00316,
+            "min": 2.78,
+            "max": 2.8,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "97_ScaledDotProductAttention.py": {
+            "mean": 8.25,
+            "std": 0.228,
+            "min": 8.1,
+            "max": 9.25,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "98_KLDivLoss.py": {
+            "mean": 0.745,
+            "std": 0.0237,
+            "min": 0.735,
+            "max": 0.965,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "99_TripletMarginLoss.py": {
+            "mean": 1.04,
+            "std": 0.00274,
+            "min": 1.04,
+            "max": 1.05,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        },
+        "100_HingeLoss.py": {
+            "mean": 1.41,
+            "std": 0.00369,
+            "min": 1.4,
+            "max": 1.42,
+            "num_trials": 100,
+            "hardware": "NVIDIA H100 80GB HBM3",
+            "device": "cuda:0"
+        }
+    }
+}

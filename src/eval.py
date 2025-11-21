@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 from pydantic import BaseModel
 
-from . import utils
+from . import utils, dataset
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -46,7 +46,10 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
     if isinstance(problem_id, str):
         problem_id = int(problem_id)
 
-    problem_path = problems[problem_id]
+    if hasattr(problems, "get_problem_by_id"):
+        problem_path = problems.get_problem_by_id(problem_id)
+    else:
+        problem_path = problems[problem_id]
 
     # problem_path = os.path.join(REPO_ROOT_PATH, problem)
     if not os.path.exists(problem_path):
@@ -60,9 +63,8 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
 
 
 def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
-    return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
+    kb_dataset = dataset.construct_kernelbench_dataset(level)
+    return fetch_ref_arch_from_problem_id(problem_id, kb_dataset, with_name)
 
 
 def set_seed(seed: int):
@@ -884,7 +886,12 @@ def fetch_baseline_time(
     with open(baseline_time_filepath, "r") as f:
         baseline_json = json.load(f)
 
-    problem_name = dataset[problem_id].split("/")[-1]
+    if hasattr(dataset, "get_problem_by_id"):
+        problem_path = dataset.get_problem_by_id(problem_id)
+    else:
+        problem_path = dataset[problem_id]
+
+    problem_name = os.path.basename(problem_path)
     baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
 

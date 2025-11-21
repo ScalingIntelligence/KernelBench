@@ -38,6 +38,51 @@ def get_code_hash(problem_src: str) -> str:
     return hashlib.md5(cleaned_problem_src.encode()).hexdigest()
 
 
+
+def check_id_matches_name(problem_id: int, problem_name: str):
+    """Check if the problem_id matches the ID in the problem_name"""
+    return problem_id == int(os.path.basename(problem_name).split('_')[0])
+
+
+class KernelBenchDataset():
+    def __init__(self, dataset_name: str, level: int, use_subset=False, dataset=[], subset_dataset=[]):
+        
+        self.dataset_name = dataset_name
+        
+        if use_subset:
+            self.problems = subset_dataset
+        else:
+            self.problems = dataset
+
+        self.level = level
+        self.use_subset = use_subset
+
+        # print(f"[Initilaize Dataset Object] {self.dataset_name} with level {self.level} and use_subset {self.use_subset}")
+
+    def get_problem_by_id(self, problem_id=int):
+        "Logical index of problem_id (logical is 1-indexed)"
+        # Find problem with matching ID in basename
+
+        for problem in self.problems:
+            if check_id_matches_name(problem_id, problem):
+                return problem
+        raise ValueError(f"Problem ID {problem_id} not found in dataset")
+    
+    # get the problem_ids 
+    def get_problem_ids(self):
+        # return self.whol
+        return [int(os.path.basename(problem).split('_')[0]) for problem in self.problems]
+
+    def __len__(self):
+        return len(self.problems)
+
+    def __getitem__(self, index):
+        return self.problems[index]
+    
+    def __iter__(self):
+        return iter(self.problems)
+
+
 def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
     """
     Construct a list of relative paths to all the python files in the problem directory
@@ -57,9 +102,14 @@ def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
     return DATASET
 
 
-def construct_kernelbench_dataset(level: int) -> list[str]:
-    return construct_problem_dataset_from_problem_dir(
+def construct_kernelbench_dataset(level: int) -> KernelBenchDataset:
+    dataset_list = construct_problem_dataset_from_problem_dir(
         os.path.join(KERNEL_BENCH_PATH, f"level{level}")
+    )
+    return KernelBenchDataset(
+        dataset_name=f"KernelBench_Level_{level}",
+        level=level,
+        dataset=dataset_list
     )
 
 

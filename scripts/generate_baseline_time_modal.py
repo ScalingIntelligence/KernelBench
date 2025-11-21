@@ -7,7 +7,7 @@ from src.eval import (
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.dataset import construct_problem_dataset_from_problem_dir
+from src.dataset import construct_kernelbench_dataset
 from src.utils import read_file
 import os
 import json
@@ -126,7 +126,7 @@ def write_batch_to_json(entries_to_write: list, f_path: str):
     
     print(f"[INFO] Wrote {len(entries_to_write)} entries to {f_path}")
 
-def fetch_ref_arch_from_dataset(dataset: list[str], 
+def fetch_ref_arch_from_dataset(dataset, 
                                 problem_id: int) -> tuple[str, str, str]:
     """
     Fetch the reference architecture from the problem directory
@@ -137,14 +137,7 @@ def fetch_ref_arch_from_dataset(dataset: list[str],
         ref_arch_name: str, the name of the reference architecture
         ref_arch_src: str, the source code of the reference architecture
     """
-    ref_arch_path = None
-    
-    for file in dataset:
-        if file.split("/")[-1].split("_")[0] == str(problem_id):
-            ref_arch_path = file
-            break
-    if ref_arch_path is None:
-        raise ValueError(f"No reference architecture found for problem_id {problem_id}")
+    ref_arch_path = dataset.get_problem_by_id(problem_id)
     
     ref_arch_src = read_file(ref_arch_path)
 
@@ -229,10 +222,9 @@ def record_baseline_times(config: BaselineConfig,
     json_results = []
 
     level = config.level
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    dataset = construct_kernelbench_dataset(level)
     num_problems = len(dataset)
-    total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in list(range(1, num_problems + 1))]
+    total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in dataset.get_problem_ids()]
 
     with tqdm(total=len(total_work), desc="Processing batches") as pbar:
         while len(total_work) > 0:
