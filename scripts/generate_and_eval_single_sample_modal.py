@@ -13,7 +13,7 @@ import modal
 
 from datasets import load_dataset
 
-#from src.dataset import construct_kernelbench_dataset
+from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
 from src.prompt_constructor_multilang import get_prompt_for_backend
@@ -148,6 +148,8 @@ def main(config: EvalConfig):
     if config.dataset_src == "huggingface":
         dataset = load_dataset(config.dataset_name)
         curr_level_dataset = dataset[f"level_{config.level}"]
+    elif config.dataset_src == "local":
+        curr_level_dataset = construct_kernelbench_dataset(config.level)
 
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)
@@ -168,8 +170,7 @@ def main(config: EvalConfig):
         problem_name = curr_problem_row["name"][0]
 
     elif config.dataset_src == "local":
-        problem_idx_in_dataset = config.problem_id - 1 # due to dataset list being 0-indexed locally
-        ref_arch_path = curr_level_dataset[problem_idx_in_dataset]
+        ref_arch_path = curr_level_dataset.get_problem_by_id(config.problem_id)
 
         problem_name = os.path.basename(ref_arch_path)
         ref_arch_src = read_file(ref_arch_path)

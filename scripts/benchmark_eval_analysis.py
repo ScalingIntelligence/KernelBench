@@ -40,7 +40,7 @@ def patch(eval_results, dataset):
     """
     Patch the eval results with the dataset
     """
-    for pid in range(1, len(dataset) + 1):
+    for pid in dataset.get_problem_ids():
         if str(pid) not in eval_results:
             eval_results[str(pid)] = {
                 "sample_id": 0,
@@ -136,19 +136,40 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     )
 
     # Extract the speedup values
-    is_correct = np.array([entry["correctness"] for entry in eval_results.values()])
-    baseline_speed = np.array(
-        [entry["mean"] for entry in baseline_results[f"level{level}"].values()]
-    )
-    actual_speed = np.array([entry["runtime"] for entry in eval_results.values()])
+    is_correct_list = []
+    baseline_speed_list = []
+    actual_speed_list = []
+
+    # Sort problem IDs to ensure consistent order
+    sorted_pids = sorted(dataset.get_problem_ids())
+
+    for pid in sorted_pids:
+        # Get eval result
+        if str(pid) not in eval_results:
+            print(f"Warning: Problem {pid} not found in eval results")
+            continue
+        eval_entry = eval_results[str(pid)]
+        
+        # Get baseline result
+        problem_path = dataset.get_problem_by_id(pid)
+        problem_name = os.path.basename(problem_path)
+        
+        if problem_name not in baseline_results[f"level{level}"]:
+            print(f"Warning: Problem {problem_name} not found in baseline results")
+            continue
+            
+        baseline_entry = baseline_results[f"level{level}"][problem_name]
+        
+        is_correct_list.append(eval_entry["correctness"])
+        actual_speed_list.append(eval_entry["runtime"])
+        baseline_speed_list.append(baseline_entry["mean"])
+
+    is_correct = np.array(is_correct_list)
+    baseline_speed = np.array(baseline_speed_list)
+    actual_speed = np.array(actual_speed_list)
     n = len(is_correct)
 
-    assert (
-        len(baseline_speed) == n
-    ), "Baseline speedup values do not match the number of eval results"
-    assert (
-        len(actual_speed) == n
-    ), "Actual speedup values do not match the number of eval results"
+    print(f"Aligned {n} problems for analysis")
 
     # Calculate the metrics
     gmsr_correct = geometric_mean_speed_ratio_correct_only(

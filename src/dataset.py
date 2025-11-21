@@ -38,6 +38,154 @@ def get_code_hash(problem_src: str) -> str:
     return hashlib.md5(cleaned_problem_src.encode()).hexdigest()
 
 
+
+def check_id_matches_name(problem_id: int, problem_name: str) -> bool:
+    """Check if the problem_id matches the ID in the problem_name.
+
+    Args:
+        problem_id: The problem ID to check
+        problem_name: Path to the problem file
+
+    Returns:
+        bool: True if the ID matches the filename prefix
+
+    Raises:
+        ValueError: If filename doesn't follow the expected format
+    """
+    basename = os.path.basename(problem_name)
+    parts = basename.split('_')
+
+    if len(parts) < 2:
+        raise ValueError(
+            f"Problem filename '{basename}' doesn't follow expected format '<id>_<name>.py'"
+        )
+
+    try:
+        file_id = int(parts[0])
+    except ValueError:
+        raise ValueError(
+            f"Problem filename '{basename}' doesn't start with a numeric ID"
+        )
+
+    return problem_id == file_id
+
+
+class KernelBenchDataset():
+    """Dataset object for easy access to problems by IDs and iteration over problems.
+
+    Args:
+        dataset_name: Name of the dataset
+        level: KernelBench level (1, 2, or 3)
+        use_subset: Whether to use the subset_dataset instead of full dataset
+        dataset: List of problem file paths for the full dataset
+        subset_dataset: List of problem file paths for a subset
+    """
+
+    def __init__(
+        self,
+        dataset_name: str,
+        level: int,
+        use_subset: bool = False,
+        dataset: list[str] = None,
+        subset_dataset: list[str] = None
+    ):
+        if level not in [1, 2, 3]:
+            raise ValueError(f"level must be 1, 2, or 3, got {level}")
+
+        self.dataset_name = dataset_name
+        self.level = level
+        self.use_subset = use_subset
+
+        # Avoid mutable default arguments
+        if dataset is None:
+            dataset = []
+        if subset_dataset is None:
+            subset_dataset = []
+
+        if use_subset:
+            self.problems = subset_dataset
+        else:
+            self.problems = dataset
+
+    def get_problem_by_id(self, problem_id: int) -> str:
+        """Get problem path by its ID (1-indexed logical index).
+
+        Args:
+            problem_id: The problem ID to search for
+
+        Returns:
+            str: Path to the problem file
+
+        Raises:
+            ValueError: If problem ID not found in dataset
+        """
+        for problem in self.problems:
+            if check_id_matches_name(problem_id, problem):
+                return problem
+        raise ValueError(f"Problem ID {problem_id} not found in dataset")
+    
+    def get_problem_ids(self) -> list[int]:
+        """Get list of all problem IDs in the dataset.
+
+        Returns:
+            list[int]: Sorted list of problem IDs extracted from filenames
+        """
+        return sorted([int(os.path.basename(problem).split('_')[0]) for problem in self.problems])
+
+    def __len__(self) -> int:
+        """Return the number of problems in the dataset."""
+        return len(self.problems)
+
+    def __getitem__(self, index: int) -> str:
+        """Get problem by index (0-indexed, for backward compatibility).
+
+        Args:
+            index: Zero-based index into the problems list
+
+        Returns:
+            str: Path to the problem file
+        """
+        return self.problems[index]
+
+    def __iter__(self):
+        """Iterate over problem paths in the dataset."""
+        return iter(self.problems)
+
+    def __repr__(self) -> str:
+        """Return string representation of the dataset."""
+        subset_str = " (subset)" if self.use_subset else ""
+        return (
+            f"KernelBenchDataset(name='{self.dataset_name}', "
+            f"level={self.level}, problems={len(self.problems)}{subset_str})"
+        )
+
+
+def fetch_ref_arch_from_dataset(
+    dataset: "KernelBenchDataset",
+    problem_id: int
+) -> tuple[str, str, str]:
+    """Fetch the reference architecture from the dataset.
+
+    This is a shared utility function to avoid duplication across scripts.
+
+    Args:
+        dataset: KernelBenchDataset object
+        problem_id: Logical index (1-indexed), matching the problem_id in the problem_name
+
+    Returns:
+        tuple containing:
+            - ref_arch_path: Path to the reference architecture
+            - ref_arch_name: Name of the reference architecture file
+            - ref_arch_src: Source code of the reference architecture
+    """
+    from .utils import read_file
+
+    ref_arch_path = dataset.get_problem_by_id(problem_id)
+    ref_arch_src = read_file(ref_arch_path)
+    ref_arch_name = os.path.basename(ref_arch_path)
+    return (ref_arch_path, ref_arch_name, ref_arch_src)
+
+
 def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
     """
     Construct a list of relative paths to all the python files in the problem directory
@@ -57,9 +205,14 @@ def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
     return DATASET
 
 
-def construct_kernelbench_dataset(level: int) -> list[str]:
-    return construct_problem_dataset_from_problem_dir(
+def construct_kernelbench_dataset(level: int) -> KernelBenchDataset:
+    dataset_list = construct_problem_dataset_from_problem_dir(
         os.path.join(KERNEL_BENCH_PATH, f"level{level}")
+    )
+    return KernelBenchDataset(
+        dataset_name=f"KernelBench_Level_{level}",
+        level=level,
+        dataset=dataset_list
     )
 
 
