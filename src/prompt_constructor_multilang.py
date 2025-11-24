@@ -493,6 +493,227 @@ def prompt_fix_correctness_cute(ref_arch_src, custom_kernel, metadata):
 
 
 ################################################################################
+# HIP Backend
+################################################################################
+
+HIP_PROBLEM_STATEMENT = """You write custom HIP kernels to replace the pytorch operators in the given architecture to get speedups. \n
+    You have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom HIP kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.\n
+"""
+
+HIP_PROBLEM_INSTRUCTION = """
+Optimize the architecture named Model with custom HIP operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
+"""
+
+HIP_PROBLEM_STATEMENT_CLEANED = """You write custom HIP kernels to replace the pytorch operators in the given architecture to get speedups.\n\nYou have complete freedom to choose the set of operators you want to replace. You may make the decision to replace some operators with custom HIP kernels and leave others unchanged. You may replace multiple operators with custom implementations, consider operator fusion opportunities (combining multiple operators into a single kernel, for example, combining matmul+relu), or algorithmic changes (such as online softmax). You are only limited by your imagination.\n
+"""
+
+HIP_PROBLEM_INSTRUCTION_CLEANED = """
+Optimize the architecture named Model with custom HIP operators! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code! \n
+"""
+
+def prompt_generate_custom_hip(
+    arc_src: str, example_arch_src: str, example_new_arch_src: str
+) -> str:
+    prompt = HIP_PROBLEM_STATEMENT
+
+    if example_arch_src != "" and example_new_arch_src != "":
+        prompt += f"""
+        Here's an example to show you the syntax of inline embedding custom HIP operators in torch: The example given architecture is: \n
+        ``` \n
+        {example_arch_src}
+        ``` \n
+        The example new arch with custom HIP kernels looks like this: 
+        ```
+        {example_new_arch_src}
+        ``` \n
+        """
+
+    prompt += f"""
+    You are given the following architecture: \n
+    ```
+    {arc_src}
+    ```
+    """
+    prompt += HIP_PROBLEM_INSTRUCTION
+    return prompt
+
+
+def prompt_generate_custom_hip_from_prompt_template(ref_arch_src: str) -> str:
+    """
+    Using prompt example (an element-wise addition) for prompt templates
+    The most basic form of example just to show LLM the task and the expected output format
+    """
+    arch = ref_arch_src
+    # These are strictly defined for now
+
+    # path to prompt template, show an example of Model (torch specifications) and ModelNew (torch + custom HIP kernels)
+    example_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_ex_add.py"
+    )
+    example_new_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_new_ex_add_hip.py"
+    )
+
+    if not os.path.exists(example_arch_path):
+        raise FileNotFoundError(
+            f"Example architecture file not found: {example_arch_path}"
+        )
+    if not os.path.exists(example_new_arch_path):
+        raise FileNotFoundError(
+            f"Example new architecture file not found: {example_new_arch_path}"
+        )
+
+    example_arch = read_file(example_arch_path)
+    example_new_arch = read_file(example_new_arch_path)
+
+    return prompt_generate_custom_hip(arch, example_arch, example_new_arch)
+
+
+def prompt_generate_prompt_with_hardware_info_from_template_hip(ref_arch_src: str, gpu_name: str) -> str:
+    """
+    Similar to prompt_generate_custom_hip_from_prompt_template, 
+    but with hardware information for the given GPU
+    """
+
+    arch = ref_arch_src
+    # These are strictly defined for now
+
+    # path to prompt template, show an example of Model (torch specifications) and ModelNew (torch + custom CUDA kernels)
+    example_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_ex_add.py"
+    )
+    example_new_arch_path = os.path.join(
+        REPO_TOP_PATH, f"src/prompts/model_new_ex_add.py"
+    )
+
+    gpu_spec_file_path = os.path.join(REPO_TOP_PATH, f"src/prompts/hardware/gpu_specs.py")
+
+    example_arch = read_file(example_arch_path)
+    example_new_arch = read_file(example_new_arch_path)
+    gpu_spec_info = read_file(gpu_spec_file_path)
+
+    return prompt_generate_prompt_with_hardware_info_hip(
+                                        ref_arch_src=arch, 
+                                        gpu_name=gpu_name, 
+                                        example_arch_src=example_arch, 
+                                        example_new_arch_src=example_new_arch, 
+                                        gpu_spec_info_src=gpu_spec_info
+                                        )
+    
+
+
+def prompt_generate_prompt_with_hardware_info_hip(ref_arch_src: str, 
+                                              gpu_name: str, 
+                                              example_arch_src: str, 
+                                              example_new_arch_src: str, 
+                                              gpu_spec_info_src: str) -> str:
+    """
+    Generate a prompt with hardware information for the given GPU
+    gpu_spec_info_src: str of the gpu spec src file
+    """
+
+    local_dict = {}
+    exec(gpu_spec_info_src, {}, local_dict)
+    
+    GPU_SPEC_INFO = local_dict.get('GPU_SPEC_INFO')
+    GPU_DEFINITIONS = local_dict.get('GPU_DEFINITIONS')
+    GPU_BEST_PRACTICES = local_dict.get('GPU_BEST_PRACTICES')
+    
+    if not GPU_SPEC_INFO or not GPU_DEFINITIONS or not GPU_BEST_PRACTICES:
+        raise ValueError("GPU_SPEC_INFO or GPU_DEFINITIONS or GPU_BEST_PRACTICES not found in gpu_spec_info_src")
+
+    assert gpu_name in GPU_SPEC_INFO, f"GPU name {gpu_name} not found in GPU_SPEC_INFO"
+
+    prompt = HIP_PROBLEM_STATEMENT
+
+    if example_arch_src != "" and example_new_arch_src != "":
+        prompt += f"""
+        Here's an example to show you the syntax of inline embedding custom CUDA operators in torch: The example given architecture is: \n
+        ``` \n
+        {example_arch_src}
+        ``` \n
+        The example new arch with custom CUDA kernels looks like this: 
+        ```
+        {example_new_arch_src}
+        ``` \n
+        """
+    
+    curr_gpu_spec_info = GPU_SPEC_INFO[gpu_name]
+
+    gpu_architecture = curr_gpu_spec_info.get("GPU Architecture")
+    prompt += f"""
+    Here is some information about the underlying hardware that you should keep in mind. \n\n
+The GPU that will run the kernel is AMD {gpu_name}, {gpu_architecture} architecture.\n\n"""
+    
+    for key, value in curr_gpu_spec_info.items():
+        if key == "GPU Architecture":
+            continue
+        prompt += f"""- We have {value} of {key}.\n"""
+    
+    prompt += f"""\n\n
+Here are some concepts about the GPU architecture that could be helpful: \n\n"""
+    for key, value in GPU_DEFINITIONS.items():
+        prompt += f"""- {key}: {value}\n"""
+
+    prompt += f"""\n\n
+Here are some best practices for writing HIP kernels on GPU: \n\n"""
+    for best_practice in GPU_BEST_PRACTICES:
+        prompt += f"""- {best_practice}\n"""
+
+
+    prompt += f"""
+    You are given the following architecture: \n
+    ```
+    {ref_arch_src}
+    ```
+    """
+
+    prompt += HIP_PROBLEM_INSTRUCTION
+    return prompt
+
+
+def prompt_fix_compile_hip(ref_arch_src, custom_hip_kernel, metadata):
+    prompt = HIP_PROBLEM_STATEMENT
+    prompt += f"""
+    With the following architecture:
+    ```
+    {ref_arch_src}
+    ```
+    You generated the following solution and it failed to compile:
+    ```
+    {custom_hip_kernel}
+    ```
+    Here's the metadata of the compilation error:
+    ```
+    {metadata}
+    ```
+    
+    Please fix the compilation error in the new model code. Please output the corrected code in codeblocks.
+    """
+    return prompt
+
+
+def prompt_fix_correctness_hip(ref_arch_src, custom_hip_kernel, metadata):
+    prompt = HIP_PROBLEM_STATEMENT
+    prompt += f"""
+    With the following architecture:
+    ```
+    {ref_arch_src}
+    ```
+    You generated the following solution and it failed correctness:
+    ```
+    {custom_hip_kernel}
+    ```
+    Here's the metadata of the correctness error:
+    ```
+    {metadata}
+    ```
+    Please consider how your custom Triton kernels are implemented, how it is different from the reference implementation, and fix the correctness error in the new model code. Please output the corrected code in codeblocks.
+    """
+    return prompt
+
+
+################################################################################
 # Unified API
 ################################################################################
 
@@ -502,7 +723,7 @@ def get_prompt_for_backend(ref_arch_src: str, backend: str = "triton") -> str:
     
     Args:
         ref_arch_src: Reference architecture source code
-        backend: One of 'triton', 'tilelang', 'cute'
+        backend: One of 'triton', 'tilelang', 'cute', 'hip'
     
     Returns:
         Prompt string for the specified backend
@@ -515,6 +736,8 @@ def get_prompt_for_backend(ref_arch_src: str, backend: str = "triton") -> str:
         return prompt_generate_custom_tilelang_from_prompt_template(ref_arch_src)
     elif backend_lower == "cute":
         return prompt_generate_custom_cute_from_prompt_template(ref_arch_src)
+    elif backend_lower == "hip":
+        return prompt_generate_custom_hip_from_prompt_template(ref_arch_src)
     else:
         raise ValueError(
             f"Unsupported backend: {backend}. Must be one of: 'triton', 'tilelang', 'cute'"

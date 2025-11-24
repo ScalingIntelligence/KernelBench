@@ -370,7 +370,7 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     Args:
         input: Input tensor or non-tensor value
         device: Target CUDA device
-        backend: Backend type (e.g., 'cuda', 'triton', 'cute')
+        backend: Backend type (e.g., 'cuda', `hip`, 'triton', 'cute')
         precision: torch.dtype 
     Returns:
         Processed tensor on correct device with correct dtype, or original value if not a tensor
@@ -399,7 +399,7 @@ def eval_kernel_against_ref(
     device: Union[torch.device, int] = (
         torch.cuda.current_device() if torch.cuda.is_available() else None
     ),  # have to run on GPU
-    backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
+    backend: str = "cuda",  # can be 'cuda', 'hip', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype = torch.float32,
 ) -> KernelExecResult:
     """
@@ -408,7 +408,7 @@ def eval_kernel_against_ref(
     num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
     num_perf_trials: run the evalutation many times to take the average
     device: GPU (cuda) device to run the evalutation on
-    backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
+    backend: str, one of 'cuda', 'hip', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
     """
     # TODO: check device is busy
@@ -488,7 +488,7 @@ def eval_kernel_against_ref(
                 custom_model_src, entry_point="ModelNew"
             )
         else:
-            # Default CUDA backend
+            # Default CUDA/HIP backend
             ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:

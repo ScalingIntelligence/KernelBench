@@ -172,11 +172,11 @@ def main(config: EvalConfig):
     # Use appropriate prompt constructor based on backend
     if config.backend == "cuda":
         custom_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
-    elif config.backend in ["triton", "tilelang", "cute"]:
+    elif config.backend in ["triton", "tilelang", "cute", "hip"]:
         custom_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
     else:
         raise ValueError(
-            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'tilelang', or 'cute'."
+            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'tilelang', 'cute', or 'hip'."
         )
 
     if config.log_prompt:
