@@ -456,12 +456,6 @@ Here are some best practices for writing CUDA kernels on GPU: \n\n"""
     return prompt
 
 
-    return Nonoe
-
-
-
-
-
 def prompt_fix_compile(ref_arch_src, custom_cuda, metadata):
     prompt = PROBLEM_STATEMENT
     prompt += f"""
