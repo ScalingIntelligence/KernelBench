@@ -257,10 +257,7 @@ def fetch_ref_arch_from_problem_id(
         problem_name = curr_problem_row["name"][0]
 
     elif dataset_src == "local":
-        problem_idx_in_dataset = (
-            problem_id - 1
-        )  # due to dataset list being 0-indexed locally
-        ref_arch_path = dataset[problem_idx_in_dataset]
+        ref_arch_path = dataset.get_problem_by_id(problem_id)
 
         problem_name = os.path.basename(ref_arch_path)
         ref_arch_src = read_file(ref_arch_path)
@@ -764,17 +761,18 @@ def main(config: EvalConfig):
         curr_level_dataset = construct_kernelbench_dataset(config.level)
 
     num_problems_in_level = len(curr_level_dataset)
+    all_problem_ids = curr_level_dataset.get_problem_ids() if config.dataset_src == "local" else list(range(1, num_problems_in_level + 1))
 
     if config.subset == (None, None):
-        problem_id_range = range(1, num_problems_in_level)
+        problem_ids_to_run = all_problem_ids
     else:
-        assert (
-            config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level
-        ), f"Subset range {config.subset} out of range for Level {config.level}"
-        problem_id_range = range(config.subset[0], config.subset[1])
+        start, end = config.subset
+        problem_ids_to_run = [pid for pid in all_problem_ids if start <= pid <= end]
+        if not problem_ids_to_run:
+             print(f"Warning: No problems found in subset range {config.subset}")
 
     print(
-        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_id_range}"
+        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_ids_to_run}"
     )
 
     run_dir = os.path.join(config.runs_dir, config.run_name)
@@ -784,22 +782,19 @@ def main(config: EvalConfig):
     # single_eval_example(config, curr_level_dataset, run_dir, eval_file_path)
 
     total_work = []
-    for problem_id in range(
-        problem_id_range.start, problem_id_range.stop + 1
-    ):  # end index is inclusive
+    for problem_id in problem_ids_to_run:
         for sample_id in range(config.num_samples_per_problem):
             if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
                 total_work.append((problem_id, sample_id))
 
     print(
         f"Start evaluation on {len(total_work)} unevaluated samples"
-        f" in range: {problem_id_range}"
+        f" in range: {problem_ids_to_run}"
     )
     # Build Cache on CPU as that is faster (only for local mode)
     if config.build_cache and config.eval_mode == "local":
         compile.batch_compile(total_work, config.to_dict())
 
-    # Batch Eval on multiple GPUs in parallel
     batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
 
     # Calculate pass@k metrics if multiple samples per problem were evaluated
