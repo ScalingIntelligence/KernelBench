@@ -90,7 +90,7 @@ If you don't have GPU available locally, you can set up [Modal](https://modal.co
 
 ## 🚀 Usage
 ### Run on a single problem 
-It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample.
+It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample. 
 
 ```
 # for example, run level 2 problem 40 from huggingface
@@ -106,7 +106,7 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 * **`precision`** - You can specify the precision of tensor by `precision=fp32`. Currently all of our reported results are `fp32` but we added support for `fp16` & `bf16`.
 *  **`backend`** - We are also supporting other GPU programming languages beyond `cuda`. Simply specify `backend=triton`. For now we support DSLs: `cuda`, `triton`, `cute`, `tilelang`.
 
-Check the config fields for comprehensive set of options.
+Check the config fields for comprehensive set of options. Note we provide the model with a one-shot example by default along with the minimum set of info; you can check out other prompt settings or construct your own in `src/prompt_constructor_toml.py`.
 
 ### Run on all problems 
 

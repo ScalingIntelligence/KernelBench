@@ -16,6 +16,8 @@ You can easily check some of the prompt templates we have provided and create yo
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PROMPTS_TOML = os.path.join(REPO_TOP_PATH, "src/prompts/prompts.toml")
+
+assert os.path.exists(PROMPTS_TOML), f"Prompts.toml not found at {PROMPTS_TOML}" 
 GPU_SPECS_PY = "src/prompts/hardware/gpu_specs.py"
 HARDWARE_COMPONENT_KEYS = [
     "hardware_header",

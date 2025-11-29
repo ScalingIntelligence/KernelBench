@@ -68,12 +68,12 @@ def sanity_check_inference(inference_server: callable):
 
 if __name__ == "__main__":
 
-    inference_server = utils.create_inference_server_from_presets(server_type="deepseek",
+    inference_provider_preset = "deepseek"
+    inference_server = utils.create_inference_server_from_presets(server_type=inference_provider_preset,
                                                         greedy_sample=True,
                                                         verbose=True, 
                                                         time_generation=True)
     
-
     # sanity_check_inference(inference_server)
 
     if len(sys.argv) > 1:
