@@ -10,8 +10,7 @@ from pydra import Config, REQUIRED
 
 from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_multilang import get_prompt_for_backend
+from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
@@ -55,10 +54,15 @@ class GenerationConfig(Config):
         self.api_query_interval = 0.0
 
         # Inference config
-        self.server_type = "deepseek"
-        self.model_name = "deepseek-coder"
-        self.max_tokens = 4096
+        self.server_type = None
+        self.model_name = None
+        self.max_tokens = None
         self.temperature = 0.0
+        
+        # Reasoning model specific parameters
+        self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
+        self.reasoning_effort = "low"  # for o1/o3: "low", "medium", "high"
+        self.budget_tokens = 0  # for Claude extended thinking mode
 
         # Logging
         # Top Directory to Store Runs
@@ -73,6 +77,12 @@ class GenerationConfig(Config):
         self.log_prompt = False
 
         self.backend = "cuda"
+        
+        self.precision = "fp32"
+        self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
+        self.include_hardware_info = False
+        self.hardware_gpu_name = None
+        self.custom_prompt_key = None
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -119,16 +129,24 @@ def generate_sample_single(
         problem_number == work.problem_id
     ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
 
-    # Construct Prompt
-    if config.backend == "cuda":
-        custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(
-            ref_arch_src
+    if config.custom_prompt_key:
+        custom_prompt = get_custom_prompt(
+            config.custom_prompt_key,
+            ref_arch_src=ref_arch_src,
+            backend=config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
         )
-    elif config.backend in ["triton", "cute"]:  # removed "tilelang"
-        custom_cuda_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
     else:
-        raise ValueError(
-            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', or 'cute'."
+        custom_prompt = get_prompt_for_backend(
+            ref_arch_src,
+            config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
         )
     if config.log_prompt:
         prompt_path = os.path.join(
@@ -136,13 +154,13 @@ def generate_sample_single(
             f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt",
         )
         with open(prompt_path, "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_prompt)
 
     # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    custom_kernel = inference_server(custom_prompt)
+    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
+    assert custom_kernel is not None, "Custom CUDA code generation failed"
 
     if config.verbose:
         print(
@@ -155,7 +173,7 @@ def generate_sample_single(
         f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py",
     )
     with open(kernel_path, "w") as f:
-        f.write(custom_cuda)
+        f.write(custom_kernel)
 
     return True
 
@@ -192,6 +210,57 @@ def main(config: GenerationConfig):
     Batch Generate Samples for Particular Level
     Store generated kernels in the specified run directory
     """
+    from src.utils import SERVER_PRESETS
+    
+    if config.server_type and config.server_type in SERVER_PRESETS:
+        preset = SERVER_PRESETS[config.server_type]
+        if config.model_name is None or config.model_name == "None":
+            config.model_name = preset.get("model_name", "None")
+        if config.max_tokens is None or config.max_tokens == "None":
+            config.max_tokens = preset.get("max_tokens", "None")
+        if config.temperature is None or config.temperature == "None":
+            config.temperature = preset.get("temperature", "None")
+    
+    # Convert string boolean to actual boolean for reasoning model flag
+    if isinstance(config.is_reasoning_model, str):
+        config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
+    
+    custom_prompt_key = getattr(config, "custom_prompt_key", None)
+    if isinstance(custom_prompt_key, str):
+        trimmed = custom_prompt_key.strip()
+        if trimmed.lower() in {"", "none"}:
+            custom_prompt_key = None
+        else:
+            custom_prompt_key = trimmed
+    config.custom_prompt_key = custom_prompt_key
+
+    include_hardware = config.include_hardware_info
+    if isinstance(include_hardware, str):
+        include_hardware = include_hardware.lower() in ["true", "1", "yes"]
+    config.include_hardware_info = include_hardware
+
+    supported_backends = {"cuda", "triton", "cute", "tilelang"}
+    backend = config.backend.lower()
+    if backend not in supported_backends:
+        raise ValueError(
+            f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
+        )
+    config.backend = backend
+    if backend == "tilelang":
+        config.precision = "fp16"
+
+    config.prompt_option = str(config.prompt_option).lower()
+    valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
+    if not config.custom_prompt_key:
+        if config.prompt_option not in valid_prompt_options:
+            raise ValueError(
+                f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
+            )
+        if include_hardware and not config.hardware_gpu_name:
+            raise ValueError(
+                "include_hardware_info is True but hardware_gpu_name is not provided."
+            )
+
     print(f"Starting Batch Generation with config: {config}")
 
     # Dataset Configurations
@@ -217,6 +286,10 @@ def main(config: GenerationConfig):
 
     # set up run directory
     run_dir = os.path.join(config.runs_dir, config.run_name)
+    run_exists = os.path.exists(run_dir)
+    if run_exists:
+        print(f"\n⚠️  WARNING: Run directory already exists: {run_dir}")
+        print(f"   Existing kernels will be skipped. Use a different run_name for a fresh run.\n")
     os.makedirs(run_dir, exist_ok=True)
     pydra.save_yaml(config.to_dict(), os.path.join(run_dir, "generation_config.yaml"))
 
@@ -225,14 +298,22 @@ def main(config: GenerationConfig):
     ), "supporting local file-system based storage for now"  # database integreation coming soon, need to migrate from CUDA Monkeys code
 
     problems_to_run = []
+    total_problems = 0
+    already_completed = 0
     for problem_id in range(
         problem_id_range.start, problem_id_range.stop + 1
     ):  # end index is inclusive
         for sample_id in range(config.num_samples):
+            total_problems += 1
             if not check_kernel_exists(run_dir, config.level, problem_id, sample_id):
                 problems_to_run.append(
                     WorkArgs(problem_id=int(problem_id), sample_id=sample_id)
                 )
+            else:
+                already_completed += 1
+    
+    if already_completed > 0:
+        print(f"📁 Found {already_completed}/{total_problems} kernels already generated. Generating remaining {len(problems_to_run)} kernels.")
 
     # Create inference function with config parameters
     # We provide some presets in utils but you can also pass in your own, see query_server for more details
@@ -242,6 +323,9 @@ def main(config: GenerationConfig):
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         verbose=config.verbose,
+        is_reasoning_model=config.is_reasoning_model,
+        reasoning_effort=config.reasoning_effort,
+        budget_tokens=config.budget_tokens,
     )
 
     # Launch workers
@@ -258,11 +342,16 @@ def main(config: GenerationConfig):
     )
 
     num_generated_samples = len(generation_results)
-    total_problems = len(problems_to_run)
-    num_failed_problems = total_problems - num_generated_samples
-    print(
-        f"Generated {num_generated_samples} samples for total {total_problems} problems, Please retry for the {num_failed_problems} failed problems."
-    )
+    num_attempted = len(problems_to_run)
+    num_failed_problems = num_attempted - num_generated_samples
+    
+    if num_attempted == 0:
+        print(f"\n✅ All {total_problems} kernels already exist in {run_dir}")
+        print(f"   Use a different run_name if you want to generate fresh samples.\n")
+    else:
+        print(
+            f"\nGenerated {num_generated_samples} samples for total {num_attempted} problems, Please retry for the {num_failed_problems} failed problems."
+        )
 
 
 if __name__ == "__main__":
