@@ -73,6 +73,7 @@ class EvalConfig(Config):
         self.log_eval_result = False
 
         self.backend = "cuda"
+
         # Prompt construction
         self.prompt_option = "one_shot"  # choices: zero_shot, one_shot, few_shot
         self.include_hardware_info = False
@@ -93,6 +94,7 @@ class EvalConfig(Config):
 def main(config: EvalConfig):
     """
     Keep it simple: Generate and evaluate a single sample
+    Note: will shorten code logic to make this as simple as possible
     """
     from src.utils import SERVER_PRESETS
     
@@ -136,6 +138,7 @@ def main(config: EvalConfig):
         config.problem_id <= num_problems
     ), f"Problem ID {config.problem_id} out of range for Level {config.level}"
 
+    # TODO: refactor dataset fetching logic to be as clean as posisble.
     # 1. Fetch Problem
     if config.dataset_src == "huggingface":
 
@@ -176,6 +179,7 @@ def main(config: EvalConfig):
         budget_tokens=config.budget_tokens,
     )
 
+    # Prompt Construction (Note: could be shortened in future PR)
     custom_prompt_key = getattr(config, "custom_prompt_key", None)
     if isinstance(custom_prompt_key, str):
         trimmed = custom_prompt_key.strip()
@@ -234,15 +238,11 @@ def main(config: EvalConfig):
             include_hardware=include_hardware,
             gpu_name=config.hardware_gpu_name,
         )
+    
+    os.makedirs(config.logdir, exist_ok=True)
 
     if config.log_prompt:
-        with open(
-            os.path.join(
-                config.logdir,
-                f"prompt_level_{config.level}_problem_{config.problem_id}.txt",
-            ),
-            "w",
-        ) as f:
+        with open(os.path.join(config.logdir, f"prompt_level_{config.level}_problem_{config.problem_id}.txt"), "w") as f:
             f.write(custom_prompt)
 
     # Query server with constructed prompt
@@ -256,13 +256,7 @@ def main(config: EvalConfig):
 
     # this should be optional
     if config.log:
-        with open(
-            os.path.join(
-                config.logdir,
-                f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py",
-            ),
-            "w",
-        ) as f:
+        with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py"), "w") as f:
             f.write(custom_kernel)
 
     # 3. Evaluate Kernel
@@ -284,13 +278,7 @@ def main(config: EvalConfig):
     )
 
     if config.log:
-        with open(
-            os.path.join(
-                config.logdir,
-                f"eval_result_level_{config.level}_problem_{config.problem_id}.txt",
-            ),
-            "a",
-        ) as f:
+        with open(os.path.join(config.logdir, f"eval_result_level_{config.level}_problem_{config.problem_id}.txt"), "a",) as f:
             f.write(f"Problem Name: {problem_name}\n")
             f.write(str(kernel_exec_result))
 
