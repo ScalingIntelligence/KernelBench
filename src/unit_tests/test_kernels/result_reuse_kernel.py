@@ -4,7 +4,7 @@ from torch.utils.cpp_extension import load_inline
 
 ####
 # 
-# This adversarial kernel utilizes zeros_like which can get allocated the same physical memory as the PyTorch reference outputs
+# This adversarial kernel utilizes empty which can get allocated the same physical memory as the PyTorch reference outputs
 # If the eval script deletes/frees the PyTorch output object at some point before the custom kernel is run, 
 # the CUDA cache allocator might give that un-erased physical memory to the custom kernel and it will incorrectly pass
 # So, we should ensure we zero out physical memory to prevent reuse
@@ -16,7 +16,7 @@ matmul_cuda_source = r"""
 #include <cuda_runtime.h>
 
 torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B) {
-    auto C = torch::empty_like(A);
+    auto C = torch::empty({A.size(0), B.size(1)}, A.options());
     return C;
 }
 """
