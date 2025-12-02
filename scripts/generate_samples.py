@@ -239,7 +239,7 @@ def main(config: GenerationConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "cute", "tilelang"}
+    supported_backends = {"cuda", "triton", "cute", "tilelang", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -248,6 +248,8 @@ def main(config: GenerationConfig):
     config.backend = backend
     if backend == "tilelang":
         config.precision = "fp16"
+    if backend == "thunderkittens":
+        config.precision = "fp32"  # ThunderKittens supports fp32 by default
 
     config.prompt_option = str(config.prompt_option).lower()
     valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}

@@ -197,12 +197,16 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
             f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
         )
+    
+    # ThunderKittens uses fp32 by default
+    if backend == "thunderkittens":
+        config.precision = "fp32"
 
     if backend == "tilelang":
         config.precision = "fp16" # tilelang only operates with fp16

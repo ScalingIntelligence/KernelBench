@@ -95,16 +95,35 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
-image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-    .apt_install("git",
-                "gcc-10",
-                "g++-10",
-                "clang" # note i skip a step
-                )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-    .add_local_python_source("src")
-)
+# ThunderKittens support - use TK image if directory exists locally
+THUNDERKITTENS_LOCAL_PATH = os.path.join(REPO_TOP_DIR, "ThunderKittens")
+
+SRC_PATH = os.path.join(REPO_TOP_DIR, "src")
+
+if os.path.isdir(THUNDERKITTENS_LOCAL_PATH):
+    # ThunderKittens image with TK environment and mounting
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+        .env({
+            "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+            "THUNDERKITTENS_PATH": "/root/ThunderKittens",
+            "TORCH_CUDA_ARCH_LIST": "9.0",
+            "CXX": "g++-10",
+            "CC": "gcc-10",
+        })
+        .add_local_dir(THUNDERKITTENS_LOCAL_PATH, remote_path="/root/ThunderKittens", copy=True)
+        .add_local_dir(SRC_PATH, remote_path="/root/src")
+    )
+else:
+    # Standard image
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+        .add_local_dir(SRC_PATH, remote_path="/root/src")
+    )
 
 @app.cls(image=image)
 class EvalFunc:
@@ -215,12 +234,16 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
             f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
         )
+    
+    # ThunderKittens uses fp32 by default
+    if backend == "thunderkittens":
+        config.precision = "fp32"
 
     #tilelang only supports fp16 or bf16
     if backend == "tilelang":
