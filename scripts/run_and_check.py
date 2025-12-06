@@ -26,20 +26,44 @@ gpu_arch_mapping = {
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+THUNDERKITTENS_LOCAL_PATH = os.path.join(REPO_TOP_PATH, "ThunderKittens")
+SRC_PATH = os.path.join(REPO_TOP_PATH, "src")
 
 cuda_version = "12.8.0"
 flavor = "devel"
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
-image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-    .apt_install("git", "gcc-10", "g++-10", "clang")
-    .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
-    .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
-    .add_local_python_source("src")
-    .add_local_python_source("scripts")
-)
+# ThunderKittens support - use TK image if directory exists locally
+if os.path.isdir(THUNDERKITTENS_LOCAL_PATH):
+    # ThunderKittens image with TK environment and mounting
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
+        .env({
+            "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+            "THUNDERKITTENS_PATH": "/root/ThunderKittens",
+            "TORCH_CUDA_ARCH_LIST": "9.0",
+            "CXX": "g++-10",
+            "CC": "gcc-10",
+        })
+        .add_local_dir(THUNDERKITTENS_LOCAL_PATH, remote_path="/root/ThunderKittens", copy=True)
+        .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
+        .add_local_dir(SRC_PATH, remote_path="/root/src")
+        .add_local_python_source("src")
+        .add_local_python_source("scripts")
+    )
+else:
+    # Standard image without ThunderKittens
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
+        .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
+        .add_local_python_source("src")
+        .add_local_python_source("scripts")
+    )
 
 """
 Run a pair of KernelBench format (problem, solution) to check if solution is correct and compute speedup
