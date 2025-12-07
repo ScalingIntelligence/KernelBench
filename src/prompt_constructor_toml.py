@@ -199,7 +199,13 @@ def render_prompt_by_option(
     
     # Fill in shared templates with backend-specific terms
     problem_statement = shared.get("problem_statement", "").format(backend_display=backend_display)
-    instruction = shared.get("instruction", "").format(backend_display=backend_display)
+    
+    # Use ThunderKittens-specific instruction if backend is thunderkittens
+    if backend.lower() == "thunderkittens":
+        # ThunderKittens instruction doesn't use format placeholders, so don't format it
+        instruction = shared.get("instruction_thunderkittens", shared.get("instruction", ""))
+    else:
+        instruction = shared.get("instruction", "").format(backend_display=backend_display)
     
     # Add backend-specific content to context
     context = {

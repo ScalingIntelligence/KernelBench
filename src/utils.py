@@ -371,6 +371,159 @@ def extract_code_blocks(text, code_language_types: list[str]) -> str:
     
     return " \n ".join(combined_code) if combined_code else ""
 
+
+def extract_cuda_and_python_code(output_string: str) -> tuple[str | None, str | None]:
+    """
+    Extract both CUDA (C++) and Python code blocks from model output.
+    Handles two cases:
+    1. Separate code blocks (```cpp ... ``` and ```python ... ```)
+    2. CUDA code embedded as string in Python
+    
+    Returns: (cuda_code, python_code) tuple
+    - cuda_code: The CUDA/C++ code block (or None if not found)
+    - python_code: The Python code block, converted to use separate module import (or None if not found)
+    """
+    if output_string is None:
+        return (None, None)
+    
+    trimmed = output_string.strip()
+    
+    # First, try to find separate code blocks
+    pattern = r'```(\w+)?\n(.*?)```'
+    matches = re.findall(pattern, trimmed, re.DOTALL)
+    
+    cuda_code = None
+    python_code = None
+    
+    for lang_type, code in matches:
+        code = code.strip()
+        lang_type = lang_type.lower() if lang_type else ""
+        
+        # Check for CUDA/C++ code blocks
+        if lang_type in ['cpp', 'cuda', 'c++', 'cu'] or (not lang_type and 'PYBIND11_MODULE' in code):
+            if cuda_code is None:  # Take the first CUDA block found
+                cuda_code = code
+        
+        # Check for Python code blocks
+        elif lang_type == 'python' or (not lang_type and ('import torch' in code or 'class ModelNew' in code)):
+            if python_code is None:  # Take the first Python block found
+                python_code = code
+    
+    # If we didn't find separate blocks, try to extract from embedded string pattern
+    if cuda_code is None or python_code is None:
+        # Look for Python code block that might contain embedded CUDA
+        python_block = None
+        for lang_type, code in matches:
+            code = code.strip()
+            lang_type = lang_type.lower() if lang_type else ""
+            if lang_type == 'python' or ('import torch' in code or 'class ModelNew' in code or 'load_inline' in code):
+                python_block = code
+                break
+        
+        # If no code blocks found, check the raw text
+        if python_block is None and len(matches) == 0:
+            # Try to find Python code in raw text
+            if 'import torch' in trimmed or 'class ModelNew' in trimmed or 'load_inline' in trimmed:
+                python_block = trimmed
+        
+        if python_block:
+            # Try to extract CUDA code from string variables (e.g., conv2d_cuda_source = """...""")
+            # Pattern: variable_name = """...CUDA code..."""
+            cuda_string_pattern = r'(\w+_cuda_source|\w+_cpp_source|\w+_source)\s*=\s*"""(.*?)"""'
+            cuda_matches = re.findall(cuda_string_pattern, python_block, re.DOTALL)
+            
+            if cuda_matches:
+                # Take the first match (usually the CUDA source)
+                var_name, cuda_content = cuda_matches[0]
+                if cuda_code is None:
+                    cuda_code = cuda_content.strip()
+                
+                # Convert Python code to use separate module import
+                if python_code is None:
+                    python_code = convert_python_from_inline_to_module(python_block, var_name)
+            else:
+                # If no embedded CUDA found but we have Python, use it as-is
+                if python_code is None:
+                    python_code = python_block
+    
+    return (cuda_code, python_code)
+
+
+def convert_python_from_inline_to_module(python_code: str, cuda_var_name: str) -> str:
+    """
+    Convert Python code that uses load_inline to use separate module import pattern.
+    Removes load_inline calls and related setup, replaces with tk_kernels import.
+    """
+    # Use regex to remove the CUDA source string variable definitions
+    # Pattern: variable_name = """...""" (handles multi-line)
+    cuda_source_pattern = r'\w+_(cuda|cpp)_source\s*=\s*""".*?"""'
+    converted_code = re.sub(cuda_source_pattern, '', python_code, flags=re.DOTALL)
+    
+    # Remove cpp_source declarations too
+    cpp_source_pattern = r'\w+_cpp_source\s*=\s*""".*?"""'
+    converted_code = re.sub(cpp_source_pattern, '', converted_code, flags=re.DOTALL)
+    
+    # Remove load_inline calls (may span multiple lines)
+    # Find load_inline( ... ) and remove it
+    load_inline_pattern = r'\w+\s*=\s*load_inline\([^)]*\)'
+    # Handle multi-line load_inline
+    lines = converted_code.split('\n')
+    new_lines = []
+    skip_load_inline = False
+    paren_depth = 0
+    
+    for line in lines:
+        if 'load_inline' in line:
+            skip_load_inline = True
+            paren_depth = line.count('(') - line.count(')')
+            if paren_depth <= 0:
+                skip_load_inline = False
+            continue
+        
+        if skip_load_inline:
+            paren_depth += line.count('(') - line.count(')')
+            if paren_depth <= 0:
+                skip_load_inline = False
+            continue
+        
+        new_lines.append(line)
+    
+    converted_code = '\n'.join(new_lines)
+    
+    # Remove imports related to load_inline
+    converted_code = re.sub(r'from torch\.utils\.cpp_extension import.*?load_inline[^\n]*\n', '', converted_code)
+    converted_code = re.sub(r'import.*?load_inline[^\n]*\n', '', converted_code)
+    
+    # Remove TK_PATH setup (usually only needed for load_inline)
+    converted_code = re.sub(r'# ThunderKittens header-only library path\s*\nTK_PATH\s*=.*?\n', '', converted_code, flags=re.MULTILINE)
+    converted_code = re.sub(r'TK_PATH\s*=.*?\n', '', converted_code)
+    
+    # Remove C++ source declaration comments
+    converted_code = re.sub(r'# C\+\+ source declaration\s*\n', '', converted_code)
+    converted_code = re.sub(r'# CUDA source with.*?\n', '', converted_code)
+    converted_code = re.sub(r'# Compile kernel\s*\n', '', converted_code)
+    
+    # Add import for tk_kernels (after torch imports)
+    if 'import torch' in converted_code and 'import tk_kernels' not in converted_code:
+        # Insert after the last import statement
+        import_section = re.search(r'(import torch[^\n]*\n(?:import torch[^\n]*\n)*)', converted_code)
+        if import_section:
+            converted_code = converted_code.replace(import_section.group(1), import_section.group(1) + 'import tk_kernels\n')
+        else:
+            # Fallback: add after first import
+            converted_code = re.sub(r'(import torch[^\n]*\n)', r'\1import tk_kernels\n', converted_code, count=1)
+    
+    # Replace references to the load_inline result variable
+    # Pattern: self.conv2d_op = conv2d_tk -> remove or replace
+    # Pattern: conv2d_tk.conv2d_cuda(...) -> tk_kernels.dispatch_*(...)
+    # This is tricky without knowing the exact function names, so we'll leave a comment
+    converted_code = re.sub(r'self\.\w+_op\s*=\s*\w+_tk\s*\n', '', converted_code)
+    
+    # Clean up extra blank lines
+    converted_code = re.sub(r'\n\n\n+', '\n\n', converted_code)
+    
+    return converted_code.strip()
+
 ################################################################################
 # Scale up experiments in parallel
 ################################################################################
