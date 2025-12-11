@@ -13,6 +13,7 @@ from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_promp
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
+    extract_cuda_and_python_code,
     query_server,
     read_file,
     set_gpu_arch,
@@ -250,22 +251,63 @@ def main(config: EvalConfig):
             f.write(custom_prompt)
 
     # Query server with constructed prompt
-    custom_kernel = inference_server(custom_prompt)
-    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
-
-    # check LLM is able to generate custom kernel code
-    assert (
-        custom_kernel is not None
-    ), f"Custom {config.backend} kernel code generation failed"
-
-    # this should be optional
+    custom_kernel_response = inference_server(custom_prompt)
+    
+    # For ThunderKittens, extract both CUDA and Python code
+    cuda_src = None
+    if backend == "thunderkittens":
+        cuda_code, python_code = extract_cuda_and_python_code(custom_kernel_response)
+        if cuda_code is None or python_code is None:
+            # Fallback to single code extraction
+            print("[WARNING] Could not extract separate CUDA and Python code blocks, falling back to single extraction")
+            custom_kernel = extract_first_code(custom_kernel_response, ["python", "cpp"])
+            assert custom_kernel is not None, f"Custom {config.backend} kernel code generation failed"
+        else:
+            custom_kernel = python_code
+            cuda_src = cuda_code
+            print(f"[INFO] Extracted CUDA code ({len(cuda_src)} chars) and Python code ({len(custom_kernel)} chars)")
+    else:
+        custom_kernel = extract_first_code(custom_kernel_response, ["python", "cpp"])
+        # check LLM is able to generate custom kernel code
+        assert (
+            custom_kernel is not None
+        ), f"Custom {config.backend} kernel code generation failed"
+    
+    # Log generated files
     if config.log:
+        if cuda_src:
+            with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.cu"), "w") as f:
+                f.write(cuda_src)
         with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py"), "w") as f:
             f.write(custom_kernel)
 
     # 3. Evaluate Kernel
     # NOTE: no need to wrap around process here as only a single sample
     # see batch eval for examples of process isolation
+    
+    # For ThunderKittens with separate CUDA file, compile it first
+    if backend == "thunderkittens" and cuda_src:
+        from scripts.eval_from_generations import compile_thunderkittens_cuda, prepare_kernel_src_with_cuda
+        import tempfile
+        
+        # Create temporary CUDA file
+        temp_cuda_file = os.path.join(config.logdir, f"temp_kernel_level_{config.level}_problem_{config.problem_id}.cu")
+        os.makedirs(os.path.dirname(temp_cuda_file), exist_ok=True)
+        with open(temp_cuda_file, 'w') as f:
+            f.write(cuda_src)
+        
+        # Compile CUDA module
+        cuda_build_dir = os.path.join(config.logdir, f"cuda_build_level_{config.level}_problem_{config.problem_id}")
+        cuda_module_path = compile_thunderkittens_cuda(
+            cuda_src_path=temp_cuda_file,
+            module_name="tk_kernels",
+            build_dir=cuda_build_dir,
+            verbose=config.verbose
+        )
+        
+        # Modify kernel_src to import the compiled module
+        custom_kernel = prepare_kernel_src_with_cuda(custom_kernel, cuda_module_path, "tk_kernels")
+    
     kernel_exec_result = eval_kernel_against_ref(
         ref_arch_src,
         custom_kernel,

@@ -10,6 +10,11 @@ from src import eval as kernel_eval
 from src import utils as kernel_utils
 from scripts.generate_baseline_time import measure_program_time
 from src.utils import read_file
+from scripts.tk_compile import (
+    compile_thunderkittens_cuda,
+    compile_cuda_on_modal,
+    prepare_kernel_src_with_cuda
+)
 
 # Modal setup
 app = modal.App("run_and_check")
@@ -101,150 +106,6 @@ python3 scripts/run_and_check.py ref_origin=kernelbench level=1 problem_id=1 cud
 torch.set_printoptions(precision=4, threshold=10)
 
 
-def compile_thunderkittens_cuda(cuda_src_path: str, module_name: str = "tk_kernels", 
-                                 build_dir: str = None, verbose: bool = False) -> str:
-    """
-    Compile a ThunderKittens .cu file into a Python module.
-    
-    Args:
-        cuda_src_path: Path to the .cu file
-        module_name: Name of the compiled module (default: tk_kernels)
-        build_dir: Build directory for compiled artifacts
-        verbose: Whether to print compilation output
-        
-    Returns:
-        Path to the directory containing the compiled module
-    """
-    import subprocess
-    import sys
-    import tempfile
-    
-    # Find ThunderKittens
-    tk_path = os.environ.get("THUNDERKITTENS_PATH") or os.environ.get("THUNDERKITTENS_ROOT")
-    if not tk_path:
-        # Try common locations
-        candidates = [
-            "/root/ThunderKittens",
-            os.path.join(REPO_TOP_PATH, "ThunderKittens"),
-            os.path.expanduser("~/ThunderKittens")
-        ]
-        for path in candidates:
-            if os.path.exists(os.path.join(path, "include", "kittens.cuh")):
-                tk_path = path
-                break
-    
-    if not tk_path or not os.path.exists(tk_path):
-        raise RuntimeError(f"ThunderKittens not found. Set THUNDERKITTENS_PATH environment variable.")
-    
-    print(f"[INFO] Using ThunderKittens at: {tk_path}")
-    
-    # Read the CUDA source
-    with open(cuda_src_path, 'r') as f:
-        cuda_source = f.read()
-    
-    # Create build directory
-    if build_dir is None:
-        build_dir = tempfile.mkdtemp(prefix="tk_build_")
-    os.makedirs(build_dir, exist_ok=True)
-    
-    # Write the CUDA source to the build directory
-    cu_file = os.path.join(build_dir, f"{module_name}.cu")
-    with open(cu_file, 'w') as f:
-        f.write(cuda_source)
-    
-    # Create setup.py for compilation
-    # Note: torch.utils.cpp_extension automatically includes pybind11 headers
-    # We don't need to import pybind11 - CUDAExtension handles it
-    setup_py = f'''
-import os
-from setuptools import setup
-from torch.utils.cpp_extension import BuildExtension, CUDAExtension
-
-TK_PATH = "{tk_path}"
-
-setup(
-    name="{module_name}",
-    ext_modules=[
-        CUDAExtension(
-            name="{module_name}",
-            sources=["{cu_file}"],
-            include_dirs=[
-                TK_PATH,
-                os.path.join(TK_PATH, "include"),
-            ],
-            extra_compile_args={{
-                "cxx": ["-std=c++20", "-O3", "-fPIC"],
-                "nvcc": [
-                    "-std=c++20", "-O3",
-                    "-arch=sm_90a",
-                    "-DNDEBUG",
-                    "-DKITTENS_HOPPER",
-                    "-DKITTENS_BLACKWELL",
-                    "--expt-relaxed-constexpr",
-                    "--expt-extended-lambda",
-                    "-Xcompiler", "-fPIC",
-                    "-diag-suppress=20012",
-                ],
-            }},
-            extra_link_args=["-lcuda"],
-            language="c++",
-        )
-    ],
-    cmdclass={{"build_ext": BuildExtension}},
-)
-'''
-    
-    setup_file = os.path.join(build_dir, "setup.py")
-    with open(setup_file, 'w') as f:
-        f.write(setup_py)
-    
-    # Compile the extension
-    print(f"[INFO] Compiling {cuda_src_path} as module '{module_name}'...")
-    
-    env = os.environ.copy()
-    env["TORCH_CUDA_ARCH_LIST"] = "9.0"
-    
-    try:
-        result = subprocess.run(
-            [sys.executable, "setup.py", "build_ext", "--inplace"],
-            cwd=build_dir,
-            capture_output=not verbose,
-            text=True,
-            env=env
-        )
-        
-        if result.returncode != 0:
-            print(f"[ERROR] Compilation failed:")
-            if result.stdout:
-                print(result.stdout)
-            if result.stderr:
-                print(result.stderr)
-            raise RuntimeError(f"Failed to compile {cuda_src_path}")
-        
-        if verbose and result.stdout:
-            print(result.stdout)
-            
-    except Exception as e:
-        raise RuntimeError(f"Failed to compile {cuda_src_path}: {e}")
-    
-    print(f"[INFO] Successfully compiled {module_name} to {build_dir}")
-    return build_dir
-
-
-def prepare_kernel_src_with_cuda(kernel_py_src: str, cuda_module_path: str, module_name: str = "tk_kernels") -> str:
-    """
-    Prepare the Python kernel source to use the pre-compiled CUDA module.
-    Adds the module path to sys.path so import works.
-    """
-    import_hook = f'''
-import sys
-import os
-# Add compiled CUDA module to path
-_tk_module_path = "{cuda_module_path}"
-if _tk_module_path not in sys.path:
-    sys.path.insert(0, _tk_module_path)
-'''
-    return import_hook + "\n" + kernel_py_src
 
 class ScriptConfig(Config):
     def __init__(self):
@@ -344,194 +205,6 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
             return eval_result
 
 
-# Helper function for compiling CUDA on Modal using nvcc directly (like the Makefile)
-def _compile_cuda_on_modal(cuda_src: str, module_name: str, gpu_arch: list):
-    """Compile CUDA source on Modal using nvcc directly (matching the Makefile approach)"""
-    import subprocess
-    import sys
-    import tempfile
-    from src.utils import set_gpu_arch
-    
-    set_gpu_arch(gpu_arch)
-    
-    # Find ThunderKittens
-    tk_path = os.environ.get("THUNDERKITTENS_PATH") or os.environ.get("THUNDERKITTENS_ROOT") or "/root/ThunderKittens"
-    if not os.path.exists(os.path.join(tk_path, "include", "kittens.cuh")):
-        raise RuntimeError(f"ThunderKittens not found at {tk_path}")
-    
-    print(f"[Modal] Using ThunderKittens at: {tk_path}")
-    
-    # Create build directory
-    build_dir = tempfile.mkdtemp(prefix="tk_modal_build_")
-    os.makedirs(build_dir, exist_ok=True)
-    
-    # Write the CUDA source
-    cu_file = os.path.join(build_dir, f"{module_name}.cu")
-    with open(cu_file, 'w') as f:
-        f.write(cuda_src)
-    
-    # Get pybind11 includes - try command line first, then find in site-packages
-    pybind11_includes = ""
-    try:
-        pybind11_result = subprocess.run(
-            [sys.executable, "-m", "pybind11", "--includes"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        pybind11_includes = pybind11_result.stdout.strip()
-    except:
-        # Fallback: find pybind11 in site-packages
-        import site
-        import glob
-        for site_pkg in site.getsitepackages():
-            pybind11_paths = glob.glob(os.path.join(site_pkg, "pybind11", "include"))
-            if pybind11_paths:
-                pybind11_includes = f"-I{pybind11_paths[0]}"
-                break
-        
-        # If still not found, try common locations
-        if not pybind11_includes:
-            common_paths = [
-                "/usr/local/include/pybind11",
-                "/usr/include/pybind11",
-                os.path.expanduser("~/.local/include/pybind11"),
-            ]
-            for path in common_paths:
-                if os.path.exists(path):
-                    pybind11_includes = f"-I{path}"
-                    break
-        
-        if not pybind11_includes:
-            print("[Modal WARNING] pybind11 includes not found, compilation may fail")
-    
-    # Get Python config - try python3-config first, then python-config
-    python_ldflags = ""
-    try:
-        python_config_result = subprocess.run(
-            ["python3-config", "--ldflags"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        python_ldflags = python_config_result.stdout.strip()
-    except:
-        try:
-            python_config_result = subprocess.run(
-                ["python-config", "--ldflags"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            python_ldflags = python_config_result.stdout.strip()
-        except:
-            # Fallback - try to construct from sysconfig
-            import sysconfig
-            python_ldflags = f"-L{sysconfig.get_config_var('LIBDIR')} -lpython{sys.version_info.major}.{sys.version_info.minor}"
-    
-    # Get Python extension suffix
-    try:
-        ext_suffix_result = subprocess.run(
-            ["python3-config", "--extension-suffix"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        ext_suffix = ext_suffix_result.stdout.strip()
-    except:
-        try:
-            ext_suffix_result = subprocess.run(
-                ["python-config", "--extension-suffix"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            ext_suffix = ext_suffix_result.stdout.strip()
-        except:
-            # Fallback
-            import sysconfig
-            ext_suffix = sysconfig.get_config_var('EXT_SUFFIX') or '.so'
-    
-    # Build nvcc command matching the Makefile
-    output_so = os.path.join(build_dir, f"{module_name}{ext_suffix}")
-    
-    # Parse pybind11 includes (they come as "-I/path1 -I/path2")
-    pybind11_include_list = pybind11_includes.split() if pybind11_includes else []
-    
-    # Parse python ldflags (they come as "-L/path -lpython3.10 ...")
-    python_ldflags_list = python_ldflags.split() if python_ldflags else []
-    
-    nvcc_flags = [
-        "-DNDEBUG",
-        "-Xcompiler", "-fPIE",
-        "--expt-extended-lambda",
-        "--expt-relaxed-constexpr",
-        "-Xcompiler", "-Wno-psabi",
-        "-Xcompiler", "-fno-strict-aliasing",
-        "--use_fast_math",
-        "-forward-unknown-to-host-compiler",
-        "-O3",
-        "-Xnvlink=--verbose",
-        "-Xptxas=--verbose",
-        "-Xptxas=--warn-on-spills",
-        "-std=c++20",
-        "-x", "cu",
-        "-lrt", "-lpthread", "-ldl", "-lcuda", "-lcudadevrt", "-lcudart_static", "-lcublas",
-        f"-I{tk_path}/include",
-    ]
-    
-    # Add prototype include if it exists
-    if os.path.exists(os.path.join(tk_path, "prototype")):
-        nvcc_flags.append(f"-I{tk_path}/prototype")
-    
-    nvcc_flags.extend(pybind11_include_list)
-    nvcc_flags.extend(python_ldflags_list)
-    nvcc_flags.extend([
-        "-shared",
-        "-fPIC",
-        f"-lpython{sys.version_info.major}.{sys.version_info.minor}",
-        "-DKITTENS_HOPPER",
-        "-DKITTENS_BLACKWELL",
-        "-arch=sm_90a",
-        cu_file,
-        "-o", output_so
-    ])
-    
-    # Filter out empty strings
-    nvcc_flags = [f for f in nvcc_flags if f]
-    
-    print(f"[Modal] Compiling {module_name} with nvcc...")
-    print(f"[Modal] Build directory: {build_dir}")
-    print(f"[Modal] CUDA file: {cu_file}")
-    print(f"[Modal] Output: {output_so}")
-    
-    # Run nvcc
-    result = subprocess.run(
-        ["nvcc"] + nvcc_flags,
-        cwd=build_dir,
-        capture_output=True,
-        text=True
-    )
-    
-    # Always print output for debugging
-    if result.stdout:
-        print(f"[Modal] Compilation stdout:\n{result.stdout}")
-    if result.stderr:
-        print(f"[Modal] Compilation stderr:\n{result.stderr}")
-    
-    if result.returncode != 0:
-        print(f"[Modal ERROR] Compilation failed with return code {result.returncode}")
-        print(f"[Modal ERROR] Full stdout:\n{result.stdout}")
-        print(f"[Modal ERROR] Full stderr:\n{result.stderr}")
-        raise RuntimeError(f"Failed to compile CUDA module: {result.stderr[:500] if result.stderr else 'Unknown error'}")
-    
-    # Verify the .so file was created
-    if not os.path.exists(output_so):
-        raise RuntimeError(f"Compilation succeeded but .so file not found: {output_so}")
-    
-    print(f"[Modal] Successfully compiled {module_name}")
-    print(f"[Modal] Generated .so file: {output_so}")
-    return build_dir
 
 
 # Modal evaluation class
@@ -544,23 +217,17 @@ class EvalFunc:
         """Evaluate a single sample source code against a reference source code on Modal"""
         from src.utils import set_gpu_arch
         from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
+        from scripts.tk_compile import compile_cuda_on_modal, prepare_kernel_src_with_cuda
 
         set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")
 
         # If CUDA source provided, compile it first
         if cuda_src:
-            cuda_module_path = _compile_cuda_on_modal(cuda_src, cuda_module_name, gpu_arch)
+            cuda_module_path = compile_cuda_on_modal(cuda_src, cuda_module_name, gpu_arch)
             
             # Modify kernel_src to import the compiled module
-            import_hook = f'''
-import sys
-import os
-_tk_module_path = "{cuda_module_path}"
-if _tk_module_path not in sys.path:
-    sys.path.insert(0, _tk_module_path)
-'''
-            kernel_src = import_hook + "\n" + kernel_src
+            kernel_src = prepare_kernel_src_with_cuda(kernel_src, cuda_module_path, cuda_module_name)
             print(f"[Modal] Modified kernel source to use compiled module at {cuda_module_path}")
 
         num_correct_trials = configs["num_correct_trials"]
@@ -678,7 +345,8 @@ def main(config: ScriptConfig):
                 cuda_src_path=config.cuda_src_path,
                 module_name=config.cuda_module_name,
                 build_dir=cuda_build_dir,
-                verbose=config.verbose
+                verbose=config.verbose,
+                repo_top_path=REPO_TOP_PATH
             )
         
         # Modify kernel_src to import the compiled module
