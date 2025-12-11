@@ -41,7 +41,7 @@ if os.path.isdir(THUNDERKITTENS_LOCAL_PATH):
         modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
         .apt_install("git", "gcc-10", "g++-10", "clang")
         .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
-        .pip_install("pybind11")  # Ensure pybind11 is available for ThunderKittens compilation
+        .pip_install("pybind11")  # pybind11 needed for ThunderKittens compilation
         .env({
             "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
             "THUNDERKITTENS_PATH": "/root/ThunderKittens",
@@ -179,6 +179,7 @@ setup(
                     "-arch=sm_90a",
                     "-DNDEBUG",
                     "-DKITTENS_HOPPER",
+                    "-DKITTENS_BLACKWELL",
                     "--expt-relaxed-constexpr",
                     "--expt-extended-lambda",
                     "-Xcompiler", "-fPIC",
@@ -490,6 +491,7 @@ def _compile_cuda_on_modal(cuda_src: str, module_name: str, gpu_arch: list):
         "-fPIC",
         f"-lpython{sys.version_info.major}.{sys.version_info.minor}",
         "-DKITTENS_HOPPER",
+        "-DKITTENS_BLACKWELL",
         "-arch=sm_90a",
         cu_file,
         "-o", output_so
