@@ -2,9 +2,10 @@ import torch
 import json
 import numpy as np
 import time
-import warnings
 from typing import Any
 import os
+
+# we leverage triton's testing functionality for some timing methods
 from triton import runtime as triton_runtime
 from triton import testing as triton_testing    
 
@@ -17,9 +18,6 @@ def clear_l2_cache(device: str = "cuda"):
     Clear L2 Cache line by thrashing
     From GPU mode reference kernel repo:
     https://github.com/gpu-mode/reference-kernels/commit/7c15075a39286e88939d99d3f3a60be88b8e6223#diff-3a30a71cbf8db2badd224f4d92f9a2546925a5b522632a31d353526b7a5f3338R158-R163
-
-    We can improve this 
-    TODO; should prob check device_name
     """
     # don't reserve space for persisting lines
     # cp.cuda.runtime.cudaDeviceSetLimit(cp.cuda.runtime.cudaLimitPersistingL2CacheSize, 0)
@@ -39,6 +37,7 @@ def clear_l2_cache_triton(cache=None, device: str = "cuda"):
     """
     with torch.cuda.device(device):
         cache = triton_runtime.driver.active.get_empty_cache_for_benchmark()
+        # this effectively thrashes L2 cache under the hood too
         triton_runtime.driver.active.clear_cache(cache)
 
 
@@ -58,8 +57,8 @@ def get_timing_function(
             return time_execution_with_do_bench_interface
         case "do_bench_impl":
             return time_execution_with_do_bench_impl
-        case "cpu_time":
-            return time_execution_with_cpu_time 
+        case "host_time":
+            return time_execution_with_host_time 
         # we might add other methods in the future
         case _: 
             raise ValueError(f"Unsupported timing method: {method}")
@@ -156,10 +155,12 @@ def time_execution_with_do_bench_interface(
     verbose: bool = True,
     device: torch.device | None = None) -> list[float]:
     """
-    Just using triton's do_bench as it is 
+    Using triton's default do_bench as it is 
+    Note we don't set num_warmup and num_trials, and we use warmup 25 ms and repetition time 100 ms with Triton's default values
+    See doc: https://triton-lang.org/main/python-api/generated/triton.testing.do_bench.html
+    Benchmark the runtime of the provided function. By default, return the median runtime of fn along with the 20-th and 80-th performance percentile.
     """
-
-    do_bench_fn = lambda : kernel_fn(*args)
+    do_bench_fn = lambda : kernel_fn(*args) # wrap function with arguments
     return triton_testing.do_bench(fn=do_bench_fn,
             warmup=25,
             rep=100, 
@@ -180,6 +181,10 @@ def time_execution_with_do_bench_impl(
     This is modifying the triton do_bench codebase
     See Triton's implementation for more details
     https://github.com/triton-lang/triton/blob/9073370d5979218d1afa44ec895bbd80e7419a8c/python/triton/testing.py#L127
+
+    Note we duplicate triton's implementation and modify / comment out parts
+    to use num_warmup and num_trials that explicitly follows what user define here
+    instead of do_bench's version that computes how many times to run warmup and profile based on total warmup and repetition time
     """
 
     device = torch.cuda.current_device() if device is not None else device
@@ -243,7 +248,7 @@ def time_execution_with_do_bench_impl(
     return times
 
 
-def time_execution_with_cpu_time(
+def time_execution_with_host_time(
     kernel_fn: callable,
     args: list[Any],
     num_warmup: int = 3,
@@ -253,8 +258,12 @@ def time_execution_with_cpu_time(
     device: torch.device | None = None,
 ) -> list[float]:
     """
-    Time a CUDA kernel function over multiple trials using CPU side timing
-    [WIP]
+    Time a CUDA kernel function over multiple trials using Host (CPU) side timing
+    
+    This measures host-side wall clock time, E2E latency observed by host
+    Note that could take including Python overhead, CUDA launch/runtime costs, synchronization, all GPU work across all streams, and host OS overhaed
+    Hence results might be longer than device-side (CUDA event) timings
+
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
@@ -311,12 +320,15 @@ def time_execution_with_cpu_time(
 
 ########################################################
 # Timing stats
+# tools to help compute speedup and other time
 #########################################################
 def fetch_baseline_time(
     level_name: str, problem_id: int, dataset: list[str], baseline_time_filepath: str
 ) -> dict:
     """
     Fetch the baseline time from the time
+
+    Note: might be better to just run the refernece using torch eager and compile sometimes
     """
     if not os.path.exists(baseline_time_filepath):
         raise FileNotFoundError(
