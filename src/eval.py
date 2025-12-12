@@ -15,13 +15,12 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from typing import Union, Optional
 
+import numpy as np
+import requests
 import torch
 import torch.nn as nn
 from pydantic import BaseModel
-from triton import runtime
 
-
-# import cupy as cp   
 from . import utils, timing
 
 REPO_TOP_PATH = os.path.abspath(
@@ -47,7 +46,6 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
     if isinstance(problem_id, str):
         problem_id = int(problem_id)
 
-     # TODO: replace dataset object @Omar
     problem_path = problems[problem_id]
 
     # problem_path = os.path.join(REPO_ROOT_PATH, problem)
@@ -60,6 +58,7 @@ def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str
     else:
         return (problem_path, ref_arch)
 
+
 def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
     PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
     dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
@@ -70,36 +69,6 @@ def set_seed(seed: int):
     torch.manual_seed(seed)
     # NOTE: this only sets on current cuda device
     torch.cuda.manual_seed(seed)
-
-
-def clear_l2_cache(device: str = "cuda"):
-    """
-    Clear L2 Cache line by thrashing
-    From GPU mode reference kernel repo:
-    https://github.com/gpu-mode/reference-kernels/commit/7c15075a39286e88939d99d3f3a60be88b8e6223#diff-3a30a71cbf8db2badd224f4d92f9a2546925a5b522632a31d353526b7a5f3338R158-R163
-
-    We can improve this 
-    TODO; should prob check device_name
-    """
-    # don't reserve space for persisting lines
-    # cp.cuda.runtime.cudaDeviceSetLimit(cp.cuda.runtime.cudaLimitPersistingL2CacheSize, 0)
-    
-    # Thrash L2 cache by creating a larger dummy tensor, effectively flushing the cache
-    # 32 * 1024 * 1024 * 8B = 256MB 
-    # NOTE: we can make this more adaptive based on device
-    # L2 cache sizes: A100=40MB, H100=50MB, H200=90MB, RTX4090=72MB, L40S=48MB, Blackwell≈192MB → overwrite >200MB to fully thrash L2
-    dummy = torch.empty((32, 1024, 1024), dtype=torch.int64, device=device)
-    # write to tenosr with inplace fill
-    dummy.fill_(42) 
-    del dummy
-
-def clear_l2_cache_triton(cache, device): 
-    # cp.cuda.runtime.cudaDeviceSetLimit(
-    #     cp.cuda.runtime.cudaLimitPersistingL2CacheSize, 0
-    # )
-    cache = runtime.driver.active.get_empty_cache_for_benchmark()
-    runtime.driver.active.clear_cache(cache)
-
 
 def get_torch_dtype_from_string(precision: str) -> torch.dtype:
     """
@@ -138,8 +107,9 @@ def get_tolerance_for_precision(precision: str | torch.dtype) -> float:
 
 class KernelExecResult(BaseModel):
     """
-    Single Kernel Execution - all the information it needs
+    Single Kernel Execution
     """
+
     compiled: bool = False
     correctness: bool = False
     metadata: dict = {}
@@ -417,57 +387,6 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     return input_tensor.to(device=device)
 
 
-def load_kernel(
-    verbose: str,
-    backend: str,
-    custom_model_src, 
-    context,
-    build_dir,
-    device,
-    metadata: dict,
-    ) -> tuple[Union[nn.Module, KernelExecResult, None], Optional[tempfile.NamedTemporaryFile]]:
-    '''KernelExecResult means that loading the kernel failed (either because of compilation or something else), ModelNew that we succesfully loaded ModelNew'''
-    if verbose:
-        print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
-
-    try:
-        os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
-        tempfile = None
-        
-        if backend.lower() in ["triton", "tilelang", "cute"]:
-            # Use tempfile approach for triton, tilelang, and cute
-            # These DSLs require proper module import for JIT decorators to work
-            ModelNew, tempfile = load_custom_model_with_tempfile(
-                custom_model_src, entry_point="ModelNew"
-            )
-        else:
-            # Default CUDA backend
-            ModelNew = load_custom_model(custom_model_src, context, build_dir)
-        torch.cuda.synchronize(device=device)  # not sure if this is too much
-    except Exception as e:
-        print(
-            f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
-        )
-        # TODO: add metadata for compilation error (how to we get the compilation error message?)
-
-        if "lock" in str(e) or "No such file or directory" in str(e):
-            # this is a lock file error, likely due to concurrent compilation
-            # this does not necessarily mean the compilation failed, but we should retry
-            print(
-                f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
-            )
-            graceful_eval_cleanup(context, device, tempfile)
-            return None, None
-        else:
-            metadata["compilation_error_name"] = get_error_name(e)
-            metadata["compilation_error"] = str(e)
-            graceful_eval_cleanup(context, device, tempfile)
-            return KernelExecResult(
-                compiled=False, metadata=metadata
-            ), None
-    return ModelNew, tempfile
-
-
 def eval_kernel_against_ref(
     original_model_src: str,
     custom_model_src: str,
@@ -551,15 +470,50 @@ def eval_kernel_against_ref(
         assert hasattr(original_model, "forward")
         if verbose:
             print("[Eval] Original Model Loaded")
-    result, tempfile = load_kernel(
-        verbose, backend, custom_model_src, context, build_dir, device, metadata
-    )
-    if isinstance(result, KernelExecResult):
-        return result # loading the kernel failed, return the exec result
-    if result is None:
-        # lockfile / concurrent compilation: retryable failure
-        return None
-    ModelNew = result # we passed loading
+    
+    if verbose:
+        print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
+
+    # this is where compilation happens
+    try:
+        os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
+        tempfile = None
+        # add hash for later to distinguish between multi-turn kernels
+        
+        backend_lower = backend.lower()
+        if backend_lower in ["triton", "tilelang", "cute"]:
+            # Use tempfile approach for triton, tilelang, and cute
+            # These DSLs require proper module import for JIT decorators to work
+            ModelNew, tempfile = load_custom_model_with_tempfile(
+                custom_model_src, entry_point="ModelNew"
+            )
+        else:
+            # Default CUDA backend
+            ModelNew = load_custom_model(custom_model_src, context, build_dir)
+        torch.cuda.synchronize(device=device)  # not sure if this is too much
+    except Exception as e:
+        print(
+            f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
+        )
+        # TODO: add metadata for compilation error (how to we get the compilation error message?)
+
+        if "lock" in str(e) or "No such file or directory" in str(e):
+            # this is a lock file error, likely due to concurrent compilation
+            # this does not necessarily mean the compilation failed, but we should retry
+            print(
+                f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
+            )
+            graceful_eval_cleanup(context, device, tempfile)
+            return None
+        else:
+            metadata["compilation_error_name"] = get_error_name(e)
+            metadata["compilation_error"] = e
+            graceful_eval_cleanup(context, device, tempfile)
+            return KernelExecResult(
+                compiled=False, metadata=metadata
+            )  # skip further steps
+
+    # at this point we passed compilation
     try:
         with torch.no_grad():
             set_seed(seed_num)  # set seed for reproducible weights
@@ -582,7 +536,7 @@ def eval_kernel_against_ref(
             compiled=True, correctness=False, metadata=metadata
         )  # skip further steps
 
-    # kernel_exec_result = None
+    kernel_exec_result = None
 
     # Check Correctness
     if verbose:
@@ -624,9 +578,9 @@ def eval_kernel_against_ref(
                 model_new = custom_model.to(device=device, dtype=precision)
                 torch.cuda.synchronize(device=device)
 
-                # TODO: replace functions from timing based on we choose
-                # we should pass in which timing method you wanna do
-                elapsed_times = timing.time_execution_with_cuda_event(
+                # support multiple timing backend
+                timing_fn = timing.get_timing_function("cuda_event")
+                elapsed_times = timing_fn(
                     model_new,
                     inputs,
                     num_trials=num_perf_trials,
@@ -671,7 +625,6 @@ def register_and_format_exception(
     metadata[exception_type] = exception_str
 
     return metadata
-
 
 
 def run_and_check_correctness(
@@ -854,7 +807,6 @@ def check_metadata_serializable_all_types(metadata: dict):
             f"[WARNING] Metadata now converted to be JSON serializable: {converted_metadata}"
         )
         return converted_metadata
-
 
 
 
