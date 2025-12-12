@@ -105,8 +105,6 @@ python3 scripts/run_and_check.py ref_origin=kernelbench level=1 problem_id=1 cud
 
 torch.set_printoptions(precision=4, threshold=10)
 
-
-
 class ScriptConfig(Config):
     def __init__(self):
 
