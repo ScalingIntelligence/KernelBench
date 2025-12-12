@@ -170,52 +170,20 @@ def generate_sample_single(
         with open(raw_response_path, "w") as f:
             f.write(custom_kernel_response)
         
-        # Try to extract both code blocks
+        # Extract both code blocks
         cuda_code, python_code = extract_cuda_and_python_code(custom_kernel_response)
         
-        # Fallback: if extraction failed, try to extract a single code block and split it
-        if cuda_code is None or python_code is None:
-            print(f"[WARNING] Failed to extract both code blocks for problem {work.problem_id} sample {work.sample_id}")
-            print(f"  - CUDA code found: {cuda_code is not None}")
-            print(f"  - Python code found: {python_code is not None}")
-            
-            # Try fallback: extract first code block and see if we can split it
-            single_code = extract_first_code(custom_kernel_response, ["python", "cpp", "cuda", "cu"])
-            if single_code:
-                # Try to split by looking for PYBIND11_MODULE or other markers
-                if "PYBIND11_MODULE" in single_code:
-                    # This looks like CUDA code, try to find Python code separately
-                    if python_code is None:
-                        # Try to extract Python code from remaining response
-                        python_code = extract_first_code(custom_kernel_response.replace(single_code, ""), ["python"])
-                    if cuda_code is None:
-                        cuda_code = single_code
-                elif "import torch" in single_code or "class ModelNew" in single_code:
-                    # This looks like Python code
-                    if python_code is None:
-                        python_code = single_code
-                    # Try to find CUDA code
-                    if cuda_code is None:
-                        # Look for other code blocks
-                        remaining = custom_kernel_response.replace(f"```python\n{single_code}\n```", "")
-                        cuda_code = extract_first_code(remaining, ["cpp", "cuda", "cu"])
-                else:
-                    # Unknown format, try to use as CUDA if we don't have it
-                    if cuda_code is None:
-                        cuda_code = single_code
+        # Check LLM is able to generate both CUDA and Python code
+        assert cuda_code is not None, "Custom CUDA code generation failed"
+        assert python_code is not None, "Custom Python code generation failed"
         
-        # Write out both files even if empty (for debugging)
         # Store CUDA file (.cu)
         cuda_path = os.path.join(
             run_dir,
             f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.cu",
         )
         with open(cuda_path, "w") as f:
-            if cuda_code:
-                f.write(cuda_code)
-            else:
-                f.write(f"# CUDA code extraction failed for problem {work.problem_id} sample {work.sample_id}\n")
-                f.write(f"# Raw response saved to: {os.path.basename(raw_response_path)}\n")
+            f.write(cuda_code)
         
         # Store Python file (.py)
         kernel_path = os.path.join(
@@ -223,29 +191,12 @@ def generate_sample_single(
             f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py",
         )
         with open(kernel_path, "w") as f:
-            if python_code:
-                f.write(python_code)
-            else:
-                f.write(f"# Python code extraction failed for problem {work.problem_id} sample {work.sample_id}\n")
-                f.write(f"# Raw response saved to: {os.path.basename(raw_response_path)}\n")
+            f.write(python_code)
         
         if config.verbose:
             print(
                 f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}"
             )
-            if cuda_code:
-                print(f"  - CUDA code: {len(cuda_code)} characters")
-            else:
-                print(f"  - CUDA code: NOT FOUND")
-            if python_code:
-                print(f"  - Python code: {len(python_code)} characters")
-            else:
-                print(f"  - Python code: NOT FOUND")
-            print(f"  - Raw response saved to: {os.path.basename(raw_response_path)}")
-        
-        # Warn if extraction failed but don't fail
-        if cuda_code is None or python_code is None:
-            print(f"[WARNING] Partial extraction for problem {work.problem_id} sample {work.sample_id}. Check raw_response.txt file.")
     else:
         # For other backends, extract single code block (Python or inline CUDA)
         custom_kernel = extract_first_code(custom_kernel_response, ["python", "cpp"])
@@ -459,19 +410,3 @@ def main(config: GenerationConfig):
 
 if __name__ == "__main__":
     main()
-
-
-
-# python scripts/generate_samples.py \
-# run_name=new_tk \
-# runs_dir=/Users/willychan/Desktop/projects/dsl-monkeys/runs \
-# dataset_src=local \
-# level=1 \
-# subset="(50,50)" \
-# num_samples=1 \
-# num_workers=50 \
-# server_type=google \
-# model_name=gemini/gemini-3-pro-preview \
-# temperature=1.0 \
-# max_tokens=60000 \
-# backend=thunderkittens
