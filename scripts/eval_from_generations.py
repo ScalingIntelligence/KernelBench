@@ -55,7 +55,7 @@ torch.set_printoptions(precision=4, threshold=10)
 app = modal.App("eval_from_generations_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
 
-cuda_version = "12.4.0"  # should be no greater than host CUDA version
+cuda_version = "12.8.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -67,23 +67,7 @@ image = (
                 "g++-10",
                 "clang"
                 )
-    .pip_install(
-        "anthropic",
-        "numpy",
-        "openai",
-        "packaging",
-        "pydra_config",
-        "torch==2.5.0",
-        "tqdm",
-        "datasets",
-        "transformers",
-        "google-generativeai",
-        "together",
-        "pytest",
-        "ninja",
-        "utils",
-        "python-dotenv",
-    )
+    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
     .add_local_dir(
         KERNEL_BENCH_PATH,
         remote_path="/root/KernelBench"
@@ -169,9 +153,8 @@ class WorkArgs:
 # Modal Evaluation Class
 # GPU must be specified here for all instances
 # Retries are configured at the class level to handle GPU attachment failures
-# @modal.concurrent: Each container handles exactly ONE evaluation at a time - prevents memory leaks
 @app.cls(
-    image=image, 
+    image=image,
     gpu="A10G",
     retries=modal.Retries(
         max_retries=3,
@@ -179,7 +162,6 @@ class WorkArgs:
         initial_delay=1.0,
     )
 )
-@modal.concurrent(max_inputs=1)  # One input per container - prevents GPU memory leaks
 class ModalEvaluator:
     
     @modal.method()
@@ -197,11 +179,13 @@ class ModalEvaluator:
     ):
         """
         Evaluate a single sample on Modal GPU with automatic retries for GPU attachment failures
+        and proper GPU corruption handling via stop_fetching_inputs()
         """
         from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
         from src.utils import set_gpu_arch
         import torch
         import time
+        import modal.experimental
         
         max_wait_time = 30
         start_time = time.time()
@@ -221,24 +205,41 @@ class ModalEvaluator:
             )
         
         set_gpu_arch(gpu_arch)
-        
-        result = eval_kernel_against_ref(
-            original_model_src=ref_arch_src,
-            custom_model_src=kernel_src,
-            measure_performance=measure_performance,
-            verbose=verbose,
-            num_correct_trials=num_correct_trials,
-            num_perf_trials=num_perf_trials,
-            build_dir=None,  # Modal doesn't need persistent build dir
-            device=torch.device("cuda:0"),  # Modal has one GPU per container
-            backend=backend,
-            precision=get_torch_dtype_from_string(precision),
-        )
-        
-        # Force cleanup and exit to prevent container reuse and memory leaks
-        torch.cuda.empty_cache()
-        
-        return result  # Never reached, but needed for type checking
+
+        gpu_corrupted = False
+        try:
+            result = eval_kernel_against_ref(
+                original_model_src=ref_arch_src,
+                custom_model_src=kernel_src,
+                measure_performance=measure_performance,
+                verbose=verbose,
+                num_correct_trials=num_correct_trials,
+                num_perf_trials=num_perf_trials,
+                build_dir=None,
+                device=torch.device("cuda:0"),
+                backend=backend,
+                precision=get_torch_dtype_from_string(precision),
+            )
+        except (torch.cuda.CudaError, torch.AcceleratorError) as e:
+            # GPU error detected - retire this container to prevent contamination
+            gpu_corrupted = True
+            # TODO: Replace with more stable API in the future, thanks modal team for temp workaround.
+            modal.experimental.stop_fetching_inputs()
+            result = KernelExecResult(
+                compiled=False,
+                correctness=False,
+                metadata={
+                    "gpu_error": type(e).__name__,
+                    "error_message": str(e)[:500],
+                },
+                runtime=-1.0,
+                runtime_stats={},
+            )
+
+        if not gpu_corrupted:
+            torch.cuda.empty_cache()
+
+        return result
 
 
 def fetch_ref_arch_from_problem_id(
@@ -250,7 +251,7 @@ def fetch_ref_arch_from_problem_id(
     """
     if dataset_src == "huggingface":
         curr_problem_row = dataset.filter(
-            lambda x: x["problem_id"] == problem_id, num_proc=1, desc=None
+            lambda x: x["problem_id"] == problem_id, num_proc=None, desc=None
         )
         ref_arch_src = curr_problem_row["code"][0]
         problem_name = curr_problem_row["name"][0]
@@ -486,7 +487,9 @@ def batch_eval_modal(
                 evaluator_cls = ModalEvaluator.with_options(gpu=config.gpu) if config.gpu != "A10G" else ModalEvaluator
                 
                 # Spawn all tasks in parallel
-                # Each spawn creates a NEW container instance with a GPU
+                # Modal assigns these to available containers
+                # sometimes GPU mem state is corrupted so we will drain this container and find a new one with clean mem state.
+                # GPU corruption is handled via stop_fetching_inputs() in evaluate_single_sample_modal
                 futures = []
                 for item in work_items:
                     if item is None:
@@ -542,7 +545,7 @@ def batch_eval_modal(
                 
                 print("-" * 128)
                 print(f"[Modal Batch] Evaluation took {end_time - start_time:.2f} seconds")
-                
+
                 pbar.update(len(curr_work_batch))
 
 

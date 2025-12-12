@@ -1,8 +1,7 @@
 import sys, os
 import src.utils as utils
 import time
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-
+from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 """
 For testing infernece and quickly iterate on prompts 
 Uses functions in prompt_constructor
@@ -25,14 +24,21 @@ def inference_with_prompt(arch_path, inference_server: callable = None, log_to_l
         with open("./scratch/model.py", "w") as f:
             f.write(arch)
 
-    custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(arch)
+    custom_backend_prompt = get_prompt_for_backend(
+        ref_arch_src=arch,
+        backend="cuda",
+        option="one_shot",
+        precision="fp16",
+        include_hardware=False,
+        gpu_name="H100"
+    )
 
     if log_to_local:    
         with open(f"./scratch/prompt.py", "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_backend_prompt)
 
     # query LLM
-    custom_cuda = inference_server(custom_cuda_prompt)
+    custom_cuda = inference_server(custom_backend_prompt)
 
     custom_cuda = utils.extract_first_code(custom_cuda, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
@@ -62,13 +68,12 @@ def sanity_check_inference(inference_server: callable):
 
 if __name__ == "__main__":
 
-    inference_server = utils.create_inference_server_from_presets(server_type="together",
-                                                        model_name="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    inference_provider_preset = "deepseek"
+    inference_server = utils.create_inference_server_from_presets(server_type=inference_provider_preset,
                                                         greedy_sample=True,
                                                         verbose=True, 
                                                         time_generation=True)
     
-
     # sanity_check_inference(inference_server)
 
     if len(sys.argv) > 1:

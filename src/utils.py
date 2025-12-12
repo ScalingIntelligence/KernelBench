@@ -71,14 +71,7 @@ def query_server(
 ):
     """
     Query various sort of LLM inference API providers
-    Supports:
-    - OpenAI
-    - Deepseek
-    - Together
-    - Sambanova
-    - Anthropic
-    - Gemini / Google AI Studio
-    - Fireworks (OpenAI compatbility)
+    Done through liteLLM:
     - Local Server (SGLang, vLLM, Tokasaurus)
     """
     # Local Server (SGLang, vLLM, Tokasaurus) - special handling
