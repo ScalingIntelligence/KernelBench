@@ -67,7 +67,7 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
-# ThunderKittens support - use TK image if directory exists locally
+# ThunderKittens support: Current method uses custom TK image if the TK directory exists locally
 THUNDERKITTENS_LOCAL_PATH = os.path.join(REPO_TOP_DIR, "ThunderKittens")
 SRC_PATH = os.path.join(REPO_TOP_DIR, "src")
 
@@ -75,7 +75,11 @@ if os.path.isdir(THUNDERKITTENS_LOCAL_PATH):
     # ThunderKittens image with TK environment and mounting
     image = (
         modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .apt_install("git", 
+                     "gcc-10", 
+                     "g++-10", 
+                     "clang"
+                     )
         .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
         .pip_install("pybind11")  # Ensure pybind11 is available for ThunderKittens compilation
         .env({
@@ -85,8 +89,15 @@ if os.path.isdir(THUNDERKITTENS_LOCAL_PATH):
             "CXX": "g++-10",
             "CC": "gcc-10",
         })
-        .add_local_dir(THUNDERKITTENS_LOCAL_PATH, remote_path="/root/ThunderKittens", copy=True)
-        .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
+        .add_local_dir(
+            THUNDERKITTENS_LOCAL_PATH, 
+            remote_path="/root/ThunderKittens", 
+            copy=True
+        )
+        .add_local_dir(
+            KERNEL_BENCH_PATH, 
+            remote_path="/root/KernelBench"
+        )
         .add_local_dir(SRC_PATH, remote_path="/root/src")
         .add_local_python_source("scripts")
     )
@@ -94,12 +105,17 @@ else:
     # Standard image
     image = (
         modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .apt_install("git", 
+                     "gcc-10", 
+                     "g++-10", 
+                     "clang"
+                     )
         .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-        .pip_install("pybind11")  # Ensure pybind11 is available
-        .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
-        .add_local_dir(SRC_PATH, remote_path="/root/src")
-        .add_local_python_source("scripts")
+        .add_local_dir(
+            KERNEL_BENCH_PATH, 
+            remote_path="/root/KernelBench"
+        )
+        .add_local_python_source("src")
     )
 
 
@@ -175,8 +191,6 @@ class WorkArgs:
     problem_id: int
     sample_id: int
     device: torch.device
-
-
 
 
 # Modal Evaluation Class
