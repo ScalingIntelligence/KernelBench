@@ -22,7 +22,7 @@ from triton import runtime
 
 
 # import cupy as cp   
-import utils, timing
+from . import utils, timing
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
