@@ -2,10 +2,12 @@ import torch
 import numpy as np
 from src.eval import (
     load_original_model_and_inputs,
-    time_execution_with_cuda_event,
-    get_timing_stats,
     set_seed,
     fetch_ref_arch_from_problem_id,
+)
+from src.timing import (
+    get_timing_function,
+    get_timing_stats,
 )
 from src.dataset import construct_problem_dataset_from_problem_dir
 from src.utils import read_file
@@ -81,6 +83,7 @@ def measure_program_time(
         torch_compile_options: str="default",
         device: torch.device="cuda:0",
         verbose: bool = False,
+        timing_method: str = "cuda_event",
 ) -> dict:
     """
     Measure the time of a KernelBench reference architecture
@@ -116,8 +119,11 @@ def measure_program_time(
             
             model = model.cuda(device=device)
             torch.cuda.synchronize(device=device)
-            elapsed_times = time_execution_with_cuda_event(
-                model, *inputs, num_trials=num_trials, verbose=verbose, device=device
+
+            # run chosen timing function
+            timing_fn = get_timing_function(timing_method)
+            elapsed_times = timing_fn(
+                model, inputs, num_trials=num_trials, verbose=verbose, device=device
             )
             runtime_stats = get_timing_stats(elapsed_times, device=device)
 
