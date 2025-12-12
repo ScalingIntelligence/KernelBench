@@ -4,18 +4,11 @@ import torch
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from timing import (
-    time_execution_with_cuda_event,
-    time_execution_with_time_dot_time,
-    time_execution_with_do_bench,
-)
-
+import timing
 
 """
 Test Timing
-
 We want to systematically study different timing methodologies.
-
 """
 REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -30,10 +23,11 @@ assert os.path.exists(os.path.join(EXAMPLES_PATH, TEST_REF_FILE)), f"Reference f
 assert os.path.exists(os.path.join(EXAMPLES_PATH, TEST_KERNEL_FILE)), f"Kernel file {TEST_KERNEL_FILE} does not exist in {EXAMPLES_PATH}"
 
 
-def _run_timing_smoke_test(timing_fn):
+def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
     """
     Scaffold function for timing smoke tests.
-    
+    Smoke test for using 512x512 matmul.
+
     Args:
         timing_fn: The timing function to test
         use_args: Whether the timing function expects args parameter (True for cuda_event/time_dot_time, False for do_bench)
@@ -42,10 +36,10 @@ def _run_timing_smoke_test(timing_fn):
     if not torch.cuda.is_available():
         pytest.skip("CUDA not available, skipping timing tests")
     
-    # Create test matrices
+    # Create simple test matrices
     size = 512
-    a = torch.randn(size, size, device='cuda')
-    b = torch.randn(size, size, device='cuda')
+    a = torch.randn(size, size, device=device)
+    b = torch.randn(size, size, device=device)
     
     num_warmup = 5
     num_trials = 5
@@ -54,7 +48,8 @@ def _run_timing_smoke_test(timing_fn):
     def matmul_kernel(a, b):
         return torch.matmul(a, b)
     
-    elapsed_times = timing_fn(
+    timing_func = timing.get_timing_function(timing_func_name)
+    elapsed_times = timing_func(
         matmul_kernel,
         args=[a, b],
         num_warmup=num_warmup,
@@ -67,29 +62,30 @@ def _run_timing_smoke_test(timing_fn):
     assert len(elapsed_times) == num_trials, f"Expected {num_trials} timing results, got {len(elapsed_times)}"
     assert all(isinstance(t, float) for t in elapsed_times), "All timing results should be floats"
     assert all(t > 0 for t in elapsed_times), "All timing results should be positive"
+    print(f"smoke test matmul elapsed times with {timing_func_name} (in ms): {elapsed_times}")
 
 
-def test_time_execution_with_cuda_event_smoke():
+_run_timing_smoke_test_matmul("cuda_event")
+
+
+def test_do_bench_simple_smoke():
     """
-    Smoke test for time_execution_with_cuda_event using 512x512 matmul.
-    Tests with 5 warmup and 5 trials, validates list of 5 positive floats is returned.
+    Smoke test for do_bench itself on a simple CUDA operation.
+    Just checks it runs and returns timings.
     """
-    _run_timing_smoke_test(time_execution_with_cuda_event)
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA not available, skipping do_bench smoke test")
 
+    from do_bench import do_bench
 
-def test_time_execution_with_time_dot_time_smoke():
-    """
-    Smoke test for time_execution_with_time_dot_time using 512x512 matmul.
-    Tests with 5 warmup and 5 trials, validates list of 5 positive floats is returned.
-    """
-    _run_timing_smoke_test(time_execution_with_time_dot_time)
+    x = torch.randn(1024, device="cuda")
 
+    def fn():
+        # simple GPU op; do_bench will sync/timestamp internally
+        return (x * 2).sum()
 
-def test_time_execution_with_do_bench_smoke():
-    """
-    Smoke test for time_execution_with_do_bench using 512x512 matmul.
-    Tests with 5 warmup and 5 trials, validates list of 5 positive floats is returned.
-    """
-    _run_timing_smoke_test(time_execution_with_do_bench)
-
+    rep = 5
+    times = do_bench(fn, warmup=2, rep=rep, return_mode="all")
+    assert isinstance(times, list)
+    assert len(times) == rep
 
