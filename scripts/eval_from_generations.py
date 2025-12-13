@@ -33,6 +33,13 @@ from tqdm import tqdm
 # Modal support
 import modal
 
+# ThunderKittens compilation utilities
+from scripts.tk_compile import (
+    compile_thunderkittens_cuda,
+    compile_cuda_on_modal,
+    prepare_kernel_src_with_cuda
+)
+
 """
 Batch Evaluation from Existing Generations
 
@@ -60,20 +67,56 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
-image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-    .apt_install("git",
-                "gcc-10",
-                "g++-10",
-                "clang"
-                )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-    .add_local_dir(
-        KERNEL_BENCH_PATH,
-        remote_path="/root/KernelBench"
+# ThunderKittens support: Current method uses custom TK image if the TK directory exists locally
+THUNDERKITTENS_LOCAL_PATH = os.path.join(REPO_TOP_DIR, "ThunderKittens")
+SRC_PATH = os.path.join(REPO_TOP_DIR, "src")
+
+if os.path.isdir(THUNDERKITTENS_LOCAL_PATH):
+    # ThunderKittens image with TK environment and mounting
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", 
+                     "gcc-10", 
+                     "g++-10", 
+                     "clang"
+                     )
+        .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+        .pip_install("pybind11")  # Ensure pybind11 is available for ThunderKittens compilation
+        .env({
+            "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+            "THUNDERKITTENS_PATH": "/root/ThunderKittens",
+            "TORCH_CUDA_ARCH_LIST": "9.0",
+            "CXX": "g++-10",
+            "CC": "gcc-10",
+        })
+        .add_local_dir(
+            THUNDERKITTENS_LOCAL_PATH, 
+            remote_path="/root/ThunderKittens", 
+            copy=True
+        )
+        .add_local_dir(
+            KERNEL_BENCH_PATH, 
+            remote_path="/root/KernelBench"
+        )
+        .add_local_dir(SRC_PATH, remote_path="/root/src")
+        .add_local_python_source("scripts")
     )
-    .add_local_python_source("src")
-)
+else:
+    # Standard image
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", 
+                     "gcc-10", 
+                     "g++-10", 
+                     "clang"
+                     )
+        .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+        .add_local_dir(
+            KERNEL_BENCH_PATH, 
+            remote_path="/root/KernelBench"
+        )
+        .add_local_python_source("src")
+    )
 
 
 class EvalConfig(Config):
@@ -176,13 +219,19 @@ class ModalEvaluator:
         verbose: bool = False,
         backend: str = "cuda",
         precision: str = "fp32",
+        cuda_src: str = None,
+        cuda_module_name: str = "tk_kernels",
     ):
         """
         Evaluate a single sample on Modal GPU with automatic retries for GPU attachment failures
         and proper GPU corruption handling via stop_fetching_inputs()
+        
+        If cuda_src is provided, it will be compiled first and the kernel_src will be modified
+        to import the compiled module.
         """
         from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
         from src.utils import set_gpu_arch
+        from scripts.tk_compile import compile_cuda_on_modal, prepare_kernel_src_with_cuda
         import torch
         import time
         import modal.experimental
@@ -205,6 +254,14 @@ class ModalEvaluator:
             )
         
         set_gpu_arch(gpu_arch)
+
+        # If CUDA source provided, compile it first
+        if cuda_src:
+            cuda_module_path = compile_cuda_on_modal(cuda_src, cuda_module_name, gpu_arch)
+            
+            # Modify kernel_src to import the compiled module
+            kernel_src = prepare_kernel_src_with_cuda(kernel_src, cuda_module_path, cuda_module_name)
+            print(f"[Modal] Modified kernel source to use compiled module at {cuda_module_path}")
 
         gpu_corrupted = False
         try:
@@ -275,20 +332,33 @@ def fetch_ref_arch_from_problem_id(
     return ref_arch_src
 
 
+
+
 def fetch_kernel_from_disk(
     run_dir: str, level: int, problem_id: int, sample_id: int
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """
-    Fetch kernel file from disk (stored in runs/{run_name})
+    Fetch kernel files from disk (stored in runs/{run_name})
+    Returns: (kernel_py_src, cuda_src_path) tuple
+    - kernel_py_src: Python kernel source code (or None if not found)
+    - cuda_src_path: Path to .cu file if it exists (or None)
     """
     kernel_path = os.path.join(
         run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py"
     )
+    cuda_path = os.path.join(
+        run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.cu"
+    )
 
+    kernel_py_src = None
     if os.path.exists(kernel_path):
-        return read_file(kernel_path)
-    else:
-        return None
+        kernel_py_src = read_file(kernel_path)
+    
+    cuda_src_path = None
+    if os.path.exists(cuda_path):
+        cuda_src_path = cuda_path
+    
+    return (kernel_py_src, cuda_src_path)
 
 
 def evaluate_single_sample(
@@ -309,11 +379,31 @@ def evaluate_single_sample(
 
     # fetch kernel from disk
     # Add database support in the future
-    kernel_src = fetch_kernel_from_disk(run_dir, configs.level, problem_id, sample_id)
+    kernel_py_src, cuda_src_path = fetch_kernel_from_disk(run_dir, configs.level, problem_id, sample_id)
 
     assert (
-        kernel_src is not None
+        kernel_py_src is not None
     ), f"Kernel not found for problem {problem_id} sample {sample_id}"
+    
+    # For local evaluation, if CUDA source exists, compile it first
+    kernel_src = kernel_py_src
+    if cuda_src_path:
+        # Create build directory
+        cuda_build_dir = os.path.join(
+            configs.kernel_eval_build_dir, configs.run_name, f"{problem_id}", f"{sample_id}", "cuda_build"
+        )
+        
+        # Compile CUDA module
+        cuda_module_path = compile_thunderkittens_cuda(
+            cuda_src_path=cuda_src_path,
+            module_name="tk_kernels",
+            build_dir=cuda_build_dir,
+            verbose=configs.verbose,
+            repo_top_path=REPO_TOP_DIR
+        )
+        
+        # Modify kernel_src to import the compiled module
+        kernel_src = prepare_kernel_src_with_cuda(kernel_src, cuda_module_path, "tk_kernels")
 
     build_dir = os.path.join(
         configs.kernel_eval_build_dir, configs.run_name, f"{problem_id}", f"{sample_id}"
@@ -466,17 +556,24 @@ def batch_eval_modal(
                     ref_arch_src = fetch_ref_arch_from_problem_id(
                         curr_level_dataset, problem_id, config.dataset_src
                     )
-                    kernel_src = fetch_kernel_from_disk(run_dir, config.level, problem_id, sample_id)
+                    kernel_py_src, cuda_src_path = fetch_kernel_from_disk(run_dir, config.level, problem_id, sample_id)
                     
-                    if kernel_src is None:
+                    if kernel_py_src is None:
                         print(f"[WARNING] Kernel not found for problem {problem_id} sample {sample_id}")
                         work_items.append(None)
                     else:
+                        # Read CUDA source if it exists
+                        cuda_src = None
+                        if cuda_src_path:
+                            cuda_src = read_file(cuda_src_path)
+                            print(f"[INFO] Found CUDA source for problem {problem_id} sample {sample_id}: {cuda_src_path}")
+                        
                         work_items.append({
                             'problem_id': problem_id,
                             'sample_id': sample_id,
                             'ref_arch_src': ref_arch_src,
-                            'kernel_src': kernel_src,
+                            'kernel_src': kernel_py_src,
+                            'cuda_src': cuda_src,
                         })
                 
                 # Submit all evaluations in parallel using Modal
@@ -505,6 +602,8 @@ def batch_eval_modal(
                             verbose=config.verbose,
                             backend=config.backend,
                             precision=config.precision,
+                            cuda_src=item.get('cuda_src'),
+                            cuda_module_name="tk_kernels",
                         )
                         futures.append(future)
                 

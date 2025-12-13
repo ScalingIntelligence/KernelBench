@@ -13,10 +13,10 @@ import modal
 
 from datasets import load_dataset
 
-#from src.dataset import construct_kernelbench_dataset
+from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
-from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
+from src.utils import extract_first_code, extract_cuda_and_python_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
 
@@ -26,6 +26,8 @@ Easiest way to get started, to test a single problem for experimentation or debu
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+KERNEL_BENCH_PATH = os.path.join(REPO_TOP_DIR, "KernelBench")
+SCRIPTS_PATH = os.path.join(REPO_TOP_DIR, "scripts")
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -95,22 +97,48 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
-image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-    .apt_install("git",
-                "gcc-10",
-                "g++-10",
-                "clang" # note i skip a step
-                )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-    .add_local_python_source("src")
-)
+# ThunderKittens support - use TK image if directory exists locally
+THUNDERKITTENS_LOCAL_PATH = os.path.join(REPO_TOP_DIR, "ThunderKittens")
+
+SRC_PATH = os.path.join(REPO_TOP_DIR, "src")
+
+if os.path.isdir(THUNDERKITTENS_LOCAL_PATH):
+    # ThunderKittens image with TK environment and mounting
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+        .pip_install("pybind11")  # Ensure pybind11 is available for ThunderKittens compilation
+        .env({
+            "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+            "THUNDERKITTENS_PATH": "/root/ThunderKittens",
+            "TORCH_CUDA_ARCH_LIST": "9.0",
+            "CXX": "g++-10",
+            "CC": "gcc-10",
+        })
+        .add_local_dir(THUNDERKITTENS_LOCAL_PATH, remote_path="/root/ThunderKittens", copy=True)
+        .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
+        .add_local_dir(SRC_PATH, remote_path="/root/src")
+        .add_local_dir(SCRIPTS_PATH, remote_path="/root/scripts")
+    )
+else:
+    # Standard image
+    image = (
+        modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+        .apt_install("git", "gcc-10", "g++-10", "clang")
+        .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+        .pip_install("pybind11")  # Ensure pybind11 is available
+        .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
+        .add_local_dir(SRC_PATH, remote_path="/root/src")
+        .add_local_dir(SCRIPTS_PATH, remote_path="/root/scripts")
+    )
+
 
 @app.cls(image=image)
 class EvalFunc:
 
     @modal.method()
-    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend, precision):
+    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend, precision, cuda_src=None, cuda_module_name="tk_kernels"):
         # 3. Evaluate Kernel
         # NOTE: no need to wrap around process here as only a single sample
         # see batch eval for examples of process isolation
@@ -118,7 +146,31 @@ class EvalFunc:
         from src.eval import get_torch_dtype_from_string
         # Use utility function to set the GPU architecture in the modal environment
         from src.utils import set_gpu_arch as modal_set_gpu_arch
+        import sys
+        import os
+        
+        # Add scripts directory to path for importing tk_compile
+        if "/root/scripts" not in sys.path:
+            sys.path.insert(0, "/root/scripts")
+        from tk_compile import compile_cuda_on_modal
+        
         modal_set_gpu_arch(gpu_arch)
+        
+        # If CUDA source provided, compile it first (for ThunderKittens)
+        if cuda_src:
+            cuda_module_path = compile_cuda_on_modal(cuda_src, cuda_module_name, gpu_arch, repo_top_path="/root")
+            
+            # Modify kernel_src to import the compiled module
+            import_hook = f'''
+import sys
+import os
+_tk_module_path = "{cuda_module_path}"
+if _tk_module_path not in sys.path:
+    sys.path.insert(0, _tk_module_path)
+'''
+            custom_kernel = import_hook + "\n" + custom_kernel
+            print(f"[Modal] Modified kernel source to use compiled module at {cuda_module_path}")
+        
         return eval_kernel_against_ref(
             ref_arch_src, custom_kernel, verbose=verbose, measure_performance=True, 
             num_correct_trials=5, num_perf_trials=100, backend=backend, precision=get_torch_dtype_from_string(precision)
@@ -152,6 +204,8 @@ def main(config: EvalConfig):
     if config.dataset_src == "huggingface":
         dataset = load_dataset(config.dataset_name)
         curr_level_dataset = dataset[f"level_{config.level}"]
+    elif config.dataset_src == "local":
+        curr_level_dataset = construct_kernelbench_dataset(config.level)
 
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)
@@ -215,12 +269,16 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
             f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
         )
+    
+    # ThunderKittens uses fp32 by default
+    if backend == "thunderkittens":
+        config.precision = "fp32"
 
     #tilelang only supports fp16 or bf16
     if backend == "tilelang":
@@ -262,19 +320,37 @@ def main(config: EvalConfig):
             f.write(custom_prompt)
 
     # Query server with constructed prompt
-    custom_kernel = inference_server(custom_prompt)
-    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
-    # check LLM is able to generate custom kernel code
-    assert custom_kernel is not None, f"Custom {config.backend} kernel code generation failed"
+    custom_kernel_response = inference_server(custom_prompt)
     
-    # this should be optional
+    # For ThunderKittens, extract both CUDA and Python code
+    cuda_src = None
+    if backend == "thunderkittens":
+        cuda_code, python_code = extract_cuda_and_python_code(custom_kernel_response)
+        if cuda_code is None or python_code is None:
+            # Fallback to single code extraction
+            print("[WARNING] Could not extract separate CUDA and Python code blocks, falling back to single extraction")
+            custom_kernel = extract_first_code(custom_kernel_response, ["python", "cpp"])
+            assert custom_kernel is not None, f"Custom {config.backend} kernel code generation failed"
+        else:
+            custom_kernel = python_code
+            cuda_src = cuda_code
+            print(f"[INFO] Extracted CUDA code ({len(cuda_src)} chars) and Python code ({len(custom_kernel)} chars)")
+    else:
+        custom_kernel = extract_first_code(custom_kernel_response, ["python", "cpp"])
+        # check LLM is able to generate custom kernel code
+        assert custom_kernel is not None, f"Custom {config.backend} kernel code generation failed"
+    
+    # Log generated files
     if config.log:
+        if cuda_src:
+            with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.cu"), "w") as f:
+                f.write(cuda_src)
         with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py"), "w") as f:
             f.write(custom_kernel)
 
     with app.run():
         kernel_exec_result = EvalFunc.with_options(gpu=config.gpu)().eval_single_sample_modal.remote(
-            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend, config.precision
+            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend, config.precision, cuda_src=cuda_src, cuda_module_name="tk_kernels"
         )
         
         print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")

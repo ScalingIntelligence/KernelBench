@@ -14,6 +14,7 @@ from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_promp
 from src.utils import (
     create_inference_server_from_presets,
     extract_first_code,
+    extract_cuda_and_python_code,
     maybe_multithread,
     read_file,
     set_gpu_arch,
@@ -157,23 +158,63 @@ def generate_sample_single(
             f.write(custom_prompt)
 
     # Query server with constructed prompt
-    custom_kernel = inference_server(custom_prompt)
-    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
-    # check LLM is able to generate custom CUDA code
-    assert custom_kernel is not None, "Custom CUDA code generation failed"
-
-    if config.verbose:
-        print(
-            f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}"
+    custom_kernel_response = inference_server(custom_prompt)
+    
+    # For ThunderKittens, extract both CUDA and Python code blocks
+    if config.backend == "thunderkittens":
+        # Save raw response for debugging
+        raw_response_path = os.path.join(
+            run_dir,
+            f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_raw_response.txt",
         )
+        with open(raw_response_path, "w") as f:
+            f.write(custom_kernel_response)
+        
+        # Extract both code blocks
+        cuda_code, python_code = extract_cuda_and_python_code(custom_kernel_response)
+        
+        # Check LLM is able to generate both CUDA and Python code
+        assert cuda_code is not None, "Custom CUDA code generation failed"
+        assert python_code is not None, "Custom Python code generation failed"
+        
+        # Store CUDA file (.cu)
+        cuda_path = os.path.join(
+            run_dir,
+            f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.cu",
+        )
+        with open(cuda_path, "w") as f:
+            f.write(cuda_code)
+        
+        # Store Python file (.py)
+        kernel_path = os.path.join(
+            run_dir,
+            f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py",
+        )
+        with open(kernel_path, "w") as f:
+            f.write(python_code)
+        
+        if config.verbose:
+            print(
+                f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}"
+            )
+    else:
+        # For other backends, extract single code block (Python or inline CUDA)
+        custom_kernel = extract_first_code(custom_kernel_response, ["python", "cpp"])
+        # check LLM is able to generate custom code
+        assert custom_kernel is not None, "Custom code generation failed"
 
-    # Store to local file
-    kernel_path = os.path.join(
-        run_dir,
-        f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py",
-    )
-    with open(kernel_path, "w") as f:
-        f.write(custom_kernel)
+        if config.verbose:
+            print(
+                f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}"
+            )
+
+        # Store to local file
+        kernel_path = os.path.join(
+            run_dir,
+            f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py",
+        )
+        with open(kernel_path, "w") as f:
+            f.write(custom_kernel)
 
     return True
 
@@ -193,15 +234,26 @@ def generate_sample_launcher(
 
 
 def check_kernel_exists(
-    run_dir: str, level: int, problem_id: int, sample_id: int
+    run_dir: str, level: int, problem_id: int, sample_id: int, backend: str = "cuda"
 ) -> bool:
     """
-    Check if a kernel for a given problem and sample ID already exists in the run directory
+    Check if a kernel for a given problem and sample ID already exists in the run directory.
+    For ThunderKittens, checks for both .cu and .py files.
+    For other backends, only checks for .py file.
     """
     kernel_path = os.path.join(
         run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py"
     )
-    return os.path.exists(kernel_path)
+    
+    if backend == "thunderkittens":
+        # For ThunderKittens, both .cu and .py files must exist
+        cuda_path = os.path.join(
+            run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.cu"
+        )
+        return os.path.exists(kernel_path) and os.path.exists(cuda_path)
+    else:
+        # For other backends, only .py file is needed
+        return os.path.exists(kernel_path)
 
 
 @pydra.main(base=GenerationConfig)
@@ -239,7 +291,7 @@ def main(config: GenerationConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "cute", "tilelang"}
+    supported_backends = {"cuda", "triton", "cute", "tilelang", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -248,6 +300,8 @@ def main(config: GenerationConfig):
     config.backend = backend
     if backend == "tilelang":
         config.precision = "fp16"
+    if backend == "thunderkittens":
+        config.precision = "fp32"  # ThunderKittens supports fp32 by default
 
     config.prompt_option = str(config.prompt_option).lower()
     valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
@@ -305,7 +359,7 @@ def main(config: GenerationConfig):
     ):  # end index is inclusive
         for sample_id in range(config.num_samples):
             total_problems += 1
-            if not check_kernel_exists(run_dir, config.level, problem_id, sample_id):
+            if not check_kernel_exists(run_dir, config.level, problem_id, sample_id, config.backend):
                 problems_to_run.append(
                     WorkArgs(problem_id=int(problem_id), sample_id=sample_id)
                 )
