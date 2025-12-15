@@ -96,7 +96,7 @@ def time_execution_with_cuda_event(
     args: list[Any],
     num_warmup: int = 3,
     num_trials: int = 10,
-    discard_first: int = 1, # not used
+    discard_first: int = 1, # set to 0 to disable
     verbose: bool = True,
     device: torch.device = None,
 ) -> list[float]:
@@ -110,7 +110,7 @@ def time_execution_with_cuda_event(
         args: Arguments to pass to kernel_fn
         num_warmup: Number of warmup iterations before timing
         num_trials: Number of timing trials to run
-        discard_first: not used
+        discard_first: Number of first trials to discard, for consistency with host_time, set to 0 to disable
         verbose: Whether to print per-trial timing info
         device: CUDA device to use, defaults to current device
 
@@ -126,17 +126,17 @@ def time_execution_with_cuda_event(
     for _ in range(num_warmup):
         kernel_fn(*args)
         torch.cuda.synchronize(device=device)
-
+    
     # note this only release PyTorch’s CUDA caching allocator, not necessarily clearing device's L2 cache
     torch.cuda.empty_cache()
-
+    
     print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}"
     )
 
     elapsed_times: list[float] = [] # in ms
 
     # Timing trials
-    for trial in range(num_trials):
+    for trial in range(num_trials + discard_first):
         torch.cuda.synchronize(device=device) # block on all streams
 
         # create event marker default is not interprocess
@@ -157,9 +157,13 @@ def time_execution_with_cuda_event(
 
         # Calculate the elapsed time in milliseconds
         elapsed_time_ms = start_event.elapsed_time(end_event)
-        if verbose:
-            print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
-        elapsed_times.append(elapsed_time_ms)
+        
+        if trial >= discard_first:
+            if verbose:
+                logical_idx = trial - discard_first + 1
+                print(f"Trial {logical_idx}: {elapsed_time_ms:.3g} ms")
+            elapsed_times.append(elapsed_time_ms)
+
 
     return elapsed_times
 

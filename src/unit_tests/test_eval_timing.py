@@ -61,9 +61,12 @@ def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
     
     # Validate results
     assert isinstance(elapsed_times, list), "Expected list of elapsed times"
+    
+    # disabled this check as do_bench does not use num_trials
     # assert len(elapsed_times) == num_trials, f"Expected {num_trials} timing results, got {len(elapsed_times)}"
     assert all(isinstance(t, float) for t in elapsed_times), "All timing results should be floats"
     assert all(t > 0 for t in elapsed_times), "All timing results should be positive"
+    # DEBUG print times
     # print(f"smoke test matmul elapsed times with {timing_func_name} (in ms): {elapsed_times}")
 
     stats = timing.get_timing_stats(elapsed_times, device=device)
@@ -74,7 +77,7 @@ def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
 # test all currently available timing methods
 def run_all_timing_tests():
     timing_methods = ["cuda_event", "host_time", "do_bench", "do_bench_impl"]
-
+    # timing_methods = ["cuda_event", "do_bench_impl"]
     for timing_method in timing_methods:
         _run_timing_smoke_test_matmul(timing_method)
 
