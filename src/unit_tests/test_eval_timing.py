@@ -37,12 +37,14 @@ def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
         pytest.skip("CUDA not available, skipping timing tests")
     
     # Create simple test matrices
-    size = 512
-    a = torch.randn(size, size, device=device)
-    b = torch.randn(size, size, device=device)
+    M = 2048
+    N = 2048
+    K = 2048
+    a = torch.randn(M, K, device=device)
+    b = torch.randn(K, N, device=device)
     
     num_warmup = 5
-    num_trials = 5
+    num_trials = 100
     
     # Define the kernel function to time
     def matmul_kernel(a, b):
@@ -69,10 +71,14 @@ def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
     print(stats)
     
 
-timing_methods = ["cuda_event", "cpu_time", "do_bench_interface", "do_bench_impl"]
+# test all currently available timing methods
+def run_all_timing_tests():
+    timing_methods = ["cuda_event", "host_time", "do_bench", "do_bench_impl"]
 
-for timing_method in timing_methods:
-    _run_timing_smoke_test_matmul(timing_method)
+    for timing_method in timing_methods:
+        _run_timing_smoke_test_matmul(timing_method)
+
+run_all_timing_tests()
 
 
 

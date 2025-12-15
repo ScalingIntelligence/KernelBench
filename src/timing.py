@@ -5,18 +5,23 @@ import time
 from typing import Any
 import os
 
+
 # we leverage triton's testing functionality for some timing methods
 from triton import runtime as triton_runtime
 from triton import testing as triton_testing    
 
 ################################################################################
-# Performance Eval
+# timing.py
+# Various timing methods and utilities for performance evaluation
+# please make a PR if you have suggestions!
+
+# Try them out at src/unit_tests/test_eval_timing.py
 ################################################################################
 
 def clear_l2_cache(device: str = "cuda"):
     """
-    Clear L2 Cache line by thrashing
-    From GPU mode reference kernel repo:
+    Clear L2 Cache line by thrashing with a large tensor
+    Acknowledge GPU mode reference kernel repo:
     https://github.com/gpu-mode/reference-kernels/commit/7c15075a39286e88939d99d3f3a60be88b8e6223#diff-3a30a71cbf8db2badd224f4d92f9a2546925a5b522632a31d353526b7a5f3338R158-R163
     """
     # don't reserve space for persisting lines
@@ -27,7 +32,7 @@ def clear_l2_cache(device: str = "cuda"):
     # NOTE: we can make this more adaptive based on device
     # L2 cache sizes: A100=40MB, H100=50MB, H200=90MB, RTX4090=72MB, L40S=48MB, Blackwell≈192MB → overwrite >200MB to fully thrash L2
     dummy = torch.empty((32, 1024, 1024), dtype=torch.int64, device=device)
-    # write to tenosr with inplace fill
+    # write to tensor with inplace fill
     dummy.fill_(42) 
     del dummy
 
@@ -45,17 +50,34 @@ def get_timing_function(
     method: str = "cuda_event", # by default 
 ) -> callable:
     """
-    Get the timing function based on different timing methods
+    Get timing function by method name.
+
+    Available methods:
+        - "cuda_event": torch.cuda.event timing (default, explicit trial control)
+        - "do_bench": Use triton's do_bench (adaptive trial count based on time budget)
+        - "do_bench_impl": Mirrors Triton's do_bench implementation (explicit control)
+        - "host_time": Host side wall-clock timing (might include overhead)
+    
+    Args:
+        method: Name of timing method to use
+    
+    Returns:
+        Timing function with signature (kernel_fn, args, num_warmup, num_trials, 
+        discard_first, verbose, device) -> list[float]
     """
     print(
         f"[Profiling] Using timing method: {method}"
     )
+    # NOTE: here are all the timing methods we supporting for now
     match method:
         case "cuda_event":
             return time_execution_with_cuda_event
-        case "do_bench_interface":
+        case "do_bench":
+            # caveat: just using do_bench as it is 
+            # do not have precise control over number of trials
             return time_execution_with_do_bench_interface
         case "do_bench_impl":
+            # do_bench equivalent implementations for transparency and control
             return time_execution_with_do_bench_impl
         case "host_time":
             return time_execution_with_host_time 
@@ -64,10 +86,8 @@ def get_timing_function(
             raise ValueError(f"Unsupported timing method: {method}")
 
 """
-Kernel Timing Functions [Revamp WIP]
-TODO: see our detailed study on how to time kernel execution and benchmarking guide
-we implement a few ways to do timing studies 
-These should be implemnted to be agnostic whether the modules are rather Model (reference kernel) or ModelNew (generated kernel)
+Kernel Timing Functions
+NOTE: we have a WIP blogpost on this topic covering the various timing approaches   
 """
 
 
@@ -76,25 +96,26 @@ def time_execution_with_cuda_event(
     args: list[Any],
     num_warmup: int = 3,
     num_trials: int = 10,
-    discard_first: int = 1,
+    discard_first: int = 1, # not used
     verbose: bool = True,
     device: torch.device = None,
 ) -> list[float]:
     """
-    Time a CUDA kernel function over multiple trials using torch.cuda.Event
-    The first version of KenrelBench used this for evaluation.
+    Time a CUDA kernel function over multiple trials using torch.cuda.event
+    The first version of KernelBench used this for evaluation.
     We care about cold cache performance here.
 
     Args:
         kernel_fn: Function to time
-        *args: Arguments to pass to kernel_fn
+        args: Arguments to pass to kernel_fn
+        num_warmup: Number of warmup iterations before timing
         num_trials: Number of timing trials to run
+        discard_first: not used
         verbose: Whether to print per-trial timing info
-        device: CUDA device to use, if None, use current device
+        device: CUDA device to use, defaults to current device
 
-    TODO: double check this with team 
     Returns:
-        List of elapsed times in milliseconds
+        List of elapsed times in milliseconds (length = num_trials)
     """
     if device is None:
         if verbose:
@@ -115,7 +136,7 @@ def time_execution_with_cuda_event(
     elapsed_times: list[float] = [] # in ms
 
     # Timing trials
-    for trial in range(num_trials + discard_first):
+    for trial in range(num_trials):
         torch.cuda.synchronize(device=device) # block on all streams
 
         # create event marker default is not interprocess
@@ -136,11 +157,9 @@ def time_execution_with_cuda_event(
 
         # Calculate the elapsed time in milliseconds
         elapsed_time_ms = start_event.elapsed_time(end_event)
-        if trial >= discard_first:
-            if verbose:
-                logical_idx = trial - discard_first + 1
-                print(f"Trial {logical_idx}: {elapsed_time_ms:.3g} ms")
-            elapsed_times.append(elapsed_time_ms)
+        if verbose:
+            print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
+        elapsed_times.append(elapsed_time_ms)
 
     return elapsed_times
 
@@ -148,17 +167,34 @@ def time_execution_with_cuda_event(
 def time_execution_with_do_bench_interface(
     kernel_fn: callable,
     args: list[Any],
-    # this is different for triton do_bench
+    # Not used, as triton do_bench handles adaptive trials
     num_warmup: int = 3, 
     num_trials: int = 10,
-    discard_first: int = 1, # not used yet
+    discard_first: int = 1, # not used here
     verbose: bool = True,
     device: torch.device | None = None) -> list[float]:
     """
-    Using triton's default do_bench as it is 
-    Note we don't set num_warmup and num_trials, and we use warmup 25 ms and repetition time 100 ms with Triton's default values
-    See doc: https://triton-lang.org/main/python-api/generated/triton.testing.do_bench.html
-    Benchmark the runtime of the provided function. By default, return the median runtime of fn along with the 20-th and 80-th performance percentile.
+    Wrapper around Triton's do_bench for kernel timing.
+
+    Uses Triton's adaptive benchmarking with fixed time budgets (warmup=25ms, rep=100ms) [Triton do_bench default].
+    The number of trials is determined automatically based on kernel runtime.
+
+    Note: num_warmup, num_trials, discard_first are ignored - included only for 
+    API compatibility with other timing functions.
+
+    Args:
+        kernel_fn: Function to time
+        args: Arguments to pass to kernel_fn
+        num_warmup: (ignored) Triton controls warmup
+        num_trials: (ignored) Triton controls trial count  
+        discard_first: (ignored) Not used
+        verbose: Whether to print timing info
+        device: CUDA device to use
+
+    Returns:
+        List of elapsed times in milliseconds
+
+    See: https://triton-lang.org/main/python-api/generated/triton.testing.do_bench.html
     """
     do_bench_fn = lambda : kernel_fn(*args) # wrap function with arguments
     return triton_testing.do_bench(fn=do_bench_fn,
@@ -174,7 +210,7 @@ def time_execution_with_do_bench_impl(
     args: list[Any],
     num_warmup: int = 3,
     num_trials: int = 10,
-    discard_first: int = 1, # not used yet
+    discard_first: int = 1, # not used here
     verbose: bool = True,
     device: torch.device | None = None) -> list[float]:
     """
@@ -184,14 +220,27 @@ def time_execution_with_do_bench_impl(
 
     Note we duplicate triton's implementation and modify / comment out parts
     to use num_warmup and num_trials that explicitly follows what user define here
-    instead of do_bench's version that computes how many times to run warmup and profile based on total warmup and repetition time
+    instead of do_bench's version that computes how many times to run warmup and 
+    profile based on total warmup and repetition time
+
+    We commented out unused parts and kept only what's needed for kernelbench timing eval
+    Args:
+        kernel_fn: Function to time
+        args: Arguments to pass to kernel_fn
+        num_warmup: Number of warmup iterations
+        num_trials: Number of timing trials
+        discard_first: (not used) Trials to discard
+        verbose: Whether to print timing info
+        device: CUDA device to use, defaults to current device
+    Returns:
+        List of elapsed times in milliseconds (length = num_trials)
     """
 
-    device = torch.cuda.current_device() if device is not None else device
+    device = device if device is not None else torch.cuda.current_device()
     if verbose: 
         print(f"Using do_bench to evaluate kernel on {device}")
 
-    # speicfy device interface (supports both nvidia and amd)
+    # specify device interface (supports both nvidia and amd)
     # under the hood, di is torch.cuda (amd uses a cuda compatible interface)
     di = triton_runtime.driver.active.get_device_interface()
 
@@ -253,7 +302,7 @@ def time_execution_with_host_time(
     args: list[Any],
     num_warmup: int = 3,
     num_trials: int = 10,
-    discard_first: int = 1,
+    discard_first: int = 1, # to reduce impact of initialization overhead
     verbose: bool = True,
     device: torch.device | None = None,
 ) -> list[float]:
@@ -268,13 +317,12 @@ def time_execution_with_host_time(
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
         num_trials: Number of timing trials to run
+        discard_first: Number of first few trials to discard (due to some initialization overhead)
         verbose: Whether to print per-trial timing info
         device: CUDA device to use, if None, use current device
 
     Returns:
         List of elapsed times in milliseconds
-
-    Not recommended: 
     """
     if device is None:
         if verbose:
@@ -329,6 +377,7 @@ def fetch_baseline_time(
     Fetch the baseline time from the time
 
     Note: might be better to just run the refernece using torch eager and compile sometimes
+    Will add this as a functionality for eval revamp
     """
     if not os.path.exists(baseline_time_filepath):
         raise FileNotFoundError(
