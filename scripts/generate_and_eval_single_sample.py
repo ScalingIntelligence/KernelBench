@@ -73,6 +73,7 @@ class EvalConfig(Config):
         self.log_eval_result = False
 
         self.backend = "cuda"
+        self.timing_method = "cuda_event"  # see timing.py
 
         # Prompt construction
         self.prompt_option = "one_shot"  # choices: zero_shot, one_shot, few_shot
@@ -267,6 +268,7 @@ def main(config: EvalConfig):
         custom_kernel,
         verbose=config.verbose,
         measure_performance=True,
+        timing_method=config.timing_method,
         num_correct_trials=5,
         num_perf_trials=100,
         backend=config.backend,

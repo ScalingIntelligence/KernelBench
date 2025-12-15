@@ -57,6 +57,8 @@ The Reference could be either
 Usage:
 1. PyTorch reference is a local file (local eval)
 python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/model_ex_add.py kernel_src_path=src/prompts/model_new_ex_add.py eval_mode=local
+python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/few_shot/model_ex_tiled_matmul.py kernel_src_path=src/prompts/few_shot/model_new_ex_tiled_matmul.py eval_mode=local
+
 
 2. PyTorch reference is a kernelbench problem (local eval)
 python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=local
@@ -101,6 +103,7 @@ class ScriptConfig(Config):
         # verbose logging
         self.verbose = False
         self.measure_performance = True
+        self.timing_method = "cuda_event"  # see timing.py
         self.build_dir_prefix = "" # if you want to specify a custom build directory
         self.clear_cache = False # TODO
 
@@ -128,18 +131,23 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
     num_perf_trials = configs["num_perf_trials"]    
     verbose = configs["verbose"]
     measure_performance = configs["measure_performance"]
+    timing_method = configs["timing_method"]
+    backend = configs["backend"]
+    precision = kernel_eval.get_torch_dtype_from_string(configs["precision"])
+    
     try:
         eval_result = kernel_eval.eval_kernel_against_ref(
         original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=measure_performance,
+            timing_method=timing_method,
             verbose=verbose,
             num_correct_trials=num_correct_trials,
             num_perf_trials=num_perf_trials,
             build_dir=build_dir,
             device=device,
-            backend=configs["backend"],
-            precision=kernel_eval.get_torch_dtype_from_string(configs["precision"])
+            backend=backend,
+            precision=precision
         )
         return eval_result
     except Exception as e:
@@ -180,17 +188,21 @@ class EvalFunc:
         num_perf_trials = configs["num_perf_trials"]
         verbose = configs["verbose"]
         measure_performance = configs["measure_performance"]
+        timing_method = configs["timing_method"]
+        backend = configs["backend"]
+        precision = kernel_eval.get_torch_dtype_from_string(configs["precision"])
 
         eval_result = eval_kernel_against_ref(
             original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=measure_performance,
+            timing_method=timing_method,
             verbose=verbose,
             num_correct_trials=num_correct_trials,
             num_perf_trials=num_perf_trials,
             device=device,
-            backend=configs["backend"],
-            precision=get_torch_dtype_from_string(configs["precision"])
+            backend=backend,
+            precision=precision
         )
         return eval_result
 

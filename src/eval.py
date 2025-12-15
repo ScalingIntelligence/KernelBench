@@ -393,8 +393,9 @@ def eval_kernel_against_ref(
     seed_num: int = 42,
     num_correct_trials: int = 1,
     num_perf_trials: int = 10,
-    verbose: bool = False,
     measure_performance: bool = False,
+    timing_method: str = "cuda_event", # see timing.py
+    verbose: bool = False,
     build_dir: os.PathLike = None,
     device: Union[torch.device, int] = (
         torch.cuda.current_device() if torch.cuda.is_available() else None
@@ -405,11 +406,15 @@ def eval_kernel_against_ref(
     """
     Evaluate the custom kernel against the original model
 
+    NOTE: we are thinking about refactor this to be more modularized 
+    and we can add more checks as our other ongiong PRs are working on
+
     num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
     num_perf_trials: run the evalutation many times to take the average
     device: GPU (cuda) device to run the evalutation on
     backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
+    timing_method: str, method to time kernel, see timing.py for more details 
     """
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -579,7 +584,7 @@ def eval_kernel_against_ref(
                 torch.cuda.synchronize(device=device)
 
                 # support multiple timing backend
-                timing_fn = timing.get_timing_function("cuda_event")
+                timing_fn = timing.get_timing_function(timing_method)
                 elapsed_times = timing_fn(
                     model_new,
                     inputs,
