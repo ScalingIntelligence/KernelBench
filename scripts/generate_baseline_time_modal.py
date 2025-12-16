@@ -2,11 +2,10 @@ import torch
 import numpy as np
 from src.eval import (
     load_original_model_and_inputs,
-    time_execution_with_cuda_event,
-    get_timing_stats,
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
+from src.timing import get_timing_function, get_timing_stats
 from src.dataset import construct_problem_dataset_from_problem_dir
 from src.utils import read_file
 import os
@@ -160,6 +159,7 @@ class EvalFunc:
             ref_arch_name: str,
             ref_arch_src: str, 
             num_trials: int = 100,
+            timing_method: str="cuda_event",
             use_torch_compile: bool = False,
             torch_compile_backend: str="inductor", 
             torch_compile_options: str="default",
@@ -199,9 +199,16 @@ class EvalFunc:
                     print(f"Using PyTorch Eager Execution on {ref_arch_name}")
                 
                 model = model.cuda(device=device)
+                timing_func = get_timing_function(timing_method)
                 torch.cuda.synchronize(device=device)
-                elapsed_times = time_execution_with_cuda_event(
-                    model, *inputs, num_trials=num_trials, verbose=verbose, device=device
+                elapsed_times = timing_func(
+                    model,
+                    inputs,
+                    num_warmup=3,  # or any default you prefer
+                    num_trials=num_trials,
+                    discard_first=1,  # or 0 to include first trial
+                    verbose=verbose,
+                    device=device,
                 )
                 runtime_stats = get_timing_stats(elapsed_times, device=device)
 
@@ -247,7 +254,8 @@ def record_baseline_times(config: BaselineConfig,
                         ref_arch_name,
                         ref_arch_src,
                         config.num_trials,
-                        use_torch_compile,
+                        timing_method,
+                        use_torch_compile,  
                         torch_compile_backend,
                         torch_compile_options,
                         torch.device(f"cuda:0"),
@@ -339,55 +347,5 @@ if __name__ == "__main__":
     # run_profile(2, 43)
     # get_time(2, 43, torch_compile=False)
     # get_time(2, 43, torch_compile=True)
-
-
-
-
-################################################################################
-# Deprecated
-################################################################################
-
-
-def get_time_old(level_num, problem_id, num_trials=100, torch_compile=False):
-    raise DeprecationWarning("Use New measure_program_time instead")
-    ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
-        level_num, problem_id, with_name=True
-    )
-    ref_arch_name = ref_arch_name.split("/")[-1]
-    context = {}
-    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-        ref_arch_src, context
-    )
-    try:
-        with torch.no_grad():
-            torch.cuda.synchronize(device=device)
-            set_seed(42)
-            inputs = get_inputs()
-            set_seed(42)
-            init_inputs = get_init_inputs()
-            inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in inputs
-            ]
-            init_inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in init_inputs
-            ]
-            model = Model(*init_inputs)
-            
-            if torch_compile:
-                model = torch.compile(model)
-                print("Compiled model Done")
-            model = model.cuda(device=device)
-            torch.cuda.synchronize(device=device)
-            elapsed_times = time_execution_with_cuda_event(
-                model, *inputs, num_trials=num_trials, verbose=False, device=device
-            )
-            runtime_stats = get_timing_stats(elapsed_times, device=device)
-            # json_results[f"level{level_num}"][ref_arch_name] = runtime_stats
-            print(f"{ref_arch_name} {runtime_stats}")
-            return (ref_arch_name, runtime_stats)
-    except Exception as e:
-        print(f"[Eval] Error in Measuring Performance: {e}")
 
 

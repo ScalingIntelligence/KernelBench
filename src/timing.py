@@ -90,7 +90,6 @@ Kernel Timing Functions
 NOTE: we have a WIP blogpost on this topic covering the various timing approaches   
 """
 
-
 def time_execution_with_cuda_event(
     kernel_fn: callable,
     args: list[Any],
