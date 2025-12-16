@@ -1,5 +1,7 @@
 # Frameworks
+# we use latest PyTorch stable release
 torch==2.9.0
+
 # we shall upgrade torch for blackwell when it is stable
 transformers
 datasets
@@ -8,8 +10,7 @@ modal
 # DSLs
 nvidia-cutlass-dsl
 tilelang
-apache-tvm
-triton==3.5.0
+triton
 
 # helper
 tqdm
@@ -17,12 +18,14 @@ packaging
 pydra_config
 pytest
 ninja
+cupy-cuda12x
 
 # Numerics
 einops
 dotenv
 numpy
 
-openai
+# use litellm for cloud providers and openai for local
+openai 
 litellm[proxy]
 

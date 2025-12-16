@@ -39,7 +39,7 @@ To evaluate model-generated kernels, we need to check if they:
 
 Check out `src/eval.py` for details on how we implement correctness check and timing. 
 
-We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a model-generated kernel. 
+We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a kernel either locally or remotely by setting `eval_mode=local` or `eval_mode=modal`.
 
 #### Overall Benchmark Metric
 
@@ -86,11 +86,13 @@ pip install -e .
 We use `litellm` for API calls. Please set your keys by creating a `.env` following our `.env.example`.
 
 Running and profiling kernels require a GPU. 
-If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
+If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.  
+
+You can also try out our [tutorial notebook](https://bit.ly/kernelbench-neurips-colab) (also in notebooks/tutorial.ipynb) with Google Colab.
 
 ## 🚀 Usage
 ### Run on a single problem 
-It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample.
+It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample. 
 
 ```
 # for example, run level 2 problem 40 from huggingface
@@ -106,7 +108,7 @@ python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" lev
 * **`precision`** - You can specify the precision of tensor by `precision=fp32`. Currently all of our reported results are `fp32` but we added support for `fp16` & `bf16`.
 *  **`backend`** - We are also supporting other GPU programming languages beyond `cuda`. Simply specify `backend=triton`. For now we support DSLs: `cuda`, `triton`, `cute`, `tilelang`.
 
-Check the config fields for comprehensive set of options.
+Check the config fields for comprehensive set of options. Note we provide the model with a one-shot example by default along with the minimum set of info; you can check out other prompt settings or construct your own in `src/prompt_constructor_toml.py`.
 
 ### Run on all problems 
 

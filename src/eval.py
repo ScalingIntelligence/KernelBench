@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 from pydantic import BaseModel
 
-from . import utils
+from . import utils, timing
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -393,8 +393,9 @@ def eval_kernel_against_ref(
     seed_num: int = 42,
     num_correct_trials: int = 1,
     num_perf_trials: int = 10,
-    verbose: bool = False,
     measure_performance: bool = False,
+    timing_method: str = "cuda_event", # see timing.py
+    verbose: bool = False,
     build_dir: os.PathLike = None,
     device: Union[torch.device, int] = (
         torch.cuda.current_device() if torch.cuda.is_available() else None
@@ -405,11 +406,15 @@ def eval_kernel_against_ref(
     """
     Evaluate the custom kernel against the original model
 
+    NOTE: we are thinking about refactor this to be more modularized 
+    and we can add more checks as our other ongiong PRs are working on
+
     num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
     num_perf_trials: run the evalutation many times to take the average
     device: GPU (cuda) device to run the evalutation on
     backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
+    timing_method: str, method to time kernel, see timing.py for more details 
     """
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -578,14 +583,16 @@ def eval_kernel_against_ref(
                 model_new = custom_model.to(device=device, dtype=precision)
                 torch.cuda.synchronize(device=device)
 
-                elapsed_times = time_execution_with_cuda_event(
+                # support multiple timing backend
+                timing_fn = timing.get_timing_function(timing_method)
+                elapsed_times = timing_fn(
                     model_new,
-                    *inputs,
+                    inputs,
                     num_trials=num_perf_trials,
                     verbose=verbose,
                     device=device,
                 )
-                runtime_stats = get_timing_stats(elapsed_times, device=device)
+                runtime_stats = timing.get_timing_stats(elapsed_times, device=device)
 
                 if verbose:
                     print(f"[Eval] Performance Stats: {runtime_stats}")
@@ -623,64 +630,6 @@ def register_and_format_exception(
     metadata[exception_type] = exception_str
 
     return metadata
-
-
-def time_execution_with_cuda_event(
-    kernel_fn: callable,
-    *args,
-    num_warmup: int = 3,
-    num_trials: int = 10,
-    verbose: bool = True,
-    device: torch.device = None,
-) -> list[float]:
-    """
-    Time a CUDA kernel function over multiple trials using torch.cuda.Event
-
-    Args:
-        kernel_fn: Function to time
-        *args: Arguments to pass to kernel_fn
-        num_trials: Number of timing trials to run
-        verbose: Whether to print per-trial timing info
-        device: CUDA device to use, if None, use current device
-
-    Returns:
-        List of elapsed times in milliseconds
-    """
-    if device is None:
-        if verbose:
-            print(f"Using current device: {torch.cuda.current_device()}")
-        device = torch.cuda.current_device()
-
-    # Warm ups
-    for _ in range(num_warmup):
-        kernel_fn(*args)
-        torch.cuda.synchronize(device=device)
-
-    print(
-        f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}"
-    )
-    elapsed_times = []
-
-    # Actual trials
-    for trial in range(num_trials):
-        # create event marker default is not interprocess
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-
-        start_event.record()
-        kernel_fn(*args)
-        end_event.record()
-
-        # Synchronize to ensure the events have completed
-        torch.cuda.synchronize(device=device)
-
-        # Calculate the elapsed time in milliseconds
-        elapsed_time_ms = start_event.elapsed_time(end_event)
-        if verbose:
-            print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
-        elapsed_times.append(elapsed_time_ms)
-
-    return elapsed_times
 
 
 def run_and_check_correctness(
@@ -864,55 +813,6 @@ def check_metadata_serializable_all_types(metadata: dict):
         )
         return converted_metadata
 
-
-################################################################################
-# Performance Eval
-################################################################################
-
-
-def fetch_baseline_time(
-    level_name: str, problem_id: int, dataset: list[str], baseline_time_filepath: str
-) -> dict:
-    """
-    Fetch the baseline time from the time
-    """
-    if not os.path.exists(baseline_time_filepath):
-        raise FileNotFoundError(
-            f"Baseline time file not found at {baseline_time_filepath}"
-        )
-
-    with open(baseline_time_filepath, "r") as f:
-        baseline_json = json.load(f)
-
-    problem_name = dataset[problem_id].split("/")[-1]
-    baseline_time = baseline_json[level_name].get(problem_name, None)
-    return baseline_time
-
-
-def get_timing_stats(elapsed_times: list[float], device: torch.device = None) -> dict:
-    """Get timing statistics from a list of elapsed times.
-
-    Args:
-        elapsed_times: List of elapsed times in milliseconds
-        device: CUDA device, record device info
-    Returns:
-        Dict containing mean, std, min, max and num_trials
-        all timing are in ms
-    """
-
-    stats = {
-        "mean": float(f"{np.mean(elapsed_times):.3g}"),
-        "std": float(f"{np.std(elapsed_times):.3g}"),
-        "min": float(f"{np.min(elapsed_times):.3g}"),
-        "max": float(f"{np.max(elapsed_times):.3g}"),
-        "num_trials": len(elapsed_times),
-    }
-
-    if device:
-        stats["hardware"] = torch.cuda.get_device_name(device=device)
-        stats["device"] = str(device)  # for debugging
-
-    return stats
 
 
 # if __name__ == "__main__":
