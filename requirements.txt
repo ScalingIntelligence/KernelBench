@@ -1,5 +1,5 @@
 # Frameworks
-torch==2.5.0
+torch==2.9.0
 # we shall upgrade torch for blackwell when it is stable
 transformers
 datasets
@@ -9,6 +9,7 @@ modal
 nvidia-cutlass-dsl
 tilelang
 apache-tvm
+triton==3.5.0
 
 # helper
 tqdm
