@@ -18,7 +18,7 @@ from triton import testing as triton_testing
 # Try them out at src/unit_tests/test_eval_timing.py
 ################################################################################
 
-def clear_l2_cache(device: str = "cuda"):
+def clear_l2_cache(device: torch.device | str = "cuda"):
     """
     Clear L2 Cache line by thrashing with a large tensor
     Acknowledge GPU mode reference kernel repo:
@@ -150,7 +150,7 @@ def time_execution_with_cuda_event(
             end_event = torch.cuda.Event(enable_timing=True)
             
             clear_l2_cache(device=device) # measuring cold cache performance
-            
+
             # note cuda events mark event on current stream
             start_event.record()
             _ = kernel_fn(*args)
@@ -295,6 +295,8 @@ def time_execution_with_do_bench_impl(
         # Warm-up
         for _ in range(num_warmup):
             kernel_fn(*args)
+        di.synchronize(device=device) 
+        
         # Benchmark
         for i in range(num_trials):
             # All KernelBench functions are forward passes, so we don't need to reset gradients
@@ -313,9 +315,9 @@ def time_execution_with_do_bench_impl(
             end_event[i].record()
         # Record clocks
         di.synchronize(device=device)
-    
+        times = [s.elapsed_time(e) for s, e in zip(start_event, end_event)]
+
     if verbose: print('Done with do_bench evaluation')
-    times = [s.elapsed_time(e) for s, e in zip(start_event, end_event)]
     return times
 
 
