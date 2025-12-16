@@ -57,6 +57,7 @@ def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
         num_warmup=num_warmup,
         num_trials=num_trials,
         verbose=False,
+        device=device    
     )
     
     # Validate results
@@ -75,13 +76,16 @@ def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
     
 
 # test all currently available timing methods
-def run_all_timing_tests():
+def run_all_timing_tests(device="cuda"):
     timing_methods = ["cuda_event", "host_time", "do_bench", "do_bench_impl"]
     # timing_methods = ["cuda_event", "do_bench_impl"]
     for timing_method in timing_methods:
-        _run_timing_smoke_test_matmul(timing_method)
+        _run_timing_smoke_test_matmul(timing_method, device=device)
 
-run_all_timing_tests()
+
+
+test_device = torch.device("cuda:5")
+run_all_timing_tests(test_device)
 
 
 

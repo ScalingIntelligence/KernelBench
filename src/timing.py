@@ -105,6 +105,10 @@ def time_execution_with_cuda_event(
     The first version of KernelBench used this for evaluation.
     We care about cold cache performance here.
 
+    Note: this version does not guard against adverserial cuda streams yet.
+    It assumes computation is done on the current stream for current device. 
+    Stay tuned for future PRs. 
+
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
@@ -122,47 +126,49 @@ def time_execution_with_cuda_event(
             print(f"Using current device: {torch.cuda.current_device()}")
         device = torch.cuda.current_device()
 
-    # Warm ups
-    for _ in range(num_warmup):
-        kernel_fn(*args)
-        torch.cuda.synchronize(device=device)
-    
-    # note this only release PyTorch’s CUDA caching allocator, not necessarily clearing device's L2 cache
-    torch.cuda.empty_cache()
-    
-    print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}"
-    )
-
-    elapsed_times: list[float] = [] # in ms
-
-    # Timing trials
-    for trial in range(num_trials + discard_first):
-        torch.cuda.synchronize(device=device) # block on all streams
-
-        # create event marker default is not interprocess
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
+    with torch.cuda.device(device):
         
-        clear_l2_cache() # measuring cold cache performance
+        # Warm ups
+        for _ in range(num_warmup):
+            kernel_fn(*args)
+            torch.cuda.synchronize(device=device)
         
-        # note cuda events mark event on current stream
-        start_event.record()
-        _ = kernel_fn(*args)
-        end_event.record() 
-
-        # waits for all streams on that device
-        # though it is important to note the events only record time between on current stream
-        # TODO: find ways to check hacks by launching work on additional stream
-        torch.cuda.synchronize(device=device)
-
-        # Calculate the elapsed time in milliseconds
-        elapsed_time_ms = start_event.elapsed_time(end_event)
+        # note this only release PyTorch’s CUDA caching allocator, not necessarily clearing device's L2 cache
+        torch.cuda.empty_cache()
         
-        if trial >= discard_first:
-            if verbose:
-                logical_idx = trial - discard_first + 1
-                print(f"Trial {logical_idx}: {elapsed_time_ms:.3g} ms")
-            elapsed_times.append(elapsed_time_ms)
+        print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}"
+        )
+
+        elapsed_times: list[float] = [] # in ms
+
+        # Timing trials
+        for trial in range(num_trials + discard_first):
+            torch.cuda.synchronize(device=device) # block on all streams
+
+            # create event marker default is not interprocess
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            
+            clear_l2_cache(device=device) # measuring cold cache performance
+            
+            # note cuda events mark event on current stream
+            start_event.record()
+            _ = kernel_fn(*args)
+            end_event.record() 
+
+            # waits for all streams on that device
+            # though it is important to note the events only record time between on current stream
+            # TODO: find ways to check hacks by launching work on additional stream
+            torch.cuda.synchronize(device=device)
+
+            # Calculate the elapsed time in milliseconds
+            elapsed_time_ms = start_event.elapsed_time(end_event)
+            
+            if trial >= discard_first:
+                if verbose:
+                    logical_idx = trial - discard_first + 1
+                    print(f"Trial {logical_idx}: {elapsed_time_ms:.3g} ms")
+                elapsed_times.append(elapsed_time_ms)
 
 
     return elapsed_times
@@ -200,8 +206,15 @@ def time_execution_with_do_bench_interface(
 
     See: https://triton-lang.org/main/python-api/generated/triton.testing.do_bench.html
     """
+    if device is None:
+        if verbose:
+            print(f"Using current device: {torch.cuda.current_device()}")
+        device = torch.cuda.current_device()
+
+
     do_bench_fn = lambda : kernel_fn(*args) # wrap function with arguments
-    return triton_testing.do_bench(fn=do_bench_fn,
+    with torch.cuda.device(device):
+        return triton_testing.do_bench(fn=do_bench_fn,
             warmup=25,
             rep=100, 
             grad_to_none=None, 
@@ -244,58 +257,63 @@ def time_execution_with_do_bench_impl(
     if verbose: 
         print(f"Using do_bench to evaluate kernel on {device}")
 
-    # specify device interface (supports both nvidia and amd)
-    # under the hood, di is torch.cuda (amd uses a cuda compatible interface)
-    di = triton_runtime.driver.active.get_device_interface()
 
-    kernel_fn(*args)
-    di.synchronize(device=device)
+    # added to constraint to this device
+    with torch.cuda.device(device):  
 
-    # clear l2 cache
-    cache = triton_runtime.driver.active.get_empty_cache_for_benchmark()
+        # specify device interface (supports both nvidia and amd)
+        # under the hood, di is torch.cuda (amd uses a cuda compatible interface)
+        di = triton_runtime.driver.active.get_device_interface()
 
-    # do_bench Estimate the runtime of the function 
-    # Here we are not using it not needed since now the warmup and repeat steps are set by the user)
-    # start_event = di.Event(enable_timing=True)
-    # end_event = di.Event(enable_timing=True)
-    # start_event.record()
-    # for _ in range(5):
-    #     triton_runtime.driver.active.clear_cache(cache)
-    #     kernel_fn(*args)
-    # end_event.record()
-    # di.synchronize()
-    # estimate_ms = start_event.elapsed_time(end_event) / 5
-
-    # compute number of warmup and repeat
-    # Change
-    # n_warmup = max(1, int(warmup / estimate_ms))
-    # n_repeat = max(1, int(rep / estimate_ms))
-    # n_warmup = warmup
-    # n_repeat = rep
-    # end of change
-    start_event = [di.Event(enable_timing=True) for i in range(num_trials)]
-    end_event = [di.Event(enable_timing=True) for i in range(num_trials)]
-    # Warm-up
-    for _ in range(num_warmup):
         kernel_fn(*args)
-    # Benchmark
-    for i in range(num_trials):
-        # All KernelBench functions are forward passes, so we don't need to reset gradients
-        # we don't want `fn` to accumulate gradient values
-        # if it contains a backward pass. So we clear the
-        # provided gradients
-        # if grad_to_none is not None:
-        #     for x in grad_to_none:
-        #         x.grad = None
-        
-        # we clear the L2 cache before each run
-        triton_runtime.driver.active.clear_cache(cache)
-        # record time of `fn`
-        start_event[i].record()
-        kernel_fn(*args)
-        end_event[i].record()
-    # Record clocks
-    di.synchronize(device=device)
+        di.synchronize(device=device)
+
+        # clear l2 cache
+        cache = triton_runtime.driver.active.get_empty_cache_for_benchmark()
+
+        # do_bench Estimate the runtime of the function 
+        # Here we are not using it not needed since now the warmup and repeat steps are set by the user)
+        # start_event = di.Event(enable_timing=True)
+        # end_event = di.Event(enable_timing=True)
+        # start_event.record()
+        # for _ in range(5):
+        #     triton_runtime.driver.active.clear_cache(cache)
+        #     kernel_fn(*args)
+        # end_event.record()
+        # di.synchronize()
+        # estimate_ms = start_event.elapsed_time(end_event) / 5
+
+        # compute number of warmup and repeat
+        # Change
+        # n_warmup = max(1, int(warmup / estimate_ms))
+        # n_repeat = max(1, int(rep / estimate_ms))
+        # n_warmup = warmup
+        # n_repeat = rep
+        # end of change
+        start_event = [di.Event(enable_timing=True) for i in range(num_trials)]
+        end_event = [di.Event(enable_timing=True) for i in range(num_trials)]
+        # Warm-up
+        for _ in range(num_warmup):
+            kernel_fn(*args)
+        # Benchmark
+        for i in range(num_trials):
+            # All KernelBench functions are forward passes, so we don't need to reset gradients
+            # we don't want `fn` to accumulate gradient values
+            # if it contains a backward pass. So we clear the
+            # provided gradients
+            # if grad_to_none is not None:
+            #     for x in grad_to_none:
+            #         x.grad = None
+            
+            # we clear the L2 cache before each run
+            triton_runtime.driver.active.clear_cache(cache)
+            # record time of `fn`
+            start_event[i].record()
+            kernel_fn(*args)
+            end_event[i].record()
+        # Record clocks
+        di.synchronize(device=device)
+    
     if verbose: print('Done with do_bench evaluation')
     times = [s.elapsed_time(e) for s, e in zip(start_event, end_event)]
     return times
@@ -350,7 +368,7 @@ def time_execution_with_host_time(
         torch.cuda.synchronize(device=device)
 
         # focus on cold_cache performance
-        clear_l2_cache()
+        clear_l2_cache(device=device) 
 
         # CPU-side wall clock time using perf_counter (high-resolution timer)
         start_time = time.perf_counter()

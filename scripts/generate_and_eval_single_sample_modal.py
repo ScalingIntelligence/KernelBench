@@ -14,7 +14,6 @@ import modal
 from datasets import load_dataset
 
 #from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
 from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
