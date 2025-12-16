@@ -26,7 +26,7 @@ assert os.path.exists(os.path.join(EXAMPLES_PATH, TEST_KERNEL_FILE)), f"Kernel f
 def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
     """
     Scaffold function for timing smoke tests.
-    Smoke test for using 512x512 matmul.
+    Smoke test for using 2048x2048x2048 matmul with 5 warmup and 100 trials.
 
     Args:
         timing_fn: The timing function to test
