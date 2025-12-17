@@ -76,11 +76,17 @@ KernelBench/
 ```
 
 ## 🔧 Set up
+
+### Using uv (recommended)
+```bash
+uv sync
 ```
+
+### Using pip
+```bash
 conda create --name kernel-bench python=3.10
 conda activate kernel-bench
-pip install -r requirements.txt
-pip install -e . 
+pip install -e .
 ```
 
 We use `litellm` for API calls. Please set your keys by creating a `.env` following our `.env.example`.

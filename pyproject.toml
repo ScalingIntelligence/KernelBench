@@ -1,0 +1,53 @@
+[project]
+name = "kernelbench"
+version = "0.1.0"
+description = "A benchmark for evaluating LLMs' ability to generate efficient GPU kernels"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    # Frameworks
+    "torch==2.9.0",
+    "transformers",
+    "datasets",
+    "modal",
+
+    # DSLs
+    "nvidia-cutlass-dsl",
+    "tilelang",
+    "triton",
+
+    # Helper
+    "tqdm",
+    "packaging",
+    "pydra_config",
+    "pytest",
+    "ninja",
+    "cupy-cuda12x",
+
+    # Numerics
+    "einops",
+    "python-dotenv",
+    "numpy",
+
+    # LLM API access
+    "openai",
+    "litellm[proxy]",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
