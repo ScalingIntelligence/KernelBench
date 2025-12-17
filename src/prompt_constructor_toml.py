@@ -274,6 +274,12 @@ def render_prompt_by_option(
                 ex_new_path = _abs_path(backend_data["one_shot_new_arch"])
                 input_code = read_file(ex_arch_path)
                 output_code = read_file(ex_new_path)
+                
+                # For backends with separate CUDA file (e.g., ThunderKittens), include both
+                if "one_shot_cuda_arch" in backend_data:
+                    cuda_code = read_file(_abs_path(backend_data["one_shot_cuda_arch"]))
+                    output_code = f"C++/CUDA file:\n\n```cpp\n{cuda_code}\n```\n\nPython file:\n\n```python\n{output_code}\n```"
+                
                 examples_entries.append(
                     render_example_entry(input_code, output_code, "Example:")
                 )
@@ -286,6 +292,12 @@ def render_prompt_by_option(
             ex_new_path = _abs_path(backend_data["one_shot_new_arch"])
             input_code = read_file(ex_arch_path)
             output_code = read_file(ex_new_path)
+            
+            # For backends with separate CUDA file (e.g., ThunderKittens), include both
+            if "one_shot_cuda_arch" in backend_data:
+                cuda_code = read_file(_abs_path(backend_data["one_shot_cuda_arch"]))
+                output_code = f"C++/CUDA file:\n\n```cpp\n{cuda_code}\n```\n\nPython file:\n\n```python\n{output_code}\n```"
+            
             examples_entries.append(
                 render_example_entry(input_code, output_code, "Example:")
             )

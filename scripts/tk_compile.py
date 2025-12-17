@@ -298,6 +298,32 @@ def compile_cuda_on_modal(
     # Parse python ldflags (they come as "-L/path -lpython3.10 ...")
     python_ldflags_list = python_ldflags.split() if python_ldflags else []
     
+    # Get torch include and library paths
+    torch_includes = []
+    torch_lib_flags = []
+    try:
+        import torch
+        torch_dir = os.path.dirname(torch.__file__)
+        torch_include_path = os.path.join(torch_dir, "include")
+        torch_lib_path = os.path.join(torch_dir, "lib")
+        
+        if os.path.exists(torch_include_path):
+            torch_includes.append(f"-I{torch_include_path}")
+            # Also add torch/csrc/api/include for ATen headers
+            torch_csrc_include = os.path.join(torch_include_path, "torch", "csrc", "api", "include")
+            if os.path.exists(torch_csrc_include):
+                torch_includes.append(f"-I{torch_csrc_include}")
+        
+        if os.path.exists(torch_lib_path):
+            torch_lib_flags.append(f"-L{torch_lib_path}")
+            torch_lib_flags.append("-ltorch")
+            torch_lib_flags.append("-lc10")
+            torch_lib_flags.append("-ltorch_cpu")
+            torch_lib_flags.append("-ltorch_python")
+            torch_lib_flags.append(f"-Wl,-rpath,{torch_lib_path}")
+    except ImportError:
+        print("[Modal WARNING] torch not found, compilation may fail")
+    
     nvcc_flags = [
         "-DNDEBUG",
         "-Xcompiler", "-fPIE",
@@ -312,6 +338,8 @@ def compile_cuda_on_modal(
         "-Xptxas=--verbose",
         "-Xptxas=--warn-on-spills",
         "-std=c++20",
+        "-diag-suppress=3189",  # Suppress C++20 module keyword warning from torch headers (harmless)
+        "-diag-suppress=2361",  # Suppress narrowing conversion warnings (harmless)
         "-x", "cu",
         "-lrt", "-lpthread", "-ldl", "-lcuda", "-lcudadevrt", "-lcudart_static", "-lcublas",
         f"-I{tk_path}/include",
@@ -322,6 +350,8 @@ def compile_cuda_on_modal(
         nvcc_flags.append(f"-I{tk_path}/prototype")
     
     nvcc_flags.extend(pybind11_include_list)
+    nvcc_flags.extend(torch_includes)
+    nvcc_flags.extend(torch_lib_flags)
     nvcc_flags.extend(python_ldflags_list)
     nvcc_flags.extend([
         "-shared",
@@ -360,7 +390,7 @@ def compile_cuda_on_modal(
         print(f"[Modal ERROR] Compilation failed with return code {result.returncode}")
         print(f"[Modal ERROR] Full stdout:\n{result.stdout}")
         print(f"[Modal ERROR] Full stderr:\n{result.stderr}")
-        raise RuntimeError(f"Failed to compile CUDA module: {result.stderr[:500] if result.stderr else 'Unknown error'}")
+        raise RuntimeError(f"Failed to compile CUDA module: {result.stderr[:2000] if result.stderr else 'Unknown error'}")
     
     # Verify the .so file was created
     if not os.path.exists(output_so):
