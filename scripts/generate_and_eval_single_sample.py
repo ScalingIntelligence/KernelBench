@@ -200,7 +200,7 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -210,6 +210,9 @@ def main(config: EvalConfig):
     if backend == "tilelang":
         config.precision = "fp16" # tilelang only operates with fp16
         config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
+    
+    if backend == "thunderkittens":
+        config.precision = "bf16"
 
     if not custom_prompt_key:
         if prompt_option not in valid_prompt_options:
