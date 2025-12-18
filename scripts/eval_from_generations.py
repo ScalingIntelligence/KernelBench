@@ -113,6 +113,7 @@ class EvalConfig(Config):
         self.num_perf_trials = 100
         self.timeout = 180  # in seconds
         self.measure_performance = True
+        self.timing_method = "cuda_event"
 
         # Eval Flow setting
         # To speedup evaluation, you can start building the kernel on CPU on disk as cache
@@ -173,6 +174,7 @@ class ModalEvaluator:
         num_correct_trials: int = 5,
         num_perf_trials: int = 100,
         measure_performance: bool = True,
+        timing_method: str = "cuda_event",
         verbose: bool = False,
         backend: str = "cuda",
         precision: str = "fp32",
@@ -212,6 +214,7 @@ class ModalEvaluator:
                 original_model_src=ref_arch_src,
                 custom_model_src=kernel_src,
                 measure_performance=measure_performance,
+                timing_method=timing_method,
                 verbose=verbose,
                 num_correct_trials=num_correct_trials,
                 num_perf_trials=num_perf_trials,
@@ -324,6 +327,7 @@ def evaluate_single_sample(
             original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=configs.measure_performance,
+            timing_method=configs.timing_method,
             verbose=configs.verbose,
             num_correct_trials=configs.num_correct_trials,
             num_perf_trials=configs.num_perf_trials,
@@ -384,6 +388,7 @@ def evaluate_single_sample_modal_direct(
             num_correct_trials=configs.num_correct_trials,
             num_perf_trials=configs.num_perf_trials,
             measure_performance=configs.measure_performance,
+            timing_method=configs.timing_method,
             verbose=configs.verbose,
         )
         return eval_result
@@ -502,6 +507,7 @@ def batch_eval_modal(
                             num_correct_trials=config.num_correct_trials,
                             num_perf_trials=config.num_perf_trials,
                             measure_performance=config.measure_performance,
+                            timing_method=config.timing_method,
                             verbose=config.verbose,
                             backend=config.backend,
                             precision=config.precision,

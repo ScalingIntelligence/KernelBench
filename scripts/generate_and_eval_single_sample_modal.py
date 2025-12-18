@@ -14,7 +14,6 @@ import modal
 from datasets import load_dataset
 
 #from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
 from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
@@ -75,6 +74,7 @@ class EvalConfig(Config):
         self.log_eval_result = False
 
         self.backend = "cuda"
+        self.timing_method = "cuda_event"  # see timing.py
         # Prompt generation settings
         self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
         self.include_hardware_info = False
@@ -110,7 +110,7 @@ image = (
 class EvalFunc:
 
     @modal.method()
-    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend, precision):
+    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend, precision, timing_method):
         # 3. Evaluate Kernel
         # NOTE: no need to wrap around process here as only a single sample
         # see batch eval for examples of process isolation
@@ -121,6 +121,7 @@ class EvalFunc:
         modal_set_gpu_arch(gpu_arch)
         return eval_kernel_against_ref(
             ref_arch_src, custom_kernel, verbose=verbose, measure_performance=True, 
+            timing_method=timing_method,
             num_correct_trials=5, num_perf_trials=100, backend=backend, precision=get_torch_dtype_from_string(precision)
         )
 
@@ -274,7 +275,7 @@ def main(config: EvalConfig):
 
     with app.run():
         kernel_exec_result = EvalFunc.with_options(gpu=config.gpu)().eval_single_sample_modal.remote(
-            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend, config.precision
+            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend, config.precision, config.timing_method
         )
         
         print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")
