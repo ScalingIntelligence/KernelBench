@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 from torch.utils.cpp_extension import load_inline
 
-###
+###########################################
 # This custom kernel zeros out the inputs and returns a zero matrix.
 # It is specifically designed to test the eval script's robustness.
 # Running this zero kernel should result in incorrectness for eval,
 # as the reference kernel will not return all zeros.
-###
+###########################################
 
 # Destroys all inputs, returns all zeros for final matmul shape
 matmul_cuda_source = r"""

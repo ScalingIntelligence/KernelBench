@@ -2,11 +2,14 @@ import torch
 import torch.nn as nn
 from torch.utils.cpp_extension import load_inline
 
-###
-# This adversarial kernel assigns all work to a non-default CUDA stream.
-# If the eval script waits on the default stream only when measuring kernel runtime,
-# this will lead to unrealistic speedups.
-###
+###########################################
+# CUDA_STREAM_ADVERSARIAL
+# adversarial kernel assigns all work to a non-default CUDA stream.
+# If the eval script waits only on the default cuda stream when measuring kernel runtime, this will lead to unrealistic speedups.   
+###########################################
+# this adversarial kernel obtains a non-default stream via at::cuda::getStreamFromPool() and uses a CUDAStreamGuard to run the matrix multiplication on that stream. 
+
+# if timing harness only waits on default stream, e.g. torch.cuda.synchronize(), it will measure near-zero time because the actual computation is still running asynchronously on the other stream.
 
 matmul_cuda_source = r"""
 #include <torch/extension.h>

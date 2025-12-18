@@ -3,7 +3,8 @@ import os
 import torch
 
 from src.dataset import KERNEL_BENCH_PATH
-from src.eval import eval_kernel_against_ref, get_timing_stats, load_original_model_and_inputs, set_seed, time_execution_with_cuda_event
+from src.eval import eval_kernel_against_ref, load_original_model_and_inputs, set_seed
+from src.timing import get_timing_stats, get_timing_function
 from src.utils import read_file
 
 """
@@ -29,11 +30,12 @@ def measure_ref_kernel(problem_name):
 
     inputs = get_inputs()
     inputs = [x.to(device) for x in inputs]
-    elapsed = time_execution_with_cuda_event(
+    timing_func = get_timing_function("cuda_event")
+    elapsed = timing_func(
         model,
         *inputs,
         num_trials=5,
-        verbose=False,
+        verbose=False,  
         device=device,
     )
     stats = get_timing_stats(elapsed)
@@ -60,6 +62,7 @@ def run_test_kernel(problem_name, kernel_filename):
         num_correct_trials=5, # under mulitiple correctness trials
         num_perf_trials=5,
         measure_performance=True,
+        timing_method="cuda_event"
     )
 
 
@@ -107,14 +110,15 @@ def test_non_default_stream(threshold=1.5):
     """
     result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py", 
                             kernel_filename="non_default_stream_kernel.py")
+    print(result)
     assert "excessive_speedup" in result.metadata, "Excessive speedup detected"
     print("Result: Eval Function passed Non Default Stream Hack")
     print(result)
 
 
 def main():
-    test_result_cache_reuse()
-    test_input_modification()
+    # test_result_cache_reuse()
+    # test_input_modification()
     test_non_default_stream()
 
 if __name__ == "__main__":
