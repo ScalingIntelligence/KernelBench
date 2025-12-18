@@ -7,20 +7,41 @@ from torch.utils.cpp_extension import load_inline
 # adversarial kernel assigns all work to a non-default CUDA stream.
 # If the eval script waits only on the default cuda stream when measuring kernel runtime, this will lead to unrealistic speedups.   
 ###########################################
-# this adversarial kernel obtains a non-default stream via at::cuda::getStreamFromPool() and uses a CUDAStreamGuard to run the matrix multiplication on that stream. 
+# this adversarial kernel obtains a non-default, non-blocking stream via cudaStreamCreateWithFlags(...) and sets to be the stream of the cuBLAS handle.
+# then, it performs a matrix multiplication on this new stream.
 
-# if timing harness only waits on default stream, e.g. torch.cuda.synchronize(), it will measure near-zero time because the actual computation is still running asynchronously on the other stream.
+# if timing harness only waits on default stream, it will measure near-zero time because the actual computation is still running asynchronously on the other stream.
 
 matmul_cuda_source = r"""
 #include <torch/extension.h>
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAGuard.h>
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
 
 torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B) {
-    int dev_index = A.get_device();
-    auto stream = at::cuda::getStreamFromPool(false, dev_index);
-    c10::cuda::CUDAStreamGuard guard(stream);
-    auto result = at::matmul(A, B);
+    int M = A.size(0);
+    int K = A.size(1);
+    int N = B.size(1);
+    
+    auto result = torch::empty({M, N}, A.options());
+    
+    cudaStream_t stream;
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+    cublasSetStream(handle, stream);
+    
+    float alpha = 1.0f, beta = 0.0f;
+    
+    cublasGemmEx(handle,
+        CUBLAS_OP_N, CUBLAS_OP_N,
+        N, M, K,
+        &alpha,
+        B.data_ptr<float>(), CUDA_R_32F, N,
+        A.data_ptr<float>(), CUDA_R_32F, K,
+        &beta,
+        result.data_ptr<float>(), CUDA_R_32F, N,
+        CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
     return result;
 }
 """
