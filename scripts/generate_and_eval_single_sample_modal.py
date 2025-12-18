@@ -103,8 +103,14 @@ image = (
                 "g++-10",
                 "clang" # note i skip a step
                 )
+
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
-    .env({"PYTHONPATH": "/root/src"})
+    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+    .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root:/root/src"
+    })
     .add_local_dir(SRC_DIR, remote_path="/root/src")  # must be last
 )
 
@@ -218,7 +224,7 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -229,6 +235,11 @@ def main(config: EvalConfig):
     if backend == "tilelang":
         config.precision = "fp16"
         config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
+    
+    # thunderkittens can use bf16 or fp16 by default, also set default GPU to H100
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+        config.gpu = "H100"
 
     if not custom_prompt_key:
         if prompt_option not in valid_prompt_options:
