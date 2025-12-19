@@ -109,14 +109,19 @@ class KernelExecResult(BaseModel):
     """
     Single Kernel Execution
     """
-
+    # Execution
     compiled: bool = False
     correctness: bool = False
     metadata: dict = {} # NOTE: to include warning if any
+
+    # Timing
     runtime: float = -1.0  # in us, only recorded if we decide to measure performance
     runtime_stats: dict = {}  # only recorded if we decide to measure performance
-    reference_runtime: float = -1.0  # in us, only recorded if we decide to measure performance
-    reference_runtime_stats: dict = {} # only recorded if we decide to measure performance
+
+    # new: added ref time either through fetching prev runs or through execution
+    # could do eager for level 1 and compile for level 2 and 3
+    ref_runtime: float = -1.0  # in us, only recorded if we decide to measure performance
+    ref_runtime_stats: dict = {} # only recorded if we decide to measure performance
 
 
 def load_original_model_and_inputs(
@@ -404,7 +409,10 @@ def eval_kernel_against_ref(
     ),  # have to run on GPU
     backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype = torch.float32,
-    excessive_speedup_threshold: float = 1.5, # if the kernel is <excessive_speedup_threshold>x faster than the reference, it will get flagged
+
+    # Guard against potential reward hacking
+    check_for_excessive_speedup: bool = False,
+    excessive_speedup_threshold: float = 10, # if the kernel is <excessive_speedup_threshold>x faster than the reference, it will get flagged
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -602,31 +610,62 @@ def eval_kernel_against_ref(
                 kernel_exec_result.runtime = runtime_stats["mean"]
                 kernel_exec_result.runtime_stats = runtime_stats
 
-                # time the PyTorch reference in the same way and flag potential excessive speedups.
-                torch.cuda.synchronize(device=device)
-                reference_elapsed_times = timing_fn(
-                    original_model,
-                    inputs,
-                    num_trials=num_perf_trials,
-                    verbose=verbose,
-                    device=device,
-                )
-                reference_runtime_stats = timing.get_timing_stats(reference_elapsed_times, device=device)
-                kernel_exec_result.reference_runtime = reference_runtime_stats["mean"]
-                kernel_exec_result.reference_runtime_stats = reference_runtime_stats
-
-                effective_speedup = kernel_exec_result.reference_runtime / kernel_exec_result.runtime
-                if effective_speedup > excessive_speedup_threshold:
-                    kernel_exec_result.metadata["excessive_speedup"] = True
-                    if verbose:
-                        print(f"[Eval] Excessive speedup of {effective_speedup}x using timing method {timing_method} detected!")
-                        print("Double check your kernel to ensure it is not reward hacking.")
-
-
         except Exception as e:
             if verbose:
                 print(f"[Eval] Error in Measuring Performance: {e}")
             kernel_exec_result.metadata["error_during_performance"] = e
+
+
+
+    ###############################################################
+    # [Experimental] to be modularized
+    # Condition: custom kernel ModelNew is correct and we are able to time it correctly with kernel_exec_result
+    # We are working on preventing excessive speedup issues
+    ##############################################################
+
+    if measure_performance and check_for_excessive_speedup:  # experimental: hence able to shut off codepath if needed
+    
+        if verbose:
+            print("[Eval] Additional checks to flag excessive speedup")
+
+        torch.cuda.synchronize(device=device)
+        set_seed(seed_num)
+        inputs = get_inputs()
+        # Convert inputs for performance measurement
+        inputs = [_process_input_tensor(x, device, backend, precision) for x in inputs]
+        
+        model_new = custom_model.to(device=device, dtype=precision)
+        torch.cuda.synchronize(device=device)
+
+        # time PyTorch reference function
+        # same timing_fn as specified from before
+        timing_fn = timing.get_timing_function(timing_method)
+        reference_elapsed_times = timing_fn(
+            original_model,
+            inputs, # ideally cloned for extra safety but handled already in correctness check
+            num_trials=num_perf_trials,
+            verbose=verbose,
+            device=device,
+        )
+        reference_runtime_stats = timing.get_timing_stats(reference_elapsed_times, device=device)
+        kernel_exec_result.ref_runtime = reference_runtime_stats["mean"]
+        kernel_exec_result.ref_runtime_stats = reference_runtime_stats
+
+        # Compute Effective Speedup
+        effective_speedup = kernel_exec_result.ref_runtime / kernel_exec_result.runtime
+
+        # TODO: integrate SoL estimation for each unqiue program on destigated hardware
+        # for now, we will use a heuristics such as 5-10x which is very hard to achieve
+
+        if verbose:
+            print(f"[Eval] Effective Speedup is {effective_speedup:.2f}x using timing method {timing_method}")
+
+        if effective_speedup > excessive_speedup_threshold:
+            kernel_exec_result.metadata["excessive_speedup"] = True
+            
+            print(f"[WARNING] Excessive speedup {effective_speedup:.2f}x over {excessive_speedup_threshold}x threshold detected")
+            print(f"[WARNING] Double check your kernel carefully to ensure it is not reward hacking.")
+
 
     graceful_eval_cleanup(context, device, tempfile)
     return kernel_exec_result

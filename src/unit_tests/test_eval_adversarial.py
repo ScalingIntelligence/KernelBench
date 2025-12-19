@@ -38,6 +38,9 @@ def run_test_kernel(problem_name,
         num_perf_trials=num_perf_trials,
         measure_performance=True,
         timing_method=timing_method,
+        # for checking against reward hacking
+        check_for_excessive_speedup = True, 
+        excessive_speedup_threshold = 10
     )
 
 
@@ -74,7 +77,7 @@ def test_input_modification():
     print(result)
 
 
-def test_non_default_stream(timing_method="cuda_event", threshold=1.5):
+def test_non_default_stream(timing_method="do_bench", threshold=1.5):
     """
     Test that we will flag adversarial kernels that cheat by assigning work to non-default CUDA streams.
 
@@ -87,9 +90,13 @@ def test_non_default_stream(timing_method="cuda_event", threshold=1.5):
                             kernel_filename="non_default_stream_kernel.py",
                             timing_method=timing_method,
                             num_perf_trials=10 ) # keep it low as we are leaking cuda stream
-    assert "excessive_speedup" in result.metadata, "Excessive speedup detected"
-    print("Result: Eval Function Passed Non-Default CUDA Stream Hack")
+
     print(result)
+    if result.metadata.get("excessive_speedup") is True:       
+        raise AssertionError(
+            "Excessive speedup detected, Eval Function did not handle hacky stream"
+        )
+    print("Result: Eval Function Passed Non-Default CUDA Stream Hack")
 
 
 def main():
