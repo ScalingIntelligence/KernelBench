@@ -9,7 +9,7 @@ Specifically testing the robustness of the eval function.
 Through a few targeted adversarial kernels.
 
 Run with pytest
-pytest src/unit_tests/test_eval.py
+pytest src/unit_tests/test_eval_adversarial.py
 """
 
 def run_test_kernel(problem_name, 
@@ -46,12 +46,12 @@ def run_test_kernel(problem_name,
 
 def test_result_cache_reuse():
     """
-    Test to prevent advserial kernel by reuse computed PyTorch results 
+    Test to prevent adversarial kernel by reuse computed PyTorch results 
 
     Methodology: 
-    - Advserial kernel allocate memory for result but does not initialize it.
+    - Adversarial kernel allocate memory for result but does not initialize it.
     - Potential Hacking scenario: CUDA cache allocator might give that un-erased physical memory to the custom kernel (which contains the result) and it will incorrectly pass
-    - Eval script should flag this as incorrect as the reference kernel did not conduct any menaingful computation
+    - Eval script should flag this as incorrect as the reference kernel did not conduct any meaningful computation
     """
     result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py", 
                             kernel_filename="result_reuse_kernel.py")
@@ -65,10 +65,10 @@ def test_input_modification():
     we still flag it as incorrect.
 
     Methodology:
-    - Advserial kernel zeros out all inputs and returns all zeros for the final matmul shape.
+    - Adversarial kernel zeros out all inputs and returns all zeros for the final matmul shape.
     - Potential Hacking scenario: Since adversarial kernel zero out the input, the reference might ran the kernel with all zeros. 
       Hence both refernece and custom kernel return all zeros, and this incorrectly pass.
-    - Eval script should flag this as incorrect as this kernel zeros out inputs and trick the refernece kernel into returning all zeros.
+    - Eval script should flag this as incorrect as this kernel zeros out inputs and trick the reference kernel into returning all zeros.
     """
     result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py", 
                             kernel_filename="zero_out_kernel.py")
@@ -92,17 +92,21 @@ def test_non_default_stream(timing_method="do_bench", threshold=1.5):
                             num_perf_trials=10 ) # keep it low as we are leaking cuda stream
 
     print(result)
-    if result.metadata.get("excessive_speedup") is True:       
+    if result.metadata.get("excessive_speedup") is True:   
+        print("Result: Eval Function successfully marked excessive speedup from the hacky CUDA Stream implementation")
+        print("This indicates the eval script properly detected and flagged potential cheating behavior.")
+    else:
         raise AssertionError(
-            "Excessive speedup detected, Eval Function did not handle hacky stream"
+            "Excessive speedup not detected - Eval Function failed to flag adversarial kernel that exploits cuda stream timing hack"
         )
-    print("Result: Eval Function Passed Non-Default CUDA Stream Hack")
 
 
 def main():
     test_result_cache_reuse()
     test_input_modification()
     test_non_default_stream()
+
+    # we might add more adversarial tests in the future
 
 if __name__ == "__main__":
     main()

@@ -410,9 +410,9 @@ def eval_kernel_against_ref(
     backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype = torch.float32,
 
-    # Guard against potential reward hacking
-    check_for_excessive_speedup: bool = False,
-    excessive_speedup_threshold: float = 10, # if the kernel is <excessive_speedup_threshold>x faster than the reference, it will get flagged
+    # Guard against potential reward hacking [optional but ongoing enhancement]
+    check_for_excessive_speedup: bool = True,
+    excessive_speedup_threshold: float = 10, # flag if the kernel is more than <excessive_speedup_threshold>x faster than the reference
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -426,6 +426,8 @@ def eval_kernel_against_ref(
     backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
     timing_method: str, method to time kernel, see timing.py for more details 
+
+    ONGOING EFFORT to refactor and modularize this, and adding more tests for eval.
     """
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -654,7 +656,7 @@ def eval_kernel_against_ref(
         # Compute Effective Speedup
         effective_speedup = kernel_exec_result.ref_runtime / kernel_exec_result.runtime
 
-        # TODO: integrate SoL estimation for each unqiue program on destigated hardware
+        # TODO: integrate SoL estimation for each unique program on designated hardware
         # for now, we will use a heuristics such as 5-10x which is very hard to achieve
 
         if verbose:

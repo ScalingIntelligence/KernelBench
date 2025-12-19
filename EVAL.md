@@ -1,21 +1,40 @@
 # Evaluation
-[WIP] Benchmarking Guide
-To be updated more comprehensively with the benchmarking guide & blog that we have been working on this quarter.
+[WIP] More notes on Benchmarking Guide
+To be updated more comprehensively with the benchmarking guide (ongoing PRs) & blog that we have been working on this quarter.
 
-You should be **extra careful!** 
+You should be **extra CAREFUL!** , be always paranoid about suspiciously good results — kernel engineers and existing compilers are already pretty good, so a >2x speedup for anything is highly unlikely. 
 
-If the model can reward hack, it will find ways to reward hack!
+
+> “if you beat cudnn by more than 10%, think again” -- 
+from [itsclivetime](https://x.com/itsclivetime/status/1992155951630307633?s=46)
+
+
+If the model can reward hack, it will find ways to reward hack! This can especially happen during RL training or evolutionary search.
+
+Check out resources here:
+- KernelBench [v0.1 Release](https://scalingintelligence.stanford.edu/blogs/kernelbenchv01/) 
+- Cognition and Stanford's [Kevin](https://arxiv.org/abs/2507.11948) project on various hacking behaviors observed in RL training
+- Jiwei Li's awesome [blogpost](https://deep-reinforce.com/defense_kernel_hack.html) on Hacks and Defenses in Automatic GPU Kernel Generation
+
+Our ongoing blogpost and PRs try to systematize and list out these behaviors and provide tests, detection, and mitigation toolings.
+
 
 ## Methodology
+More on that coming.
 
+To ensure **consistency and reproducibility**, we recommend using `modal` and we have provided / are adding more various modal cloud functions to standardize the evaluation environment.
 
 ### Correctness
+More coming. We also want to highlight community effort such as [BackendBench](https://www.youtube.com/watch?v=BTfjdyZOKww).
 
 ### Performance
-We (are) implementing a few ways for timing and understand the tradeoffs.
+We highly recommend watching this [lecture](https://www.youtube.com/watch?v=1i7dxoAfKOU) from GPU mode on kernel profiling. 
 
-### Unit Tests
+We have (and continue to) implement various approaches to conduct kernel timing to understand the tradeoffs.
 
+Check out `timing.py` to see available timing methods and `src/unit_tests/test_eval_timing.py` to test out various timing methods (including leveraging `cuda_event` marker, Triton `do_bench`, `host_time` E2E time). @palic and team is working on a blogpost explaining the different tradeoffs soon. 
+
+### Unit Tests with Adversarial Examples
 We've included some unit tests for the eval script in `src/unit_tests/test_eval_adversarial.py`. These tests run adversarial kernels (see `src/unit_tests/test_kernels/`) that contain examples of reward hacking that we've seen from LLMs and ensures that the eval script catches them, either by failing their correctness checks or flagging them for excessive speedups. Examples include:
 - Reusing computations cached during the PyTorch reference
 - Modifying inputs to cheat correctness checks
@@ -23,5 +42,8 @@ We've included some unit tests for the eval script in `src/unit_tests/test_eval_
 
 We will continue to add more tests as we explore additional adversarial scenarios.
 
- 
-Note this is an ongoing community effort. 
+
+Note: KernelBench is an ongoing open-source effort — please help us with issues and PRs!
+
+
+Shoutout to @bkal01, @palic, @miru_why, @ngc92, @itsclivetime, for their suggestions and feedback. 
