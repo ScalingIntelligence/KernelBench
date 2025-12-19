@@ -112,7 +112,7 @@ class KernelExecResult(BaseModel):
 
     compiled: bool = False
     correctness: bool = False
-    metadata: dict = {}
+    metadata: dict = {} # NOTE: to include warning if any
     runtime: float = -1.0  # in us, only recorded if we decide to measure performance
     runtime_stats: dict = {}  # only recorded if we decide to measure performance
 

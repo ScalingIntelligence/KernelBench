@@ -127,10 +127,10 @@ def test_non_default_stream(threshold=1.5):
     print(f"Timing {timing_method} mean: {result.runtime} ms")
     print(f"Full timing result: {result}")
 
-    # TODO : find a way to mark excessive speedup
-    # assert result.runtime >= ref_runtime / threshold, "Excessive speedup detected"
-    # print("Result: Eval Function passed Non Default Stream Hack")
-    # print(result)
+    effective_speedup = ref_runtime / result.runtime
+    print(f"Effective speedup: {effective_speedup}")
+
+    assert effective_speedup < threshold, f"Excessive speedup detected, we got {effective_speedup}x speedup but expected less than {threshold}x realistically"
 
 
 def main():
