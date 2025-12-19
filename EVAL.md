@@ -15,6 +15,13 @@ If the model can reward hack, it will find ways to reward hack!
 We (are) implementing a few ways for timing and understand the tradeoffs.
 
 ### Unit Tests
-See `src/unit_tests/test_eval.py` for unit test designed speciifcally for the eval script. Currently we have added some tests to check tricky scenarios that we can think of.
+
+We've included some unit tests for the eval script in `src/unit_tests/test_eval_adversarial.py`. These tests run adversarial kernels (see `src/unit_tests/test_kernels/`) that contain examples of reward hacking that we've seen from LLMs and ensures that the eval script catches them, either by failing their correctness checks or flagging them for excessive speedups. Examples include:
+- Reusing computations cached during the PyTorch reference
+- Modifying inputs to cheat correctness checks
+- Moving computation to a non-default CUDA stream
+
+We will continue to add more tests as we explore additional adversarial scenarios.
+
  
 Note this is an ongoing community effort. 
