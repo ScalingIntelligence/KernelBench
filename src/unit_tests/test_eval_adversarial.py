@@ -1,10 +1,7 @@
 import os
 
-import torch
-
 from src.dataset import KERNEL_BENCH_PATH
-from src.eval import KernelExecResult, eval_kernel_against_ref, load_original_model_and_inputs, set_seed
-from src.timing import get_timing_stats, get_timing_function
+from src.eval import eval_kernel_against_ref
 from src.utils import read_file
 
 """
@@ -14,34 +11,6 @@ Through a few targeted adversarial kernels.
 Run with pytest
 pytest src/unit_tests/test_eval.py
 """
-
-def measure_ref_kernel(problem_name):
-    ref_src = read_file(os.path.join(KERNEL_BENCH_PATH, problem_name))
-    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(ref_src, {})
-
-    device = torch.device("cuda")
-    init_inputs = get_init_inputs()
-    init_inputs = [x.to(device) for x in init_inputs]
-
-    with torch.no_grad():
-        set_seed(42)
-        model = Model(*init_inputs).to(device=device, dtype=torch.float32)
-        torch.cuda.synchronize(device=device)
-
-    inputs = get_inputs()
-    inputs = [x.to(device) for x in inputs]
-    timing_func = get_timing_function("cuda_event")
-    elapsed = timing_func(
-        model,
-        inputs,
-        num_warmup=5,
-        num_trials=100,
-        discard_first=1,
-        verbose=False,  
-        device=device,
-    )
-    timing_stats = get_timing_stats(elapsed)
-    return timing_stats
 
 def run_test_kernel(problem_name, 
                     kernel_filename, 
@@ -69,7 +38,6 @@ def run_test_kernel(problem_name,
         num_perf_trials=num_perf_trials,
         measure_performance=True,
         timing_method=timing_method,
-        # verbose = True
     )
 
 
@@ -106,7 +74,7 @@ def test_input_modification():
     print(result)
 
 
-def test_non_default_stream(threshold=1.5):
+def test_non_default_stream(timing_method="cuda_event", threshold=1.5):
     """
     Test that we will flag adversarial kernels that cheat by assigning work to non-default CUDA streams.
 
@@ -115,27 +83,18 @@ def test_non_default_stream(threshold=1.5):
     - Potential Hacking scenario: Eval script waits on the default stream only when measuring kernel runtime, leading to unrealistic speedups.
     - Eval script should accurately measure runtime by waiting on all streams, not just the default stream.
     """
-    ref_result: dict = measure_ref_kernel("level1/1_Square_matrix_multiplication_.py", )
-    ref_runtime = ref_result["mean"] # in ms, reference pytorch speed
-    
-    print(f"Reference runtime: {ref_runtime} ms")
-    timing_method = "cuda_event"
     result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py", 
                             kernel_filename="non_default_stream_kernel.py",
                             timing_method=timing_method,
                             num_perf_trials=10 ) # keep it low as we are leaking cuda stream
-    print(f"Timing {timing_method} mean: {result.runtime} ms")
-    print(f"Full timing result: {result}")
-
-    effective_speedup = ref_runtime / result.runtime
-    print(f"Effective speedup: {effective_speedup}")
-
-    assert effective_speedup < threshold, f"Excessive speedup detected, we got {effective_speedup}x speedup but expected less than {threshold}x realistically"
+    assert "excessive_speedup" in result.metadata, "Excessive speedup detected"
+    print("Result: Eval Function Passed Non-Default CUDA Stream Hack")
+    print(result)
 
 
 def main():
-    # test_result_cache_reuse()
-    # test_input_modification()
+    test_result_cache_reuse()
+    test_input_modification()
     test_non_default_stream()
 
 if __name__ == "__main__":

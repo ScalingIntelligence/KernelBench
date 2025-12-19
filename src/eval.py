@@ -115,6 +115,8 @@ class KernelExecResult(BaseModel):
     metadata: dict = {} # NOTE: to include warning if any
     runtime: float = -1.0  # in us, only recorded if we decide to measure performance
     runtime_stats: dict = {}  # only recorded if we decide to measure performance
+    reference_runtime: float = -1.0  # in us, only recorded if we decide to measure performance
+    reference_runtime_stats: dict = {} # only recorded if we decide to measure performance
 
 
 def load_original_model_and_inputs(
@@ -402,6 +404,7 @@ def eval_kernel_against_ref(
     ),  # have to run on GPU
     backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype = torch.float32,
+    excessive_speedup_threshold: float = 1.5, # if the kernel is <excessive_speedup_threshold>x faster than the reference, it will get flagged
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -598,6 +601,28 @@ def eval_kernel_against_ref(
                     print(f"[Eval] Performance Stats: {runtime_stats}")
                 kernel_exec_result.runtime = runtime_stats["mean"]
                 kernel_exec_result.runtime_stats = runtime_stats
+
+                # time the PyTorch reference in the same way and flag potential excessive speedups.
+                torch.cuda.synchronize(device=device)
+                reference_elapsed_times = timing_fn(
+                    original_model,
+                    inputs,
+                    num_trials=num_perf_trials,
+                    verbose=verbose,
+                    device=device,
+                )
+                reference_runtime_stats = timing.get_timing_stats(reference_elapsed_times, device=device)
+                kernel_exec_result.reference_runtime = reference_runtime_stats["mean"]
+                kernel_exec_result.reference_runtime_stats = reference_runtime_stats
+
+                effective_speedup = kernel_exec_result.reference_runtime / kernel_exec_result.runtime
+                if effective_speedup > excessive_speedup_threshold:
+                    kernel_exec_result.metadata["excessive_speedup"] = True
+                    if verbose:
+                        print(f"[Eval] Excessive speedup of {effective_speedup}x using timing method {timing_method} detected!")
+                        print("Double check your kernel to ensure it is not reward hacking.")
+
+
         except Exception as e:
             if verbose:
                 print(f"[Eval] Error in Measuring Performance: {e}")
