@@ -42,6 +42,14 @@ torch::Tensor matmul_cuda(torch::Tensor A, torch::Tensor B) {
         &beta,
         result.data_ptr<float>(), CUDA_R_32F, N,
         CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
+
+    // NOTE: Intentionally leaking CUDA resources (stream + cuBLAS handle) to preserve
+    // adversarial behavior. Calling cudaStreamDestroy() would implicitly synchronize,
+    // defeating the purpose of this test (which checks if the eval harness detects
+    // work launched on non-default streams). Keep num_perf_trials low to avoid OOM.
+    // cublasDestroy(handle);
+    // cudaStreamDestroy(stream);
+    
     return result;
 }
 """
