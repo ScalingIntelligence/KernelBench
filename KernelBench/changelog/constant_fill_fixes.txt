@@ -1,0 +1,52 @@
+Changelog: Constant Fill Problems Fixes
+========================================
+
+Date: 2025-12-20
+
+Fixed 3 problems that produced constant (zero) outputs regardless of input.
+
+--------------------------------------------------------------------------------
+
+1. level2/80_Gemm_Max_Subtract_GELU.py
+
+   Issue: After max(dim=1, keepdim=True), shape is (B,1). The mean along dim=1 
+          of a single-element tensor equals the value itself, so x - mean = 0.
+
+   Fix: Changed mean dimension from 1 to 0.
+        - x = x - x.mean(dim=1, keepdim=True)
+        + x = x - x.mean(dim=0, keepdim=True)
+   
+   Why: Shape is (B,1), so mean(dim=0) gives scalar mean across B samples; each 
+        sample's max differs, producing non-zero deviations from batch mean.
+
+--------------------------------------------------------------------------------
+
+2. level2/83_Conv3d_GroupNorm_Min_Clamp_Dropout.py
+
+   Issue: min(x, 0.0) forces all values ≤ 0, then clamp(min=0.0) forces all 
+          values to exactly 0.
+
+   Fix: Changed min to use max_value instead of min_value; set max_value=0.5.
+        - x = torch.min(x, torch.tensor(min_value, device=x.device))
+        + x = torch.min(x, torch.tensor(max_value, device=x.device))
+        - max_value = 1.0
+        + max_value = 0.5
+   
+   Why: min(x, 0.5) caps at 0.5; clamp bounds to [0,0.5], giving output in [0,0.5]
+        range which preserves Conv3d/GroupNorm variation.
+
+--------------------------------------------------------------------------------
+
+3. level2/23_Conv3d_GroupNorm_Mean.py
+
+   Issue: GroupNorm normalizes to zero mean per group (with default affine 
+          params γ=1, β=0). The global mean of zero-mean data is ~0.
+
+   Fix: Replaced mean with amax (global max pooling).
+        - x = x.mean(dim=[1, 2, 3, 4])
+        + x = x.amax(dim=[1, 2, 3, 4])
+   
+   Why: After GroupNorm, mean is ~0 but max varies per input because different
+        inputs have different extreme values in the normalized distribution.
+
+--------------------------------------------------------------------------------

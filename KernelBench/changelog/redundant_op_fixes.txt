@@ -1,0 +1,89 @@
+Changelog: Redundant Operation Fixes
+=====================================
+
+Date: 2025-12-20
+
+Removed 7 redundant operations that had no effect on model output.
+
+--------------------------------------------------------------------------------
+
+1. level2/44_ConvTranspose2d_Multiply_GlobalAvgPool_GlobalAvgPool_Mean.py
+
+   Issue: Second global avg pool is no-op (tensor is N×C×1×1 after first pool).
+
+   Fix: Removed second mean operation.
+        - x = torch.mean(x, dim=[2, 3], keepdim=True)  # First
+        - x = torch.mean(x, dim=[2, 3], keepdim=True)  # Second (removed)
+
+--------------------------------------------------------------------------------
+
+2. level2/95_Matmul_Add_Swish_Tanh_GELU_Hardtanh.py
+
+   Issue: Hardtanh[-1,1] after tanh→GELU is redundant (GELU of tanh output 
+          is already in approximately [-0.16, 0.84] ⊂ [-1, 1]).
+
+   Fix: Removed Hardtanh.
+        - x = torch.nn.functional.hardtanh(x, min_val=-1, max_val=1)
+
+--------------------------------------------------------------------------------
+
+3. level2/81_Gemm_Swish_Divide_Clamp_Tanh_Clamp.py
+
+   Issue: Final clamp[-1,1] after tanh is redundant (tanh already outputs [-1,1]).
+
+   Fix: Removed final clamp.
+        - x = torch.clamp(x, min=-1.0, max=1.0)
+
+--------------------------------------------------------------------------------
+
+4. level2/7_Conv3d_ReLU_LeakyReLU_GELU_Sigmoid_BiasAdd.py
+
+   Issue: LeakyReLU after ReLU is identity (ReLU output is ≥0, LeakyReLU is 
+          identity for non-negative inputs).
+
+   Fix: Removed LeakyReLU.
+        - x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
+
+--------------------------------------------------------------------------------
+
+5. level3/36_LSTMHn.py
+
+   Issue: fc layer computes output but returns h_n (state[0]) instead, making 
+          fc dead code.
+
+   Fix: Removed fc layer from __init__ and forward.
+        - self.fc = nn.Linear(hidden_size, output_size)
+        - out = self.fc(out[:, -1, :])
+
+--------------------------------------------------------------------------------
+
+6. level3/37_LSTMCn.py
+
+   Issue: fc layer computes output but returns c_n (state[1]) instead, making 
+          fc dead code.
+
+   Fix: Removed fc layer from __init__ and forward.
+        - self.fc = nn.Linear(hidden_size, output_size)
+        - out = self.fc(out[:, -1, :])
+
+--------------------------------------------------------------------------------
+
+7. level3/49_Mamba2ReturnFinalState.py
+
+   Issue: Y_diag einsum is computed but never used (returns new_states[:, -1]).
+          L is only used to compute Y_diag, so both are dead code.
+
+   Fix: Removed dead code computing L and Y_diag.
+        - L = torch.exp(self.segsum(A_blocks))
+        - Y_diag = torch.einsum("bclhn,bcshn,bhcls,bcshp->bclhp", ...)
+
+--------------------------------------------------------------------------------
+
+TODO: Pending Name Changes (5 files)
+-------------------------------------
+[ ] level2/23_Conv3d_GroupNorm_Mean.py → 23_Conv3d_GroupNorm_Amax.py
+[ ] level2/44_ConvTranspose2d_Multiply_GlobalAvgPool_GlobalAvgPool_Mean.py → 44_ConvTranspose2d_Multiply_GlobalAvgPool_Mean.py
+[ ] level2/95_Matmul_Add_Swish_Tanh_GELU_Hardtanh.py → 95_Matmul_Add_Swish_Tanh_GELU.py
+[ ] level2/81_Gemm_Swish_Divide_Clamp_Tanh_Clamp.py → 81_Gemm_Swish_Divide_Clamp_Tanh.py
+[ ] level2/7_Conv3d_ReLU_LeakyReLU_GELU_Sigmoid_BiasAdd.py → 7_Conv3d_ReLU_GELU_Sigmoid_BiasAdd.py
+
