@@ -21,6 +21,7 @@ class Model(nn.Module):
         x = x / 2.0
         x = torch.clamp(x, min=-1.0, max=1.0)  # Clamp between -1 and 1
         x = torch.tanh(x)  # Tanh activation
+        x = torch.clamp(x, min=-1.0, max=1.0)  # Clamp between -1 and 1
         return x
 
 batch_size = 1024
@@ -32,3 +33,4 @@ def get_inputs():
 
 def get_init_inputs():
     return [in_features, out_features]
+
