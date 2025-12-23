@@ -35,7 +35,7 @@ tag = f"{cuda_version}-{flavor}-{operating_sys}"
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
-    .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
+    .uv_sync(uv_project_dir=REPO_TOP_PATH)
     .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
     .add_local_python_source("src")
     .add_local_python_source("scripts")
