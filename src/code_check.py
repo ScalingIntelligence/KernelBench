@@ -78,13 +78,15 @@ def check_thunderkittens_code(code: str) -> bool:
         r"kittens::warp\b",
         r"kittens::warpgroup\b",
         r"::warpgroup::",
-        r"::warp::"
+        r"::warp::",
+        r"warpgroup::",
+        r"warp::"
     ]
     has_warp_pattern = any(re.search(pattern, code) for pattern in warp_patterns)
     if not has_warp_pattern:
         return False
     
-    # (1) Check that the file actually uses tiles: st_<type><...> or rt_<type><...>
+    # (2) Check that the file actually uses tiles: st_<type><...> or rt_<type><...>
     # Pattern matches: st_bf<...>, st_fl<...>, rt_bf<...>, rt_fl<...>, etc. (any type)
     # TODO: we don't look for global gl here...
     # Also handles namespaced versions like kittens::st_bf<...>
@@ -92,6 +94,19 @@ def check_thunderkittens_code(code: str) -> bool:
     has_tiles = bool(re.search(tile_pattern, code))
     if not has_tiles:
         return False
+
+    # # (3) Producer-Consumer semantics
+    # pc_patterns = [
+    #     r"tma::\b",
+    #     r"load_async\b"
+    # ]
+    # has_pc_pattern = any(re.search(pattern, code) for pattern in pc_patterns)
+    # if not has_pc_pattern:
+    #     return False
+
+    passes_compilation = False
+    # TODO: Try compilation here and return false if it fails
+
     
     # ALL of the above conditions must be met for this code string to pass
     return True
