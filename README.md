@@ -79,19 +79,23 @@ KernelBench/
 
 We have transitioned to using `pyproject.toml` and `uv` for dependency management. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if you haven't already
 
-```
-# Sync dependencies (creates .venv and installs everything)
+```bash
+# Install base dependencies (works without a local GPU)
 uv sync
+
+# Install with GPU dependencies (for local GPU evaluation)
+uv sync --extra gpu
+
 # Run commands with uv
 uv run python scripts/<script_name>.py ...
 ```
 
-You still use `conda (python=3.10)` to create your environment and install dependencies with `requirements.txt`.
+You can still use `conda (python=3.10)` to create your environment and install dependencies with `requirements.txt`.
 
 We use `litellm` for API calls. Please set your keys by creating a `.env` following our `.env.example`.
 
-Running and profiling kernels require a GPU. 
-If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.  
+Running and profiling kernels require a GPU.
+If you don't have a GPU available locally, you can set up [Modal](https://modal.com/) for cloud GPU evaluation. Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
 
 You can also try out our [tutorial notebook](https://bit.ly/kernelbench-neurips-colab) (also in notebooks/tutorial.ipynb) with Google Colab.
 

@@ -102,7 +102,7 @@ image = (
                 "g++-10",
                 "clang" # note i skip a step
                 )
-    .uv_sync(uv_project_dir=REPO_TOP_DIR)
+    .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
     .add_local_python_source("src")
 )
 
