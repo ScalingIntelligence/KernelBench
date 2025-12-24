@@ -77,7 +77,16 @@ KernelBench/
 
 ## 🔧 Set up
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if you haven't already
+We have transitioned to using `pyproject.toml` and `uv` for dependency management. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if you haven't already
+
+```
+# Sync dependencies (creates .venv and installs everything)
+uv sync
+# Run commands with uv
+uv run python scripts/<script_name>.py ...
+```
+
+You still use `conda (python=3.10)` to create your environment and install dependencies with `requirements.txt`.
 
 We use `litellm` for API calls. Please set your keys by creating a `.env` following our `.env.example`.
 

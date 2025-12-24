@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+# this should be our single source of truth for versioning
+
+[project]
+# to rename as kb_src later and updated codebase
+# do that later let's get all the import right first
+name = "src" 
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+    # Frameworks
+    "torch==2.9.0",
+    "triton",
+
+    "transformers",
+    "datasets",
+    "modal",
+
+    # DSLs
+    "nvidia-cutlass-dsl",
+    "tilelang",
+
+    # helper
+    "tqdm",
+    "packaging",
+    "pydra_config",
+    "pytest",
+    "ninja",
+    "cupy-cuda12x",
+
+    # Numerics
+    "einops",
+    "python-dotenv",
+    "numpy",
+
+    # LLM providers
+    "openai",
+    "litellm[proxy]",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+# TODO: change to kb_src later
