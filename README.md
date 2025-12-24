@@ -124,7 +124,7 @@ uv run python scripts/generate_samples.py run_name=test_hf_level_1 dataset_src=h
 # 2. Evaluate on all generated kernels in runs/{run_name} directory
 uv run python scripts/eval_from_generations.py run_name=test_hf_level_1 dataset_src=local level=1 num_gpu_devices=8 timeout=300
 
-# If you like to speedup evaluation, you can use parallelize compilation on CPUs before getting to evluation on GPUs
+# If you like to speedup evaluation, you can use parallelize compilation on CPUs before getting to evaluation on GPUs
 # add build_cache=True and num_cpu_workers=<num_cpu_workers> to the command
 ```
 ### Analyze the eval results to compute Benchmark Performance
