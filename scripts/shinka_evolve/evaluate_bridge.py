@@ -12,6 +12,22 @@ from src.dataset import construct_kernelbench_dataset
 from src.eval import eval_kernel_against_ref
 from src.utils import read_file, set_gpu_arch
 
+def get_current_gpu_arch():
+    """Dynamically detect GPU architecture to set correct NVCC flags."""
+    if not torch.cuda.is_available():
+        return ["Volta"] # Fallback
+        
+    cap = torch.cuda.get_device_capability(0)
+    major, minor = cap
+    
+    if major == 9: return ["Hopper"]
+    if major == 8 and minor == 9: return ["Ada"]
+    if major == 8: return ["Ampere"]
+    if major == 7 and minor == 5: return ["Turing"]
+    if major == 7: return ["Volta"]
+    
+    return ["Ampere"] # Default fallback for modern cards
+
 def main(program_path, results_dir, level, problem_id):
     os.makedirs(results_dir, exist_ok=True)
     
@@ -20,7 +36,11 @@ def main(program_path, results_dir, level, problem_id):
         return
 
     device = torch.device("cuda:0")
-    set_gpu_arch(["Ada"]) 
+    
+    # FIX: Dynamic Architecture Detection
+    # Prevents "no kernel image is available" errors on H100/A100
+    current_arch = get_current_gpu_arch()
+    set_gpu_arch(current_arch) 
 
     # Load Reference
     try:
@@ -36,6 +56,12 @@ def main(program_path, results_dir, level, problem_id):
 
     metrics = {"combined_score": 0.0, "text_feedback": ""}
 
+    # FIX: Create a unique build directory for this specific evaluation run
+    # This prevents race conditions on the global torch_extensions lock file
+    # if parallel jobs are running.
+    jit_build_dir = os.path.join(results_dir, "jit_build")
+    os.makedirs(jit_build_dir, exist_ok=True)
+
     try:
         # Run Eval
         result = eval_kernel_against_ref(
@@ -48,7 +74,8 @@ def main(program_path, results_dir, level, problem_id):
             timing_method="cuda_event",
             device=device,
             check_for_excessive_speedup=True,
-            excessive_speedup_threshold=50.0 
+            excessive_speedup_threshold=50.0,
+            build_dir=jit_build_dir  # <--- Critical for concurrency
         )
 
         if not result.compiled:

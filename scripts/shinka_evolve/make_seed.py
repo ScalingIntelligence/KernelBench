@@ -47,13 +47,18 @@ def create_seed_file(level, problem_id, output_path):
     content = re.sub(r'super\s*\([^\)]+\)\.__init__\(\)', 'super().__init__()', content)
 
     # 3. Extract just the class and the original helper functions
-    # We want to wrap the helper functions to ensure .cuda()
-    # (Simplified regex extraction - assumes standard KernelBench format)
-    
-    # Actually, the simplest way is to just use the content as is, 
-    # but rename the helpers in the content so we can wrap them in the TEMPLATE
-    content = content.replace("def get_inputs():", "def _original_get_inputs():")
-    content = content.replace("def get_init_inputs():", "def _original_get_init_inputs():")
+    # FIX: Use Regex for robust replacement of function definitions
+    # Handles "def get_inputs():" and "def get_inputs( ):" etc.
+    content = re.sub(
+        r"def\s+get_inputs\s*\(\s*\):", 
+        "def _original_get_inputs():", 
+        content
+    )
+    content = re.sub(
+        r"def\s+get_init_inputs\s*\(\s*\):", 
+        "def _original_get_init_inputs():", 
+        content
+    )
     
     seed_content = TEMPLATE.format(
         content=content,
@@ -69,4 +74,5 @@ def create_seed_file(level, problem_id, output_path):
 
 if __name__ == "__main__":
     # Example usage
-    create_seed_file(1, 1, "runs/debug_seed/initial.py")
+    # create_seed_file(1, 1, "runs/debug_seed/initial.py")
+    pass

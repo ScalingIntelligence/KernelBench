@@ -48,6 +48,10 @@ def build_kernelbench_sys_msg(model_name):
        
     4. **SYNTAX:**
        - Use `super().__init__()` in the constructor.
+
+    5. **NO BOILERPLATE:** 
+       - Do NOT include `if __name__ == "__main__":` blocks, argument parsing, or test runners. 
+       - Provide ONLY the kernel definition and the `ModelNew` class.
     """
     
     return sys_msg
@@ -58,16 +62,26 @@ def main():
     parser.add_argument("--problem_id", type=int, default=1)
     parser.add_argument("--model", type=str, default="gpt-4o-2024-08-06") 
     parser.add_argument("--generations", type=int, default=10)
+    # New arguments for suite integration
+    parser.add_argument("--results_root", type=str, default="runs")
+    parser.add_argument("--max_parallel_jobs", type=int, default=1)
     args = parser.parse_args()
 
     # 1. Setup Workspace
-    run_name = f"shinka_L{args.level}_P{args.problem_id}_{args.model.replace('/', '_')}"
-    results_dir = f"runs/{run_name}"
+    # Organize by Level -> Problem
+    problem_slug = f"L{args.level}_P{args.problem_id}"
+    run_name = f"{problem_slug}_{args.model.replace('/', '_')}"
+    
+    # If results_root is provided (from suite), nest it there
+    results_dir = os.path.join(args.results_root, run_name)
     os.makedirs(results_dir, exist_ok=True)
+
+    print(f"Starting search for {problem_slug} in {results_dir}")
 
     # 2. Generate Initial Program
     init_path = os.path.join(results_dir, "initial.py")
-    create_seed_file(args.level, args.problem_id, init_path)
+    if not os.path.exists(init_path):
+        create_seed_file(args.level, args.problem_id, init_path)
 
     # 3. Configure Shinka
     job_config = LocalJobConfig(
@@ -87,14 +101,14 @@ def main():
     evo_config = EvolutionConfig(
         task_sys_msg=build_kernelbench_sys_msg(args.model),
         num_generations=args.generations,
-        max_parallel_jobs=1,
+        max_parallel_jobs=args.max_parallel_jobs,
         init_program_path=init_path,
         results_dir=results_dir,
         llm_models=[args.model],
         use_text_feedback=True,
         # We increase Full Rewrite probability because ordering is hard to fix with Diff
-        patch_types=["diff", "full"], 
-        patch_type_probs=[0.4, 0.6], 
+        patch_types=["full"], 
+        patch_type_probs=[1.0], 
         language="python" 
     )
 
