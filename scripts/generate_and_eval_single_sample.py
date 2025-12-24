@@ -53,8 +53,8 @@ class EvalConfig(Config):
         self.precision = "fp32" # options ["fp32", "fp16", "bf16"]
 
         # Inference config
-        self.server_type = None
-        self.model_name = None
+        self.server_type = REQUIRED
+        self.model_name = REQUIRED
         self.max_tokens = None
         self.temperature = None
         

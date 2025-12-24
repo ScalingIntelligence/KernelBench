@@ -100,9 +100,9 @@ You can also try out our [tutorial notebook](https://bit.ly/kernelbench-neurips-
 It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample. 
 
 ```bash
-# for example, run level 2 problem 40 from huggingface
+# for example, run level 2 problem 40 from huggingface and use google gemini 2.5 flash for generation
 
-uv run python scripts/generate_and_eval_single_sample.py dataset_src="huggingface" level=2 problem_id=40
+uv run python scripts/generate_and_eval_single_sample.py dataset_src=huggingface level=2 problem_id=40 server_type=google model_name=gemini/gemini-2.5-flash
 
 # dataset_src could be "local" or "huggingface"
 # add .verbose_logging for more visbility
