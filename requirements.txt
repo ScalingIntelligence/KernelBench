@@ -19,6 +19,7 @@ pydra_config
 pytest
 ninja
 cupy-cuda12x
+nsight-python
 
 # Numerics
 einops

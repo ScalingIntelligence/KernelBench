@@ -2,16 +2,17 @@ import torch
 import numpy as np
 from src.eval import (
     load_original_model_and_inputs,
-    time_execution_with_cuda_event,
-    get_timing_stats,
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
+
+from src.timing import get_timing_function, get_timing_stats
 
 def measure_program_time(
         ref_arch_name: str,
         ref_arch_src: str, 
         num_trials: int = 100,
+        timing_method: str="cuda_event",        
         use_torch_compile: bool = False,
         torch_compile_backend: str="inductor", 
         torch_compile_options: str="default",
@@ -52,8 +53,9 @@ def measure_program_time(
             
             model = model.cuda(device=device)
             torch.cuda.synchronize(device=device)
-            elapsed_times = time_execution_with_cuda_event(
-                model, *inputs, num_trials=num_trials, verbose=verbose, device=device
+            timing_func = get_timing_function(timing_method )
+            elapsed_times = timing_func(
+                model, inputs, num_warmup=3, num_trials=num_trials, discard_first=1, verbose=verbose, device=device
             )
             runtime_stats = get_timing_stats(elapsed_times, device=device)
 
@@ -87,5 +89,4 @@ def get_inputs():
 def get_init_inputs():
     return []  # No special initialization inputs needed
     """
-    print(measure_program_time(ref_arch_name, ref_arch_src, use_torch_compile=False))
-    print(measure_program_time(ref_arch_name, ref_arch_src, use_torch_compile=True))
+    print(measure_program_time(ref_arch_name, ref_arch_src, use_torch_compile=False, timing_method="cuda_event"))
