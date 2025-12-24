@@ -26,6 +26,14 @@ LEVEL_1_SUBSET = [
     # Add more level 1 problems if desired, or loop 1-100
 ]
 
+LEVEL_2_SUBSET = [
+    1,  # Conv2D + ReLU + BiasAdd (Great candidate for fusion)
+    2,  # ConvTranspose + Bias + Scaling
+    18, # Matmul + Sum + Max + AvgPool (Complex fusion)
+    28, # BMM + InstanceNorm + Sum
+    33, # Gemm + Scale + BatchNorm
+]
+
 def run_problem(gpu_id, problem_id, args, results_root):
     print(f"[GPU {gpu_id}] Starting Level 1 Problem {problem_id}...")
     
@@ -33,7 +41,7 @@ def run_problem(gpu_id, problem_id, args, results_root):
     
     cmd = [
         sys.executable, "scripts/shinka_evolve/run_search.py",
-        "--level", "1",
+        "--level", "2",
         "--problem_id", str(problem_id),
         "--model", args.model,
         "--generations", str(args.generations),
@@ -85,7 +93,7 @@ def main():
     print(f"🤖 Model: {args.model}")
     print(f"🖥️  GPUs: {gpu_list}")
     print(f"📂 Results: {results_root}")
-    print(f"🎯 Targets: {len(LEVEL_1_SUBSET)} problems")
+    print(f"🎯 Targets: {len(LEVEL_2_SUBSET)} problems")
     print("-" * 50)
     
     # Create a queue of problems
@@ -97,7 +105,7 @@ def main():
         # This simple approach launches N futures where N = num_gpus.
         # Each future pulls from a shared iterator/queue.
         
-        problem_queue = list(LEVEL_1_SUBSET)
+        problem_queue = list(LEVEL_2_SUBSET)
         
         def gpu_worker(gpu_id):
             while problem_queue:
