@@ -153,7 +153,8 @@ def query_server(
             if "openai/" not in model_name.lower() and "gpt" not in model_name.lower():
                 completion_kwargs["top_k"] = top_k
         
-        response = completion(**completion_kwargs)
+        # FIX: Added drop_params=True to handle gpt-5-mini/reasoning models that reject top_p
+        response = completion(**completion_kwargs, drop_params=True)
         
         # output processing
         if num_completions == 1:
