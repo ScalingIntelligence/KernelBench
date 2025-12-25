@@ -48,6 +48,7 @@ You can increase the number of trials for correctness and performance
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_DIR, "KernelBench")
+SRC_PATH = os.path.join(REPO_TOP_DIR, "src")
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -68,11 +69,16 @@ image = (
                 "clang"
                 )
     .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root"
+    })
     .add_local_dir(
         KERNEL_BENCH_PATH,
         remote_path="/root/KernelBench"
     )
-    .add_local_python_source("src")
+    .add_local_dir(SRC_PATH, remote_path="/root/src")
 )
 
 
@@ -745,6 +751,15 @@ def main(config: EvalConfig):
     Store Eval Results in specified eval results file
     """
     print(f"Starting Batch Eval with config: {config}")
+
+    # Handle backend-specific settings
+    backend = config.backend.lower()
+    
+    # thunderkittens requires bf16 and H100 GPU
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+        config.gpu = "H100"
+        print(f"[ThunderKittens] Auto-configured: precision=bf16, gpu=H100")
 
     # Check if CUDA is available (only for local mode)
     if config.eval_mode == "local":

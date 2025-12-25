@@ -25,6 +25,7 @@ Easiest way to get started, to test a single problem for experimentation or debu
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_PATH = os.path.join(REPO_TOP_DIR, "src")
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -103,7 +104,12 @@ image = (
                 "clang" # note i skip a step
                 )
     .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-    .add_local_python_source("src")
+    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root"
+    })
+    .add_local_dir(SRC_PATH, remote_path="/root/src")
 )
 
 @app.cls(image=image)
@@ -216,7 +222,7 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -227,6 +233,11 @@ def main(config: EvalConfig):
     if backend == "tilelang":
         config.precision = "fp16"
         config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
+    
+    # thunderkittens can use bf16 or fp16 by default, also set default GPU to H100
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+        config.gpu = "H100"
 
     if not custom_prompt_key:
         if prompt_option not in valid_prompt_options:

@@ -49,6 +49,11 @@ backend_display = "TileLang kernels"
 one_shot_new_arch = "src/prompts/model_new_ex_add_tilelang.py"
 # No few_shot_examples - will use one-shot when few_shot option is selected
 
+[backends.thunderkittens]
+backend_display = "ThunderKittens kernels"
+one_shot_new_arch = "src/prompts/model_new_ex_add_thunderkittens.py"
+# No few_shot_examples - will use one-shot when few_shot option is selected
+
 # -------------------------------------------------------------------------
 # Precision: Precision-specific configuration
 # -------------------------------------------------------------------------
