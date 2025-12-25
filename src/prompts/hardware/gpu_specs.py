@@ -118,7 +118,25 @@ GPU_SPEC_INFO = {
         "Maximum number of thread blocks per SM": "32",
         "Shared memory capacity per SM": "164 KB",
         "Maximum shared memory per thread block": "163 KB",
-    }
+    },
+    "H200": {
+        "GPU Architecture": "Hopper",
+        "GPU Memory": "141GB HBM3e",
+        "Memory Bandwidth": "4.8 TB/s",
+        "FP64 TFLOPS": "34",
+        "FP64 Tensor Core TFLOPS": "67",
+        "FP32 TFLOPS": "67",
+        "TF32 Tensor Core TFLOPS": "495 (989 with sparsity)",
+        "BFLOAT16 Tensore Core TFLOPS": "990 (1979 with sparsity)",
+        "FP16 Tensor Core TFLOPS": "990 (1979 with sparsity)",
+        "FP8 Tensor Core TFLOPS": "1979 (3958 with sparsity)",
+        "INT8 Tensor Core TOPS": "1979 (3958 with sparsity)",
+        "Register File Size": "64K 32-bit registers per SM",
+        "Maximum number of registers per thread": "255",
+        "Maximum number of thread blocks per SM": "32",
+        "Shared memory capacity per SM": "228 KB",
+        "Maximum shared memory per thread block": "227 KB",
+    },
 }
 
 # Basic GPU concept definitions
