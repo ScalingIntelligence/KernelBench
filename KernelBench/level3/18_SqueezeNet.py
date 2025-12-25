@@ -72,7 +72,7 @@ class Model(nn.Module):
         return torch.flatten(x, 1)
 
 # Test code
-batch_size = 64
+batch_size = 32
 input_channels = 3
 height = 512
 width = 512
