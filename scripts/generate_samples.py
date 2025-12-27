@@ -18,6 +18,7 @@ from src.utils import (
     read_file,
     set_gpu_arch,
 )
+from src.code_check import check_thunderkittens_code
 
 """
 Batch Generate Samples for Particular Level
@@ -162,6 +163,14 @@ def generate_sample_single(
     # check LLM is able to generate custom CUDA code
     assert custom_kernel is not None, "Custom CUDA code generation failed"
 
+    # TODO: What should be the behavior here? Add more backends
+    # Validate ThunderKittens code if backend is thunderkittens
+    if config.backend == "thunderkittens":
+        if not check_thunderkittens_code(custom_kernel):
+            raise ValueError(
+                f"Generated code for problem {work.problem_id} sample {work.sample_id} doesn't seem to use valid ThunderKittens constructs"
+            )
+
     if config.verbose:
         print(
             f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}"
@@ -239,7 +248,7 @@ def main(config: GenerationConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "cute", "tilelang"}
+    supported_backends = {"cuda", "triton", "cute", "tilelang", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
