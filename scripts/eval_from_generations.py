@@ -67,7 +67,7 @@ image = (
                 "g++-10",
                 "clang"
                 )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
+    .uv_sync(uv_project_dir=REPO_TOP_DIR)
     .add_local_dir(
         KERNEL_BENCH_PATH,
         remote_path="/root/KernelBench"

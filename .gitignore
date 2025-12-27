@@ -13,3 +13,4 @@ cache/*
 _build_cache/
 
 uv.lock
+CLAUDE.md

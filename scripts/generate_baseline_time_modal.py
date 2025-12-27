@@ -91,7 +91,7 @@ image = (
                 "g++-10",
                 "clang" # note i skip a step
                 )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
+    .uv_sync(uv_project_dir=REPO_TOP_PATH, extras=["gpu"])
     .add_local_dir(
         KERNEL_BENCH_PATH,
         remote_path="/root/KernelBench"
