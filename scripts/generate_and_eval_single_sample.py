@@ -7,17 +7,17 @@ import modal
 
 from datasets import load_dataset
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
-from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
-from src.utils import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import eval_kernel_against_ref
+from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+from kernelbench.utils import (
     create_inference_server_from_presets,
     extract_first_code,
     query_server,
     read_file,
     set_gpu_arch,
 )
-from src.eval import get_torch_dtype_from_string
+from kernelbench.eval import get_torch_dtype_from_string
 """
 Generate and evaluate a single sample
 Easiest way to get started, to test a single problem for experimentation or debugging
@@ -99,7 +99,7 @@ def main(config: EvalConfig):
     Keep it simple: Generate and evaluate a single sample
     Note: will shorten code logic to make this as simple as possible
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]

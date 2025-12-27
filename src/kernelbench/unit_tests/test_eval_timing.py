@@ -4,16 +4,16 @@ import torch
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-import timing
+from kernelbench import timing
 
 """
 Test Timing
 We want to systematically study different timing methodologies.
 """
-REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
 # use exampls in the few shot directory
-EXAMPLES_PATH = os.path.join(REPO_PATH, "src", "prompts", "few_shot")
+EXAMPLES_PATH = os.path.join(REPO_PATH, "src", "kernelbench", "prompts", "few_shot")
 
 # Configure your test cases here
 TEST_REF_FILE = "model_ex_tiled_matmul.py"

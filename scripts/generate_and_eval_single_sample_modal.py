@@ -14,7 +14,7 @@ import modal
 from datasets import load_dataset
 
 #from src.dataset import construct_kernelbench_dataset
-from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
+from kernelbench.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
 
@@ -113,10 +113,10 @@ class EvalFunc:
         # 3. Evaluate Kernel
         # NOTE: no need to wrap around process here as only a single sample
         # see batch eval for examples of process isolation
-        from src.eval import eval_kernel_against_ref
-        from src.eval import get_torch_dtype_from_string
+        from kernelbench.eval import eval_kernel_against_ref
+        from kernelbench.eval import get_torch_dtype_from_string
         # Use utility function to set the GPU architecture in the modal environment
-        from src.utils import set_gpu_arch as modal_set_gpu_arch
+        from kernelbench.utils import set_gpu_arch as modal_set_gpu_arch
         modal_set_gpu_arch(gpu_arch)
         return eval_kernel_against_ref(
             ref_arch_src, custom_kernel, verbose=verbose, measure_performance=True, 
@@ -130,7 +130,7 @@ def main(config: EvalConfig):
     """
     Keep it simple: Generate and evaluate a single sample
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
@@ -238,7 +238,7 @@ def main(config: EvalConfig):
             )
 
     # Lazy import prompt constructor
-    from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+    from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 
     if custom_prompt_key:
         custom_prompt = get_custom_prompt(

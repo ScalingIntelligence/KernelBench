@@ -1,7 +1,7 @@
 import sys, os
-import src.utils as utils
+import kernelbench.utils as utils
 import time
-from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 """
 For testing infernece and quickly iterate on prompts 
 Uses functions in prompt_constructor

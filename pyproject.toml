@@ -5,9 +5,7 @@ build-backend = "setuptools.build_meta"
 # this should be our single source of truth for versioning
 
 [project]
-# to rename as kb_src later and updated codebase
-# do that later let's get all the import right first
-name = "src"
+name = "kernelbench"
 version = "0.0.1"
 requires-python = "==3.13.*"
 dependencies = [
@@ -51,6 +49,5 @@ dev = [
 
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
-# TODO: change to kb_src later
+where = ["src"]
+include = ["kernelbench*"]

@@ -16,10 +16,10 @@ from datasets import load_dataset
 from pydra import Config, REQUIRED
 
 # Import only what we need
-from src import compile, eval, utils
+from kernelbench import compile, eval, utils
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import (
     build_compile_cache,
     get_error_name,
     check_metadata_serializable_all_types,
@@ -27,7 +27,7 @@ from src.eval import (
     KernelExecResult,
 )
 
-from src.utils import read_file, set_gpu_arch
+from kernelbench.utils import read_file, set_gpu_arch
 from tqdm import tqdm
 
 # Modal support
@@ -183,8 +183,8 @@ class ModalEvaluator:
         Evaluate a single sample on Modal GPU with automatic retries for GPU attachment failures
         and proper GPU corruption handling via stop_fetching_inputs()
         """
-        from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
-        from src.utils import set_gpu_arch
+        from kernelbench.eval import eval_kernel_against_ref, get_torch_dtype_from_string
+        from kernelbench.utils import set_gpu_arch
         import torch
         import time
         import modal.experimental

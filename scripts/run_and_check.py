@@ -6,10 +6,10 @@ import os
 from datasets import load_dataset
 import modal
 
-from src import eval as kernel_eval
-from src import utils as kernel_utils
+from kernelbench import eval as kernel_eval
+from kernelbench import utils as kernel_utils
 from scripts.generate_baseline_time import measure_program_time
-from src.utils import read_file
+from kernelbench.utils import read_file
 
 # Modal setup
 app = modal.App("run_and_check")
@@ -47,7 +47,7 @@ Run a pair of KernelBench format (problem, solution) to check if solution is cor
 You will need two files
 1. Reference: PyTorch reference (module Model) implementation with init and input shapes
 2. Solution: PyTorch solution (module ModelNew) with inline CUDA Code
-Please see examples in src/prompts
+Please see examples in src/kernelbench/prompts
 
 The Reference could be either
 1. a local file: specify the path to the file
@@ -56,15 +56,15 @@ The Reference could be either
 ====================================================
 Usage:
 1. PyTorch reference is a local file (local eval)
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/model_ex_add.py kernel_src_path=src/prompts/model_new_ex_add.py eval_mode=local
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/few_shot/model_ex_tiled_matmul.py kernel_src_path=src/prompts/few_shot/model_new_ex_tiled_matmul.py eval_mode=local
+python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=local
+python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/few_shot/model_ex_tiled_matmul.py kernel_src_path=src/kernelbench/prompts/few_shot/model_new_ex_tiled_matmul.py eval_mode=local
 
 
 2. PyTorch reference is a kernelbench problem (local eval)
 python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=local
 
 3. PyTorch reference is a local file (modal eval on cloud GPU)
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/model_ex_add.py kernel_src_path=src/prompts/model_new_ex_add.py eval_mode=modal gpu=H100
+python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=modal gpu=H100
 
 4. PyTorch reference is a kernelbench problem (modal eval on cloud GPU)
 python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=modal gpu=L40S
@@ -178,8 +178,8 @@ class EvalFunc:
     @modal.method()
     def evaluate_single_sample_src_modal(self, ref_arch_src: str, kernel_src: str, configs: dict, gpu_arch: list):
         """Evaluate a single sample source code against a reference source code on Modal"""
-        from src.utils import set_gpu_arch
-        from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
+        from kernelbench.utils import set_gpu_arch
+        from kernelbench.eval import eval_kernel_against_ref, get_torch_dtype_from_string
 
         set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")
@@ -218,7 +218,7 @@ class EvalFunc:
     ):
         """Measure the execution time of a reference program on Modal"""
         from scripts.generate_baseline_time import measure_program_time
-        from src.utils import set_gpu_arch
+        from kernelbench.utils import set_gpu_arch
 
         set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")

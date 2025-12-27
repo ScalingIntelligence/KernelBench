@@ -1,6 +1,6 @@
 
 import pytest
-from src.dataset import get_code_hash
+from kernelbench.dataset import get_code_hash
 
 """
 Usage 

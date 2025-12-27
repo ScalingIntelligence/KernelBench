@@ -1,5 +1,5 @@
 import pytest
-from src.score import *
+from kernelbench.score import *
 import math
 
 '''
