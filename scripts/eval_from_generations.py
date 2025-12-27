@@ -16,10 +16,10 @@ from datasets import load_dataset
 from pydra import Config, REQUIRED
 
 # Import only what we need
-from src import compile, eval, utils
+from kernelbench import compile, eval, utils
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import (
     build_compile_cache,
     get_error_name,
     check_metadata_serializable_all_types,
@@ -27,7 +27,7 @@ from src.eval import (
     KernelExecResult,
 )
 
-from src.utils import read_file, set_gpu_arch
+from kernelbench.utils import read_file, set_gpu_arch
 from tqdm import tqdm
 
 # Modal support
@@ -47,7 +47,6 @@ You can increase the number of trials for correctness and performance
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-KERNEL_BENCH_PATH = os.path.join(REPO_TOP_DIR, "KernelBench")
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -60,6 +59,10 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
+SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
+
+KERNELBENCH_DIR = os.path.join(REPO_TOP_DIR, "KernelBench")
+
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git",
@@ -68,11 +71,9 @@ image = (
                 "clang"
                 )
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
-    .add_local_dir(
-        KERNEL_BENCH_PATH,
-        remote_path="/root/KernelBench"
-    )
-    .add_local_python_source("src")
+    .env({"PYTHONPATH": "/root/src"})
+    .add_local_dir(SRC_DIR, remote_path="/root/src")
+    .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last
 )
 
 
@@ -183,8 +184,8 @@ class ModalEvaluator:
         Evaluate a single sample on Modal GPU with automatic retries for GPU attachment failures
         and proper GPU corruption handling via stop_fetching_inputs()
         """
-        from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
-        from src.utils import set_gpu_arch
+        from kernelbench.eval import eval_kernel_against_ref, get_torch_dtype_from_string
+        from kernelbench.utils import set_gpu_arch
         import torch
         import time
         import modal.experimental

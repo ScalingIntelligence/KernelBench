@@ -140,8 +140,10 @@ uv run python scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=
 If you are using a different hardware, you can generate the baseline time with `scripts/generate_baseline_time.py` script.
 We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
 
-### Multi-Turn Framework
-We have also releaed the test-time framework [Caesar](https://github.com/ScalingIntelligence/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems. 
+### Multi-Turn Framework & Integrations
+We have also releaed the test-time framework [Caesar](https://github.com/ScalingIntelligence/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems.
+
+You can also use KernelBench as a library for your projects, for example: `from kernelbench import timing`, `from kernelbench import eval as kb_eval`, or `from kernelbench.utils import set_gpu_arch`.
 
 ## 🛣️ Upcoming Roadmap
 Check out our [roadmap](https://github.com/ScalingIntelligence/KernelBench/issues/74) for what we plan to add as features. We welcome community contirbutions in these directions. 

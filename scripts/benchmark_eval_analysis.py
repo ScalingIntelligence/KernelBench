@@ -2,7 +2,7 @@ import json, os
 
 import pydra
 from pydra import Config, REQUIRED
-from src.dataset import construct_kernelbench_dataset
+from kernelbench.dataset import construct_kernelbench_dataset
 from tabulate import tabulate
 
 """
@@ -129,7 +129,7 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     import numpy as np
 
     # Calculate speedup metrics
-    from src.score import (
+    from kernelbench.score import (
         fastp,
         geometric_mean_speed_ratio_correct_and_faster_only,
         geometric_mean_speed_ratio_correct_only,

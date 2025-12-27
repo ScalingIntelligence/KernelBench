@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from src.eval import (
+from kernelbench.eval import (
     load_original_model_and_inputs,
     time_execution_with_cuda_event,
     get_timing_stats,

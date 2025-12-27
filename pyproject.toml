@@ -5,52 +5,50 @@ build-backend = "setuptools.build_meta"
 # this should be our single source of truth for versioning
 
 [project]
-# to rename as kb_src later and updated codebase
-# do that later let's get all the import right first
-name = "src"
-version = "0.0.1"
-requires-python = "==3.13.*"
+name = "kernelbench"
+version = "0.2.0.dev0"
+requires-python = "==3.10.*"
 dependencies = [
     # Frameworks
-    "torch==2.9.1",
+    "torch==2.9.0",
 
-    "transformers>=4.57.3",
-    "datasets>=4.4.2",
-    "modal>=1.3.0",
+    "transformers",
+    "datasets",
+    "modal",
 
     # helper
-    "tqdm>=4.67.1",
+    "tqdm",
     "packaging",
+    "setuptools",
     "pydra-config",
-    "ninja>=1.13.0",
-    "tomli>=2.3.0",
-    "tabulate>=0.9.0",
+    "ninja",
+    "tomli",
+    "tabulate",
 
     # Numerics
-    "einops>=0.8.1",
-    "python-dotenv>=1.2.1",
-    "numpy==2.4.0",
+    "einops",
+    "python-dotenv",
+    "numpy",
 
     # LLM providers
-    "openai>=2.14.0",
-    "litellm[proxy]>=1.80.10",
+    "openai",
+    "litellm[proxy]",
 ]
 
 [project.optional-dependencies]
 gpu = [
     # GPU-specific dependencies (requires CUDA)
-    "triton==3.5.1",
+    "triton",
     "nvidia-cutlass-dsl",
     "tilelang",
-    "cupy-cuda12x==13.6.0",
+    "cupy-cuda12x",
 ]
 dev = [
-    "pytest==9.0.2",
-    "ruff==0.14.10",
+    "pytest",
+    "ruff",
 ]
 
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
-# TODO: change to kb_src later
+where = ["src"]
+include = ["kernelbench*"]

@@ -1,8 +1,8 @@
 import os
 
-from src.dataset import KERNEL_BENCH_PATH
-from src.eval import eval_kernel_against_ref
-from src.utils import read_file
+from kernelbench.dataset import KERNEL_BENCH_PATH
+from kernelbench.eval import eval_kernel_against_ref
+from kernelbench.utils import read_file
 
 """
 Specifically testing the robustness of the eval function.
