@@ -25,20 +25,24 @@ gpu_arch_mapping = {
 }
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
 cuda_version = "12.8.0"
 flavor = "devel"
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
+SRC_DIR = os.path.join(REPO_TOP_PATH, "src")
+SCRIPTS_DIR = os.path.join(REPO_TOP_PATH, "scripts")
+KERNELBENCH_DIR = os.path.join(REPO_TOP_PATH, "KernelBench")
+
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
     .uv_sync(uv_project_dir=REPO_TOP_PATH)
-    .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
-    .add_local_python_source("src")
-    .add_local_python_source("scripts")
+    .env({"PYTHONPATH": "/root/src:/root/scripts"})
+    .add_local_dir(SRC_DIR, remote_path="/root/src")
+    .add_local_dir(SCRIPTS_DIR, remote_path="/root/scripts")
+    .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last
 )
 
 """

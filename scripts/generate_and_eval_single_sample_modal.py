@@ -94,6 +94,8 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
+SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
+
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git",
@@ -102,7 +104,8 @@ image = (
                 "clang" # note i skip a step
                 )
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
-    .add_local_python_source("src")
+    .env({"PYTHONPATH": "/root/src"})
+    .add_local_dir(SRC_DIR, remote_path="/root/src")  # must be last
 )
 
 @app.cls(image=image)
