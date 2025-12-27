@@ -37,7 +37,7 @@ To evaluate model-generated kernels, we need to check if they:
 - **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
 - **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
 
-Check out `src/eval.py` for details on how we implement correctness check and timing. 
+Check out `src/eval.py` for details on how we implement correctness check and timing and `EVAL.md` for notes on evaluation and benchmarking guidelines [WIP].
 
 We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a kernel either locally or remotely by setting `eval_mode=local` or `eval_mode=modal`.
 
@@ -86,7 +86,7 @@ uv sync
 # Install with GPU dependencies (for local GPU evaluation)
 uv sync --extra gpu
 
-# Run commands with uv
+# Run commands with uv (which invoke the right env)
 uv run python scripts/<script_name>.py ...
 ```
 
@@ -95,7 +95,7 @@ You can still use `conda (python=3.10)` to create your environment and install d
 We use `litellm` for API calls. Please set your keys by creating a `.env` following our `.env.example`.
 
 Running and profiling kernels require a GPU.
-If you don't have a GPU available locally, you can set up [Modal](https://modal.com/) for cloud GPU evaluation. Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
+If you don't have a GPU available locally, you can set up [Modal](https://modal.com/) for cloud serverless GPU evaluation. Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
 
 You can also try out our [tutorial notebook](https://bit.ly/kernelbench-neurips-colab) (also in notebooks/tutorial.ipynb) with Google Colab.
 
@@ -148,6 +148,8 @@ Check out our [roadmap](https://github.com/ScalingIntelligence/KernelBench/issue
 
 ## 🔍 Known Usage
 Since release, we have gotten a lot of interest from researchers, research labs, and companies that use KernelBench to explore this direction. We have documented [known usage](https://docs.google.com/document/d/e/2PACX-1vTjS-UMH1HB5n_PENq2k-3YRfXIXkqKIKeNC2zcWMyLPdl4Jrwvdk4dNDVSsM8ybKrCxZB7GJq1slZF/pub) of KernelBench and related efforts towards automated kernel generations. If you are using KernelBench, we love to hear more about it!
+
+Disclaimer: KernelBench is designed as an open-source evaluation framework and toolkit. The KernelBench team does not review, validate, or endorse individual kernels or reported results. Users are responsible for independently verifying any results obtained using the framework. Please check out `EVAL.md` for more guidance on benchmarking and evaluating kernels.
 
 ## 🪪 License
 MIT. Check `LICENSE.md` for more details.

@@ -25,11 +25,9 @@ import numpy as np
 from contextlib import contextmanager
 from collections import defaultdict
 import time
-import shutil
 import concurrent
 from functools import cache
-from transformers import AutoTokenizer
-import hashlib
+
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 

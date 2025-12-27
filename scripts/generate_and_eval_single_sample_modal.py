@@ -14,7 +14,6 @@ import modal
 from datasets import load_dataset
 
 #from src.dataset import construct_kernelbench_dataset
-from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
@@ -237,6 +236,9 @@ def main(config: EvalConfig):
             raise ValueError(
                 "include_hardware_info is True but hardware_gpu_name is not provided."
             )
+
+    # Lazy import prompt constructor
+    from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 
     if custom_prompt_key:
         custom_prompt = get_custom_prompt(

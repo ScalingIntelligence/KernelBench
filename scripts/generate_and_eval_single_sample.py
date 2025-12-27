@@ -46,7 +46,9 @@ class EvalConfig(Config):
 
         # Evaluation
         # local (requires a GPU), modal (cloud GPU) coming soon
-        self.eval_mode = "local"
+        self.eval_mode = "local" 
+        # only support local for now
+        # see scripts/eval_from_generations_modal.py for modal evaluation
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
