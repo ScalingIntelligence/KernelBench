@@ -93,6 +93,9 @@ class EvalConfig(Config):
         # subset of problems to evaluate
         self.subset = (None, None)  # (start_id, end_id), these are the logical index
 
+        # specific problem IDs to evaluate (overrides subset if provided)
+        self.problem_ids = None  # e.g., [71, 86, 95] for specific problems
+
         # Evaluation Mode: local (requires GPU), modal (cloud GPU)
         self.eval_mode = "local"
 
@@ -519,9 +522,17 @@ def batch_eval_modal(
                 results = []
                 for i, future in enumerate(futures):
                     problem_id, sample_id = curr_work_batch[i]
-                    
+
                     if future is None:
-                        results.append((problem_id, sample_id, None))
+                        # Create a failure result for None futures
+                        fail_result = KernelExecResult(
+                            compiled=False,
+                            correctness=False,
+                            metadata={"error": "Future was None - evaluation did not complete"},
+                            runtime=-1.0,
+                            runtime_stats={},
+                        )
+                        results.append((problem_id, sample_id, fail_result))
                     else:
                         try:
                             result = future.get()
@@ -531,10 +542,18 @@ def batch_eval_modal(
                             # Check if it's a GPU attachment failure that exhausted retries
                             if "GPU not attached" in error_msg or "CUDA is not available" in error_msg:
                                 print(f"[ERROR] Modal GPU attachment FAILED after retries for Problem ID: {problem_id}, Sample ID: {sample_id}")
-                                print(f"        This is a Modal infrastructure issue. Sample will be skipped.")
+                                print(f"        This is a Modal infrastructure issue. Sample will be recorded as failed.")
                             else:
                                 print(f"[ERROR] Modal evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {error_msg}")
-                            results.append((problem_id, sample_id, None))
+                            # Create a failure result instead of None
+                            fail_result = KernelExecResult(
+                                compiled=False,
+                                correctness=False,
+                                metadata={"error": error_msg},
+                                runtime=-1.0,
+                                runtime_stats={},
+                            )
+                            results.append((problem_id, sample_id, fail_result))
                 
                 end_time = time.time()
                 
@@ -543,12 +562,10 @@ def batch_eval_modal(
                     print("-" * 128)
                     print(f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_id}")
                     print(result)
-                    
-                    if result is not None:
-                        print(f"Adding Eval Result to file for problem {problem_id} sample {sample_id}")
-                        add_to_eval_results_file(
-                            problem_id, sample_id, result, eval_file_path
-                        )
+                    print(f"Adding Eval Result to file for problem {problem_id} sample {sample_id}")
+                    add_to_eval_results_file(
+                        problem_id, sample_id, result, eval_file_path
+                    )
                 
                 print("-" * 128)
                 print(f"[Modal Batch] Evaluation took {end_time - start_time:.2f} seconds")
@@ -629,7 +646,14 @@ def batch_eval(
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
-                        results.append((problem_id, sample_id, None))
+                        fail_result = KernelExecResult(
+                            compiled=False,
+                            correctness=False,
+                            metadata={"error": "Evaluation timed out"},
+                            runtime=-1.0,
+                            runtime_stats={},
+                        )
+                        results.append((problem_id, sample_id, fail_result))
 
                         remove_cache_dir(
                             config.kernel_eval_build_dir,
@@ -638,10 +662,18 @@ def batch_eval(
                             sample_id,
                         )
                     except Exception as e:
+                        error_msg = str(e)
                         print(
-                            f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
+                            f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {error_msg}"
                         )
-                        results.append((problem_id, sample_id, None))
+                        fail_result = KernelExecResult(
+                            compiled=False,
+                            correctness=False,
+                            metadata={"error": error_msg},
+                            runtime=-1.0,
+                            runtime_stats={},
+                        )
+                        results.append((problem_id, sample_id, fail_result))
                         remove_cache_dir(
                             config.kernel_eval_build_dir,
                             config.run_name,
@@ -660,14 +692,12 @@ def batch_eval(
                     print(result)
 
                     # add all the batch results here to avoid file race condition
-                    # add to eval result if valid result
-                    if result is not None:
-                        print(
-                            f"Adding Eval Result to file for problem {problem_id} sample {sample_id}"
-                        )
-                        add_to_eval_results_file(
-                            problem_id, sample_id, result, eval_file_path
-                        )
+                    print(
+                        f"Adding Eval Result to file for problem {problem_id} sample {sample_id}"
+                    )
+                    add_to_eval_results_file(
+                        problem_id, sample_id, result, eval_file_path
+                    )
 
                 print("-" * 128)
                 print(
@@ -717,12 +747,13 @@ def add_to_eval_results_file(
         }
     )
 
-    # Write updated results back to file
+    # Write updated results back to file (sorted by numeric key)
     if not os.path.exists(eval_file_path):
         os.makedirs(os.path.dirname(eval_file_path), exist_ok=True)
 
+    sorted_results = dict(sorted(eval_results.items(), key=lambda x: int(x[0])))
     with open(eval_file_path, "w") as f:
-        json.dump(eval_results, f, indent=4)
+        json.dump(sorted_results, f, indent=4)
 
 
 def single_eval_example(
@@ -772,16 +803,22 @@ def main(config: EvalConfig):
 
     num_problems_in_level = len(curr_level_dataset)
 
-    if config.subset == (None, None):
-        problem_id_range = range(1, num_problems_in_level)
+    # Determine which problem IDs to evaluate
+    if config.problem_ids is not None:
+        # Use specific problem IDs if provided
+        problem_id_list = config.problem_ids
+        for pid in problem_id_list:
+            assert 1 <= pid <= num_problems_in_level, f"Problem ID {pid} out of range for Level {config.level}"
+    elif config.subset == (None, None):
+        problem_id_list = list(range(1, num_problems_in_level + 1))
     else:
         assert (
             config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level
         ), f"Subset range {config.subset} out of range for Level {config.level}"
-        problem_id_range = range(config.subset[0], config.subset[1])
+        problem_id_list = list(range(config.subset[0], config.subset[1] + 1))
 
     print(
-        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_id_range}"
+        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_id_list}"
     )
 
     run_dir = os.path.join(config.runs_dir, config.run_name)
@@ -791,16 +828,14 @@ def main(config: EvalConfig):
     # single_eval_example(config, curr_level_dataset, run_dir, eval_file_path)
 
     total_work = []
-    for problem_id in range(
-        problem_id_range.start, problem_id_range.stop + 1
-    ):  # end index is inclusive
+    for problem_id in problem_id_list:
         for sample_id in range(config.num_samples_per_problem):
             if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
                 total_work.append((problem_id, sample_id))
 
     print(
         f"Start evaluation on {len(total_work)} unevaluated samples"
-        f" in range: {problem_id_range}"
+        f" for problems: {problem_id_list}"
     )
     # Build Cache on CPU as that is faster (only for local mode)
     if config.build_cache and config.eval_mode == "local":
