@@ -342,6 +342,10 @@ def evaluate_single_sample(
         )
         return eval_result
     except Exception as e:
+        # INNER CATCH: Handles errors during kernel execution
+        # - CUDA errors (illegal memory access, kernel launch failures)
+        # - Runtime errors from the custom kernel
+        # - Any exception from eval_kernel_against_ref()
         print(
             f"[WARNING] Last level catch on {sample_id}: Some issue evaluating for kernel: {e} "
         )
@@ -538,6 +542,11 @@ def batch_eval_modal(
                             result = future.get()
                             results.append((problem_id, sample_id, result))
                         except Exception as e:
+                            # OUTER CATCH: Modal infrastructure or remote execution failures
+                            # - GPU attachment failures after retries
+                            # - Network/container issues
+                            # - Import errors in the kernel (can't even start evaluation)
+                            # - Any exception from future.get()
                             error_msg = str(e)
                             # Check if it's a GPU attachment failure that exhausted retries
                             if "GPU not attached" in error_msg or "CUDA is not available" in error_msg:
@@ -643,6 +652,8 @@ def batch_eval(
                         results.append((problem_id, sample_id, result))
 
                     except mp.TimeoutError:
+                        # OUTER CATCH: Evaluation exceeded timeout (config.timeout seconds)
+                        # - Kernel hangs, infinite loops, very slow compilation
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
@@ -662,6 +673,9 @@ def batch_eval(
                             sample_id,
                         )
                     except Exception as e:
+                        # OUTER CATCH: Multiprocessing-level failures
+                        # - Process crashes, pickling errors
+                        # - Errors that escape the inner handler
                         error_msg = str(e)
                         print(
                             f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {error_msg}"
@@ -804,6 +818,8 @@ def main(config: EvalConfig):
     num_problems_in_level = len(curr_level_dataset)
 
     # Determine which problem IDs to evaluate
+    # you can either specify a list of problem IDs (prioritize) or a subset range
+    # NOTE: later once the dataset PR is in we will link the representative subset as a built-in preset too
     if config.problem_ids is not None:
         # Use specific problem IDs if provided
         problem_id_list = config.problem_ids
