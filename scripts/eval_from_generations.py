@@ -72,7 +72,6 @@ image = (
                 )
 
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
     .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
