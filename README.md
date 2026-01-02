@@ -132,7 +132,7 @@ As seen in `src/kernelbench/prompts/model_new_ex_add_thunderkittens.py`, the gen
 tk_root = os.environ.get("THUNDERKITTENS_ROOT", "/root/ThunderKittens")
 ```
 
-This allows the kernel to include the right TK primitives.s
+This allows the kernel to include the right TK primitives.
 
 ### Run on all problems 
 
