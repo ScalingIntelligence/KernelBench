@@ -134,6 +134,8 @@ tk_root = os.environ.get("THUNDERKITTENS_ROOT", "/root/ThunderKittens")
 
 This allows the kernel to include the right TK primitives.
 
+*NOTE*: Right now, all generated ThunderKittens kernels are required to be in datatype format BF16. FP16 support is TBD.
+
 ### Run on all problems 
 
 ```bash
