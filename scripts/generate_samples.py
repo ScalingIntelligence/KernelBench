@@ -257,6 +257,8 @@ def main(config: GenerationConfig):
     config.backend = backend
     if backend == "tilelang":
         config.precision = "fp16"
+    if backend == "thunderkittens":
+        config.precision = "bf16"
 
     config.prompt_option = str(config.prompt_option).lower()
     valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}

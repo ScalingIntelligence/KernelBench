@@ -70,8 +70,13 @@ image = (
                 "g++-10",
                 "clang"
                 )
+
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
-    .env({"PYTHONPATH": "/root/src"})
+    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root/src:/root"
+    })
     .add_local_dir(SRC_DIR, remote_path="/root/src")
     .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last
 )
@@ -791,6 +796,15 @@ def main(config: EvalConfig):
     Store Eval Results in specified eval results file
     """
     print(f"Starting Batch Eval with config: {config}")
+
+    # Handle backend-specific settings
+    backend = config.backend.lower()
+    
+    # thunderkittens requires bf16 and H100 GPU
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+        config.gpu = "H100"
+        print(f"[ThunderKittens] Auto-configured: precision=bf16, gpu=H100")
 
     # Check if CUDA is available (only for local mode)
     if config.eval_mode == "local":
