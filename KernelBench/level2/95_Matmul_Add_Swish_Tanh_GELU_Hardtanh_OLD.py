@@ -16,6 +16,7 @@ class Model(nn.Module):
         x = torch.sigmoid(x) * x # Swish
         x = torch.tanh(x)
         x = torch.nn.functional.gelu(x) # GELU
+        x = torch.nn.functional.hardtanh(x, min_val=-1, max_val=1) # Hardtanh
         return x
 
 batch_size = 1024
@@ -28,3 +29,4 @@ def get_inputs():
 
 def get_init_inputs():
     return [in_features, out_features, add_value_shape]
+

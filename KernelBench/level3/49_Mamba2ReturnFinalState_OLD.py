@@ -57,7 +57,12 @@ class Model(nn.Module):
         A_blocks = rearrange(A_blocks, "b c l h -> b h c l")
         A_cumsum = torch.cumsum(A_blocks, dim=-1)
         
-        # Compute intra-chunk states
+        # 1. Compute diagonal block outputs
+        L = torch.exp(self.segsum(A_blocks))
+        Y_diag = torch.einsum("bclhn,bcshn,bhcls,bcshp->bclhp", 
+                             C_blocks, B_blocks, L, X_blocks)
+        
+        # 2. Compute intra-chunk states
         decay_states = torch.exp((A_cumsum[:, :, :, -1:] - A_cumsum))
         states = torch.einsum("bclhn,bhcl,bclhp->bchpn", 
                             B_blocks, decay_states, X_blocks)
@@ -84,3 +89,4 @@ def get_inputs():
 
 def get_init_inputs():
     return [batch_size, seq_length, n_heads, d_head, d_state, block_len]
+
