@@ -4,7 +4,6 @@ TODO: ongoing effort to catch reward hacking
 by looking at the generated code format.
 
 
-WIP this is all the code i wrote 
 All checks are done during runtime 
 
 Code validity checker 
@@ -32,7 +31,6 @@ DEFAULT_WARNING_GROUPS = [] # might be valid but we want to warn
 def check_valid_kernel_code(
         code: str, 
         backend: str, 
-        precision: str, # fp16, fp32, bf16
         forbidden_groups: list[str] = DEFAULT_FORBIDDEN_GROUPS,
         warning_groups: list[str] = DEFAULT_WARNING_GROUPS) -> bool:
     """

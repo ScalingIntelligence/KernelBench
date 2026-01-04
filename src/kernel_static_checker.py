@@ -1,45 +1,120 @@
 """
 Kernel Static Checker - Pattern-based validation for GPU kernel code.
 
-Detects reward hacking patterns in generated kernel code:
+The goal is flag reward hacking patterns (both strictly prohibited and possible ones).
+through statically examining the code.
+
+Warning: This list is by no means complete and nor this is not a replacement for runtime checks.
+We welcome feedback and contributions as community find new ways of hacks.
+
 - Bypass hacks (PyTorch wrapping, try-except fallback, inheritance bypass)
-- Forbidden high-level torch operations
-- Backend implementation requirements (CUDA, Triton, ThunderKittens)
+- Disallow some high-level torch operations (depends on the settings)
+- Backend implementation requirements, that CUDA or DSL features must be used
 
 Usage:
-    result = validate_kernel(code, backend="cuda", forbidden=["pytorch_wrap", "forbidden_ops"])
-    if not result["valid"]:
-        for error in result["errors"]:
-            print(f"ERROR: {error}")
+    result = validate_kernel_static(code, backend="cuda")
+    will return a tuple (valid, errors, warnings) 
 """
 
 import re
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Callable
+
+def _strip_comments(code: str) -> str:
+    """Remove # and // comments from code."""
+    lines = []
+    for line in code.split('\n'):
+        if '#' in line:
+            line = line[:line.index('#')]
+        if '//' in line:
+            line = line[:line.index('//')]
+        lines.append(line)
+    return '\n'.join(lines)
+
 
 # =============================================================================
-# GENERIC PATTERNS (apply to all backends)
+# BYPASS CHECKS - Strictly Prohibited 
+# some of this is from Kevin RL Paper (arxiv:2507.11948)
 # =============================================================================
 
-# PyTorch wrapping patterns (Kevin paper: zero reward for torch.nn/torch.nn.functional)
+# --- Try-Except Fallback ---
+# Rationale: Models wrap incomplete CUDA in exception handlers that fall back to PyTorch.
+# This allows them to pass tests without actually implementing the kernel.
+TRY_EXCEPT_PATTERNS = [r"\btry\s*:", r"\bexcept\s*:", r"\bexcept\s+\w+"]
+
+# --- Pass Statement / Inheritance Bypass ---
+# Rationale: Model inherits from reference class and uses 'pass' to do nothing,
+# effectively just calling the parent implementation.
+PASS_PATTERN = r"\bpass\b"
+
+def check_code_bypass(code: str) -> Tuple[bool, str]:
+    """
+    Check for code bypass patterns (strictly prohibited).
+    
+    Detects two Kevin paper bypass techniques:
+    1. Try-Except Fallback: Models wrap incomplete CUDA in exception handlers
+       that fall back to PyTorch when custom code fails.
+    2. Pass Statement: Models inherit from reference and use 'pass' to do nothing,
+       effectively calling parent implementation.
+    
+    Both receive zero reward per Kevin paper rules.
+    Uses word boundary for 'pass' to avoid matching 'passed', 'bypass', etc.
+    """
+    code = _strip_comments(code)
+    
+    # Check for try-except fallback
+    for pattern in TRY_EXCEPT_PATTERNS:
+        if re.search(pattern, code):
+            return (True, "Contains try-except block (potential fallback bypass)")
+    
+    # Check for pass statement
+    if re.search(PASS_PATTERN, code):
+        return (True, "Contains 'pass' statement (inheritance bypass)")
+    
+    return (False, "")
+
+# Since KernelBench problems uses PyTorch as a reference
+# sometimes model chose to wrap PyTorch high-level APIs instead of implementing a custom kernel.
+# Depends on the setting that is used, (configure this in the STRICT and WARNING checks)
+# some left model replaces some ops with custom kernels in required backend,
+# others require the model to write the whole program in custom kernels.
+
+# --- PyTorch Wrapping  ---
+# Rationale: Using torch.nn.functional or F.* means the model is just wrapping
+# PyTorch high-level APIs instead of implementing a custom kernel.
+# This defeats the purpose of kernel generation.
 PYTORCH_WRAP_PATTERNS = [
     r"torch\.nn\.functional",
     r"\bnn\.functional\.",
     r"\bF\.(conv|linear|relu|gelu|softmax|batch_norm|layer_norm|dropout)",
 ]
+# Allow only containers (Module, ModuleList, etc.), Parameter, and init
+PYTORCH_DISALLOWED_NN_PATTERN = r'torch\.nn\.(?!(Module|parameter|Parameter|ParameterList|ParameterDict|ModuleList|ModuleDict|init)\b)'
 
-# Disallowed nn patterns (allow only containers, Parameter, init)
-DISALLOWED_NN_PATTERN = r'nn\.(?!(Module|parameter|Parameter|ParameterList|ParameterDict|ModuleList|ModuleDict|init)\b)'
+def check_pytorch_wrap(code: str) -> Tuple[bool, str]:
+    """
+    Check for PyTorch API wrapping (torch.nn.functional, F.*, etc.).
+    
+    Kevin paper rule: Zero reward for kernels containing torch.nn or torch.nn.functional.
+    These indicate the model is wrapping PyTorch instead of writing custom kernels.
+    """
+    code = _strip_comments(code)
+    for pattern in PYTORCH_WRAP_PATTERNS:
+        if re.search(pattern, code):
+            return (True, "Uses torch.nn.functional or F.* - not a custom kernel")
+    # NOTE: should we make this strict or optional?
+    if re.search(PYTORCH_DISALLOWED_NN_PATTERN, code):
+        return (True, "Uses disallowed torch.nn (only containers, Parameter, init allowed)")
+    return (False, "")
 
-# Try-except patterns (Kevin paper: zero reward for try/except fallback)
-TRY_EXCEPT_PATTERNS = [r"\btry\s*:", r"\bexcept\s*:", r"\bexcept\s+\w+"]
 
-# Pass statement (Kevin paper: zero reward for inheritance bypass)
-PASS_PATTERN = r"\bpass\b"
-
-# Forbidden high-level torch operations
-FORBIDDEN_TORCH_OPS = [
+# --- Forbidden Torch Computational Operations ---
+# Rationale: These are high-level PyTorch ops that conduct computation
+# Using them directly defeat the purpose writing custom CUDA kernels.
+TORCH_COMPUTATION_OPS = [
+    # Matrix operations
+    "torch.mm", "torch.bmm", "torch.matmul", "torch.einsum",
     # Convolutions
-    "torch.conv1d", "torch.conv2d", "torch.conv3d",
+    "torch.conv1d", "torch.conv2d", "torch.conv3d", "torch.conv",
     "torch.conv_transpose1d", "torch.conv_transpose2d", "torch.conv_transpose3d",
     # Pooling
     "torch.avg_pool1d", "torch.avg_pool2d", "torch.avg_pool3d",
@@ -59,101 +134,62 @@ FORBIDDEN_TORCH_OPS = [
     "torch.huber_loss", "torch.triplet_margin_loss", "torch.cosine_similarity",
     # Others
     "torch.logsumexp", "torch.clamp", "torch.dropout",
-]
+] # hopefully didn't miss any other ones
+
+def check_torch_computation_ops(code: str) -> Tuple[bool, str]:
+    """
+    Check for high-level torch computation operations.
+    
+    Note: This check is optional/taste-based. Some projects allow partial
+    torch usage, others require pure custom kernels. Configure as needed.
+    """
+    code = _strip_comments(code)
+    pattern = r'\b(' + '|'.join(re.escape(f) for f in TORCH_COMPUTATION_OPS) + r')(?=\s*\(|\s|$)'
+    match = re.search(pattern, code)
+    if match:
+        return (True, f"Uses torch computation op: {match.group(0)}")
+    return (False, "")
 
 # =============================================================================
-# BACKEND-SPECIFIC PATTERNS
+# Backend Specific Checks
 # =============================================================================
 
-# CUDA patterns
-CUDA_KERNEL_REQUIRED = ["__global__", "load_inline"]
+# <========= CUDA CHECKS =========>
+# Rationale: Valid CUDA kernels must have __global__ (kernel definition) and
+# use load_inline or cpp_extension (PyTorch's inline compilation).
+CUDA_COMPILE_PATTERNS = ["load_inline", "cpp_extension"]
 
-# Triton patterns
+def check_cuda_impl(code: str) -> Tuple[bool, str]:
+    """
+    Check for valid CUDA kernel implementation.
+    
+    Requirements:
+    - Must have __global__ void kernel_name (kernel definition)
+    - Must have load_inline or cpp_extension (PyTorch inline compilation)
+    """
+    code = _strip_comments(code)
+    if "__global__" not in code:
+        return (True, "Missing __global__ kernel definition")
+    if not any(p in code for p in CUDA_COMPILE_PATTERNS):
+        return (True, "Missing load_inline or cpp_extension for compilation")
+    return (False, "")
+
+# <========= TRITON CHECKS =========>
+# Rationale: Triton kernels are compiled from @triton.jit decorated functions.
+# They must use tl.* operations (tl.load, tl.store, etc.) for actual kernel work.
 TRITON_JIT_PATTERN = r"@triton\.(jit|autotune)"
 TRITON_OPS_PATTERN = r"\btl\.\w+"
 
-# ThunderKittens patterns
-TK_WARP_PATTERNS = [
-    r"kittens::warp\b", r"kittens::warpgroup\b",
-    r"::warpgroup::", r"::warp::", r"warpgroup::", r"warp::"
-]
-TK_TILE_PATTERN = r"(?:kittens::)?(?:st|rt)_\w+\s*<[^>]+>"
-
-# =============================================================================
-# TODO: Future checks from DeepReinforce blog
-# =============================================================================
-# STREAM_PATTERNS = [r"torch\.cuda\.Stream\s*\(", r"with\s+torch\.cuda\.stream\s*\("]
-# THREAD_PATTERNS = [r"threading\.Thread\s*\(", r"multiprocessing\.Process\s*\("]
-# LAZY_EVAL_PATTERNS = [r"torch\.Tensor\._make_subclass", r"def\s+__new__\s*\("]
-# MONKEY_PATCH_PATTERNS = [r"torch\.cuda\.Event\.elapsed_time\s*="]
-# DTYPE_CONVERSION_PATTERNS = [r"\.half\s*\(\)", r"\.bfloat16\s*\(\)", r"\.float16\s*\(\)"]
-# AUTOCAST_PATTERNS = [r"torch\.autocast", r"torch\.cuda\.amp\.autocast"]
-
-# =============================================================================
-# CHECK FUNCTIONS
-# =============================================================================
-
-def _strip_comments(code: str) -> str:
-    """Remove # and // comments from code."""
-    lines = []
-    for line in code.split('\n'):
-        if '#' in line:
-            line = line[:line.index('#')]
-        if '//' in line:
-            line = line[:line.index('//')]
-        lines.append(line)
-    return '\n'.join(lines)
-
-
-def check_pytorch_wrap(code: str) -> Tuple[bool, str]:
-    """Check for PyTorch API wrapping (torch.nn.functional, F.*, etc.)."""
-    code = _strip_comments(code)
-    for pattern in PYTORCH_WRAP_PATTERNS:
-        if re.search(pattern, code):
-            return (True, "Uses torch.nn.functional or F.* - not a custom kernel")
-    if re.search(DISALLOWED_NN_PATTERN, code):
-        return (True, "Uses disallowed torch.nn (only containers, Parameter, init allowed)")
-    return (False, "")
-
-
-def check_try_except(code: str) -> Tuple[bool, str]:
-    """Check for try-except blocks (potential PyTorch fallback)."""
-    code = _strip_comments(code)
-    for pattern in TRY_EXCEPT_PATTERNS:
-        if re.search(pattern, code):
-            return (True, "Contains try-except block (potential fallback)")
-    return (False, "")
-
-
-def check_pass_stmt(code: str) -> Tuple[bool, str]:
-    """Check for pass statements (inheritance bypass)."""
-    code = _strip_comments(code)
-    if re.search(PASS_PATTERN, code):
-        return (True, "Contains 'pass' statement (inheritance bypass)")
-    return (False, "")
-
-
-def check_forbidden_ops(code: str) -> Tuple[bool, str]:
-    """Check for forbidden high-level torch operations."""
-    code = _strip_comments(code)
-    pattern = r'\b(' + '|'.join(re.escape(f) for f in FORBIDDEN_TORCH_OPS) + r')(?=\s*\(|\s|$)'
-    match = re.search(pattern, code)
-    if match:
-        return (True, f"Uses forbidden operation: {match.group(0)}")
-    return (False, "")
-
-
-def check_cuda_impl(code: str) -> Tuple[bool, str]:
-    """Check for valid CUDA kernel implementation."""
-    code = _strip_comments(code)
-    missing = [p for p in CUDA_KERNEL_REQUIRED if p not in code]
-    if missing:
-        return (True, f"Missing CUDA requirements: {', '.join(missing)}")
-    return (False, "")
-
-
 def check_triton_impl(code: str) -> Tuple[bool, str]:
-    """Check for valid Triton kernel implementation."""
+    """
+    Check for valid Triton kernel implementation.
+    
+    Requirements:
+    - Must have @triton.jit or @triton.autotune decorator
+    - Must have tl.* operations (enforces actual Triton code, not wrapper)
+    
+    Note: Triton's compiler itself prevents PyTorch ops inside @triton.jit.
+    """
     code = _strip_comments(code)
     if not re.search(TRITON_JIT_PATTERN, code):
         return (True, "Missing @triton.jit or @triton.autotune")
@@ -162,8 +198,25 @@ def check_triton_impl(code: str) -> Tuple[bool, str]:
     return (False, "")
 
 
+# <========= THUNDERKITTENS CHECKS =========>
+# Rationale: ThunderKittens uses warp/warpgroup primitives and tile abstractions.
+# Valid TK code must have namespace patterns and tile declarations.
+TK_WARP_PATTERNS = [
+    r"kittens::warp\b", r"kittens::warpgroup\b",
+    r"::warpgroup::", r"::warp::", r"warpgroup::", r"warp::"
+]
+TK_TILE_PATTERN = r"(?:kittens::)?(?:st|rt)_\w+\s*<[^>]+>"
+
 def check_tk_impl(code: str) -> Tuple[bool, str]:
-    """Check for valid ThunderKittens kernel implementation."""
+    """
+    Check for valid ThunderKittens kernel implementation.
+    
+    Requirements:
+    - Must have warp/warpgroup namespace patterns (kittens::warp, etc.)
+    - Must have tile declarations (st_bf<...>, rt_fl<...>, etc.)
+    
+    TODO: Add producer-consumer pattern check for complex kernels.
+    """
     code = _strip_comments(code)
     if not any(re.search(p, code) for p in TK_WARP_PATTERNS):
         return (True, "Missing ThunderKittens warp/warpgroup patterns")
@@ -172,34 +225,95 @@ def check_tk_impl(code: str) -> Tuple[bool, str]:
     return (False, "")
 
 
+# <========= CUTE/CUTLASS CHECKS =========>
+# CUTLASS uses cute:: namespace for tensor operations
+# Check: https://github.com/NVIDIA/cutlass 
+CUTE_PATTERNS = [
+    r"cute::",           # cute:: namespace (CuTe library)
+    r"cutlass::",        # cutlass:: namespace
+    r"from cutlass",     # Python CUTLASS bindings
+]
+
+def check_cute_impl(code: str) -> Tuple[bool, str]:
+    """Check for valid CUTLASS/CuTe kernel implementation."""
+    code = _strip_comments(code)
+    if not any(p in code for p in ["cute::", "cutlass::", "from cutlass"]):
+        return (True, "Missing cute:: or cutlass:: namespace")
+    return (False, "")
+
+
+# <========= TILELANG CHECKS =========>
+# TileLang uses TVM's T.prim_func decorator
+# https://github.com/tile-ai/tilelang
+TILELANG_PATTERNS = [
+    r"@T\.prim_func",    # TVM primitive function decorator
+    r"tvm\.build",       # TVM build call
+    r"T\.grid",          # TileLang grid
+]
+
+def check_tilelang_impl(code: str) -> Tuple[bool, str]:
+    """Check for valid TileLang kernel implementation."""
+    code = _strip_comments(code)
+    if not re.search(r"@T\.prim_func", code):
+        return (True, "Missing @T.prim_func decorator")
+    return (False, "")
+
+
 # =============================================================================
-# CHECK REGISTRY
+# TODO: Future checks from our adversarial hack PR and DeepReinforce blog 
+# =============================================================================
+# maybe we can group some of that later
+# def check_stream_injection(code): ...  # torch.cuda.Stream()
+# def check_thread_injection(code): ...  # threading.Thread()
+# def check_lazy_eval(code): ...         # torch.Tensor._make_subclass
+# def check_monkey_patch(code): ...      # torch.cuda.Event.elapsed_time =
+# def check_precision_downgrade(code): ... # .half(), .bfloat16() # <-- this could be a soft check
+
+# =============================================================================
+# in the future, we can add a LM as a judge checker
 # =============================================================================
 
-# All available checks
-CHECK_FUNCTIONS: Dict[str, callable] = {
-    # Bypass hacks
+
+# =============================================================================
+# REGISTRY & PRESETS
+# =============================================================================
+
+CHECK_FUNCTIONS: Dict[str, Callable[[str], Tuple[bool, str]]] = {
+    "code_bypass": check_code_bypass,
     "pytorch_wrap": check_pytorch_wrap,
-    "try_except": check_try_except,
-    "pass_stmt": check_pass_stmt,
-    # Forbidden operations
-    "forbidden_ops": check_forbidden_ops,
-    # Implementation checks (backend-specific)
+    "torch_computation_ops": check_torch_computation_ops,
     "cuda_impl": check_cuda_impl,
+
+    # backend-specific checks
     "triton_impl": check_triton_impl,
     "tk_impl": check_tk_impl,
+    "cute_impl": check_cute_impl,
+    "tilelang_impl": check_tilelang_impl,
 }
 
-# Suggested presets
-STRICT_CHECKS = ["pytorch_wrap", "try_except", "pass_stmt", "forbidden_ops"]
-WARNING_CHECKS = []  # Add checks here that should warn but not fail
+# These checks are NECESSARY for all kernels (strict = error)
+STRICT_CHECKS = [
+    "code_bypass",
+    "pytorch_wrap", 
+]
 
-# Backend implementation check mapping
+# Backend-specific checks are added later at entry point
+
+# These are optional checks (by taste) - flagged as warnings
+# Move to STRICT_CHECKS if you want to enforce them
+WARNING_CHECKS: List[str] = [
+    "torch_computation_ops",  # up to user to allow torch computation ops
+]
+
 BACKEND_IMPL_CHECK = {
     "cuda": "cuda_impl",
     "triton": "triton_impl",
     "thunderkittens": "tk_impl",
+    "cute": "cute_impl",
+    "cutlass": "cute_impl",  # alias
+    "tilelang": "tilelang_impl",
 }
+
 
 # =============================================================================
 # MAIN ENTRY POINT
@@ -207,58 +321,52 @@ BACKEND_IMPL_CHECK = {
 
 def validate_kernel_static(
     code: str,
-    backend: Optional[str] = None,
+    backend: str = "cuda",
+    precision: str = "fp16",
     forbidden: Optional[List[str]] = None,
     warnings: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+) -> Tuple[bool, List[str], List[str]]:
     """
-    Validate kernel code against configurable check groups.
+    Validate kernel code through statically inspecting the code
+    We configure the checks against check groups that we have provided for common hacks.
+    Note we do not guarantee that all checks are exhaustive. This is also only on the static level.
     
     Args:
         code: Kernel source code
-        backend: "cuda", "triton", or "thunderkittens" (adds impl check)
-        forbidden: List of check names that cause errors (default: STRICT_CHECKS)
-        warnings: List of check names that cause warnings (default: WARNING_CHECKS)
-    
+        backend: "cuda", "triton", or "thunderkittens"
+        precision: "fp16", "fp32", or "bf16" (for future precision checks)
+        forbidden: Check categories that cause errors (default: STRICT_CHECKS)
+        warnings: Check categories that cause warnings (default: WARNING_CHECKS)
+        
     Returns:
-        {
-            "valid": bool,           # True if no forbidden checks failed
-            "errors": List[str],     # Error messages
-            "warnings": List[str],   # Warning messages
-            "details": Dict[str, bool]  # Per-check results
-        }
+        (valid, errors, warnings)
+        valid: bool
+        errors: List[str]
+        warnings: List[str]
     """
-    if forbidden is None:
-        forbidden = STRICT_CHECKS.copy()
-    if warnings is None:
-        warnings = WARNING_CHECKS.copy()
+    # Copy defaults to avoid mutating global lists
+    forbidden_checks = list(forbidden) if forbidden is not None else list(STRICT_CHECKS)
+    warning_checks = list(warnings) if warnings is not None else list(WARNING_CHECKS)
     
     # Add backend implementation check if specified
-    if backend and backend in BACKEND_IMPL_CHECK:
+    if backend in BACKEND_IMPL_CHECK:
         impl_check = BACKEND_IMPL_CHECK[backend]
-        if impl_check not in forbidden:
-            forbidden.append(impl_check)
+        if impl_check not in forbidden_checks:
+            forbidden_checks.append(impl_check)
     
-    errors = []
-    warnings_list = []
-    details = {}
+    # Aggregate results
+    errors: List[str] = []
+    warnings_list: List[str] = []
     
-    # Run all requested checks
-    all_checks = set(forbidden + warnings)
-    for check_name in all_checks:
+    for check_name in set(forbidden_checks + warning_checks):
         if check_name not in CHECK_FUNCTIONS:
             continue
         has_issue, msg = CHECK_FUNCTIONS[check_name](code)
-        details[check_name] = has_issue
         if has_issue:
-            if check_name in forbidden:
+            if check_name in forbidden_checks:
                 errors.append(msg)
-            elif check_name in warnings:
+            else:
                 warnings_list.append(msg)
     
-    return {
-        "valid": len(errors) == 0,
-        "errors": errors,
-        "warnings": warnings_list,
-        "details": details,
-    }
+    valid = len(errors) == 0 # valid if no errors
+    return valid, errors, warnings_list
