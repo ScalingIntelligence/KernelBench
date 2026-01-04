@@ -17,6 +17,7 @@ Usage:
 """
 
 import re
+import torch
 from typing import List, Tuple, Dict, Any, Optional, Callable
 
 def _strip_comments(code: str) -> str:
@@ -260,6 +261,105 @@ def check_tilelang_impl(code: str) -> Tuple[bool, str]:
 
 
 # =============================================================================
+# TIMING MANIPULATION CHECKS - Reward Hacking Patterns
+# =============================================================================
+
+# <========= STREAM INJECTION CHECKS =========>
+# Rationale: Models may use CUDA streams to defer computation, manipulate timing,
+# or execute operations asynchronously to cheat benchmark measurements.
+# Streams can hide computation costs or change execution order.
+STREAM_PATTERNS = [
+    r"torch\.cuda\.Stream\s*\(",       # torch.cuda.Stream()
+    r"cuda\.Stream\s*\(",               # cuda.Stream() (if imported)
+    r"torch\.cuda\.stream\s*\(",        # torch.cuda.stream() (lowercase)
+    r"cuda\.stream\s*\(",               # cuda.stream() (if imported)
+    r"with\s+torch\.cuda\.stream",      # with torch.cuda.stream(...)
+    r"with\s+cuda\.stream",             # with cuda.stream(...)
+    r"\.wait_stream\s*\(",              # .wait_stream() method
+    r"\.record_stream\s*\(",            # .record_stream() method
+    r"Stream\(\)",                      # Generic Stream() instantiation
+]
+
+def check_stream_injection(code: str) -> Tuple[bool, str]:
+    """
+    Check for CUDA stream injection patterns (static analysis).
+    
+    Detects code that uses CUDA streams to potentially manipulate timing:
+    1. Stream creation: torch.cuda.Stream(), cuda.Stream()
+    2. Stream context managers: with torch.cuda.stream(...)
+    3. Stream synchronization: .wait_stream(), .record_stream()
+    
+    Rationale: Streams can defer computation or change execution order,
+    potentially affecting benchmark timing measurements. This is a reward hacking
+    pattern where models try to hide computation costs.
+    """
+    code = _strip_comments(code)
+    
+    for pattern in STREAM_PATTERNS:
+        if re.search(pattern, code):
+            if "wait_stream" in pattern or "record_stream" in pattern:
+                return (True, "Uses stream synchronization methods (potential timing manipulation)")
+            elif "with" in pattern:
+                return (True, "Uses stream context manager (potential timing manipulation)")
+            else:
+                return (True, "Uses CUDA streams (potential timing manipulation)")
+    
+    return (False, "")
+
+
+# <========= THREAD INJECTION CHECKS =========>
+# Rationale: Models may use threading to parallelize work or manipulate execution
+# order in ways that could affect benchmark timing. Threads can also be used to
+# defer computation or hide costs.
+THREAD_PATTERNS = [
+    r"threading\.Thread\s*\(",          # threading.Thread()
+    r"\bThread\s*\(",                   # Thread() (if imported, with word boundary)
+    r"import\s+threading",              # import threading
+    r"from\s+threading\s+import",       # from threading import ...
+    r"threading\.(Thread|Event|Lock|RLock|Condition|Semaphore|Barrier|Timer)",  # Common threading primitives
+    r"multiprocessing\.(Process|Pool|Manager|Queue|Pipe)",  # multiprocessing primitives
+    r"from\s+multiprocessing",          # from multiprocessing import ...
+    r"import\s+multiprocessing",        # import multiprocessing
+    r"concurrent\.futures",             # concurrent.futures (thread pools)
+    r"ThreadPoolExecutor",              # ThreadPoolExecutor
+    r"ProcessPoolExecutor",             # ProcessPoolExecutor (though used in eval code)
+]
+
+def check_thread_injection(code: str) -> Tuple[bool, str]:
+    """
+    Check for thread/multiprocessing injection patterns (static analysis).
+    
+    Detects code that uses threading or multiprocessing to potentially manipulate
+    execution or timing:
+    1. Thread creation: threading.Thread(), Thread()
+    2. Threading imports: import threading, from threading import
+    3. Threading primitives: Event, Lock, RLock, Condition, Semaphore, Barrier, Timer
+    4. Multiprocessing: multiprocessing.Process, Pool, Manager, Queue, Pipe, etc.
+    5. Concurrent futures: concurrent.futures, ThreadPoolExecutor, ProcessPoolExecutor
+    
+    Rationale: Threading can be used to defer computation, parallelize work in
+    ways that affect timing, or manipulate execution order. This is a reward
+    hacking pattern.
+    
+    Note: ProcessPoolExecutor might be legitimate in evaluation code, but should
+    not appear in kernel implementations themselves.
+    """
+    code = _strip_comments(code)
+    
+    for pattern in THREAD_PATTERNS:
+        if re.search(pattern, code):
+            if "multiprocessing" in pattern:
+                return (True, "Uses multiprocessing (potential timing manipulation)")
+            elif "concurrent" in pattern or "PoolExecutor" in pattern:
+                return (True, "Uses concurrent futures/executors (potential timing manipulation)")
+            elif "threading" in pattern or "Thread" in pattern:
+                return (True, "Uses threading (potential timing manipulation)")
+            else:
+                return (True, "Uses threading module (potential timing manipulation)")
+    
+    return (False, "")
+
+# =============================================================================
 # TODO: Future checks from our adversarial hack PR and DeepReinforce blog 
 # =============================================================================
 # maybe we can group some of that later
@@ -268,6 +368,50 @@ def check_tilelang_impl(code: str) -> Tuple[bool, str]:
 # def check_lazy_eval(code): ...         # torch.Tensor._make_subclass
 # def check_monkey_patch(code): ...      # torch.cuda.Event.elapsed_time =
 # def check_precision_downgrade(code): ... # .half(), .bfloat16() # <-- this could be a soft check
+
+
+def check_monkey_patch(code: str) -> Tuple[bool, str]:
+    """
+    Verify that the torch.cuda.Event.record is not monkey-patched
+    """
+    _real_record = torch.cuda.Event.record
+    if torch.cuda.Event.record is not _real_record:
+        return (True, "torch.cuda.Event.record was monkey-patched")
+    return (False, "")
+
+# Static patterns that indicate lazy tensor creation
+LAZY_TENSOR_PATTERNS = [
+    r"_make_subclass",           # torch.Tensor._make_subclass (common lazy hack)
+    r"class\s+\w+.*\(torch\.Tensor\)",  # Custom tensor subclasses
+    r"class\s+\w+.*\(Tensor\)",  # Custom tensor subclasses (imported Tensor)
+    r"torch\.Tensor\.__new__",   # Direct tensor construction (potential lazy)
+    r"\._view\(|\.view_as\(",    # Views might be used for lazy evaluation
+]
+
+def check_lazy_eval_static(code: str) -> Tuple[bool, str]:
+    """
+    Check for code patterns that indicate lazy tensor creation (static analysis).
+    
+    Detects patterns commonly used to create lazy or fake tensors:
+    1. _make_subclass: Common way to create custom tensor subclasses for lazy eval
+    2. Custom tensor subclasses: Classes inheriting from torch.Tensor
+    3. Direct tensor construction: torch.Tensor.__new__ manipulation
+    
+    Note: This is static analysis only. For runtime validation, use
+    validate_tensor() to check actual tensor objects.
+    """
+    code = _strip_comments(code)
+    
+    for pattern in LAZY_TENSOR_PATTERNS:
+        if re.search(pattern, code):
+            if "_make_subclass" in pattern:
+                return (True, "Uses _make_subclass (potential lazy tensor hack)")
+            elif "class" in pattern:
+                return (True, "Defines custom tensor subclass (potential lazy tensor hack)")
+            elif "__new__" in pattern:
+                return (True, "Uses direct tensor construction (potential lazy tensor hack)")
+    
+    return (False, "")
 
 # =============================================================================
 # in the future, we can add a LM as a judge checker

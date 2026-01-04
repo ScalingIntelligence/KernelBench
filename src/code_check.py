@@ -23,11 +23,14 @@ Call site:
 """
 
 import re
+import torch
 
 
 # you can configure this! we have suggestions 
 DEFAULT_FORBIDDEN_GROUPS = [] # def not allowed
 DEFAULT_WARNING_GROUPS = [] # might be valid but we want to warn
+
+
 
 def check_valid_kernel_code(
         code: str, 
