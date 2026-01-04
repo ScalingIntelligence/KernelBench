@@ -4,6 +4,10 @@ Kernel Static Checker - Pattern-based validation for GPU kernel code.
 The goal is flag reward hacking patterns (both strictly prohibited and possible ones).
 through statically examining the code.
 
+In the future we can add 
+- AST-based detections 
+- LM as a judge checker
+
 Warning: This list is by no means complete and nor this is not a replacement for runtime checks.
 We welcome feedback and contributions as community find new ways of hacks.
 
@@ -49,15 +53,11 @@ PASS_PATTERN = r"\bpass\b"
 def check_code_bypass(code: str) -> Tuple[bool, str]:
     """
     Check for code bypass patterns (strictly prohibited).
-    
-    Detects two Kevin paper bypass techniques:
     1. Try-Except Fallback: Models wrap incomplete CUDA in exception handlers
        that fall back to PyTorch when custom code fails.
     2. Pass Statement: Models inherit from reference and use 'pass' to do nothing,
        effectively calling parent implementation.
-    
-    Both receive zero reward per Kevin paper rules.
-    Uses word boundary for 'pass' to avoid matching 'passed', 'bypass', etc.
+        Uses word boundary for 'pass' to avoid matching 'passed', 'bypass', etc.
     """
     code = _strip_comments(code)
     
@@ -72,44 +72,36 @@ def check_code_bypass(code: str) -> Tuple[bool, str]:
     
     return (False, "")
 
-# Since KernelBench problems uses PyTorch as a reference
-# sometimes model chose to wrap PyTorch high-level APIs instead of implementing a custom kernel.
-# Depends on the setting that is used, (configure this in the STRICT and WARNING checks)
-# some left model replaces some ops with custom kernels in required backend,
-# others require the model to write the whole program in custom kernels.
+# Since KernelBench problems uses PyTorch as a reference, there could be settigs where
+# Model generated code
+# 1. Replaces some (not all) ops with custom kernels, others are kept in Torch
+# 2. All compuational ops must be replaced with custom kernels
+# Depends the setting you use, you can move the checks below (pytorch_wrap, torch_computation_ops) 
+# from WARNING to STRICT
 
-# --- PyTorch Wrapping  ---
-# Rationale: Using torch.nn.functional or F.* means the model is just wrapping
-# PyTorch high-level APIs instead of implementing a custom kernel.
-# This defeats the purpose of kernel generation.
-PYTORCH_WRAP_PATTERNS = [
-    r"torch\.nn\.functional",
-    r"\bnn\.functional\.",
-    r"\bF\.(conv|linear|relu|gelu|softmax|batch_norm|layer_norm|dropout)",
-]
-# Allow only containers (Module, ModuleList, etc.), Parameter, and init
+# --- PyTorch NN Module Wrapping ---
+# Allows: nn.Module, nn.Parameter, nn.ParameterList, nn.ParameterDict, 
+#         nn.ModuleList, nn.ModuleDict, nn.init (needed for model structure)
+# Blocks: nn.Linear, nn.Conv2d, nn.ReLU, etc. (compute layers)
 PYTORCH_DISALLOWED_NN_PATTERN = r'torch\.nn\.(?!(Module|parameter|Parameter|ParameterList|ParameterDict|ModuleList|ModuleDict|init)\b)'
 
 def check_pytorch_wrap(code: str) -> Tuple[bool, str]:
     """
-    Check for PyTorch API wrapping (torch.nn.functional, F.*, etc.).
+    Check for PyTorch nn module usage (nn.Linear, nn.Conv2d, etc.).
     
-    Kevin paper rule: Zero reward for kernels containing torch.nn or torch.nn.functional.
-    These indicate the model is wrapping PyTorch instead of writing custom kernels.
+    Allows containers (nn.Module, nn.Parameter, nn.init) needed for model structure.
+    Blocks compute layers (nn.Linear, nn.Conv2d, nn.ReLU, etc.).
     """
     code = _strip_comments(code)
-    for pattern in PYTORCH_WRAP_PATTERNS:
-        if re.search(pattern, code):
-            return (True, "Uses torch.nn.functional or F.* - not a custom kernel")
-    # NOTE: should we make this strict or optional?
     if re.search(PYTORCH_DISALLOWED_NN_PATTERN, code):
-        return (True, "Uses disallowed torch.nn (only containers, Parameter, init allowed)")
+        return (True, "Uses torch.nn compute layer (only containers, Parameter, init allowed)")
     return (False, "")
 
 
-# --- Forbidden Torch Computational Operations ---
-# Rationale: These are high-level PyTorch ops that conduct computation
-# Using them directly defeat the purpose writing custom CUDA kernels.
+# --- Torch Computation Operations ---
+# Rationale: These are high-level PyTorch ops that conduct computation.
+# Using them directly defeats the purpose of writing custom kernels.
+# Includes both torch.* and F.* (torch.nn.functional) patterns.
 TORCH_COMPUTATION_OPS = [
     # Matrix operations
     "torch.mm", "torch.bmm", "torch.matmul", "torch.einsum",
@@ -134,20 +126,36 @@ TORCH_COMPUTATION_OPS = [
     "torch.huber_loss", "torch.triplet_margin_loss", "torch.cosine_similarity",
     # Others
     "torch.logsumexp", "torch.clamp", "torch.dropout",
-] # hopefully didn't miss any other ones
+]
+
+# F.* patterns (torch.nn.functional equivalents)
+TORCH_FUNCTIONAL_PATTERNS = [
+    r"torch\.nn\.functional\.\w+",       # torch.nn.functional.*
+    r"\bnn\.functional\.\w+",            # nn.functional.*
+    r"\bF\.(conv|linear|relu|gelu|softmax|batch_norm|layer_norm|dropout|max_pool|avg_pool)",
+]
 
 def check_torch_computation_ops(code: str) -> Tuple[bool, str]:
     """
     Check for high-level torch computation operations.
     
-    Note: This check is optional/taste-based. Some projects allow partial
-    torch usage, others require pure custom kernels. Configure as needed.
+    Matches both torch.* ops (torch.matmul) and F.* ops (F.relu).
+    This check is optional/taste-based. Configure as needed.
     """
     code = _strip_comments(code)
-    pattern = r'\b(' + '|'.join(re.escape(f) for f in TORCH_COMPUTATION_OPS) + r')(?=\s*\(|\s|$)'
-    match = re.search(pattern, code)
+    
+    # Check torch.* ops
+    torch_pattern = r'\b(' + '|'.join(re.escape(f) for f in TORCH_COMPUTATION_OPS) + r')(?=\s*\(|\s|$)'
+    match = re.search(torch_pattern, code)
     if match:
         return (True, f"Uses torch computation op: {match.group(0)}")
+    
+    # Check F.* / nn.functional ops
+    for pattern in TORCH_FUNCTIONAL_PATTERNS:
+        match = re.search(pattern, code)
+        if match:
+            return (True, f"Uses torch.nn.functional op: {match.group(0)}")
+    
     return (False, "")
 
 # =============================================================================
@@ -260,17 +268,170 @@ def check_tilelang_impl(code: str) -> Tuple[bool, str]:
 
 
 # =============================================================================
-# TODO: Future checks from our adversarial hack PR and DeepReinforce blog 
+# TIMING MANIPULATION CHECKS - Reward Hacking Patterns
+# From adversarial hack PR and DeepReinforce blog
 # =============================================================================
-# maybe we can group some of that later
-# def check_stream_injection(code): ...  # torch.cuda.Stream()
-# def check_thread_injection(code): ...  # threading.Thread()
-# def check_lazy_eval(code): ...         # torch.Tensor._make_subclass
-# def check_monkey_patch(code): ...      # torch.cuda.Event.elapsed_time =
-# def check_precision_downgrade(code): ... # .half(), .bfloat16() # <-- this could be a soft check
+
+# <========= STREAM INJECTION CHECKS =========>
+# Rationale: Models may use CUDA streams to defer computation, manipulate timing,
+# or execute operations asynchronously to cheat benchmark measurements.
+STREAM_PATTERNS = [
+    r"torch\.cuda\.Stream\s*\(",       # torch.cuda.Stream()
+    r"cuda\.Stream\s*\(",               # cuda.Stream() (if imported)
+    r"with\s+torch\.cuda\.stream",      # with torch.cuda.stream(...)
+    r"\.wait_stream\s*\(",              # .wait_stream() method
+    r"\.record_stream\s*\(",            # .record_stream() method
+]
+
+def check_stream_injection(code: str) -> Tuple[bool, str]:
+    """
+    Check for CUDA stream injection patterns.
+    
+    Detects code that uses CUDA streams to potentially manipulate timing:
+    1. Stream creation: torch.cuda.Stream(), cuda.Stream()
+    2. Stream context managers: with torch.cuda.stream(...)
+    3. Stream synchronization: .wait_stream(), .record_stream()
+    
+    Rationale: Streams can defer computation or change execution order,
+    potentially affecting benchmark timing measurements.
+    """
+    code = _strip_comments(code)
+    
+    for pattern in STREAM_PATTERNS:
+        if re.search(pattern, code):
+            if "wait_stream" in pattern or "record_stream" in pattern:
+                return (True, "Uses stream synchronization (potential timing manipulation)")
+            elif "with" in pattern:
+                return (True, "Uses stream context manager (potential timing manipulation)")
+            else:
+                return (True, "Uses CUDA streams (potential timing manipulation)")
+    
+    return (False, "")
+
+
+# <========= THREAD INJECTION CHECKS =========>
+# Rationale: Models may use threading to parallelize work or manipulate execution
+# order in ways that could affect benchmark timing.
+THREAD_PATTERNS = [
+    r"threading\.Thread\s*\(",          # threading.Thread()
+    r"import\s+threading",              # import threading
+    r"from\s+threading\s+import",       # from threading import ...
+    r"multiprocessing\.(Process|Pool|Manager|Queue|Pipe)",
+    r"import\s+multiprocessing",        # import multiprocessing
+    r"concurrent\.futures",             # concurrent.futures (thread pools)
+    r"ThreadPoolExecutor",              # ThreadPoolExecutor
+    r"ProcessPoolExecutor",             # ProcessPoolExecutor
+]
+
+def check_thread_injection(code: str) -> Tuple[bool, str]:
+    """
+    Check for thread/multiprocessing injection patterns.
+    
+    Detects code that uses threading or multiprocessing:
+    1. Thread creation: threading.Thread()
+    2. Threading imports: import threading
+    3. Multiprocessing: Process, Pool, Manager, Queue, Pipe
+    4. Concurrent futures: ThreadPoolExecutor, ProcessPoolExecutor
+    
+    Rationale: Threading can defer computation or change execution order,
+    affecting timing measurements.
+    
+    Note: ProcessPoolExecutor might be legitimate in eval code but should
+    not appear in kernel implementations.
+    """
+    code = _strip_comments(code)
+    
+    for pattern in THREAD_PATTERNS:
+        if re.search(pattern, code):
+            if "multiprocessing" in pattern:
+                return (True, "Uses multiprocessing (potential timing manipulation)")
+            elif "concurrent" in pattern or "Executor" in pattern:
+                return (True, "Uses concurrent futures (potential timing manipulation)")
+            else:
+                return (True, "Uses threading (potential timing manipulation)")
+    
+    return (False, "")
+
+
+# <========= LAZY EVALUATION CHECKS =========>
+# Rationale: Models may create fake/lazy tensors that don't actually compute
+# anything, passing correctness checks without real implementation.
+LAZY_TENSOR_PATTERNS = [
+    r"_make_subclass",                  # torch.Tensor._make_subclass (common lazy hack)
+    r"class\s+\w+.*\(torch\.Tensor\)",  # Custom tensor subclasses
+    r"class\s+\w+.*\(Tensor\)",         # Custom tensor subclasses (imported Tensor)
+    r"torch\.Tensor\.__new__",          # Direct tensor construction (potential lazy)
+]
+
+def check_lazy_eval(code: str) -> Tuple[bool, str]:
+    """
+    Check for lazy tensor creation patterns.
+    
+    Detects patterns commonly used to create lazy/fake tensors:
+    1. _make_subclass: Common way to create custom tensor subclasses
+    2. Custom tensor subclasses: Classes inheriting from torch.Tensor
+    3. Direct tensor construction: torch.Tensor.__new__ manipulation
+    
+    Rationale: Lazy tensors can pass correctness checks without actually
+    computing anything, which is a form of reward hacking.
+    """
+    code = _strip_comments(code)
+    
+    for pattern in LAZY_TENSOR_PATTERNS:
+        if re.search(pattern, code):
+            if "_make_subclass" in pattern:
+                return (True, "Uses _make_subclass (potential lazy tensor hack)")
+            elif "class" in pattern:
+                return (True, "Defines custom tensor subclass (potential lazy tensor hack)")
+            else:
+                return (True, "Uses direct tensor construction (potential lazy tensor hack)")
+    
+    return (False, "")
+
+
+# <========= Timing Monkey Patch CHECKS =========>
+# Rationale: Models may monkey-patch torch timing functions to fake benchmark results.
+# This detects static patterns where timing functions are reassigned.
+# especially when relying on timing markers like cuda.Event or time.perf_counter.
+TIMING_EVENT_PATCH_PATTERNS = [
+    r"torch\.cuda\.Event\.record\s*=",      # torch.cuda.Event.record = ...
+    r"torch\.cuda\.Event\.elapsed_time\s*=", # torch.cuda.Event.elapsed_time = ...
+    r"torch\.cuda\.synchronize\s*=",         # torch.cuda.synchronize = ...
+    r"torch\.cuda\.Event\s*=",               # torch.cuda.Event = ... (replacing class)
+    r"time\.perf_counter\s*=",               # time.perf_counter = ...
+    r"time\.time\s*=",                       # time.time = ...
+]
+
+def check_timing_event_patch(code: str) -> Tuple[bool, str]:
+    """
+    Check for monkey patching of timing functions (static analysis).
+    
+    Detects code that reassigns torch or time functions used for benchmarking:
+    1. torch.cuda.Event.record = ...
+    2. torch.cuda.Event.elapsed_time = ...
+    3. torch.cuda.synchronize = ...
+    4. time.perf_counter = ...
+    
+    Rationale: Monkey patching timing functions can fake benchmark results,
+    making slow code appear fast.
+    """
+    code = _strip_comments(code)
+    
+    for pattern in TIMING_EVENT_PATCH_PATTERNS:
+        if re.search(pattern, code):
+            return (True, "Reassigns timing function (monkey patch detected)")
+    
+    return (False, "")
+
 
 # =============================================================================
-# in the future, we can add a LM as a judge checker
+# TODO: Future checks
+# =============================================================================
+# def check_precision_downgrade(code): ... # .half(), .bfloat16() - could be soft check
+# this a bit tricky and up to the user to decide
+
+# =============================================================================
+# In the future, we can add a AST-based checker and a LM-as-a-judge checker
 # =============================================================================
 
 
@@ -279,32 +440,40 @@ def check_tilelang_impl(code: str) -> Tuple[bool, str]:
 # =============================================================================
 
 CHECK_FUNCTIONS: Dict[str, Callable[[str], Tuple[bool, str]]] = {
+    # Bypass checks (strict)
     "code_bypass": check_code_bypass,
     "pytorch_wrap": check_pytorch_wrap,
+    "timing_event_patch": check_timing_event_patch,  # clearly malicious
+    
+    # Torch ops (depends on your setups)
     "torch_computation_ops": check_torch_computation_ops,
+    
+    # Timing manipulation checks (usually warnings)
+    "stream_injection": check_stream_injection,
+    "thread_injection": check_thread_injection,
+    "lazy_eval": check_lazy_eval,
+    
+    # Backend-specific implementation checks
+    # should be strict
     "cuda_impl": check_cuda_impl,
-
-    # backend-specific checks
     "triton_impl": check_triton_impl,
     "tk_impl": check_tk_impl,
     "cute_impl": check_cute_impl,
     "tilelang_impl": check_tilelang_impl,
 }
 
+# Here are some presets for you to use
+# You are welcome to adapt them to your settings
 # These checks are NECESSARY for all kernels (strict = error)
 STRICT_CHECKS = [
     "code_bypass",
-    "pytorch_wrap", 
+    "timing_event_patch",
+    "thread_injection",  
+    "lazy_eval",         
 ]
 
 # Backend-specific checks are added later at entry point
-
-# These are optional checks (by taste) - flagged as warnings
-# Move to STRICT_CHECKS if you want to enforce them
-WARNING_CHECKS: List[str] = [
-    "torch_computation_ops",  # up to user to allow torch computation ops
-]
-
+# per backend implementation check, usually strict
 BACKEND_IMPL_CHECK = {
     "cuda": "cuda_impl",
     "triton": "triton_impl",
@@ -313,6 +482,15 @@ BACKEND_IMPL_CHECK = {
     "cutlass": "cute_impl",  # alias
     "tilelang": "tilelang_impl",
 }
+
+# These are optional checks (by user's decision) - flagged as warnings
+# Move to STRICT_CHECKS if you want to enforce them
+WARNING_CHECKS: List[str] = [
+    # up to user to allow program to still have some torch computation ops
+    "pytorch_wrap",
+    "torch_computation_ops",  
+    "stream_injection",       # could have legitimate uses (async ops), but should be careful!
+]
 
 
 # =============================================================================

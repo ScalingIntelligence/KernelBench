@@ -266,5 +266,81 @@ def test_validate_custom_checks():
     assert len(warnings) > 0, "Should have torch op warning"
 
 
+# =============================================================================
+# Test Real DSL Examples (No False Positives)
+# These tests verify that valid DSL kernels from src/prompts pass the checker
+# =============================================================================
+
+import os
+from pathlib import Path
+
+# Path to DSL examples
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+
+def test_cuda_example_passes():
+    """Real CUDA example should pass all strict checks."""
+    example_path = PROMPTS_DIR / "model_new_ex_add.py"
+    if not example_path.exists():
+        pytest.skip("CUDA example not found")
+    
+    code = example_path.read_text()
+    valid, errors, warnings = validate_kernel_static(
+        code, 
+        backend="cuda",
+        forbidden=["code_bypass"],  # Don't check pytorch_wrap since example imports F unused
+        warnings=[]
+    )
+    assert valid, f"CUDA example should pass: {errors}"
+
+
+def test_triton_example_passes():
+    """Real Triton example should pass all strict checks."""
+    example_path = PROMPTS_DIR / "model_new_ex_add_triton.py"
+    if not example_path.exists():
+        pytest.skip("Triton example not found")
+    
+    code = example_path.read_text()
+    valid, errors, warnings = validate_kernel_static(
+        code,
+        backend="triton",
+        forbidden=["code_bypass", "triton_impl"],
+        warnings=[]
+    )
+    assert valid, f"Triton example should pass: {errors}"
+
+
+def test_cute_example_passes():
+    """Real CuTe/CUTLASS example should pass all strict checks."""
+    example_path = PROMPTS_DIR / "model_new_ex_add_cute.py"
+    if not example_path.exists():
+        pytest.skip("CuTe example not found")
+    
+    code = example_path.read_text()
+    valid, errors, warnings = validate_kernel_static(
+        code,
+        backend="cute",
+        forbidden=["code_bypass", "cute_impl"],
+        warnings=[]
+    )
+    assert valid, f"CuTe example should pass: {errors}"
+
+
+def test_tilelang_example_passes():
+    """Real TileLang example should pass all strict checks."""
+    example_path = PROMPTS_DIR / "model_new_ex_add_tilelang.py"
+    if not example_path.exists():
+        pytest.skip("TileLang example not found")
+    
+    code = example_path.read_text()
+    valid, errors, warnings = validate_kernel_static(
+        code,
+        backend="tilelang",
+        forbidden=["code_bypass", "tilelang_impl"],
+        warnings=[]
+    )
+    assert valid, f"TileLang example should pass: {errors}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
