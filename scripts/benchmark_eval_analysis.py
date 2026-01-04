@@ -2,7 +2,7 @@ import json, os
 
 import pydra
 from pydra import Config, REQUIRED
-from src.dataset import construct_kernelbench_dataset
+from kernelbench.dataset import construct_kernelbench_dataset
 from tabulate import tabulate
 
 """
@@ -19,7 +19,15 @@ Usage:
 ```
 python3 scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline>
 ```
-hardware + baseline should correspond to the results/timing/hardware/baseline.json file   
+hardware + baseline should correspond to the results/timing/hardware/baseline.json file
+
+Optional path overrides (for external tools like leaderboards):
+```
+python3 scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline> \
+    baseline_file=/path/to/baseline.json \
+    eval_results_dir=/path/to/runs \
+    output_file=/path/to/output.json
+```
 
 """
 
@@ -31,6 +39,11 @@ class AnalysisConfig(Config):
 
         self.hardware = REQUIRED  # hardware to evaluate
         self.baseline = REQUIRED  # baseline to compare against
+
+        # Optional path overrides (defaults to standard KernelBench paths)
+        self.baseline_file = None      # Override: direct path to baseline JSON
+        self.eval_results_dir = None   # Override: path to runs directory
+        self.output_file = None        # Write JSON output to file
 
     def __repr__(self):
         return f"AnalysisConfig({self.to_dict()})"
@@ -54,24 +67,36 @@ def patch(eval_results, dataset):
     return eval_results
 
 
-def analyze_greedy_eval(run_name, hardware, baseline, level):
+def analyze_greedy_eval(run_name, hardware, baseline, level,
+                        baseline_file=None, eval_results_dir=None) -> dict:
     """
-    Analyze the greedy eval results for a run of a particular level
+    Analyze the greedy eval results for a run of a particular level.
+
+    Returns a dict with all computed metrics.
     """
 
     dataset = construct_kernelbench_dataset(level)
 
-    # load json
-    eval_file_path = f"runs/{run_name}/eval_results.json"
+    # Resolve eval results path (use override if provided)
+    if eval_results_dir:
+        eval_file_path = os.path.join(eval_results_dir, run_name, "eval_results.json")
+        pass_at_k_file_path = os.path.join(eval_results_dir, run_name, "pass_at_k_results.json")
+    else:
+        eval_file_path = f"runs/{run_name}/eval_results.json"
+        pass_at_k_file_path = f"runs/{run_name}/pass_at_k_results.json"
+
     assert os.path.exists(
         eval_file_path
     ), f"Eval file does not exist at {eval_file_path}"
 
-    # Check if pass@k results exist
-    pass_at_k_file_path = f"runs/{run_name}/pass_at_k_results.json"
     has_pass_at_k_results = os.path.exists(pass_at_k_file_path)
 
-    baseline_file_path = f"results/timing/{hardware}/{baseline}.json"
+    # Resolve baseline path (use override if provided)
+    if baseline_file:
+        baseline_file_path = baseline_file
+    else:
+        baseline_file_path = f"results/timing/{hardware}/{baseline}.json"
+
     assert os.path.exists(
         baseline_file_path
     ), f"Baseline file does not exist at {baseline_file_path}"
@@ -129,7 +154,7 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     import numpy as np
 
     # Calculate speedup metrics
-    from src.score import (
+    from kernelbench.score import (
         fastp,
         geometric_mean_speed_ratio_correct_and_faster_only,
         geometric_mean_speed_ratio_correct_only,
@@ -157,7 +182,7 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
 
     # list of speedup thresholds p
     p_values = [0.0, 0.5, 0.8, 1.0, 1.5, 2.0]
-    results = [
+    fast_p_results = [
         [p, fastp(is_correct, baseline_speed, actual_speed, n, p)] for p in p_values
     ]
 
@@ -169,7 +194,7 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
     print("\nFast_p Results:")
     print(
         tabulate(
-            results, headers=["Speedup Threshold (p)", "Fast_p Score"], tablefmt="grid"
+            fast_p_results, headers=["Speedup Threshold (p)", "Fast_p Score"], tablefmt="grid"
         )
     )
 
@@ -193,10 +218,49 @@ def analyze_greedy_eval(run_name, hardware, baseline, level):
             avg_table = [[k, v] for k, v in averages.items()]
             print(tabulate(avg_table, headers=["Metric", "Value"], tablefmt="grid"))
 
+    # Build and return results dict
+    results = {
+        "run_name": run_name,
+        "level": level,
+        "hardware": hardware,
+        "total_count": total_count,
+        "total_eval": total_eval,
+        "compiled_count": compiled_count,
+        "correct_count": correct_count,
+        "compilation_rate": compiled_count / total_count if total_count > 0 else 0.0,
+        "correctness_rate": correct_count / total_count if total_count > 0 else 0.0,
+        "geo_mean_speedup": float(gmsr_correct),
+        "fast_p": {str(p): float(score) for p, score in fast_p_results},
+    }
+
+    # Include pass@k if available
+    if pass_at_k_results:
+        results["pass_at_k"] = {
+            "metadata": pass_at_k_results.get("metadata", {}),
+            "averages": pass_at_k_results.get("averages", {})
+        }
+
+    return results
+
 
 @pydra.main(base=AnalysisConfig)
 def main(config: AnalysisConfig):
-    analyze_greedy_eval(config.run_name, config.hardware, config.baseline, config.level)
+    results = analyze_greedy_eval(
+        config.run_name,
+        config.hardware,
+        config.baseline,
+        config.level,
+        baseline_file=config.baseline_file,
+        eval_results_dir=config.eval_results_dir
+    )
+
+    # Write JSON output if requested
+    if config.output_file:
+        with open(config.output_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"\nResults written to: {config.output_file}")
+
+    return results
 
 
 if __name__ == "__main__":

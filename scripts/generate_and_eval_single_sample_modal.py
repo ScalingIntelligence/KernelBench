@@ -14,8 +14,7 @@ import modal
 from datasets import load_dataset
 
 #from src.dataset import construct_kernelbench_dataset
-from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
-from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
+from kernelbench.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
 
@@ -95,6 +94,8 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
+SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
+
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git",
@@ -102,8 +103,14 @@ image = (
                 "g++-10",
                 "clang" # note i skip a step
                 )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-    .add_local_python_source("src")
+
+    .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
+    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root:/root/src"
+    })
+    .add_local_dir(SRC_DIR, remote_path="/root/src")  # must be last
 )
 
 @app.cls(image=image)
@@ -114,10 +121,10 @@ class EvalFunc:
         # 3. Evaluate Kernel
         # NOTE: no need to wrap around process here as only a single sample
         # see batch eval for examples of process isolation
-        from src.eval import eval_kernel_against_ref
-        from src.eval import get_torch_dtype_from_string
+        from kernelbench.eval import eval_kernel_against_ref
+        from kernelbench.eval import get_torch_dtype_from_string
         # Use utility function to set the GPU architecture in the modal environment
-        from src.utils import set_gpu_arch as modal_set_gpu_arch
+        from kernelbench.utils import set_gpu_arch as modal_set_gpu_arch
         modal_set_gpu_arch(gpu_arch)
         return eval_kernel_against_ref(
             ref_arch_src, custom_kernel, verbose=verbose, measure_performance=True, 
@@ -131,7 +138,7 @@ def main(config: EvalConfig):
     """
     Keep it simple: Generate and evaluate a single sample
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
@@ -216,7 +223,7 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -227,6 +234,11 @@ def main(config: EvalConfig):
     if backend == "tilelang":
         config.precision = "fp16"
         config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
+    
+    # thunderkittens can use bf16 or fp16 by default, also set default GPU to H100
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+        config.gpu = "H100"
 
     if not custom_prompt_key:
         if prompt_option not in valid_prompt_options:
@@ -237,6 +249,9 @@ def main(config: EvalConfig):
             raise ValueError(
                 "include_hardware_info is True but hardware_gpu_name is not provided."
             )
+
+    # Lazy import prompt constructor
+    from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
 
     if custom_prompt_key:
         custom_prompt = get_custom_prompt(

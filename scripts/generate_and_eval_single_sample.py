@@ -7,17 +7,17 @@ import modal
 
 from datasets import load_dataset
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
-from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
-from src.utils import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import eval_kernel_against_ref
+from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+from kernelbench.utils import (
     create_inference_server_from_presets,
     extract_first_code,
     query_server,
     read_file,
     set_gpu_arch,
 )
-from src.eval import get_torch_dtype_from_string
+from kernelbench.eval import get_torch_dtype_from_string
 """
 Generate and evaluate a single sample
 Easiest way to get started, to test a single problem for experimentation or debugging
@@ -46,15 +46,17 @@ class EvalConfig(Config):
 
         # Evaluation
         # local (requires a GPU), modal (cloud GPU) coming soon
-        self.eval_mode = "local"
+        self.eval_mode = "local" 
+        # only support local for now
+        # see scripts/eval_from_generations_modal.py for modal evaluation
         # Construct this from mapping from architecture name to torch cuda arch list in the future
         # you can either specify SM version or just use the name
         self.gpu_arch = ["Ada"]
         self.precision = "fp32" # options ["fp32", "fp16", "bf16"]
 
         # Inference config
-        self.server_type = None
-        self.model_name = None
+        self.server_type = REQUIRED
+        self.model_name = REQUIRED
         self.max_tokens = None
         self.temperature = None
         
@@ -97,7 +99,7 @@ def main(config: EvalConfig):
     Keep it simple: Generate and evaluate a single sample
     Note: will shorten code logic to make this as simple as possible
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
@@ -198,7 +200,7 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -208,6 +210,9 @@ def main(config: EvalConfig):
     if backend == "tilelang":
         config.precision = "fp16" # tilelang only operates with fp16
         config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
+    
+    if backend == "thunderkittens":
+        config.precision = "bf16"
 
     if not custom_prompt_key:
         if prompt_option not in valid_prompt_options:

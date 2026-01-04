@@ -14,9 +14,11 @@ If the model can reward hack, it will find ways to reward hack! This can especia
 Check out resources here:
 - KernelBench [v0.1 Release](https://scalingintelligence.stanford.edu/blogs/kernelbenchv01/) 
 - Cognition and Stanford's [Kevin](https://arxiv.org/abs/2507.11948) project on various hacking behaviors observed in RL training
-- Jiwei Li's awesome [blogpost](https://deep-reinforce.com/defense_kernel_hack.html) on Hacks and Defenses in Automatic GPU Kernel Generation
+- Jiwei Li's awesome [blogpost 1](https://deep-reinforce.com/defense_kernel_hack.html) and [blogpost 2](https://deep-reinforce.com/correctness_check.html) on Hacks and Defenses in Automatic GPU Kernel Generations
 
 Our ongoing blogpost and PRs try to systematize and list out these behaviors and provide tests, detection, and mitigation toolings.
+
+**Disclaimer**: KernelBench is an open-source evaluation framework. Due to limited bandwidth, the KernelBench team does not inspect, validate, or endorse any third-party kernels or reported results. Users are welcome to use the software infrastructure for evaluation, but should independently verify all results.
 
 
 ## Methodology

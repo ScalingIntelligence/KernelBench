@@ -18,7 +18,7 @@ Optimize the architecture named Model with custom {backend_display}! Name your o
 """
 
 # Shared example architecture (same for all backends)
-few_shot_example_arch = "src/prompts/model_ex_add.py"
+few_shot_example_arch = "src/kernelbench/prompts/model_ex_add.py"
 
 # -------------------------------------------------------------------------
 # Backends: Backend-specific configuration (minimal, just what varies)
@@ -26,27 +26,32 @@ few_shot_example_arch = "src/prompts/model_ex_add.py"
 [backends.cuda]
 backend_display = "CUDA operators"
 # One-shot example (baseline, always available)
-one_shot_new_arch = "src/prompts/model_new_ex_add.py"
+one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add.py"
 # Few-shot examples (optional, multiple example pairs)
 few_shot_examples = [
-    ["src/prompts/few_shot/model_ex_add.py", "src/prompts/few_shot/model_new_ex_add.py"],
-    ["src/prompts/few_shot/model_ex_fuse_gelu.py", "src/prompts/few_shot/model_new_ex_fuse_gelu.py"],
-    ["src/prompts/few_shot/model_ex_flash_attn.py", "src/prompts/few_shot/model_new_ex_flash_attn.py"],
+    ["src/kernelbench/prompts/few_shot/model_ex_add.py", "src/kernelbench/prompts/few_shot/model_new_ex_add.py"],
+    ["src/kernelbench/prompts/few_shot/model_ex_fuse_gelu.py", "src/kernelbench/prompts/few_shot/model_new_ex_fuse_gelu.py"],
+    ["src/kernelbench/prompts/few_shot/model_ex_flash_attn.py", "src/kernelbench/prompts/few_shot/model_new_ex_flash_attn.py"],
 ]
 
 [backends.triton]
 backend_display = "Triton kernels"
-one_shot_new_arch = "src/prompts/model_new_ex_add_triton.py"
+one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_triton.py"
 # No few_shot_examples - will use one-shot when few_shot option is selected
 
 [backends.cute]
 backend_display = "CuTe (CUTLASS) kernels"
-one_shot_new_arch = "src/prompts/model_new_ex_add_cute.py"
+one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_cute.py"
 # No few_shot_examples - will use one-shot when few_shot option is selected
 
 [backends.tilelang]
 backend_display = "TileLang kernels"
-one_shot_new_arch = "src/prompts/model_new_ex_add_tilelang.py"
+one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_tilelang.py"
+# No few_shot_examples - will use one-shot when few_shot option is selected
+
+[backends.thunderkittens]
+backend_display = "ThunderKittens kernels"
+one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_thunderkittens.py"
 # No few_shot_examples - will use one-shot when few_shot option is selected
 
 # -------------------------------------------------------------------------
