@@ -11,3 +11,5 @@ cache/*
 !results/timing/
 .env
 _build_cache/
+
+uv.lock
