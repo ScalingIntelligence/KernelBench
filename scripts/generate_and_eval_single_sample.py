@@ -83,6 +83,8 @@ class EvalConfig(Config):
         self.hardware_gpu_name = None
         self.custom_prompt_key = None
 
+        self.check_kernel = True  # [experimental] optional static checker catching potential hacking patterns
+
     def verbose_logging(self):
         self.log = True
         self.log_prompt = True
@@ -262,15 +264,16 @@ def main(config: EvalConfig):
 
     # Optional: static code checker for kernel code using regex matching
     # NOTE: by no means is this checker complete, but it could help catch some potential hacks
-    from kernelbench.kernel_static_checker import validate_kernel_static
-    static_check_status, errors, warnings = validate_kernel_static(
-        custom_kernel,
-        backend=config.backend,
-        precision=config.precision,
-    )
-    assert static_check_status, f"Static check failed for level {config.level} problem {config.problem_id}. Errors: {errors}. Warnings: {warnings}"
-    if warnings:
-        print(f"Static check warnings for level {config.level} problem {config.problem_id}: {warnings}")
+    if config.check_kernel:
+        from kernelbench.kernel_static_checker import validate_kernel_static
+        static_check_status, errors, warnings = validate_kernel_static(
+            custom_kernel,
+            backend=config.backend,
+            precision=config.precision,
+        )
+        assert static_check_status, f"Static check failed for level {config.level} problem {config.problem_id}. Errors: {errors}. Warnings: {warnings}"
+        if warnings:
+            print(f"Static check warnings for level {config.level} problem {config.problem_id}: {warnings}")
 
     # this should be optional
     if config.log:

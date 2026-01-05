@@ -121,6 +121,8 @@ class ScriptConfig(Config):
         self.precision = "fp32"
         self.backend = "cuda"
 
+        self.check_kernel = True  # [experimental] optional static checker catching potential hacking patterns
+
     def __repr__(self):
         return f"ScriptConfig({self.to_dict()})"
 
@@ -282,14 +284,15 @@ def main(config: ScriptConfig):
 
     # Optional: static code checker for kernel code using regex matching
     # NOTE: by no means is this checker complete, but it could help catch some potential hacks
-    static_check_status, errors, warnings = validate_kernel_static(
-        kernel_src,
-        backend=config.backend,
-        precision=config.precision,
-    )
-    assert static_check_status, f"Static check failed. Errors: {errors}. Warnings: {warnings}"
-    if warnings:
-        print(f"[WARN] Static check warnings: {warnings}")
+    if config.check_kernel:
+        static_check_status, errors, warnings = validate_kernel_static(
+            kernel_src,
+            backend=config.backend,
+            precision=config.precision,
+        )
+        assert static_check_status, f"Static check failed. Errors: {errors}. Warnings: {warnings}"
+        if warnings:
+            print(f"[WARN] Static check warnings: {warnings}")
 
     # Start Evaluation
     assert config.eval_mode in ["local", "modal"], "eval_mode must be either 'local' or 'modal'"

@@ -75,7 +75,9 @@ def check_code_bypass(code: str) -> Tuple[bool, str]:
 # Since KernelBench problems uses PyTorch as a reference, there could be settigs where
 # Model generated code
 # 1. Replaces some (not all) ops with custom kernels, others are kept in Torch
+# --> More practical from a performance perspective (ie. make better systems) as you want to use whatever makes the best system for your use case. 
 # 2. All compuational ops must be replaced with custom kernels
+# --> Could be helpful from an eval (model ability on transpile + optimization) / RL training perspective 
 # Depends the setting you use, you can move the checks below (pytorch_wrap, torch_computation_ops) 
 # from WARNING to STRICT
 

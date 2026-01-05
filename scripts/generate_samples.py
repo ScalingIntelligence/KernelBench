@@ -85,6 +85,8 @@ class GenerationConfig(Config):
         self.hardware_gpu_name = None
         self.custom_prompt_key = None
 
+        self.check_kernel = True  # [experimental] optional static checker catching potential hacking patterns
+
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
         self.greedy_sample = True
@@ -165,15 +167,16 @@ def generate_sample_single(
 
     # Optional: we provide a static code checker for kernel code using regex matching
     # NOTE: by no means, is this checker complete, but it might could help catch some potential hacks and issues
-    static_check_status, error, warnings = validate_kernel_static(custom_kernel,
-        backend=config.backend,
-        precision=config.precision, 
-        # uses the default set of forbidden and warning patterns, 
-        # you could adapt the patterns to your own setting (degree of banning cuda stream, allowing some torch ops)
-    )
-    assert static_check_status, f"Static check failed for sample {work.sample_id} for problem {problem_number}: {problem_name}. Error: {error}. Warnings: {warnings}"
-    if warnings:
-        print(f"Static check warnings for sample {work.sample_id} for problem {problem_number}: {problem_name}. Warnings: {warnings}")
+    if config.check_kernel:
+        static_check_status, error, warnings = validate_kernel_static(custom_kernel,
+            backend=config.backend,
+            precision=config.precision, 
+            # uses the default set of forbidden and warning patterns, 
+            # you could adapt the patterns to your own setting (degree of banning cuda stream, allowing some torch ops)
+        )
+        assert static_check_status, f"Static check failed for sample {work.sample_id} for problem {problem_number}: {problem_name}. Error: {error}. Warnings: {warnings}"
+        if warnings:
+            print(f"Static check warnings for sample {work.sample_id} for problem {problem_number}: {problem_name}. Warnings: {warnings}")
 
     if config.verbose:
         print(

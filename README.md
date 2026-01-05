@@ -117,24 +117,10 @@ uv run python scripts/generate_and_eval_single_sample.py dataset_src=huggingface
 * **`precision`** - You can specify the precision of tensor by `precision=fp32`. Currently all of our reported results are `fp32` but we added support for `fp16` & `bf16`.
 *  **`backend`** - We are also supporting other GPU programming languages beyond `cuda`. Simply specify `backend=triton`. For now we support DSLs: `cuda`, `triton`, `cute`, `tilelang`, `thunderkittens`.
 
+
+Note on setting up ThunderKittens (TK) locally: to use `backend=thunderkittens`, you need to git clone the ThunderKittens repo and set the following environment variable to point to your local ThunderKittens directory, `export THUNDERKITTENS_ROOT=<PATH to ThunderKittens folder>`, and all ThunderKitten programs as shown in the [example](src/kernelbench/prompts/model_new_ex_add_thunderkittens.py), should contain `tk_root = os.environ.get("THUNDERKITTENS_ROOT", "/root/ThunderKittens")`, which enable the kernel to include the right TK primitives. In addition, we only support BF16 for TK right now.
+
 Check the config fields for comprehensive set of options. Note we provide the model with a one-shot example by default along with the minimum set of info; you can check out other prompt settings or construct your own in `src/prompt_constructor_toml.py`.
-
-### Running Thunderkittens Locally
-If you plan on using `scripts/generate_and_eval_single_sample.py` using `backend=thunderkittens`, make sure to git clone the ThunderKittens repo and you set the following environment variable to point to your local ThunderKittens directory:
-
-```bash
-export THUNDERKITTENS_ROOT=/Users/willychan/Desktop/projects/KernelBench/ThunderKittens
-```
-
-As seen in `src/kernelbench/prompts/model_new_ex_add_thunderkittens.py`, the generated kernels should have the following line:
-
-```bash
-tk_root = os.environ.get("THUNDERKITTENS_ROOT", "/root/ThunderKittens")
-```
-
-This allows the kernel to include the right TK primitives.
-
-*NOTE*: Right now, all generated ThunderKittens kernels are required to be in datatype format BF16. FP16 support is TBD.
 
 ### Run on all problems 
 
