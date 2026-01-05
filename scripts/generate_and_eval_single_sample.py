@@ -260,6 +260,18 @@ def main(config: EvalConfig):
         custom_kernel is not None
     ), f"Custom {config.backend} kernel code generation failed"
 
+    # Optional: static code checker for kernel code using regex matching
+    # NOTE: by no means is this checker complete, but it could help catch some potential hacks
+    from kernelbench.kernel_static_checker import validate_kernel_static
+    static_check_status, errors, warnings = validate_kernel_static(
+        custom_kernel,
+        backend=config.backend,
+        precision=config.precision,
+    )
+    assert static_check_status, f"Static check failed for level {config.level} problem {config.problem_id}. Errors: {errors}. Warnings: {warnings}"
+    if warnings:
+        print(f"Static check warnings for level {config.level} problem {config.problem_id}: {warnings}")
+
     # this should be optional
     if config.log:
         with open(os.path.join(config.logdir, f"generated_kernel_level_{config.level}_problem_{config.problem_id}.py"), "w") as f:

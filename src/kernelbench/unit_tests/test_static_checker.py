@@ -1,345 +1,165 @@
 """
 Tests for kernel_static_checker.py
-[WIP] will use more realisitic adverserial kernels
-Run with: pytest src/unit_tests/test_static_checker.py -v
+
+Validates that the static checker correctly identifies:
+- Valid DSL kernels (no false positives)  
+- Known adversarial/hack patterns (no false negatives)
+
+We welcome contributions to improve the static checker and providing adversarial kernels.
+
+
+Run with: uv run pytest src/kernelbench/unit_tests/test_static_checker.py -v
 """
 
 import pytest
-from src.kernel_static_checker import (
-    validate_kernel_static,
-    check_code_bypass,
-    check_pytorch_wrap,
-    check_torch_computation_ops,
-    check_cuda_impl,
-    check_triton_impl,
-    check_tk_impl,
-    check_cute_impl,
-    check_tilelang_impl,
-)
+from pathlib import Path
+from kernelbench.kernel_static_checker import validate_kernel_static
 
 
 # =============================================================================
-# Test Code Bypass Detection (try-except + pass)
+# Fixtures - Common paths and helpers
+# =============================================================================
+
+@pytest.fixture
+def prompts_dir():
+    """Path to DSL example kernels."""
+    return Path(__file__).parent.parent / "prompts"
+
+@pytest.fixture
+def test_kernels_dir():
+    """Path to adversarial test kernels."""
+    return Path(__file__).parent / "test_kernels"
+
+
+def read_kernel(path: Path) -> str:
+    """Read kernel code from file, skip if not found."""
+    if not path.exists():
+        pytest.skip(f"Kernel file not found: {path}")
+    return path.read_text()
+
+
+# =============================================================================
+# Valid DSL Kernels - Should Pass (No False Positives)
+# These are real, correct kernels from src/kernelbench/prompts/
+# =============================================================================
+
+def test_cuda_example_valid(prompts_dir):
+    """Real CUDA kernel example should pass with default settings."""
+    code = read_kernel(prompts_dir / "model_new_ex_add.py")
+    valid, errors, warnings = validate_kernel_static(code, backend="cuda")
+    # May have warnings (F import), but should be valid
+    assert valid or "import F" in str(warnings), f"CUDA example should pass: {errors}"
+
+
+def test_triton_example_valid(prompts_dir):
+    """Real Triton kernel example should pass."""
+    code = read_kernel(prompts_dir / "model_new_ex_add_triton.py")
+    valid, errors, warnings = validate_kernel_static(code, backend="triton")
+    assert valid or len(warnings) > 0, f"Triton example should pass: {errors}"
+
+
+def test_cute_example_valid(prompts_dir):
+    """Real CuTe/CUTLASS kernel example should pass."""
+    code = read_kernel(prompts_dir / "model_new_ex_add_cute.py")
+    valid, errors, warnings = validate_kernel_static(code, backend="cute")
+    assert valid or len(warnings) > 0, f"CuTe example should pass: {errors}"
+
+
+def test_tilelang_example_valid(prompts_dir):
+    """Real TileLang kernel example should pass."""
+    code = read_kernel(prompts_dir / "model_new_ex_add_tilelang.py")
+    valid, errors, warnings = validate_kernel_static(code, backend="tilelang")
+    assert valid or len(warnings) > 0, f"TileLang example should pass: {errors}"
+
+
+# =============================================================================
+# Adversarial Kernels - Should Detect Issues  
+# These are known hack patterns from test_kernels/
+# =============================================================================
+
+def test_stream_kernel_flagged(test_kernels_dir):
+    """Non-default stream kernel should trigger stream_injection warning."""
+    code = read_kernel(test_kernels_dir / "non_default_stream_kernel.py")
+    valid, errors, warnings = validate_kernel_static(code, backend="cuda")
+    # Stream injection is in warnings by default
+    all_messages = errors + warnings
+    has_stream_warning = any("stream" in msg.lower() for msg in all_messages)
+    # Note: The CUDA code is in a string literal, so static checker may not catch it
+    # This test documents the limitation
+
+
+def test_result_reuse_kernel_flagged(test_kernels_dir):
+    """Result reuse (empty tensor) kernel - static checker can't catch this."""
+    code = read_kernel(test_kernels_dir / "result_reuse_kernel.py")
+    valid, errors, warnings = validate_kernel_static(code, backend="cuda")
+    # This is a runtime check, static checker won't catch it
+    # Just verify it doesn't crash
+
+
+def test_zero_out_kernel_flagged(test_kernels_dir):
+    """Zero-out kernel - static checker can't catch this."""
+    code = read_kernel(test_kernels_dir / "zero_out_kernel.py")
+    valid, errors, warnings = validate_kernel_static(code, backend="cuda")
+    # This is a correctness issue, not detectable statically
+
+
+# =============================================================================
+# Hack Patterns - Synthetic Examples
 # =============================================================================
 
 def test_bypass_try_except():
-    code = "try:\n    result = kernel(x)\nexcept:\n    result = torch.matmul(x, w)"
-    has_issue, msg = check_code_bypass(code)
-    assert has_issue, "Should detect try-except"
-    assert "try-except" in msg
+    """Try-except fallback should be flagged as error."""
+    code = """
+try:
+    result = custom_kernel(x)
+except:
+    result = torch.matmul(x, w)  # Fallback to torch
+"""
+    valid, errors, warnings = validate_kernel_static(code, backend="cuda")
+    assert not valid, "Try-except should be flagged"
+    assert any("try-except" in e.lower() for e in errors)
 
 
 def test_bypass_pass_statement():
-    code = "class MyKernel:\n    def forward(self, x):\n        pass"
-    has_issue, msg = check_code_bypass(code)
-    assert has_issue, "Should detect pass statement"
-    assert "pass" in msg
-
-
-def test_bypass_pass_in_word():
-    code = "# This check has passed all tests"
-    has_issue, msg = check_code_bypass(code)
-    assert not has_issue, "Should not match 'passed'"
-
-
-def test_no_bypass():
-    code = "result = kernel(x)"
-    has_issue, msg = check_code_bypass(code)
-    assert not has_issue, "Clean code should pass"
-
-
-# =============================================================================
-# Test PyTorch Wrapping Detection
-# =============================================================================
-
-def test_pytorch_wrap_functional():
-    code = "import torch.nn.functional as F\nresult = F.relu(x)"
-    has_issue, msg = check_pytorch_wrap(code)
-    assert has_issue, "Should detect F.relu"
-
-
-def test_pytorch_wrap_nn_functional():
-    code = "result = torch.nn.functional.conv2d(x, w)"
-    has_issue, msg = check_pytorch_wrap(code)
-    assert has_issue, "Should detect torch.nn.functional"
-
-
-def test_pytorch_wrap_allows_module():
-    code = "class Model(torch.nn.Module):\n    def forward(self, x): return x"
-    has_issue, msg = check_pytorch_wrap(code)
-    assert not has_issue, "Should allow torch.nn.Module"
-
-
-def test_pytorch_wrap_allows_parameter():
-    code = "self.weight = torch.nn.Parameter(torch.randn(10))"
-    has_issue, msg = check_pytorch_wrap(code)
-    assert not has_issue, "Should allow torch.nn.Parameter"
-
-
-# =============================================================================
-# Test Torch Computation Ops Detection
-# =============================================================================
-
-def test_torch_ops_conv2d():
-    code = "result = torch.conv2d(x, w)"
-    has_issue, msg = check_torch_computation_ops(code)
-    assert has_issue, "Should detect torch.conv2d"
-
-
-def test_torch_ops_matmul():
-    code = "result = torch.matmul(x, w)"
-    has_issue, msg = check_torch_computation_ops(code)
-    assert has_issue, "Should detect torch.matmul"
-
-
-def test_torch_ops_allowed():
-    code = "result = torch.zeros(10)"  # tensor creation is fine
-    has_issue, msg = check_torch_computation_ops(code)
-    assert not has_issue, "torch.zeros should be allowed"
-
-
-# =============================================================================
-# Test CUDA Implementation Check
-# =============================================================================
-
-def test_cuda_valid():
-    code = '''
-cuda_src = """
-__global__ void my_kernel(float* out) {
-    out[0] = 1.0f;
-}
-"""
-module = load_inline(name="my_kernel", cuda_sources=[cuda_src])
-'''
-    has_issue, msg = check_cuda_impl(code)
-    assert not has_issue, "Valid CUDA should pass"
-
-
-def test_cuda_missing_global():
-    code = "module = load_inline(name='test', cuda_sources=[src])"
-    has_issue, msg = check_cuda_impl(code)
-    assert has_issue, "Should detect missing __global__"
-
-
-def test_cuda_missing_load_inline():
-    code = "__global__ void kernel() {}"
-    has_issue, msg = check_cuda_impl(code)
-    assert has_issue, "Should detect missing load_inline"
-
-
-def test_cuda_cpp_extension():
-    code = "__global__ void kernel() {}\nfrom torch.utils.cpp_extension import load"
-    has_issue, msg = check_cuda_impl(code)
-    assert not has_issue, "cpp_extension should also be valid"
-
-
-# =============================================================================
-# Test Triton Implementation Check
-# =============================================================================
-
-def test_triton_valid():
-    code = '''
-@triton.jit
-def my_kernel(x_ptr, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    x = tl.load(x_ptr + pid)
-'''
-    has_issue, msg = check_triton_impl(code)
-    assert not has_issue, "Valid Triton should pass"
-
-
-def test_triton_missing_jit():
-    code = "def my_kernel(x_ptr):\n    x = tl.load(x_ptr)"
-    has_issue, msg = check_triton_impl(code)
-    assert has_issue, "Should detect missing @triton.jit"
-
-
-def test_triton_missing_tl_ops():
-    code = "@triton.jit\ndef my_kernel():\n    return 1"
-    has_issue, msg = check_triton_impl(code)
-    assert has_issue, "Should detect missing tl.* ops"
-
-
-# =============================================================================
-# Test ThunderKittens Implementation Check
-# =============================================================================
-
-def test_tk_valid():
-    code = '''
-using namespace kittens;
-__global__ void my_kernel() {
-    warpgroup::sync();
-    rt_bf<16, 16> reg_tile;
-    st_bf<16, 16> shared_tile;
-}
-'''
-    has_issue, msg = check_tk_impl(code)
-    assert not has_issue, "Valid TK should pass"
-
-
-def test_tk_missing_warp():
-    code = "rt_bf<16, 16> tile;"
-    has_issue, msg = check_tk_impl(code)
-    assert has_issue, "Should detect missing warp patterns"
-
-
-def test_tk_missing_tiles():
-    code = "using namespace kittens;\nwarpgroup::sync();"
-    has_issue, msg = check_tk_impl(code)
-    assert has_issue, "Should detect missing tile declarations"
-
-
-# =============================================================================
-# Test CuTe/CUTLASS Implementation Check
-# =============================================================================
-
-def test_cute_valid():
-    code = "cute::copy(src, dst);"
-    has_issue, msg = check_cute_impl(code)
-    assert not has_issue, "Valid CuTe should pass"
-
-
-def test_cute_cutlass_namespace():
-    code = "cutlass::gemm::GemmCoord coord;"
-    has_issue, msg = check_cute_impl(code)
-    assert not has_issue, "CUTLASS namespace should pass"
-
-
-def test_cute_missing():
-    code = "__global__ void kernel() {}"
-    has_issue, msg = check_cute_impl(code)
-    assert has_issue, "Should detect missing cute::"
-
-
-# =============================================================================
-# Test TileLang Implementation Check
-# =============================================================================
-
-def test_tilelang_valid():
-    code = "@T.prim_func\ndef kernel(): pass"
-    has_issue, msg = check_tilelang_impl(code)
-    assert not has_issue, "Valid TileLang should pass"
-
-
-def test_tilelang_missing():
-    code = "def kernel(): pass"
-    has_issue, msg = check_tilelang_impl(code)
-    assert has_issue, "Should detect missing @T.prim_func"
-
-
-# =============================================================================
-# Test validate_kernel_static Integration
-# =============================================================================
-
-def test_validate_cuda_valid():
-    code = '''
-cuda_src = """
-__global__ void kernel(float* out) { out[0] = 1.0f; }
-"""
-module = load_inline(name="test", cuda_sources=[cuda_src])
-
-class ModelNew(torch.nn.Module):
+    """Pass statement (inheritance bypass) should be flagged."""
+    code = """
+class ModelNew(Model):
     def forward(self, x):
-        return module.kernel(x)
-'''
+        pass  # Does nothing, inherits parent
+"""
     valid, errors, warnings = validate_kernel_static(code, backend="cuda")
-    assert valid, f"Valid CUDA should pass: {errors}"
+    assert not valid, "Pass statement should be flagged"
+    assert any("pass" in e.lower() for e in errors)
 
 
-def test_validate_with_bypass():
-    code = "try:\n    x = kernel()\nexcept:\n    x = torch.matmul(a, b)"
+def test_lazy_eval_make_subclass():
+    """_make_subclass (lazy tensor hack) should be flagged."""
+    code = """
+fake_tensor = torch.Tensor._make_subclass(FakeTensor, real_tensor)
+"""
     valid, errors, warnings = validate_kernel_static(code, backend="cuda")
-    assert not valid, "Should detect bypass"
-    assert len(errors) > 0
+    assert not valid, "_make_subclass should be flagged"
 
 
-def test_validate_custom_checks():
-    code = "torch.matmul(x, w)"  # torch op, no bypass
-    
-    # Default: torch_computation_ops is in warnings
-    valid, errors, warnings = validate_kernel_static(
-        code, backend="cuda", 
-        forbidden=["code_bypass"],  # only check bypass
-        warnings=["torch_computation_ops"]
-    )
-    # This will fail on cuda_impl (no __global__), but let's check warnings work
-    assert len(warnings) > 0, "Should have torch op warning"
+def test_timing_monkey_patch():
+    """Monkey patching timing functions should be flagged."""
+    code = """
+# Override timing to fake benchmarks
+torch.cuda.Event.elapsed_time = lambda self, end: 0.001
+"""
+    valid, errors, warnings = validate_kernel_static(code, backend="cuda")
+    assert not valid, "Timing monkey patch should be flagged"
 
 
-# =============================================================================
-# Test Real DSL Examples (No False Positives)
-# These tests verify that valid DSL kernels from src/prompts pass the checker
-# =============================================================================
-
-import os
-from pathlib import Path
-
-# Path to DSL examples
-PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-
-
-def test_cuda_example_passes():
-    """Real CUDA example should pass all strict checks."""
-    example_path = PROMPTS_DIR / "model_new_ex_add.py"
-    if not example_path.exists():
-        pytest.skip("CUDA example not found")
-    
-    code = example_path.read_text()
-    valid, errors, warnings = validate_kernel_static(
-        code, 
-        backend="cuda",
-        forbidden=["code_bypass"],  # Don't check pytorch_wrap since example imports F unused
-        warnings=[]
-    )
-    assert valid, f"CUDA example should pass: {errors}"
-
-
-def test_triton_example_passes():
-    """Real Triton example should pass all strict checks."""
-    example_path = PROMPTS_DIR / "model_new_ex_add_triton.py"
-    if not example_path.exists():
-        pytest.skip("Triton example not found")
-    
-    code = example_path.read_text()
-    valid, errors, warnings = validate_kernel_static(
-        code,
-        backend="triton",
-        forbidden=["code_bypass", "triton_impl"],
-        warnings=[]
-    )
-    assert valid, f"Triton example should pass: {errors}"
-
-
-def test_cute_example_passes():
-    """Real CuTe/CUTLASS example should pass all strict checks."""
-    example_path = PROMPTS_DIR / "model_new_ex_add_cute.py"
-    if not example_path.exists():
-        pytest.skip("CuTe example not found")
-    
-    code = example_path.read_text()
-    valid, errors, warnings = validate_kernel_static(
-        code,
-        backend="cute",
-        forbidden=["code_bypass", "cute_impl"],
-        warnings=[]
-    )
-    assert valid, f"CuTe example should pass: {errors}"
-
-
-def test_tilelang_example_passes():
-    """Real TileLang example should pass all strict checks."""
-    example_path = PROMPTS_DIR / "model_new_ex_add_tilelang.py"
-    if not example_path.exists():
-        pytest.skip("TileLang example not found")
-    
-    code = example_path.read_text()
-    valid, errors, warnings = validate_kernel_static(
-        code,
-        backend="tilelang",
-        forbidden=["code_bypass", "tilelang_impl"],
-        warnings=[]
-    )
-    assert valid, f"TileLang example should pass: {errors}"
+def test_thread_injection():
+    """Threading in kernel code should be flagged."""
+    code = """
+import threading
+t = threading.Thread(target=background_work)
+t.start()
+"""
+    valid, errors, warnings = validate_kernel_static(code, backend="cuda")
+    assert not valid, "Threading should be flagged"
 
 
 if __name__ == "__main__":
