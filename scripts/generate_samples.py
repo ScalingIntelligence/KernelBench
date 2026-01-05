@@ -18,7 +18,7 @@ from kernelbench.utils import (
     read_file,
     set_gpu_arch,
 )
-from src.code_check import check_thunderkittens_code
+from kernelbench.kernel_static_checker import validate_kernel_static
 
 """
 Batch Generate Samples for Particular Level
@@ -163,13 +163,17 @@ def generate_sample_single(
     # check LLM is able to generate custom CUDA code
     assert custom_kernel is not None, "Custom CUDA code generation failed"
 
-    # TODO: What should be the behavior here? Add more backends
-    # Validate ThunderKittens code if backend is thunderkittens
-    if config.backend == "thunderkittens":
-        if not check_thunderkittens_code(custom_kernel):
-            raise ValueError(
-                f"Generated code for problem {work.problem_id} sample {work.sample_id} doesn't seem to use valid ThunderKittens constructs"
-            )
+    # Optional: we provide a static code checker for kernel code using regex matching
+    # NOTE: by no means, is this checker complete, but it might could help catch some potential hacks and issues
+    static_check_status, error, warnings = validate_kernel_static(custom_kernel,
+        backend=config.backend,
+        precision=config.precision, 
+        # uses the default set of forbidden and warning patterns, 
+        # you could adapt the patterns to your own setting (degree of banning cuda stream, allowing some torch ops)
+    )
+    assert static_check_status, f"Static check failed for sample {work.sample_id} for problem {problem_number}: {problem_name}. Error: {error}. Warnings: {warnings}"
+    if warnings:
+        print(f"Static check warnings for sample {work.sample_id} for problem {problem_number}: {problem_name}. Warnings: {warnings}")
 
     if config.verbose:
         print(
