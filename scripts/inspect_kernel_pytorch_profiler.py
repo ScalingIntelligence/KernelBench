@@ -16,8 +16,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 device = "cuda:0"
 
 
-from src.utils import read_file
-from src.eval import (
+from kernelbench.utils import read_file
+from kernelbench.eval import (
     load_custom_model,
     load_original_model_and_inputs,
     set_seed,
@@ -103,8 +103,8 @@ def get_torch_profiler_info(ref_arch_src: str,
 def __main__():
     # run_profile(dataset, problem_id, num_trials=10)
 
-    ref_arch_src_path = os.path.join(REPO_ROOT, "src/prompts/few_shot/model_ex_mnist2.py")
-    kernel_src_path = os.path.join(REPO_ROOT, "src/prompts/few_shot/model_new_ex_mnist2.py")
+    ref_arch_src_path = os.path.join(REPO_ROOT, "src/kernelbench/prompts/few_shot/model_ex_mnist2.py")
+    kernel_src_path = os.path.join(REPO_ROOT, "src/kernelbench/prompts/few_shot/model_new_ex_mnist2.py")
 
     ref_arch_src = read_file(ref_arch_src_path)
     kernel_src = read_file(kernel_src_path)

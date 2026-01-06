@@ -32,7 +32,6 @@ import time
 import shutil
 import concurrent
 from functools import cache
-from transformers import AutoTokenizer
 import hashlib
 
 from concurrent.futures import ProcessPoolExecutor, as_completed

@@ -21,12 +21,12 @@ import torch
 import torch.nn as nn
 from pydantic import BaseModel
 
-from . import utils, dataset
+from . import utils, timing, dataset
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
-        "..",
+        "../..",
     )
 )
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
@@ -112,12 +112,19 @@ class KernelExecResult(BaseModel):
     """
     Single Kernel Execution
     """
-
+    # Execution
     compiled: bool = False
     correctness: bool = False
-    metadata: dict = {}
+    metadata: dict = {} # NOTE: to include warning if any
+
+    # Timing
     runtime: float = -1.0  # in us, only recorded if we decide to measure performance
     runtime_stats: dict = {}  # only recorded if we decide to measure performance
+
+    # new: added ref time either through fetching prev runs or through execution
+    # could do eager for level 1 and compile for level 2 and 3
+    ref_runtime: float = -1.0  # in us, only recorded if we decide to measure performance
+    ref_runtime_stats: dict = {} # only recorded if we decide to measure performance
 
 
 def load_original_model_and_inputs(
@@ -396,23 +403,34 @@ def eval_kernel_against_ref(
     seed_num: int = 42,
     num_correct_trials: int = 1,
     num_perf_trials: int = 10,
-    verbose: bool = False,
     measure_performance: bool = False,
+    timing_method: str = "cuda_event", # see timing.py
+    verbose: bool = False,
     build_dir: os.PathLike = None,
     device: Union[torch.device, int] = (
         torch.cuda.current_device() if torch.cuda.is_available() else None
     ),  # have to run on GPU
     backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype = torch.float32,
+
+    # Guard against potential reward hacking [optional but ongoing enhancement]
+    check_for_excessive_speedup: bool = True,
+    excessive_speedup_threshold: float = 10, # flag if the kernel is more than <excessive_speedup_threshold>x faster than the reference
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
+
+    NOTE: we are thinking about refactor this to be more modularized 
+    and we can add more checks as our other ongiong PRs are working on
 
     num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
     num_perf_trials: run the evalutation many times to take the average
     device: GPU (cuda) device to run the evalutation on
     backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
+    timing_method: str, method to time kernel, see timing.py for more details 
+
+    ONGOING EFFORT to refactor and modularize this, and adding more tests for eval.
     """
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -581,23 +599,78 @@ def eval_kernel_against_ref(
                 model_new = custom_model.to(device=device, dtype=precision)
                 torch.cuda.synchronize(device=device)
 
-                elapsed_times = time_execution_with_cuda_event(
+                # support multiple timing backend
+                timing_fn = timing.get_timing_function(timing_method)
+                elapsed_times = timing_fn(
                     model_new,
-                    *inputs,
+                    inputs,
                     num_trials=num_perf_trials,
                     verbose=verbose,
                     device=device,
                 )
-                runtime_stats = get_timing_stats(elapsed_times, device=device)
+                runtime_stats = timing.get_timing_stats(elapsed_times, device=device)
 
                 if verbose:
                     print(f"[Eval] Performance Stats: {runtime_stats}")
                 kernel_exec_result.runtime = runtime_stats["mean"]
                 kernel_exec_result.runtime_stats = runtime_stats
+
         except Exception as e:
             if verbose:
                 print(f"[Eval] Error in Measuring Performance: {e}")
             kernel_exec_result.metadata["error_during_performance"] = e
+
+
+
+    ###############################################################
+    # [Experimental] to be modularized
+    # Condition: custom kernel ModelNew is correct and we are able to time it correctly with kernel_exec_result
+    # We are working on preventing excessive speedup issues
+    ##############################################################
+
+    if measure_performance and check_for_excessive_speedup:  # experimental: hence able to shut off codepath if needed
+    
+        if verbose:
+            print("[Eval] Additional checks to flag excessive speedup")
+
+        torch.cuda.synchronize(device=device)
+        set_seed(seed_num)
+        inputs = get_inputs()
+        # Convert inputs for performance measurement
+        inputs = [_process_input_tensor(x, device, backend, precision) for x in inputs]
+        
+        model_new = custom_model.to(device=device, dtype=precision)
+        torch.cuda.synchronize(device=device)
+
+        # time PyTorch reference function
+        # same timing_fn as specified from before
+        timing_fn = timing.get_timing_function(timing_method)
+        reference_elapsed_times = timing_fn(
+            original_model,
+            inputs, # ideally cloned for extra safety but handled already in correctness check
+            num_trials=num_perf_trials,
+            verbose=verbose,
+            device=device,
+        )
+        reference_runtime_stats = timing.get_timing_stats(reference_elapsed_times, device=device)
+        kernel_exec_result.ref_runtime = reference_runtime_stats["mean"]
+        kernel_exec_result.ref_runtime_stats = reference_runtime_stats
+
+        # Compute Effective Speedup
+        effective_speedup = kernel_exec_result.ref_runtime / kernel_exec_result.runtime
+
+        # TODO: integrate SoL estimation for each unique program on designated hardware
+        # for now, we will use a heuristics such as 5-10x which is very hard to achieve
+
+        if verbose:
+            print(f"[Eval] Effective Speedup is {effective_speedup:.2f}x using timing method {timing_method}")
+
+        if effective_speedup > excessive_speedup_threshold:
+            kernel_exec_result.metadata["excessive_speedup"] = True
+            
+            print(f"[WARNING] Excessive speedup {effective_speedup:.2f}x over {excessive_speedup_threshold}x threshold detected")
+            print(f"[WARNING] Double check your kernel carefully to ensure it is not reward hacking.")
+
 
     graceful_eval_cleanup(context, device, tempfile)
     return kernel_exec_result
@@ -626,64 +699,6 @@ def register_and_format_exception(
     metadata[exception_type] = exception_str
 
     return metadata
-
-
-def time_execution_with_cuda_event(
-    kernel_fn: callable,
-    *args,
-    num_warmup: int = 3,
-    num_trials: int = 10,
-    verbose: bool = True,
-    device: torch.device = None,
-) -> list[float]:
-    """
-    Time a CUDA kernel function over multiple trials using torch.cuda.Event
-
-    Args:
-        kernel_fn: Function to time
-        *args: Arguments to pass to kernel_fn
-        num_trials: Number of timing trials to run
-        verbose: Whether to print per-trial timing info
-        device: CUDA device to use, if None, use current device
-
-    Returns:
-        List of elapsed times in milliseconds
-    """
-    if device is None:
-        if verbose:
-            print(f"Using current device: {torch.cuda.current_device()}")
-        device = torch.cuda.current_device()
-
-    # Warm ups
-    for _ in range(num_warmup):
-        kernel_fn(*args)
-        torch.cuda.synchronize(device=device)
-
-    print(
-        f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}"
-    )
-    elapsed_times = []
-
-    # Actual trials
-    for trial in range(num_trials):
-        # create event marker default is not interprocess
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-
-        start_event.record()
-        kernel_fn(*args)
-        end_event.record()
-
-        # Synchronize to ensure the events have completed
-        torch.cuda.synchronize(device=device)
-
-        # Calculate the elapsed time in milliseconds
-        elapsed_time_ms = start_event.elapsed_time(end_event)
-        if verbose:
-            print(f"Trial {trial + 1}: {elapsed_time_ms:.3g} ms")
-        elapsed_times.append(elapsed_time_ms)
-
-    return elapsed_times
 
 
 def run_and_check_correctness(
@@ -896,33 +911,6 @@ def fetch_baseline_time(
     problem_name = os.path.basename(problem_path)
     baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
-
-
-def get_timing_stats(elapsed_times: list[float], device: torch.device = None) -> dict:
-    """Get timing statistics from a list of elapsed times.
-
-    Args:
-        elapsed_times: List of elapsed times in milliseconds
-        device: CUDA device, record device info
-    Returns:
-        Dict containing mean, std, min, max and num_trials
-        all timing are in ms
-    """
-
-    stats = {
-        "mean": float(f"{np.mean(elapsed_times):.3g}"),
-        "std": float(f"{np.std(elapsed_times):.3g}"),
-        "min": float(f"{np.min(elapsed_times):.3g}"),
-        "max": float(f"{np.max(elapsed_times):.3g}"),
-        "num_trials": len(elapsed_times),
-    }
-
-    if device:
-        stats["hardware"] = torch.cuda.get_device_name(device=device)
-        stats["device"] = str(device)  # for debugging
-
-    return stats
-
 
 # if __name__ == "__main__":
 # fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")

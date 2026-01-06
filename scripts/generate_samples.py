@@ -8,11 +8,10 @@ import torch
 from datasets import load_dataset
 from pydra import Config, REQUIRED
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_multilang import get_prompt_for_backend
-from src.utils import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import eval_kernel_against_ref
+from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+from kernelbench.utils import (
     create_inference_server_from_presets,
     extract_first_code,
     maybe_multithread,
@@ -80,6 +79,10 @@ class GenerationConfig(Config):
         self.backend = "cuda"
         
         self.precision = "fp32"
+        self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
+        self.include_hardware_info = False
+        self.hardware_gpu_name = None
+        self.custom_prompt_key = None
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -123,16 +126,24 @@ def generate_sample_single(
         problem_number == work.problem_id
     ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
 
-    # Construct Prompt
-    if config.backend == "cuda":
-        custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(
-            ref_arch_src
+    if config.custom_prompt_key:
+        custom_prompt = get_custom_prompt(
+            config.custom_prompt_key,
+            ref_arch_src=ref_arch_src,
+            backend=config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
         )
-    elif config.backend in ["triton", "cute", "tilelang"]:
-        custom_cuda_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
     else:
-        raise ValueError(
-            f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'cute', or 'tilelang'."
+        custom_prompt = get_prompt_for_backend(
+            ref_arch_src,
+            config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
         )
     if config.log_prompt:
         prompt_path = os.path.join(
@@ -140,13 +151,13 @@ def generate_sample_single(
             f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt",
         )
         with open(prompt_path, "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_prompt)
 
     # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    custom_kernel = inference_server(custom_prompt)
+    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
+    assert custom_kernel is not None, "Custom CUDA code generation failed"
 
     if config.verbose:
         print(
@@ -159,7 +170,7 @@ def generate_sample_single(
         f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py",
     )
     with open(kernel_path, "w") as f:
-        f.write(custom_cuda)
+        f.write(custom_kernel)
 
     return True
 
@@ -196,7 +207,7 @@ def main(config: GenerationConfig):
     Batch Generate Samples for Particular Level
     Store generated kernels in the specified run directory
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
@@ -211,6 +222,44 @@ def main(config: GenerationConfig):
     if isinstance(config.is_reasoning_model, str):
         config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
     
+    custom_prompt_key = getattr(config, "custom_prompt_key", None)
+    if isinstance(custom_prompt_key, str):
+        trimmed = custom_prompt_key.strip()
+        if trimmed.lower() in {"", "none"}:
+            custom_prompt_key = None
+        else:
+            custom_prompt_key = trimmed
+    config.custom_prompt_key = custom_prompt_key
+
+    include_hardware = config.include_hardware_info
+    if isinstance(include_hardware, str):
+        include_hardware = include_hardware.lower() in ["true", "1", "yes"]
+    config.include_hardware_info = include_hardware
+
+    supported_backends = {"cuda", "triton", "cute", "tilelang", "thunderkittens"}
+    backend = config.backend.lower()
+    if backend not in supported_backends:
+        raise ValueError(
+            f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
+        )
+    config.backend = backend
+    if backend == "tilelang":
+        config.precision = "fp16"
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+
+    config.prompt_option = str(config.prompt_option).lower()
+    valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
+    if not config.custom_prompt_key:
+        if config.prompt_option not in valid_prompt_options:
+            raise ValueError(
+                f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
+            )
+        if include_hardware and not config.hardware_gpu_name:
+            raise ValueError(
+                "include_hardware_info is True but hardware_gpu_name is not provided."
+            )
+
     print(f"Starting Batch Generation with config: {config}")
 
     # Dataset Configurations

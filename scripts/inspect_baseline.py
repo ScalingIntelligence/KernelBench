@@ -3,14 +3,14 @@ import logging
 import os
 import sys
 import numpy as np
-from src.eval import (
+from kernelbench.eval import (
     load_original_model_and_inputs,
     time_execution_with_cuda_event,
     get_timing_stats,
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.dataset import construct_kernelbench_dataset
+from kernelbench.dataset import construct_kernelbench_dataset
 import os, sys
 import logging
 import json

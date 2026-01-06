@@ -13,11 +13,8 @@ import modal
 
 from datasets import load_dataset
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_multilang import get_prompt_for_backend
-from src.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
 
@@ -76,6 +73,12 @@ class EvalConfig(Config):
         self.log_eval_result = False
 
         self.backend = "cuda"
+        self.timing_method = "cuda_event"  # see timing.py
+        # Prompt generation settings
+        self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
+        self.include_hardware_info = False
+        self.hardware_gpu_name = None
+        self.custom_prompt_key = None
 
     def verbose_logging(self):
         self.log = True
@@ -91,6 +94,8 @@ flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
+SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
+
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git",
@@ -98,25 +103,32 @@ image = (
                 "g++-10",
                 "clang" # note i skip a step
                 )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-    .add_local_python_source("src")
+
+    .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
+    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root:/root/src"
+    })
+    .add_local_dir(SRC_DIR, remote_path="/root/src")  # must be last
 )
 
 @app.cls(image=image)
 class EvalFunc:
 
     @modal.method()
-    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend, precision):
+    def eval_single_sample_modal(self, ref_arch_src, custom_kernel, verbose, gpu_arch, backend, precision, timing_method):
         # 3. Evaluate Kernel
         # NOTE: no need to wrap around process here as only a single sample
         # see batch eval for examples of process isolation
-        from src.eval import eval_kernel_against_ref
-        from src.eval import get_torch_dtype_from_string
+        from kernelbench.eval import eval_kernel_against_ref
+        from kernelbench.eval import get_torch_dtype_from_string
         # Use utility function to set the GPU architecture in the modal environment
-        from src.utils import set_gpu_arch as modal_set_gpu_arch
+        from kernelbench.utils import set_gpu_arch as modal_set_gpu_arch
         modal_set_gpu_arch(gpu_arch)
         return eval_kernel_against_ref(
             ref_arch_src, custom_kernel, verbose=verbose, measure_performance=True, 
+            timing_method=timing_method,
             num_correct_trials=5, num_perf_trials=100, backend=backend, precision=get_torch_dtype_from_string(precision)
         )
 
@@ -126,7 +138,7 @@ def main(config: EvalConfig):
     """
     Keep it simple: Generate and evaluate a single sample
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
@@ -195,14 +207,72 @@ def main(config: EvalConfig):
                                                         budget_tokens=config.budget_tokens)
     
 
+    custom_prompt_key = getattr(config, "custom_prompt_key", None)
+    if isinstance(custom_prompt_key, str):
+        trimmed = custom_prompt_key.strip()
+        if trimmed.lower() in {"", "none"}:
+            custom_prompt_key = None
+        else:
+            custom_prompt_key = trimmed
+    config.custom_prompt_key = custom_prompt_key
 
-    # Use appropriate prompt constructor based on backend
-    if config.backend == "cuda":
-        custom_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
-    elif config.backend in ["triton", "tilelang", "cute"]:
-        custom_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
+    # Checks if user has inputted a valid argument for how many examples they want to give as context to the model
+    prompt_option = str(config.prompt_option).lower()
+    valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
+    include_hardware = config.include_hardware_info
+    if isinstance(include_hardware, str):
+        include_hardware = include_hardware.lower() in ["true", "1", "yes"]
+    config.include_hardware_info = include_hardware
+
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
+    backend = config.backend.lower()
+    if backend not in supported_backends:
+        raise ValueError(
+            f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
+        )
+
+    #tilelang only supports fp16 or bf16
+    if backend == "tilelang":
+        config.precision = "fp16"
+        config.hardware_gpu_name = config.hardware_gpu_name or getattr(config, "gpu", None)
+    
+    # thunderkittens can use bf16 or fp16 by default, also set default GPU to H100
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+        config.gpu = "H100"
+
+    if not custom_prompt_key:
+        if prompt_option not in valid_prompt_options:
+            raise ValueError(
+                f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
+            )
+        if include_hardware and not config.hardware_gpu_name:
+            raise ValueError(
+                "include_hardware_info is True but hardware_gpu_name is not provided."
+            )
+
+    # Lazy import prompt constructor
+    from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+
+    if custom_prompt_key:
+        custom_prompt = get_custom_prompt(
+            custom_prompt_key,
+            ref_arch_src=ref_arch_src,
+            backend=backend,
+            option=prompt_option,
+            precision=config.precision,
+            include_hardware=include_hardware,
+            gpu_name=config.hardware_gpu_name,
+        )
     else:
-        raise ValueError(f"Unsupported backend: {config.backend}. Must be 'cuda', 'triton', 'tilelang', or 'cute'.")
+        custom_prompt = get_prompt_for_backend(
+            ref_arch_src,
+            backend,
+            option=prompt_option,
+            precision=config.precision,
+            include_hardware=include_hardware,
+            gpu_name=config.hardware_gpu_name,
+        )
         
     if config.log_prompt:
         with open(os.path.join(config.logdir, f"prompt_level_{config.level}_problem_{config.problem_id}.txt"), "w") as f:
@@ -221,7 +291,7 @@ def main(config: EvalConfig):
 
     with app.run():
         kernel_exec_result = EvalFunc.with_options(gpu=config.gpu)().eval_single_sample_modal.remote(
-            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend, config.precision
+            ref_arch_src, custom_kernel, config.verbose, gpu_arch_mapping[config.gpu], config.backend, config.precision, config.timing_method
         )
         
         print(f"Evaluation result for level {config.level} problem {config.problem_id}:\n{kernel_exec_result}")
