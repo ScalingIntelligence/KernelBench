@@ -426,11 +426,105 @@ def check_timing_event_patch(code: str) -> Tuple[bool, str]:
     return (False, "")
 
 
-# =============================================================================
-# TODO: Future checks
-# =============================================================================
-# def check_precision_downgrade(code): ... # .half(), .bfloat16() - could be soft check
-# this a bit tricky and up to the user to decide
+# <========= PRECISION DOWNGRADE CHECKS =========>
+# Rationale: Models may downgrade precision internally (FP32 -> FP16)
+# to make kernels faster while still returning FP32 output. This is a reward
+# hacking pattern where models cheat on timing while appearing correct.
+# This might be a valid optimization, but is still worth flagging as a warning.
+#
+# We use explicit, high-confidence patterns that indicate intentional precision
+# downgrading. These patterns have minimal false positives and clear semantic intent.
+
+# Specific patterns that indicate FP32 -> FP16 precision downgrading
+FP32_TO_FP16_PATTERNS = [
+    # ========== CUDA / CUDA C++ ==========
+    # 1.1 Explicit float -> half intrinsics (⭐ gold standard)
+    # __float2half(f), __float2half_rn(f)
+    r"__float2half(_rn)?\s*\(",
+    
+    # 1.2 Explicit C-style cast to __half
+    # (__half)f
+    r"\(\s*__half\s*\)\s*[\w\->\.]+",
+    
+    # 1.3 static_cast<half> / static_cast<__half>
+    # static_cast<half>(f), static_cast<__half>(f)
+    r"static_cast\s*<\s*(__half|half)\s*>\s*\(",
+    
+    # ========== Triton (Python) ==========
+    # 2.1 Explicit tl.astype(..., tl.float16) (⭐ best signal)
+    # tl.astype(x, tl.float16)
+    r"tl\.astype\s*\(\s*[^,]+,\s*tl\.float16\s*\)",
+    
+    # ========== CUTLASS ==========
+    # 3.1 NumericConverter float -> half (⭐ extremely reliable)
+    # NumericConverter<half_t, float>
+    r"NumericConverter\s*<\s*half_t\s*,\s*float\s*>",
+    
+    # 3.2 Epilogue output type = FP16
+    # LinearCombination<half_t, ...>
+    r"LinearCombination\s*<\s*half_t",
+    
+    # ========== CUTE (when used directly) ==========
+    # 4.1 Explicit type conversion utility
+    # type_convert<half_t>(x)
+    r"type_convert\s*<\s*half_t\s*>\s*\(",
+    
+    # ========== ThunderKittens ==========
+    # 5.1 Explicit half types in cast contexts
+    # tk::half(x)
+    r"tk::half\s*\(",
+    
+    # ========== Additional gaping patterns ==========
+    # PyTorch explicit casts (common in inline CUDA contexts)
+    r"\.half\s*\(",                              # .half() -> FP16
+    r"\.float16\s*\(",                           # .float16() -> FP16
+    r"\.to\s*\(\s*torch\.(float16|half)\b",      # .to(torch.float16)
+    r"\.to\s*\(\s*dtype\s*=\s*torch\.(float16|half)\b",  # .to(dtype=torch.float16)
+]
+
+def check_precision_downgrade(code: str, precision: str = "fp32") -> Tuple[bool, str]:
+    """
+    Check for FP32 -> FP16 precision downgrading patterns in kernel code.
+    
+    Detects code that downgrades precision from FP32 to FP16 internally,
+    which can make kernels faster but with reduced precision. This is a reward
+    hacking pattern where models cheat on timing while appearing correct.
+    
+    Currently only checks for FP32 -> FP16 downgrades. Other precision combinations
+    (e.g., FP16 -> BF16) are not flagged.
+    
+    Args:
+        code: Kernel source code
+        precision: Required precision - only checks when "fp32" or "float32"
+    
+    Returns:
+        (True, error_message) if FP32 -> FP16 downgrade detected
+        (False, "") if no downgrade detected
+    
+    Examples of detected patterns:
+    - .half(), .float16()
+    - .to(torch.float16), .to(torch.half)
+    - dtype=torch.float16
+    - __half, half2 (CUDA)
+    - tl.float16 (Triton)
+    """
+    code = _strip_comments(code)
+    precision = precision.lower()
+    
+    # Normalize precision to standard form
+    precision_map = {"fp32": "fp32", "float32": "fp32", "fp16": "fp16", "bf16": "bf16", "bfloat16": "bf16"}
+    precision = precision_map.get(precision, precision)
+    
+    # Only check for FP32 -> FP16 downgrades
+    if precision != "fp32":
+        return (False, "")
+    
+    # Check for FP16 patterns
+    for pattern in FP32_TO_FP16_PATTERNS:
+        if re.search(pattern, code):
+            return (True, "Precision downgrade detected: required FP32 but code uses FP16")
+    
+    return (False, "")
 
 # =============================================================================
 # In the future, we can add a AST-based checker and a LM-as-a-judge checker
@@ -454,6 +548,7 @@ CHECK_FUNCTIONS: Dict[str, Callable[[str], Tuple[bool, str]]] = {
     "stream_injection": check_stream_injection,
     "thread_injection": check_thread_injection,
     "lazy_eval": check_lazy_eval,
+    "precision_downgrade": check_precision_downgrade,  # precision-dependent
     
     # Backend-specific implementation checks
     # should be strict
@@ -463,6 +558,9 @@ CHECK_FUNCTIONS: Dict[str, Callable[[str], Tuple[bool, str]]] = {
     "cute_impl": check_cute_impl,
     "tilelang_impl": check_tilelang_impl,
 }
+
+# Checks that require additional parameters beyond just code
+PRECISION_DEPENDENT_CHECKS = {"precision_downgrade"}
 
 # Here are some presets for you to use
 # You are welcome to adapt them to your settings
@@ -492,6 +590,7 @@ WARNING_CHECKS: List[str] = [
     "pytorch_wrap",
     "torch_computation_ops",  
     "stream_injection",       # could have legitimate uses (async ops), but should be careful!
+    "precision_downgrade",    # precision downgrading - can be intentional but often a hack
 ]
 
 
@@ -541,7 +640,13 @@ def validate_kernel_static(
     for check_name in set(forbidden_checks + warning_checks):
         if check_name not in CHECK_FUNCTIONS:
             continue
-        has_issue, msg = CHECK_FUNCTIONS[check_name](code)
+        
+        # Handle precision-dependent checks
+        if check_name in PRECISION_DEPENDENT_CHECKS:
+            has_issue, msg = CHECK_FUNCTIONS[check_name](code, precision)
+        else:
+            has_issue, msg = CHECK_FUNCTIONS[check_name](code)
+        
         if has_issue:
             if check_name in forbidden_checks:
                 errors.append(msg)
