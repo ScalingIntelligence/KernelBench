@@ -39,28 +39,20 @@ def get_error_name(e: Exception) -> str:
     return f"{e.__class__.__module__}.{e.__class__.__name__}"
 
 
-def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str:
+def fetch_ref_arch_from_problem_id(problem_id: int, dataset: "BaseDataset", with_name=False) -> Union[str, tuple[str, str]]:
     """
-    Fetches the reference architecture in string for a given problem_id
+    Fetches the reference architecture for a given problem_id from the dataset.
     """
     if isinstance(problem_id, str):
         problem_id = int(problem_id)
 
-    if hasattr(problems, "get_problem_by_id"):
-        problem_path = problems.get_problem_by_id(problem_id)
-    else:
-        # Fallback for old list-based API: problem_id is 1-indexed but lists are 0-indexed
-        problem_path = problems[problem_id - 1]
-
-    # problem_path = os.path.join(REPO_ROOT_PATH, problem)
-    if not os.path.exists(problem_path):
-        raise FileNotFoundError(f"Problem file at {problem_path} does not exist.")
-
-    ref_arch = utils.read_file(problem_path)
+    problem = dataset.get_problem_by_id(problem_id)
+    ref_arch = problem.code
+    
     if not with_name:
         return ref_arch
     else:
-        return (problem_path, ref_arch)
+        return (problem.path, ref_arch)
 
 
 def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
@@ -889,10 +881,10 @@ def check_metadata_serializable_all_types(metadata: dict):
 
 
 def fetch_baseline_time(
-    level_name: str, problem_id: int, dataset: list[str], baseline_time_filepath: str
-) -> dict:
+    level_name: str, problem_id: int, dataset: "BaseDataset", baseline_time_filepath: str
+) -> Optional[float]:
     """
-    Fetch the baseline time from the time
+    Fetch the baseline time for a specific problem from a JSON file.
     """
     if not os.path.exists(baseline_time_filepath):
         raise FileNotFoundError(
@@ -902,13 +894,9 @@ def fetch_baseline_time(
     with open(baseline_time_filepath, "r") as f:
         baseline_json = json.load(f)
 
-    if hasattr(dataset, "get_problem_by_id"):
-        problem_path = dataset.get_problem_by_id(problem_id)
-    else:
-        # Fallback for old list-based API: problem_id is 1-indexed but lists are 0-indexed
-        problem_path = dataset[problem_id - 1]
-
-    problem_name = os.path.basename(problem_path)
+    problem = dataset.get_problem_by_id(problem_id)
+    problem_name = problem.name
+    
     baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
 

@@ -11,10 +11,8 @@ import torch
 import json
 import modal
 
-from datasets import load_dataset
-
 from kernelbench.dataset import construct_kernelbench_dataset
-from kernelbench.utils import extract_first_code, query_server, set_gpu_arch, read_file, create_inference_server_from_presets
+from kernelbench.utils import extract_first_code, query_server, set_gpu_arch, create_inference_server_from_presets
 
 app = modal.App("eval_single_sample")
 
@@ -155,42 +153,25 @@ def main(config: EvalConfig):
     
     print(f"Starting Eval with config: {config}")
 
-    # Configurations
-    
-    if config.dataset_src == "huggingface":
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-    elif config.dataset_src == "local":
-        curr_level_dataset = construct_kernelbench_dataset(config.level)
+    # Configurations - Unified dataset loading (works for both HF and local)
+    dataset = construct_kernelbench_dataset(
+        level=config.level,
+        source=config.dataset_src,
+        dataset_name=config.dataset_name,
+    )
 
     if config.log:
         os.makedirs(config.logdir, exist_ok=True)
         
     # Problem Checks
-    num_problems = len(curr_level_dataset)
+    num_problems = len(dataset)
     print(f"Number of problems in Level {config.level}: {num_problems}")
     print(f"Start Generation + Evaluation for Level {config.level} Problem {config.problem_id}")
 
-    assert config.problem_id <= num_problems, f"Problem ID {config.problem_id} out of range for Level {config.level}"
-
-
-    # 1. Fetch Problem
-    if config.dataset_src == "huggingface":
-
-        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-    elif config.dataset_src == "local":
-        ref_arch_path = curr_level_dataset.get_problem_by_id(config.problem_id)
-
-        problem_name = os.path.basename(ref_arch_path)
-        ref_arch_src = read_file(ref_arch_path)
-    # import pdb; pdb.set_trace()
-
-    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
-    problem_number = int(problem_name.split("_")[0])
-    assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    # Fetch problem - unified interface, no branching needed
+    problem = dataset.get_problem_by_id(config.problem_id)
+    ref_arch_src = problem.code
+    problem_name = problem.name
     
     
     # 2. Generate Sample

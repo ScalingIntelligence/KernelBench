@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import pydra
 import torch
 
-from datasets import load_dataset
 from pydra import Config, REQUIRED
 
 from kernelbench.dataset import construct_kernelbench_dataset
@@ -15,7 +14,6 @@ from kernelbench.utils import (
     create_inference_server_from_presets,
     extract_first_code,
     maybe_multithread,
-    read_file,
     set_gpu_arch,
 )
 
@@ -105,26 +103,10 @@ def generate_sample_single(
     inference_server: callable,
     run_dir: str,
 ) -> bool:
-    # 1. Fetch Problem
-    if config.dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(
-            lambda x: x["problem_id"] == work.problem_id, desc=None
-        )
-
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-    elif config.dataset_src == "local":
-        ref_arch_path = dataset.get_problem_by_id(work.problem_id)
-
-        problem_name = os.path.basename(ref_arch_path)
-        ref_arch_src = read_file(ref_arch_path)
-
-    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
-    problem_number = int(problem_name.split("_")[0])
-    assert (
-        problem_number == work.problem_id
-    ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
+    # 1. Fetch Problem - unified interface
+    problem = dataset.get_problem_by_id(work.problem_id)
+    ref_arch_src = problem.code
+    problem_name = problem.name
 
     if config.custom_prompt_key:
         custom_prompt = get_custom_prompt(
@@ -262,15 +244,14 @@ def main(config: GenerationConfig):
 
     print(f"Starting Batch Generation with config: {config}")
 
-    # Dataset Configurations
-    if config.dataset_src == "huggingface":
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-    elif config.dataset_src == "local":
-        curr_level_dataset = construct_kernelbench_dataset(config.level)
+    # Dataset Configurations - Unified loading
+    dataset = construct_kernelbench_dataset(
+        level=config.level,
+        source=config.dataset_src,
+        dataset_name=config.dataset_name,
+    )
 
-    num_problems_in_level = len(curr_level_dataset)
-    all_problem_ids = curr_level_dataset.get_problem_ids() if config.dataset_src == "local" else list(range(1, num_problems_in_level + 1))
+    all_problem_ids = dataset.get_problem_ids()
 
     if config.subset == (None, None):
         problem_ids_to_run = all_problem_ids
@@ -334,7 +315,7 @@ def main(config: GenerationConfig):
         time_interval=config.api_query_interval,
         # extra args
         config=config,
-        dataset=curr_level_dataset,
+        dataset=dataset,
         inference_server=inference_server,
         run_dir=run_dir,
     )

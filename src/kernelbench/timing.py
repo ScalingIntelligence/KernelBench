@@ -393,7 +393,7 @@ def time_execution_with_host_time(
 # tools to help compute speedup and other time
 #########################################################
 def fetch_baseline_time(
-    level_name: str, problem_id: int, dataset: list[str], baseline_time_filepath: str
+    level_name: str, problem_id: int, dataset: "BaseDataset", baseline_time_filepath: str
 ) -> dict:
     """
     Fetch the baseline time from the time
@@ -409,8 +409,8 @@ def fetch_baseline_time(
     with open(baseline_time_filepath, "r") as f:
         baseline_json = json.load(f)
 
-    # TODO: replace with the new Dataset object that Omar will merge in
-    problem_name = dataset[problem_id].split("/")[-1]
+    problem = dataset.get_problem_by_id(problem_id)
+    problem_name = problem.name
     baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
 

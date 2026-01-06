@@ -12,7 +12,6 @@ import numpy as np
 import pydra
 import torch
 
-from datasets import load_dataset
 from pydra import Config, REQUIRED
 
 # Import only what we need
@@ -255,33 +254,17 @@ class ModalEvaluator:
 
 
 def fetch_ref_arch_from_problem_id(
-    dataset, problem_id: int, dataset_src: str
+    dataset, problem_id: int, dataset_src: str = None
 ) -> str | None:
     """
-    Fetch reference architecture from problem directory
-    Either from Hugging Face or Local Dataset
+    Fetch reference architecture from problem directory.
+    Uses the unified dataset interface.
+    
+    Note: dataset_src parameter is kept for backward compatibility but ignored
+    since the dataset object already handles both sources.
     """
-    if dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(
-            lambda x: x["problem_id"] == problem_id, num_proc=None, desc=None
-        )
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-    elif dataset_src == "local":
-        ref_arch_path = dataset.get_problem_by_id(problem_id)
-
-        problem_name = os.path.basename(ref_arch_path)
-        ref_arch_src = read_file(ref_arch_path)
-
-    # verify
-    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
-    problem_number = int(problem_name.split("_")[0])
-    assert (
-        problem_number == problem_id
-    ), f"Problem number in filename ({problem_number}) does not match config problem_id ({problem_id})"
-
-    return ref_arch_src
+    problem = dataset.get_problem_by_id(problem_id)
+    return problem.code
 
 
 def fetch_kernel_from_disk(
@@ -819,38 +802,35 @@ def main(config: EvalConfig):
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method("spawn")
 
-    # Dataset Configurations
-    if config.dataset_src == "huggingface":
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-    elif config.dataset_src == "local":
-        curr_level_dataset = construct_kernelbench_dataset(config.level)
+    # Dataset Configurations - Unified loading
+    dataset = construct_kernelbench_dataset(
+        level=config.level,
+        source=config.dataset_src,
+        dataset_name=config.dataset_name,
+    )
 
-    num_problems_in_level = len(curr_level_dataset)
-    all_problem_ids = curr_level_dataset.get_problem_ids() if config.dataset_src == "local" else list(range(1, num_problems_in_level + 1))
+    all_problem_ids = dataset.get_problem_ids()
 
     if config.subset == (None, None):
-        problem_id_range = range(1, num_problems_in_level)
+        problem_ids_to_run = all_problem_ids
     else:
-        assert (
-            config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level
-        ), f"Subset range {config.subset} out of range for Level {config.level}"
-        problem_id_range = range(config.subset[0], config.subset[1])
+        start, end = config.subset
+        problem_ids_to_run = [pid for pid in all_problem_ids if start <= pid <= end]
+        if not problem_ids_to_run:
+             print(f"Warning: No problems found in subset range {config.subset}")
 
     print(
-        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_id_range}"
+        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_ids_to_run}"
     )
 
     run_dir = os.path.join(config.runs_dir, config.run_name)
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
     # To Debug
-    # single_eval_example(config, curr_level_dataset, run_dir, eval_file_path)
+    # single_eval_example(config, dataset, run_dir, eval_file_path)
 
     total_work = []
-    for problem_id in range(
-        problem_id_range.start, problem_id_range.stop + 1
-    ):  # end index is inclusive
+    for problem_id in problem_ids_to_run:
         for sample_id in range(config.num_samples_per_problem):
             if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
                 total_work.append((problem_id, sample_id))
@@ -863,7 +843,7 @@ def main(config: EvalConfig):
     if config.build_cache and config.eval_mode == "local":
         compile.batch_compile(total_work, config.to_dict())
 
-    batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
+    batch_eval(total_work, config, dataset, run_dir, eval_file_path)
 
     # Calculate pass@k metrics if multiple samples per problem were evaluated
     if config.num_samples_per_problem > 1:

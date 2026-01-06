@@ -176,8 +176,8 @@ def analyze_greedy_eval(run_name, hardware, baseline, level,
         eval_entry = eval_results[str(pid)]
         
         # Get baseline result
-        problem_path = dataset.get_problem_by_id(pid)
-        problem_name = os.path.basename(problem_path)
+        problem = dataset.get_problem_by_id(pid)
+        problem_name = problem.name
         
         if problem_name not in baseline_results[f"level{level}"]:
             print(f"Warning: Problem {problem_name} not found in baseline results")

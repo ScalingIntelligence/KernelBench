@@ -71,7 +71,7 @@ def run(Model, NewModel, get_inputs, get_init_inputs, seed=1012):
     return check_correctness(Model, NewModel, get_inputs, get_init_inputs, seed)
 
 
-from src.dataset import construct_kernelbench_dataset
+from kernelbench.dataset import construct_kernelbench_dataset
 
 def run_all(level):
     print(f"Running Level {level}")
@@ -80,16 +80,13 @@ def run_all(level):
     passed = 0
     fail_tests = []
     
-    for problem_id in dataset.get_problem_ids():
-        problem_path = dataset.get_problem_by_id(problem_id)
-        filename = os.path.basename(problem_path)
-        
+    for problem in dataset:
         total += 1
-        module_name = filename[:-3]  # Remove .py extension
+        module_name = problem.name.replace(".py", "")
         try:
             # Dynamically import the module
             spec = importlib.util.spec_from_file_location(
-                module_name, problem_path
+                module_name, problem.path
             )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)

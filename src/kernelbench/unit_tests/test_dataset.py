@@ -197,16 +197,6 @@ def test_dataset_iteration():
     assert [p.problem_id for p in problems] == [1, 2, 3]
 
 
-def test_dataset_getitem():
-    """Test accessing problems by index."""
-    dataset = construct_kernelbench_dataset(level=1, problem_ids=[1, 3, 5])
-    
-    problem = dataset[0]
-    
-    assert problem.problem_id == 1
-    assert dataset[1].problem_id == 3
-    assert dataset[2].problem_id == 5
-
 
 def test_dataset_len():
     """Test len() on dataset."""

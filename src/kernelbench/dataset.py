@@ -113,12 +113,6 @@ class BaseDataset(ABC):
         """Get sorted list of all problem IDs in the dataset."""
         pass
 
-    def __getitem__(self, index: int) -> Problem:
-        """Get problem by 0-indexed position."""
-        problem_ids = self.get_problem_ids()
-        if index < 0 or index >= len(problem_ids):
-            raise IndexError(f"Index {index} out of range")
-        return self.get_problem_by_id(problem_ids[index])
 
     def subset(
         self,
