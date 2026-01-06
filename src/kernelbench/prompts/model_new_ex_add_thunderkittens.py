@@ -102,7 +102,6 @@ thunderkittens_add = load_inline(
         "--expt-relaxed-constexpr",
         "--expt-extended-lambda",
         "-DKITTENS_HOPPER",
-        "-DKITTENS_BLACKWELL",
         "-diag-suppress=20012",
         "-Xcompiler", "-fPIC",
         "-U__CUDA_NO_HALF_OPERATORS__",
