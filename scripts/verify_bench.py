@@ -84,9 +84,15 @@ def run_all(level):
         total += 1
         module_name = problem.name.replace(".py", "")
         try:
+            problem_path = getattr(problem, "path", None)
+            if not problem_path:
+                raise ValueError(
+                    f"Problem '{module_name}' does not have a local file path; "
+                    "verify_bench.py only supports local datasets."
+                )
             # Dynamically import the module
             spec = importlib.util.spec_from_file_location(
-                module_name, problem.path
+                module_name, problem_path
             )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)

@@ -837,7 +837,7 @@ def main(config: EvalConfig):
 
     print(
         f"Start evaluation on {len(total_work)} unevaluated samples"
-        f" in range: {problem_id_range}"
+        f" in range: {problem_ids_to_run}"
     )
     # Build Cache on CPU as that is faster (only for local mode)
     if config.build_cache and config.eval_mode == "local":

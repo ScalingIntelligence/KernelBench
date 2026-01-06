@@ -259,7 +259,7 @@ def main(config: GenerationConfig):
         start, end = config.subset
         problem_ids_to_run = [pid for pid in all_problem_ids if start <= pid <= end]
         if not problem_ids_to_run:
-             print(f"Warning: No problems found in subset range {config.subset}")
+            print(f"Warning: No problems found in subset range {config.subset}")
 
     print(
         f"Generating {config.num_samples} sample(s) each for level {config.level} problems: {problem_ids_to_run}"

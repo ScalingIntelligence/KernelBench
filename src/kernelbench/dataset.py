@@ -347,7 +347,8 @@ class HuggingFaceKernelBenchDataset(BaseDataset):
     def _load_dataset(self):
         from datasets import load_dataset
 
-        hf_dataset = load_dataset(self._dataset_name)[f"level_{self._level}"]
+        split_name = f"level_{self._level}"
+        hf_dataset = load_dataset(self._dataset_name, split=split_name)
 
         for row in hf_dataset:
             problem_id = row["problem_id"]
