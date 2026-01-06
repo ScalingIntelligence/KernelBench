@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 from pydantic import BaseModel
 
-from . import utils, timing, dataset
+from . import timing, dataset
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -525,6 +525,18 @@ def eval_kernel_against_ref(
             return KernelExecResult(
                 compiled=False, metadata=metadata
             )  # skip further steps
+
+    # Check if ModelNew was successfully loaded (load_custom_model returns None on syntax errors)
+    if ModelNew is None:
+        print(
+            "Failed to load custom model: Syntax error or ModelNew not found in generated code. Record as compilation failure."
+        )
+        metadata["compilation_error_name"] = "SyntaxError"
+        metadata["compilation_error"] = "Syntax error in custom generated code or ModelNew not found"
+        graceful_eval_cleanup(context, device, tempfile)
+        return KernelExecResult(
+            compiled=False, metadata=metadata
+        )  # skip further steps
 
     # at this point we passed compilation
     try:

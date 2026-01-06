@@ -7,7 +7,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterator, Optional, Union
+from typing import Iterator, Optional
 import os
 import random
 import re

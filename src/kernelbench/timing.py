@@ -2,7 +2,7 @@ import torch
 import json
 import numpy as np
 import time
-from typing import Any
+from typing import Any, Optional
 import os
 
 ################################################################################
@@ -394,7 +394,7 @@ def time_execution_with_host_time(
 #########################################################
 def fetch_baseline_time(
     level_name: str, problem_id: int, dataset: "BaseDataset", baseline_time_filepath: str
-) -> dict:
+) -> Optional[float]:
     """
     Fetch the baseline time from the time
 

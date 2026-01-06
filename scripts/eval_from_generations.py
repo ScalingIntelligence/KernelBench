@@ -817,7 +817,7 @@ def main(config: EvalConfig):
         start, end = config.subset
         problem_ids_to_run = [pid for pid in all_problem_ids if start <= pid <= end]
         if not problem_ids_to_run:
-             print(f"Warning: No problems found in subset range {config.subset}")
+            print(f"Warning: No problems found in subset range {config.subset}")
 
     print(
         f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_ids_to_run}"
