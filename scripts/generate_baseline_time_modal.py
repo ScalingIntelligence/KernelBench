@@ -1,17 +1,19 @@
 import torch
 import numpy as np
-from src.eval import (
+from kernelbench.eval import (
     load_original_model_and_inputs,
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from src.timing import get_timing_function, get_timing_stats
-from src.dataset import construct_problem_dataset_from_problem_dir
-from src.utils import read_file
+from kernelbench.timing import (
+    get_timing_function,
+    get_timing_stats,
+)
+from kernelbench.dataset import construct_problem_dataset_from_problem_dir
+from kernelbench.utils import read_file
 import os
 import json
 from tqdm import tqdm
-import multiprocessing as mp
 import time
 import einops
 import pydra
@@ -45,7 +47,7 @@ REPO_TOP_PATH = os.path.abspath(
         "..",
     )
 )
-KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
+KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")  # Dataset directory
 
 TIMING_DIR = os.path.join(REPO_TOP_PATH, "results", "timing")
 
@@ -61,8 +63,8 @@ class BaselineConfig(Config):
         # Hardware name for saving results
         self.hardware_name = REQUIRED
 
-        # Batch size for parallel processing
-        self.batch_size = 10
+        # Number of parallel GPU containers to use
+        self.num_gpu_devices = 8
 
         # Timeout for each batch in seconds
         self.timeout = 1800
@@ -75,13 +77,13 @@ class BaselineConfig(Config):
 import modal
 app = modal.App("generate_baseline_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "A100-80GB": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
-batch_size = 10
-gpu = "L40S"
-timeout = 1800
 cuda_version = "12.8.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
+
+SRC_DIR = os.path.join(REPO_TOP_PATH, "src")
+KERNELBENCH_DIR = os.path.join(REPO_TOP_PATH, "KernelBench")
 
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
@@ -90,12 +92,10 @@ image = (
                 "g++-10",
                 "clang" # note i skip a step
                 )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
-    .add_local_dir(
-        KERNEL_BENCH_PATH,
-        remote_path="/root/KernelBench"
-    )
-    .add_local_python_source("src")
+    .uv_sync(uv_project_dir=REPO_TOP_PATH, extras=["gpu"])
+    .env({"PYTHONPATH": "/root/src"})
+    .add_local_dir(SRC_DIR, remote_path="/root/src")
+    .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last
 )
 
 def write_batch_to_json(entries_to_write: list, f_path: str):
@@ -219,19 +219,14 @@ class EvalFunc:
         except Exception as e:
             print(f"[Eval] Error in Measuring Performance: {e}")
 
-def measure_program_time_wrapper(gpu_type, *args, **kwargs):
-    with app.run():
-        return EvalFunc.with_options(gpu=gpu_type)().measure_program_time.remote(*args, **kwargs)
-
 def record_baseline_times(config: BaselineConfig,
                           use_torch_compile: bool = False,
                           torch_compile_backend: str="inductor",
                           torch_compile_options: str="default",
                           file_name: str="baseline_time.json"):
     """
-    Generate baseline time for KernelBench,
-    configure profiler options for PyTorch
-    save to specified file
+    Generate baseline time for KernelBench using Modal's native parallelization.
+    Spawns multiple GPU containers in parallel for faster processing.
     """
     json_results = []
 
@@ -241,57 +236,40 @@ def record_baseline_times(config: BaselineConfig,
     num_problems = len(dataset)
     total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in list(range(1, num_problems + 1))]
 
-    with tqdm(total=len(total_work), desc="Processing batches") as pbar:
-        while len(total_work) > 0:
-            curr_work_batch = total_work[:config.batch_size]
-            total_work = total_work[config.batch_size:]  # pop the first batch_size elements
+    batch_size = config.num_gpu_devices
+    print(f"[Modal] Processing {len(total_work)} problems in parallel batches of {batch_size}")
 
-            with mp.Pool() as pool:
+    with app.run():
+        evaluator_cls = EvalFunc.with_options(gpu=config.gpu) if config.gpu != "L40S" else EvalFunc
 
-                work_args = [
-                    (
-                        config.gpu,
-                        ref_arch_name,
-                        ref_arch_src,
-                        config.num_trials,
-                        timing_method,
-                        use_torch_compile,  
-                        torch_compile_backend,
-                        torch_compile_options,
-                        torch.device(f"cuda:0"),
-                        False # do not print
+        with tqdm(total=len(total_work), desc="Processing") as pbar:
+            while len(total_work) > 0:
+                curr_work_batch = total_work[:batch_size]
+                total_work = total_work[batch_size:]
+
+                # Spawn all tasks in parallel using Modal
+                futures = []
+                for p_id, ref_arch_path, ref_arch_name, ref_arch_src in curr_work_batch:
+                    future = evaluator_cls().measure_program_time.spawn(
+                        ref_arch_name=ref_arch_name,
+                        ref_arch_src=ref_arch_src,
+                        num_trials=config.num_trials,
+                        timing_method="cuda_event",
+                        use_torch_compile=use_torch_compile,
+                        torch_compile_backend=torch_compile_backend,
+                        torch_compile_options=torch_compile_options,
+                        device=torch.device("cuda:0"),
+                        verbose=False,
                     )
-                    for i, (p_id, ref_arch_path, ref_arch_name, ref_arch_src) in enumerate(curr_work_batch)
-                ]
+                    futures.append((p_id, ref_arch_name, future))
 
-                start_time = time.time()
-
-                async_results = []
-                for work_arg in work_args:
-                    async_results.append(
-                        pool.apply_async(measure_program_time_wrapper, work_arg)
-                    )
-
-                batch_timeout = config.timeout
-                for i, async_result in enumerate(async_results):
-                    problem_id, _, ref_arch_name, _ = curr_work_batch[i]
-
+                # Collect results
+                for p_id, ref_arch_name, future in futures:
                     try:
-                        elapsed_time = time.time() - start_time
-                        remaining_time = max(0, batch_timeout - elapsed_time)
-                        result = async_result.get(timeout=remaining_time)
+                        result = future.get(timeout=config.timeout)
                         json_results.append((f"level{level}", ref_arch_name, result))
-
-                    except mp.TimeoutError:
-                        print(
-                            f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}"
-                        )
-                        json_results.append((f"level{level}", ref_arch_name, None))
-
                     except Exception as e:
-                        print(
-                            f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}: {str(e)}"
-                        )
+                        print(f"[ERROR] Problem {p_id} ({ref_arch_name}): {str(e)}")
                         json_results.append((f"level{level}", ref_arch_name, None))
 
                 pbar.update(len(curr_work_batch))
@@ -308,7 +286,7 @@ def main(config: BaselineConfig):
     """
     print(f"Generating baseline time for level {config.level} on {config.gpu} Modal")
     print(f"Hardware name: {config.hardware_name}")
-    print(f"Batch size: {config.batch_size}, Timeout: {config.timeout}s, Num trials: {config.num_trials}")
+    print(f"Parallel GPUs: {config.num_gpu_devices}, Timeout: {config.timeout}s, Num trials: {config.num_trials}")
 
     # 1. Record Torch Eager
     print("\n[1/2] Recording baseline times with PyTorch Eager execution...")

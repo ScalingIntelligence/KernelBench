@@ -1,6 +1,6 @@
 import pytest # noqa    
  
-from src.utils import extract_first_code, extract_code_blocks, extract_last_code
+from kernelbench.utils import extract_first_code, extract_code_blocks, extract_last_code
 
 def check_code_assertions(code: str, expected_code: str):
     """

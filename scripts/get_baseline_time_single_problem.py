@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from src.eval import (
+from kernelbench.eval import (
     load_original_model_and_inputs,
     set_seed,
     fetch_ref_arch_from_problem_id,

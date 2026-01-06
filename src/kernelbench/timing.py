@@ -5,11 +5,6 @@ import time
 from typing import Any
 import os
 
-
-# we leverage triton's testing functionality for some timing methods
-from triton import runtime as triton_runtime
-from triton import testing as triton_testing    
-
 ################################################################################
 # timing.py
 # Various timing methods and utilities for performance evaluation
@@ -40,6 +35,7 @@ def clear_l2_cache_triton(cache=None, device: str = "cuda"):
     """
     Thrash the cache by making a large dummy tensor, using triton runtime's functionality
     """
+    from triton import runtime as triton_runtime
     with torch.cuda.device(device):
         cache = triton_runtime.driver.active.get_empty_cache_for_benchmark()
         # this effectively thrashes L2 cache under the hood too
@@ -211,6 +207,7 @@ def time_execution_with_do_bench_interface(
         device = torch.cuda.current_device()
 
 
+    from triton import testing as triton_testing
     do_bench_fn = lambda : kernel_fn(*args) # wrap function with arguments
     with torch.cuda.device(device):
         return triton_testing.do_bench(fn=do_bench_fn,
@@ -252,6 +249,7 @@ def time_execution_with_do_bench_impl(
         List of elapsed times in milliseconds (length = num_trials)
     """
 
+    from triton import runtime as triton_runtime
     device = device if device is not None else torch.cuda.current_device()
     if verbose: 
         print(f"Using do_bench to evaluate kernel on {device}")

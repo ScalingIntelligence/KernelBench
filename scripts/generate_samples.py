@@ -8,16 +8,17 @@ import torch
 from datasets import load_dataset
 from pydra import Config, REQUIRED
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
-from src.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
-from src.utils import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import eval_kernel_against_ref
+from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+from kernelbench.utils import (
     create_inference_server_from_presets,
     extract_first_code,
     maybe_multithread,
     read_file,
     set_gpu_arch,
 )
+from kernelbench.kernel_static_checker import validate_kernel_static
 
 """
 Batch Generate Samples for Particular Level
@@ -83,6 +84,8 @@ class GenerationConfig(Config):
         self.include_hardware_info = False
         self.hardware_gpu_name = None
         self.custom_prompt_key = None
+
+        self.check_kernel = True  # [experimental] optional static checker catching potential hacking patterns
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -162,6 +165,19 @@ def generate_sample_single(
     # check LLM is able to generate custom CUDA code
     assert custom_kernel is not None, "Custom CUDA code generation failed"
 
+    # Optional: we provide a static code checker for kernel code using regex matching
+    # NOTE: by no means, is this checker complete, but it might could help catch some potential hacks and issues
+    if config.check_kernel:
+        static_check_status, error, warnings = validate_kernel_static(custom_kernel,
+            backend=config.backend,
+            precision=config.precision, 
+            # uses the default set of forbidden and warning patterns, 
+            # you could adapt the patterns to your own setting (degree of banning cuda stream, allowing some torch ops)
+        )
+        assert static_check_status, f"Static check failed for sample {work.sample_id} for problem {problem_number}: {problem_name}. Error: {error}. Warnings: {warnings}"
+        if warnings:
+            print(f"Static check warnings for sample {work.sample_id} for problem {problem_number}: {problem_name}. Warnings: {warnings}")
+
     if config.verbose:
         print(
             f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}"
@@ -210,7 +226,7 @@ def main(config: GenerationConfig):
     Batch Generate Samples for Particular Level
     Store generated kernels in the specified run directory
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
@@ -239,7 +255,7 @@ def main(config: GenerationConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "cute", "tilelang"}
+    supported_backends = {"cuda", "triton", "cute", "tilelang", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -248,6 +264,8 @@ def main(config: GenerationConfig):
     config.backend = backend
     if backend == "tilelang":
         config.precision = "fp16"
+    if backend == "thunderkittens":
+        config.precision = "bf16"
 
     config.prompt_option = str(config.prompt_option).lower()
     valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}

@@ -5,7 +5,7 @@ import tomli
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from src.utils import read_file 
+from kernelbench.utils import read_file 
 
 """
 TOML-based prompt constructor for managing prompt templates and configurations.
@@ -14,11 +14,11 @@ This module provides a way to load and compose prompt templates from a TOML conf
 You can easily check some of the prompt templates we have provided and create your own.
 """
 
-REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-PROMPTS_TOML = os.path.join(REPO_TOP_PATH, "src/prompts/prompts.toml")
+REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+PROMPTS_TOML = os.path.join(REPO_TOP_PATH, "src/kernelbench/prompts/prompts.toml")
 
 assert os.path.exists(PROMPTS_TOML), f"Prompts.toml not found at {PROMPTS_TOML}" 
-GPU_SPECS_PY = "src/prompts/hardware/gpu_specs.py"
+GPU_SPECS_PY = "src/kernelbench/prompts/hardware/gpu_specs.py"
 HARDWARE_COMPONENT_KEYS = [
     "hardware_header",
     "hardware_specs",
@@ -416,7 +416,7 @@ def test_prompt():
     generation. Customize the reference architecture or custom_prompt_key
     if you want to try different inputs.
     """
-    REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
     ref_arch_src = read_file(os.path.join(REPO_TOP_PATH, "KernelBench", "level1", "1_Square_matrix_multiplication_.py"))
     assert len(ref_arch_src) > 0, "ref_arch_src is empty"   
     

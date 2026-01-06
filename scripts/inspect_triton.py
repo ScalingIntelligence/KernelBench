@@ -17,8 +17,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 device = "cuda:0"
 
 
-from src.utils import read_file
-from src.eval import (
+from kernelbench.utils import read_file
+from kernelbench.eval import (
     load_custom_model,
     load_original_model_and_inputs,
     set_seed,
