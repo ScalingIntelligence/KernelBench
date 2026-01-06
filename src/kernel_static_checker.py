@@ -21,7 +21,7 @@ Usage:
 """
 
 import re
-from typing import List, Tuple, Dict, Any, Optional, Callable
+from typing import List, Tuple, Dict, Any, Optional, Callable, Union
 
 def _strip_comments(code: str) -> str:
     """Remove # and // comments from code."""
@@ -533,7 +533,9 @@ def check_precision_downgrade(code: str, precision: str = "fp32") -> Tuple[bool,
 # REGISTRY & PRESETS
 # =============================================================================
 
-CHECK_FUNCTIONS: Dict[str, Callable[[str], Tuple[bool, str]]] = {
+# Check functions can take either (code) or (code, precision) arguments
+# Most checks take only code, but precision-dependent checks take both
+CHECK_FUNCTIONS: Dict[str, Union[Callable[[str], Tuple[bool, str]], Callable[[str, str], Tuple[bool, str]]]] = {
     # Bypass checks (strict)
     "code_bypass": check_code_bypass,
     "pytorch_wrap": check_pytorch_wrap,
