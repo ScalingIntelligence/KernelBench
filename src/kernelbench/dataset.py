@@ -1,7 +1,13 @@
 ################################################################################
-# Helpers for Dataset
+# Unified Dataset Abstraction for KernelBench
+#
+# Supports both local filesystem and HuggingFace datasets through a unified
+# interface. All problem access is by logical problem_id (1-indexed).
 ################################################################################
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Iterator, Optional, Union
 import os
 import random
 import re
@@ -16,239 +22,496 @@ REPO_TOP_PATH = os.path.abspath(
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
 
-def assign_problem_hash(problem_path: str) -> list[int]:
+################################################################################
+# Problem Dataclass
+################################################################################
+
+@dataclass
+class Problem:
+    """Unified representation of a KernelBench problem.
+    
+    Attributes:
+        problem_id: 1-indexed logical ID (matches filename prefix)
+        name: Filename, e.g., "1_Square_matrix_multiplication_.py"
+        code: The actual source code
+        level: KernelBench level (1, 2, 3, or custom)
+        path: Local filesystem path (None if from HuggingFace)
+        metadata: Extra metadata for future use (e.g., categories, difficulty)
+    
+    Note:
+        Code is loaded eagerly when the dataset is constructed (~500KB for level 1).
+        If memory becomes a concern for very large datasets, this could be refactored
+        to lazy loading where code is only read when Problem.code is accessed.
     """
-    Assign a unique hash to a problem in the dataset
-    """
-    with open(problem_path, "r") as f:
-        problem_src = f.read()
-    return get_code_hash(problem_src)
+    problem_id: int
+    name: str
+    code: str
+    level: int
+    path: Optional[str] = None
+    metadata: Optional[dict] = None
+
+    @property
+    def hash(self) -> str:
+        """Compute code hash for problem identification.
+        
+        The hash ignores comments and whitespace, so functionally
+        equivalent code produces the same hash. Useful for:
+        - Deduplication across dataset versions
+        - Tracking problem identity when code formatting changes
+        - Comparing local vs HuggingFace versions
+        """
+        return get_code_hash(self.code)
 
 
-def get_code_hash(problem_src: str) -> str:
-    """
-    Assign a unique hash to some piece of code
-    Important to strip out the comments and whitespace as they are not functionally part of the code
-    """
-    # Remove multi-line comments first
-    problem_src = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', "", problem_src)
+################################################################################
+# Hash Utilities
+################################################################################
+
+def get_code_hash(code: str) -> str:
+    """Compute a unique hash for code, ignoring comments and whitespace."""
+    # Remove multi-line comments
+    code = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', "", code)
     # Remove inline comments and all whitespace
-    cleaned_problem_src = re.sub(r"#.*$|\s+", "", problem_src, flags=re.MULTILINE)
-    # hash only on code
-    return hashlib.md5(cleaned_problem_src.encode()).hexdigest()
+    cleaned = re.sub(r"#.*$|\s+", "", code, flags=re.MULTILINE)
+    return hashlib.md5(cleaned.encode()).hexdigest()
 
 
+################################################################################
+# Base Dataset Abstract Class
+################################################################################
 
-def check_id_matches_name(problem_id: int, problem_name: str) -> bool:
-    """Check if the problem_id matches the ID in the problem_name.
-
-    Args:
-        problem_id: The problem ID to check
-        problem_name: Path to the problem file
-
-    Returns:
-        bool: True if the ID matches the filename prefix
-
-    Raises:
-        ValueError: If filename doesn't follow the expected format
+class BaseDataset(ABC):
+    """Abstract base for all KernelBench datasets.
+    
+    Provides a unified interface for accessing problems by ID,
+    iteration, and length.
     """
-    basename = os.path.basename(problem_name)
-    parts = basename.split('_')
 
-    if len(parts) < 2:
-        raise ValueError(
-            f"Problem filename '{basename}' doesn't follow expected format '<id>_<name>.py'"
-        )
+    @property
+    @abstractmethod
+    def level(self) -> int:
+        """Return the KernelBench level."""
+        pass
 
-    try:
-        file_id = int(parts[0])
-    except ValueError:
-        raise ValueError(
-            f"Problem filename '{basename}' doesn't start with a numeric ID"
-        )
+    @abstractmethod
+    def __len__(self) -> int:
+        """Return the number of problems in the dataset."""
+        pass
 
-    return problem_id == file_id
+    @abstractmethod
+    def __iter__(self) -> Iterator[Problem]:
+        """Iterate over Problem objects in the dataset."""
+        pass
+
+    @abstractmethod
+    def get_problem_by_id(self, problem_id: int) -> Problem:
+        """Get problem by 1-indexed logical ID."""
+        pass
+
+    @abstractmethod
+    def get_problem_ids(self) -> list[int]:
+        """Get sorted list of all problem IDs in the dataset."""
+        pass
+
+    def __getitem__(self, index: int) -> Problem:
+        """Get problem by 0-indexed position."""
+        problem_ids = self.get_problem_ids()
+        if index < 0 or index >= len(problem_ids):
+            raise IndexError(f"Index {index} out of range")
+        return self.get_problem_by_id(problem_ids[index])
+
+    def subset(
+        self,
+        problem_ids: Optional[list[int]] = None,
+        id_range: Optional[tuple[int, int]] = None,
+    ) -> "BaseDataset":
+        """Create a subset by problem IDs.
+        
+        Args:
+            problem_ids: Specific problem IDs to include (e.g., [1, 3, 5])
+            id_range: (start_id, end_id) inclusive range of problem IDs
+            
+        Returns:
+            New dataset with only the specified problems
+            
+        Example:
+            >>> dataset.subset(problem_ids=[1, 3, 5])
+            >>> dataset.subset(id_range=(1, 10))
+        """
+        raise NotImplementedError("Subclasses should implement subset()")
+
+    def sample(self, n: int, seed: int = 42) -> "BaseDataset":
+        """Get a random sample of N problems.
+        
+        Args:
+            n: Number of problems to sample
+            seed: Random seed for reproducibility
+            
+        Returns:
+            New dataset with N randomly selected problems
+        """
+        all_ids = self.get_problem_ids()
+        n = min(n, len(all_ids))
+        random.seed(seed)
+        sampled_ids = random.sample(all_ids, n)
+        return self.subset(problem_ids=sorted(sampled_ids))
+
+    def get_representative_subset(self) -> "BaseDataset":
+        """Get a curated representative subset for quick iteration.
+        
+        Returns a diverse subset covering different problem categories
+        (matmul, conv, norms, etc.). Useful for testing.
+        """
+        rep_ids = {
+            1: [1, 3, 6, 18, 23, 26, 33, 36, 40, 42, 48, 54, 57, 65, 77, 82, 86, 87],
+            2: [1, 2, 8, 18, 23, 28, 33, 43],
+            3: [1, 5, 8, 11, 20, 21, 33, 38, 43],
+        }
+        
+        if self.level not in rep_ids:
+            raise ValueError(f"No representative subset for level {self.level}")
+        
+        available_ids = set(self.get_problem_ids())
+        subset_ids = [pid for pid in rep_ids[self.level] if pid in available_ids]
+        
+        return self.subset(problem_ids=subset_ids)
 
 
-class KernelBenchDataset():
-    """Dataset object for easy access to problems by IDs and iteration over problems.
+################################################################################
+# Local Filesystem Dataset
+################################################################################
 
-    Args:
-        dataset_name: Name of the dataset
-        level: KernelBench level (1, 2, or 3)
-        use_subset: Whether to use the subset_dataset instead of full dataset
-        dataset: List of problem file paths for the full dataset
-        subset_dataset: List of problem file paths for a subset
+class LocalKernelBenchDataset(BaseDataset):
+    """Dataset backed by local filesystem.
+    
+    Loads problems from KernelBench/level{N}/*.py
+    Flexible for any level number (1, 2, 3, or custom levels).
     """
 
     def __init__(
         self,
-        dataset_name: str,
         level: int,
-        use_subset: bool = False,
-        dataset: list[str] = None,
-        subset_dataset: list[str] = None
+        base_path: str = KERNEL_BENCH_PATH,
+        problem_ids: Optional[list[int]] = None,
+        id_range: Optional[tuple[int, int]] = None,
     ):
-        if level not in [1, 2, 3]:
-            raise ValueError(f"level must be 1, 2, or 3, got {level}")
-
-        self.dataset_name = dataset_name
-        self.level = level
-        self.use_subset = use_subset
-
-        # Avoid mutable default arguments
-        if dataset is None:
-            dataset = []
-        if subset_dataset is None:
-            subset_dataset = []
-
-        if use_subset:
-            self.problems = subset_dataset
-        else:
-            self.problems = dataset
-
-    def get_problem_by_id(self, problem_id: int) -> str:
-        """Get problem path by its ID (1-indexed logical index).
-
+        """Initialize local dataset.
+        
         Args:
-            problem_id: The problem ID to search for
-
-        Returns:
-            str: Path to the problem file
-
-        Raises:
-            ValueError: If problem ID not found in dataset
+            level: KernelBench level (any positive integer)
+            base_path: Path to KernelBench directory
+            problem_ids: Optional list of specific problem IDs to include
+            id_range: Optional (start_id, end_id) inclusive range
         """
-        for problem in self.problems:
-            if check_id_matches_name(problem_id, problem):
-                return problem
-        raise ValueError(f"Problem ID {problem_id} not found in dataset")
-    
+        if level < 1:
+            raise ValueError(f"level must be >= 1, got {level}")
+
+        self._level = level
+        self._base_path = base_path
+        self._problems: dict[int, Problem] = {}
+        
+        # Build filter set from problem_ids and/or id_range
+        self._filter_ids = self._build_filter_set(problem_ids, id_range)
+        self._load_problems()
+
+    def _build_filter_set(
+        self,
+        problem_ids: Optional[list[int]],
+        id_range: Optional[tuple[int, int]],
+    ) -> Optional[set[int]]:
+        """Build a set of IDs to filter by, or None for no filtering."""
+        if problem_ids is None and id_range is None:
+            return None
+        
+        filter_set = set()
+        if problem_ids:
+            filter_set.update(problem_ids)
+        if id_range:
+            start, end = id_range
+            filter_set.update(range(start, end + 1))
+        return filter_set
+
+    @property
+    def level(self) -> int:
+        return self._level
+
+    def _load_problems(self):
+        problem_dir = os.path.join(self._base_path, f"level{self._level}")
+        
+        if not os.path.exists(problem_dir):
+            raise FileNotFoundError(f"Problem directory not found: {problem_dir}")
+
+        for file_name in os.listdir(problem_dir):
+            if not file_name.endswith(".py"):
+                continue
+
+            try:
+                problem_id = int(file_name.split("_")[0])
+            except (ValueError, IndexError):
+                continue
+
+            # Apply filter if specified
+            if self._filter_ids is not None and problem_id not in self._filter_ids:
+                continue
+
+            path = os.path.join(problem_dir, file_name)
+            with open(path, "r") as f:
+                code = f.read()
+
+            self._problems[problem_id] = Problem(
+                problem_id=problem_id,
+                name=file_name,
+                code=code,
+                level=self._level,
+                path=path,
+            )
+
+    def get_problem_by_id(self, problem_id: int) -> Problem:
+        if problem_id not in self._problems:
+            raise ValueError(f"Problem ID {problem_id} not found in dataset")
+        return self._problems[problem_id]
+
     def get_problem_ids(self) -> list[int]:
-        """Get list of all problem IDs in the dataset.
-
-        Returns:
-            list[int]: Sorted list of problem IDs extracted from filenames
-        """
-        return sorted([int(os.path.basename(problem).split('_')[0]) for problem in self.problems])
+        return sorted(self._problems.keys())
 
     def __len__(self) -> int:
-        """Return the number of problems in the dataset."""
-        return len(self.problems)
+        return len(self._problems)
 
-    def __getitem__(self, index: int) -> str:
-        """Get problem by index (0-indexed, for backward compatibility).
-
-        Args:
-            index: Zero-based index into the problems list
-
-        Returns:
-            str: Path to the problem file
-        """
-        return self.problems[index]
-
-    def __iter__(self):
-        """Iterate over problem paths in the dataset."""
-        return iter(self.problems)
+    def __iter__(self) -> Iterator[Problem]:
+        for pid in self.get_problem_ids():
+            yield self._problems[pid]
 
     def __repr__(self) -> str:
-        """Return string representation of the dataset."""
-        subset_str = " (subset)" if self.use_subset else ""
-        return (
-            f"KernelBenchDataset(name='{self.dataset_name}', "
-            f"level={self.level}, problems={len(self.problems)}{subset_str})"
+        return f"LocalKernelBenchDataset(level={self._level}, problems={len(self)})"
+
+    def subset(
+        self,
+        problem_ids: Optional[list[int]] = None,
+        id_range: Optional[tuple[int, int]] = None,
+    ) -> "LocalKernelBenchDataset":
+        """Create a subset of this dataset."""
+        return LocalKernelBenchDataset(
+            level=self._level,
+            base_path=self._base_path,
+            problem_ids=problem_ids,
+            id_range=id_range,
         )
 
 
-def fetch_ref_arch_from_dataset(
-    dataset: "KernelBenchDataset",
-    problem_id: int
-) -> tuple[str, str, str]:
-    """Fetch the reference architecture from the dataset.
+################################################################################
+# HuggingFace Dataset
+################################################################################
 
-    This is a shared utility function to avoid duplication across scripts.
+class HuggingFaceKernelBenchDataset(BaseDataset):
+    """Dataset backed by HuggingFace datasets."""
 
+    def __init__(
+        self,
+        level: int,
+        dataset_name: str = "ScalingIntelligence/KernelBench",
+        problem_ids: Optional[list[int]] = None,
+        id_range: Optional[tuple[int, int]] = None,
+    ):
+        """Initialize HuggingFace dataset.
+        
+        Args:
+            level: KernelBench level (1, 2, or 3)
+            dataset_name: HuggingFace dataset identifier
+            problem_ids: Optional list of specific problem IDs to include
+            id_range: Optional (start_id, end_id) inclusive range
+        """
+        if level not in [1, 2, 3]:
+            raise ValueError(f"HuggingFace dataset only has levels 1, 2, 3, got {level}")
+
+        self._level = level
+        self._dataset_name = dataset_name
+        self._problems: dict[int, Problem] = {}
+        self._filter_ids = self._build_filter_set(problem_ids, id_range)
+        self._load_dataset()
+
+    def _build_filter_set(
+        self,
+        problem_ids: Optional[list[int]],
+        id_range: Optional[tuple[int, int]],
+    ) -> Optional[set[int]]:
+        """Build a set of IDs to filter by, or None for no filtering."""
+        if problem_ids is None and id_range is None:
+            return None
+        
+        filter_set = set()
+        if problem_ids:
+            filter_set.update(problem_ids)
+        if id_range:
+            start, end = id_range
+            filter_set.update(range(start, end + 1))
+        return filter_set
+
+    @property
+    def level(self) -> int:
+        return self._level
+
+    def _load_dataset(self):
+        from datasets import load_dataset
+
+        hf_dataset = load_dataset(self._dataset_name)[f"level_{self._level}"]
+
+        for row in hf_dataset:
+            problem_id = row["problem_id"]
+
+            if self._filter_ids is not None and problem_id not in self._filter_ids:
+                continue
+
+            self._problems[problem_id] = Problem(
+                problem_id=problem_id,
+                name=row["name"],
+                code=row["code"],
+                level=self._level,
+                path=None,
+            )
+
+    def get_problem_by_id(self, problem_id: int) -> Problem:
+        if problem_id not in self._problems:
+            raise ValueError(f"Problem ID {problem_id} not found in dataset")
+        return self._problems[problem_id]
+
+    def get_problem_ids(self) -> list[int]:
+        return sorted(self._problems.keys())
+
+    def __len__(self) -> int:
+        return len(self._problems)
+
+    def __iter__(self) -> Iterator[Problem]:
+        for pid in self.get_problem_ids():
+            yield self._problems[pid]
+
+    def __repr__(self) -> str:
+        return f"HuggingFaceKernelBenchDataset(level={self._level}, problems={len(self)})"
+
+    def subset(
+        self,
+        problem_ids: Optional[list[int]] = None,
+        id_range: Optional[tuple[int, int]] = None,
+    ) -> "HuggingFaceKernelBenchDataset":
+        """Create a subset of this dataset."""
+        return HuggingFaceKernelBenchDataset(
+            level=self._level,
+            dataset_name=self._dataset_name,
+            problem_ids=problem_ids,
+            id_range=id_range,
+        )
+
+
+################################################################################
+# Factory Function
+################################################################################
+
+def construct_kernelbench_dataset(
+    level: int,
+    source: str = "local",
+    dataset_name: str = "ScalingIntelligence/KernelBench",
+    base_path: str = KERNEL_BENCH_PATH,
+    problem_ids: Optional[list[int]] = None,
+    id_range: Optional[tuple[int, int]] = None,
+) -> BaseDataset:
+    """Construct a KernelBench dataset for a specific level.
+    
     Args:
-        dataset: KernelBenchDataset object
-        problem_id: Logical index (1-indexed), matching the problem_id in the problem_name
+        level: KernelBench level (1, 2, 3, or custom for local)
+        source: "local" for filesystem, "huggingface" for HF datasets
+        dataset_name: HuggingFace dataset identifier (if source="huggingface")
+        base_path: Path to KernelBench directory (if source="local")
+        problem_ids: Optional list of specific problem IDs to include
+        id_range: Optional (start_id, end_id) inclusive range
+        
+    Returns:
+        BaseDataset instance for the specified level
+        
+    Examples:
+        # Local filesystem (default)
+        >>> dataset = construct_kernelbench_dataset(level=1, source="local")
+        >>> len(dataset)
+        100
+        
+        # HuggingFace
+        >>> dataset = construct_kernelbench_dataset(level=1, source="huggingface")
+        >>> len(dataset)
+        100
+        
+        # Filter by specific IDs
+        >>> dataset = construct_kernelbench_dataset(level=1, problem_ids=[1, 3, 5])
+        >>> dataset.get_problem_ids()
+        [1, 3, 5]
+        
+        # Filter by range
+        >>> dataset = construct_kernelbench_dataset(level=1, id_range=(1, 10))
+        >>> dataset.get_problem_ids()
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        
+        # Access problems
+        >>> problem = dataset.get_problem_by_id(1)
+        >>> problem.name
+        '1_Square_matrix_multiplication_.py'
+        >>> problem.code[:50]
+        'import torch...'
+    """
+    if source == "local":
+        return LocalKernelBenchDataset(level, base_path, problem_ids, id_range)
+    elif source == "huggingface":
+        return HuggingFaceKernelBenchDataset(level, dataset_name, problem_ids, id_range)
+    else:
+        raise ValueError(f"Unknown source: {source}. Must be 'local' or 'huggingface'")
+
+
+################################################################################
+# Convenience Functions
+################################################################################
+
+def fetch_ref_arch_from_dataset(
+    dataset: BaseDataset,
+    problem_id: int,
+) -> tuple[Optional[str], str, str]:
+    """Fetch reference architecture from dataset.
 
     Returns:
-        tuple containing:
-            - ref_arch_path: Path to the reference architecture
-            - ref_arch_name: Name of the reference architecture file
-            - ref_arch_src: Source code of the reference architecture
+        (path, name, code) - path is None for HuggingFace datasets
     """
-    from .utils import read_file
-
-    ref_arch_path = dataset.get_problem_by_id(problem_id)
-    ref_arch_src = read_file(ref_arch_path)
-    ref_arch_name = os.path.basename(ref_arch_path)
-    return (ref_arch_path, ref_arch_name, ref_arch_src)
-
-
-def construct_problem_dataset_from_problem_dir(problem_dir: str) -> list[str]:
-    """
-    Construct a list of relative paths to all the python files in the problem directory
-    Sorted by the numerical prefix of the filenames
-    """
-    DATASET = []
-
-    for file_name in os.listdir(problem_dir):
-        if file_name.endswith(".py"):
-            # TODO: revisit later to satisfy eval harnes
-            relative_path = os.path.join(problem_dir, file_name)
-            DATASET.append(relative_path)
-
-    # Sort the DATASET based on the numerical prefix of the filenames
-    DATASET.sort(key=lambda x: int(os.path.basename(x).split("_")[0]))
-
-    return DATASET
-
-
-def construct_kernelbench_dataset(level: int) -> KernelBenchDataset:
-    dataset_list = construct_problem_dataset_from_problem_dir(
-        os.path.join(KERNEL_BENCH_PATH, f"level{level}")
-    )
-    return KernelBenchDataset(
-        dataset_name=f"KernelBench_Level_{level}",
-        level=level,
-        dataset=dataset_list
-    )
-
-
-KERNELBENCH_LEVEL_1_DATASET = construct_kernelbench_dataset(level=1)
-KERNELBENCH_LEVEL_2_DATASET = construct_kernelbench_dataset(level=2)
-KERNELBENCH_LEVEL_3_DATASET = construct_kernelbench_dataset(level=3)
-
-################################################################################
-# Eval on Subsets of KernelBench
-################################################################################
+    problem = dataset.get_problem_by_id(problem_id)
+    return (problem.path, problem.name, problem.code)
 
 
 def get_kernelbench_subset(
-    level: int, num_subset_problems: int = 10, random_seed: int = 42
-) -> tuple[list[str], list[int]]:
+    level: int,
+    num_subset_problems: int = 10,
+    random_seed: int = 42,
+    source: str = "local",
+) -> tuple[BaseDataset, list[int]]:
+    """Get a random subset of problems.
+    
+    Returns:
+        (subset_dataset, subset_problem_ids)
     """
-    Get a random subset of problems from the KernelBench dataset
-    """
-
-    full_dataset = construct_kernelbench_dataset(level)
+    full_dataset = construct_kernelbench_dataset(level, source=source)
+    all_ids = full_dataset.get_problem_ids()
 
     random.seed(random_seed)
-    num_subset_problems = min(num_subset_problems, len(full_dataset))
-    subset_indices = random.sample(range(len(full_dataset)), num_subset_problems)
+    num_subset_problems = min(num_subset_problems, len(all_ids))
+    subset_ids = sorted(random.sample(all_ids, num_subset_problems))
 
-    subset = sorted([full_dataset[i] for i in subset_indices])
-    return subset, subset_indices
+    subset_dataset = construct_kernelbench_dataset(
+        level=level,
+        source=source,
+        problem_ids=subset_ids,
+    )
+    return subset_dataset, subset_ids
 
 
 ################################################################################
-# Representative subsets of KernelBench
-# use this if you want to iterate on methods without the hassle of running the full dataset
-# problem_ids are 1-indexed (logical index)
+# Representative Subsets of KernelBench
+# Use these for quick iteration without running the full dataset
 ################################################################################
 
-level1_representative_subset = [
+# Level 1: Basic operators - matmul, activations, norms, pooling, convolutions
+LEVEL1_REPRESENTATIVE_SUBSET = [
     "1_Square_matrix_multiplication_.py",
     "3_Batched_matrix_multiplication.py",
     "6_Matmul_with_large_K_dimension_.py",
@@ -268,10 +531,10 @@ level1_representative_subset = [
     "86_conv_depthwise_separable_2D.py",
     "87_conv_pointwise_2D.py",
 ]
+LEVEL1_REPRESENTATIVE_IDS = [1, 3, 6, 18, 23, 26, 33, 36, 40, 42, 48, 54, 57, 65, 77, 82, 86, 87]
 
-level1_representative_subset_problem_ids = [1, 3, 6, 18, 23, 26, 33, 36, 40, 42, 48, 54, 57, 65, 77, 82, 86, 87]
-
-level2_representative_subset = [
+# Level 2: Fused operators - multi-op fusion patterns
+LEVEL2_REPRESENTATIVE_SUBSET = [
     "1_Conv2D_ReLU_BiasAdd.py",
     "2_ConvTranspose2d_BiasAdd_Clamp_Scaling_Clamp_Divide.py",
     "8_Conv3d_Divide_Max_GlobalAvgPool_BiasAdd_Sum.py",
@@ -281,10 +544,10 @@ level2_representative_subset = [
     "33_Gemm_Scale_BatchNorm.py",
     "43_Conv3d_Max_LogSumExp_ReLU.py",
 ]
+LEVEL2_REPRESENTATIVE_IDS = [1, 2, 8, 18, 23, 28, 33, 43]
 
-level2_representative_subset_problem_ids = [1, 2, 8, 18, 23, 28, 33, 43]
-
-level3_representative_subset = [
+# Level 3: Full models - MLP, CNN architectures, RNNs, Transformers
+LEVEL3_REPRESENTATIVE_SUBSET = [
     "1_MLP.py",
     "5_AlexNet.py",
     "8_ResNetBasicBlock.py",
@@ -295,5 +558,29 @@ level3_representative_subset = [
     "38_LTSMBidirectional.py",
     "43_MinGPTCausalAttention.py",
 ]
+LEVEL3_REPRESENTATIVE_IDS = [1, 5, 8, 11, 20, 21, 33, 38, 43]
 
-level3_representative_subset_problem_ids = [1, 5, 8, 11, 20, 33, 38, 43]
+
+def get_representative_dataset(level: int, source: str = "local") -> BaseDataset:
+    """Get a representative subset dataset for quick iteration.
+    
+    Args:
+        level: 1, 2, or 3
+        source: "local" or "huggingface"
+        
+    Returns:
+        Dataset containing only representative problems
+    """
+    id_map = {
+        1: LEVEL1_REPRESENTATIVE_IDS,
+        2: LEVEL2_REPRESENTATIVE_IDS,
+        3: LEVEL3_REPRESENTATIVE_IDS,
+    }
+    if level not in id_map:
+        raise ValueError(f"No representative subset for level {level}")
+    
+    return construct_kernelbench_dataset(
+        level=level,
+        source=source,
+        problem_ids=id_map[level],
+    )

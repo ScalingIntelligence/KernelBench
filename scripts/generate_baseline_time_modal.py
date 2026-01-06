@@ -9,7 +9,7 @@ from kernelbench.timing import (
     time_execution_with_cuda_event,
     get_timing_stats,
 )
-from kernelbench.dataset import construct_kernelbench_dataset, KernelBenchDataset, fetch_ref_arch_from_dataset
+from kernelbench.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_dataset
 from kernelbench.utils import read_file
 import os
 import json

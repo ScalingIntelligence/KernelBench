@@ -26,18 +26,18 @@ from kernelbench.eval import (
     set_seed,
 )
 
-from src.dataset import construct_kernelbench_dataset, KernelBenchDataset, fetch_ref_arch_from_dataset
+from kernelbench.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_dataset, BaseDataset
 
 
 def run_profile_and_save_trace(
-    dataset: KernelBenchDataset,
+    dataset: BaseDataset,
     problem_id: int,
     num_trials: int = 10
 ) -> None:
     """Helper function to get Torch Profile of a problem.
 
     Args:
-        dataset: KernelBenchDataset object
+        dataset: BaseDataset object
         problem_id: Problem ID to profile
         num_trials: Number of profiling trials to run (default: 10)
 
