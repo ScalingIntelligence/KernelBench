@@ -21,11 +21,11 @@ from kernelbench.utils import read_file
 from kernelbench.eval import (
     load_custom_model,
     load_original_model_and_inputs,
-    time_execution_with_cuda_event,
     get_timing_stats,
     set_seed,
 )
 
+from kernelbench.timing import time_execution_with_cuda_event
 from kernelbench.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_dataset, BaseDataset
 
 

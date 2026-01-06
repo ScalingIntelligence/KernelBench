@@ -52,7 +52,9 @@ def fetch_ref_arch_from_problem_id(problem_id: int, dataset: "BaseDataset", with
     if not with_name:
         return ref_arch
     else:
-        return (problem.path, ref_arch)
+        # Use problem.name as fallback when path is None (e.g., for HuggingFace datasets)
+        name = problem.path if problem.path is not None else problem.name
+        return (name, ref_arch)
 
 
 def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
@@ -887,32 +889,7 @@ def check_metadata_serializable_all_types(metadata: dict):
         return converted_metadata
 
 
-################################################################################
-# Performance Eval
-################################################################################
-
-
-def fetch_baseline_time(
-    level_name: str, problem_id: int, dataset: "BaseDataset", baseline_time_filepath: str
-) -> Optional[float]:
-    """
-    Fetch the baseline time for a specific problem from a JSON file.
-    """
-    if not os.path.exists(baseline_time_filepath):
-        raise FileNotFoundError(
-            f"Baseline time file not found at {baseline_time_filepath}"
-        )
-
-    with open(baseline_time_filepath, "r") as f:
-        baseline_json = json.load(f)
-
-    problem = dataset.get_problem_by_id(problem_id)
-    problem_name = problem.name
-    
-    baseline_time = baseline_json[level_name].get(problem_name, None)
-    return baseline_time
-
 # if __name__ == "__main__":
 # fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")
 # print(fetch_ref_arch_from_level_problem_id("2", 1, with_name=True))
-# fetch_baseline_time("level1", 0, ["1_Square_matrix_multiplication_.py"], "tests/baseline_time_matx3.json")
+# Note: fetch_baseline_time is available in kernelbench.timing module

@@ -5,8 +5,6 @@ import sys
 import numpy as np
 from kernelbench.eval import (
     load_original_model_and_inputs,
-    time_execution_with_cuda_event,
-    get_timing_stats,
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
@@ -100,6 +98,7 @@ def inspect_torch_compile_triton(level_num, problem_id):
     ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
         level_num, problem_id, with_name=True
     )
+    # Extract filename from path (works for both full paths and filenames)
     ref_arch_name = os.path.basename(ref_arch_name)
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
@@ -115,6 +114,7 @@ def inspect_baseline_torch_compile(level_num, problem_id):
         level_num, problem_id, with_name=True
     )
 
+    # Extract filename from path (works for both full paths and filenames)
     ref_arch_name = os.path.basename(ref_arch_name)
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
