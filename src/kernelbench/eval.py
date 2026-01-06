@@ -525,7 +525,13 @@ def eval_kernel_against_ref(
             return None
         else:
             metadata["compilation_error_name"] = get_error_name(e)
-            metadata["compilation_error"] = e
+            # Include full exception string and traceback for better debugging
+            import traceback
+            error_str = str(e)
+            traceback_str = traceback.format_exc()
+            # Combine error message with traceback for full context
+            full_error = f"{error_str}\n\n=== FULL TRACEBACK ===\n{traceback_str}"
+            metadata["compilation_error"] = full_error
             graceful_eval_cleanup(context, device, tempfile)
             return KernelExecResult(
                 compiled=False, metadata=metadata
