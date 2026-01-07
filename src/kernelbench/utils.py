@@ -15,6 +15,7 @@ import math
 import os
 import json
 from tqdm import tqdm
+from importlib.resources import files, as_file
 
 # API clients
 from openai import OpenAI
@@ -271,6 +272,59 @@ def read_file(file_path) -> str:
     except Exception as e:
         print(f"Error reading file {file_path}: {e}")
         return ""
+
+
+########################################################
+# Path Resolution Helpers
+########################################################
+REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+
+def get_package_resource_path(relative_path: str) -> str:
+    """
+    Get absolute path to a kernelbench package resource.
+    Works for all three usage modes:
+      - Running from repo directly
+      - As a git submodule
+      - As an installed pip/uv dependency
+    
+    Args:
+        relative_path: Path relative to kernelbench/, e.g. "prompts/prompts.toml"
+    """
+    # Try importlib.resources first (installed package)
+    try:
+        resource = files("kernelbench").joinpath(relative_path)
+        with as_file(resource) as path:
+            if path.exists():
+                return str(path)
+    except (TypeError, FileNotFoundError):
+        pass
+    
+    # Try repo path (running from source / submodule)
+    repo_path = os.path.join(REPO_TOP_PATH, "src/kernelbench", relative_path)
+    if os.path.exists(repo_path):
+        return repo_path
+        
+    raise FileNotFoundError(f"Could not find resource: {relative_path}")
+
+
+def resolve_path(rel: str) -> str:
+    """
+    Resolve a relative path to absolute. Handles paths like "src/kernelbench/prompts/..."
+    from prompts.toml which reference files relative to repo root.
+    """
+    if os.path.isabs(rel):
+        return rel
+    
+    # Convert "src/kernelbench/..." paths to package-relative
+    if rel.startswith("src/kernelbench/"):
+        return get_package_resource_path(rel[len("src/kernelbench/"):])
+    
+    # Otherwise treat as repo-relative
+    repo_path = os.path.join(REPO_TOP_PATH, rel)
+    if os.path.exists(repo_path):
+        return repo_path
+    
+    raise FileNotFoundError(f"Could not resolve path: {rel}")
 
 
 def print_messages(messages):
