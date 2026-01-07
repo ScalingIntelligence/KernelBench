@@ -1,6 +1,6 @@
 ####
-# Profiling Related Functions
-# TODO: @kesavan @simon @arya
+# Nsight Profiling Related Functions
+# Currently showcases how to profile a kernelbench model with nsight-python
 ####
 
 import os
@@ -11,7 +11,7 @@ import pandas as pd
 
 
 # Check if nsight-python is available
-# To patch nsight-python to support multiple metrics and fix the "cannot insert Annotation" bug
+# Monkey-patch nsight-python to support multiple metrics and fix the "cannot insert Annotation" bug
 try:
     import nsight
     NSIGHT_AVAILABLE = True
@@ -62,7 +62,7 @@ def profile_with_nsight(func, metrics=None, num_trials=1):
         metric=metrics,
         runs=num_trials,
         configs=[(0,)],
-        combine_kernel_metrics=lambda a, b: (a or 0) + (b or 0),
+        combine_kernel_metrics=lambda a, b: (a or 0) + (b or 0), # NOTE: some torch ops launch multiple kernels, so we need to combine metrics
     )
     def profiled(_):
         with nsight.annotate("kernel"):
@@ -169,7 +169,7 @@ def profile_kernelbench_model_with_nsight(
     Returns:
         Dictionary mapping metric names to their values
     """
-    from eval import (
+    from kernelbench.eval import (
         load_custom_model,
         load_custom_model_with_tempfile,
         load_original_model_and_inputs,
@@ -177,7 +177,7 @@ def profile_kernelbench_model_with_nsight(
         set_seed,
         graceful_eval_cleanup,
     )
-    from utils import set_gpu_arch
+    from kernelbench.utils import set_gpu_arch
     
     device = device or torch.device("cuda:0")
     metrics = metrics or ['sm__cycles_active.avg']
@@ -228,10 +228,12 @@ def profile_kernelbench_model_with_nsight(
     if verbose:
         print(f"[Profile] Profiling with nsight (metrics: {metrics})...")
     
+    # Wrap model forward pass
     def model_forward():
         with torch.no_grad():
             return custom_model(*inputs)
     
+    # Profile with nsight
     metric_values = profile_with_nsight(model_forward, metrics=metrics, num_trials=num_trials)
     
     if verbose:
@@ -247,7 +249,7 @@ def test_flash_attention_profile():
     Test the profile_kernelbench_model_with_nsight function using the tiled_matmul example.
     """
     import os
-    from utils import read_file
+    from kernelbench.utils import read_file
     
     # Get the paths to the reference and custom model files
     REPO_ROOT = os.path.dirname(__file__)
@@ -306,6 +308,6 @@ if __name__ == "__main__":
         
     
     # test the example_ncu_python_profile
-    # example_ncu_python_profile()
+    example_ncu_python_profile()
     test_flash_attention_profile()
     

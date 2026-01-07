@@ -429,10 +429,11 @@ def time_execution_with_nsight_python(
             print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}")
         
         # Profile with nsight - returns average time in nanoseconds
-        # Wrap kernel function to avoid argument passing confusion
+        # Wrap kernel function
         def wrapped_kernel():
             return kernel_fn(*args)
         
+        # Profile with nsight, use gpu_time_duration.sum metric for GPU time
         metric_values = profile_with_nsight(
             wrapped_kernel,
             metrics=["gpu__time_duration.sum"],
