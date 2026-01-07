@@ -308,7 +308,7 @@ if __name__ == "__main__":
         exit(1)
         
     
-    # test the example_ncu_python_profile
+    # test the example_ncu_python_profile, and flash attention profile
     example_ncu_python_profile()
     test_flash_attention_profile()
     
