@@ -52,3 +52,12 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["kernelbench*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+kernelbench = [
+  "prompts/*.toml",
+  "prompts/**/*.py",
+]
