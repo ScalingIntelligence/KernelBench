@@ -5,7 +5,7 @@ import tomli
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from kernelbench.utils import read_file 
+from kernelbench.utils import read_file, get_package_resource_path, resolve_path, REPO_TOP_PATH
 
 """
 TOML-based prompt constructor for managing prompt templates and configurations.
@@ -14,23 +14,15 @@ This module provides a way to load and compose prompt templates from a TOML conf
 You can easily check some of the prompt templates we have provided and create your own.
 """
 
-REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-PROMPTS_TOML = os.path.join(REPO_TOP_PATH, "src/kernelbench/prompts/prompts.toml")
-
-assert os.path.exists(PROMPTS_TOML), f"Prompts.toml not found at {PROMPTS_TOML}" 
-GPU_SPECS_PY = "src/kernelbench/prompts/hardware/gpu_specs.py"
+# Resolve paths using the helper from utils
+PROMPTS_TOML = get_package_resource_path("prompts/prompts.toml")
+GPU_SPECS_PY = get_package_resource_path("prompts/hardware/gpu_specs.py")
 HARDWARE_COMPONENT_KEYS = [
     "hardware_header",
     "hardware_specs",
     "hardware_definitions",
     "hardware_best_practices",
 ]
-
-def _abs_path(rel: str) -> str:
-    """Convert relative path to absolute path from repo root."""
-    if os.path.isabs(rel):
-        return rel
-    return os.path.join(REPO_TOP_PATH, rel)
 
 @dataclass
 class PromptConfig:
@@ -255,17 +247,17 @@ def render_prompt_by_option(
                 # Use multiple examples (true few-shot)
                 examples_intro = intro_few_shot
                 for i, (input_path, output_path) in enumerate(few_shot_examples, 1):
-                    input_code = read_file(_abs_path(input_path))
-                    output_code = read_file(_abs_path(output_path))
+                    input_code = read_file(resolve_path(input_path))
+                    output_code = read_file(resolve_path(output_path))
                     examples_entries.append(
                         render_example_entry(input_code, output_code, f"Example {i}:")
                     )
             else:
                 # Fall back to one-shot
-                ex_arch_path = _abs_path(
+                ex_arch_path = resolve_path(
                     backend_data.get("few_shot_example_arch") or shared.get("few_shot_example_arch")
                 )
-                ex_new_path = _abs_path(backend_data["one_shot_new_arch"])
+                ex_new_path = resolve_path(backend_data["one_shot_new_arch"])
                 input_code = read_file(ex_arch_path)
                 output_code = read_file(ex_new_path)
                 examples_entries.append(
@@ -274,10 +266,10 @@ def render_prompt_by_option(
 
         elif requires_example == "one_shot":
             # Always use one-shot
-            ex_arch_path = _abs_path(
+            ex_arch_path = resolve_path(
                 backend_data.get("few_shot_example_arch") or shared.get("few_shot_example_arch")
             )
-            ex_new_path = _abs_path(backend_data["one_shot_new_arch"])
+            ex_new_path = resolve_path(backend_data["one_shot_new_arch"])
             input_code = read_file(ex_arch_path)
             output_code = read_file(ex_new_path)
             examples_entries.append(
@@ -296,7 +288,7 @@ def render_prompt_by_option(
             raise ValueError(
                 f"Hardware info requested for option '{option}'; provide gpu_specs_py and gpu_name"
             )
-        context = {**context, **_gpu_context_from_gpu_specs(_abs_path(gpu_specs_py), gpu_name)}
+        context = {**context, **_gpu_context_from_gpu_specs(resolve_path(gpu_specs_py), gpu_name)}
     
     # Builds the prompt from the components in the toml file. 
     prompt_parts = []
@@ -420,6 +412,7 @@ def test_prompt():
     ref_arch_src = read_file(os.path.join(REPO_TOP_PATH, "KernelBench", "level1", "1_Square_matrix_multiplication_.py"))
     assert len(ref_arch_src) > 0, "ref_arch_src is empty"   
     
+    print("Testing prompt construction...")
     scratch_dir = os.path.join(REPO_TOP_PATH, "scratch")
     # baseline prompt
     baseline_prompt = get_prompt_for_backend(
