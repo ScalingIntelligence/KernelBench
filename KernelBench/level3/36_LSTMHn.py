@@ -34,10 +34,10 @@ class Model(nn.Module):
         return state[0]
 
 # Test code
-batch_size = 10
+batch_size = 3
 sequence_length = 512
-input_size = 128
-hidden_size = 256
+input_size = 64
+hidden_size = 128
 num_layers = 6
 output_size = 10
 dropout = 0.0

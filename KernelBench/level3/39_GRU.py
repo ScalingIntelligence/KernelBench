@@ -27,10 +27,10 @@ class Model(nn.Module):
         return output
 
 # Test code
-batch_size = 10
+batch_size = 3
 seq_len = 512
-input_size = 128
-hidden_size = 256
+input_size = 64
+hidden_size = 128
 num_layers = 6
 
 def get_inputs():
