@@ -12,6 +12,7 @@ import pandas as pd
 
 # Check if nsight-python is available
 # Monkey-patch nsight-python to support multiple metrics and fix the "cannot insert Annotation" bug
+# Reference: https://docs.nvidia.com/nsight-python
 try:
     import nsight
     NSIGHT_AVAILABLE = True
