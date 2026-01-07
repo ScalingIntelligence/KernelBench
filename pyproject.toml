@@ -13,9 +13,7 @@ dependencies = [
     "torch==2.9.0",
 
     "transformers",
-    "datasets>=3.0.0",
-    "pyarrow",
-    "numpy<2",
+    "datasets",
     "modal",
 
     # helper
