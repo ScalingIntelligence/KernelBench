@@ -42,6 +42,7 @@ gpu = [
     "nvidia-cutlass-dsl",
     "tilelang",
     "cupy-cuda12x",
+    "nsight-python",
 ]
 dev = [
     "pytest",
