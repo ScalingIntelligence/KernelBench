@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 from pydantic import BaseModel
 
-from . import utils, timing
+from . import timing, dataset
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -39,30 +39,27 @@ def get_error_name(e: Exception) -> str:
     return f"{e.__class__.__module__}.{e.__class__.__name__}"
 
 
-def fetch_ref_arch_from_problem_id(problem_id, problems, with_name=False) -> str:
+def fetch_ref_arch_from_problem_id(problem_id: int, dataset: "BaseDataset", with_name=False) -> Union[str, tuple[str, str]]:
     """
-    Fetches the reference architecture in string for a given problem_id
+    Fetches the reference architecture for a given problem_id from the dataset.
     """
     if isinstance(problem_id, str):
         problem_id = int(problem_id)
 
-    problem_path = problems[problem_id]
-
-    # problem_path = os.path.join(REPO_ROOT_PATH, problem)
-    if not os.path.exists(problem_path):
-        raise FileNotFoundError(f"Problem file at {problem_path} does not exist.")
-
-    ref_arch = utils.read_file(problem_path)
+    problem = dataset.get_problem_by_id(problem_id)
+    ref_arch = problem.code
+    
     if not with_name:
         return ref_arch
     else:
-        return (problem_path, ref_arch)
+        # Use problem.name as fallback when path is None (e.g., for HuggingFace datasets)
+        name = problem.path if problem.path is not None else problem.name
+        return (name, ref_arch)
 
 
 def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = utils.construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
-    return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
+    kb_dataset = dataset.construct_kernelbench_dataset(level)
+    return fetch_ref_arch_from_problem_id(problem_id, kb_dataset, with_name)
 
 
 def set_seed(seed: int):
@@ -531,6 +528,18 @@ def eval_kernel_against_ref(
                 compiled=False, metadata=metadata
             )  # skip further steps
 
+    # Check if ModelNew was successfully loaded (load_custom_model returns None on syntax errors)
+    if ModelNew is None:
+        print(
+            "Failed to load custom model: Syntax error or ModelNew not found in generated code. Record as compilation failure."
+        )
+        metadata["compilation_error_name"] = "SyntaxError"
+        metadata["compilation_error"] = "Syntax error in custom generated code or ModelNew not found"
+        graceful_eval_cleanup(context, device, tempfile)
+        return KernelExecResult(
+            compiled=False, metadata=metadata
+        )  # skip further steps
+
     # at this point we passed compilation
     try:
         with torch.no_grad():
@@ -880,8 +889,7 @@ def check_metadata_serializable_all_types(metadata: dict):
         return converted_metadata
 
 
-
 # if __name__ == "__main__":
 # fetch_kernel_from_database("kernelbench_prompt_v2_level_2", 1, 1, "http://localhost:9091")
 # print(fetch_ref_arch_from_level_problem_id("2", 1, with_name=True))
-# fetch_baseline_time("level1", 0, ["1_Square_matrix_multiplication_.py"], "tests/baseline_time_matx3.json")
+# Note: fetch_baseline_time is available in kernelbench.timing module

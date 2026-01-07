@@ -3,7 +3,6 @@ import torch
 import pydra
 from pydra import REQUIRED, Config
 import os
-from datasets import load_dataset
 import modal
 
 from kernelbench import eval as kernel_eval
@@ -92,6 +91,7 @@ class ScriptConfig(Config):
         # ref_origin is local, specify local file path
         self.ref_arch_src_path = ""
         # ref_origin is kernelbench, specify level and problem id
+        self.dataset_src = "huggingface" # either huggingface or local
         self.dataset_name = "ScalingIntelligence/KernelBench"
         self.level = ""
         self.problem_id = ""
@@ -258,27 +258,23 @@ def main(config: ScriptConfig):
     if config.ref_origin == "local":
         assert config.ref_arch_src_path != "", "ref_arch_src_path is required"
         ref_arch_src = read_file(config.ref_arch_src_path)
+        print(f"Loaded reference from local file: {config.ref_arch_src_path}")
     elif config.ref_origin == "kernelbench":
-        assert config.dataset_name != "", "dataset_name is required"
+        from kernelbench.dataset import construct_kernelbench_dataset
+        
         assert config.level != "", "level is required"
         assert config.problem_id != "", "problem_id is required"
-
-        # for now use the HuggingFace dataset
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-
-        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-        problem_number = int(problem_name.split("_")[0])
-        assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
-
-        print(f"Fetched problem {config.problem_id} from KernelBench level {config.level}: {problem_name}")
-
-
-    else:
-        raise ValueError("Invalid ref_origin")
+        
+        # Unified interface - same code for huggingface and local!
+        dataset = construct_kernelbench_dataset(
+            level=int(config.level),
+            source=config.dataset_src,
+            dataset_name=config.dataset_name,
+        )
+        problem = dataset.get_problem_by_id(int(config.problem_id))
+        ref_arch_src = problem.code
+        
+        print(f"Fetched problem {problem.problem_id} from KernelBench level {problem.level}: {problem.name}")
     
     kernel_src = read_file(config.kernel_src_path)
 

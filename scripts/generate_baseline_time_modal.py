@@ -9,7 +9,7 @@ from kernelbench.timing import (
     get_timing_function,
     get_timing_stats,
 )
-from kernelbench.dataset import construct_problem_dataset_from_problem_dir
+from kernelbench.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_dataset
 from kernelbench.utils import read_file
 import os
 import json
@@ -125,31 +125,6 @@ def write_batch_to_json(entries_to_write: list, f_path: str):
     
     print(f"[INFO] Wrote {len(entries_to_write)} entries to {f_path}")
 
-def fetch_ref_arch_from_dataset(dataset: list[str], 
-                                problem_id: int) -> tuple[str, str, str]:
-    """
-    Fetch the reference architecture from the problem directory
-    problem_id should be logical index (1-indexed), matching the problem_id in the problem_name
-
-    Returns:
-        ref_arch_path: str, the path to the reference architecture
-        ref_arch_name: str, the name of the reference architecture
-        ref_arch_src: str, the source code of the reference architecture
-    """
-    ref_arch_path = None
-    
-    for file in dataset:
-        if file.split("/")[-1].split("_")[0] == str(problem_id):
-            ref_arch_path = file
-            break
-    if ref_arch_path is None:
-        raise ValueError(f"No reference architecture found for problem_id {problem_id}")
-    
-    ref_arch_src = read_file(ref_arch_path)
-
-    ref_arch_name = ref_arch_path.split("/")[-1]
-    return (ref_arch_path, ref_arch_name, ref_arch_src)
-
 @app.cls(image=image, scaledown_window=5)
 class EvalFunc:
 
@@ -231,10 +206,9 @@ def record_baseline_times(config: BaselineConfig,
     json_results = []
 
     level = config.level
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level))
-    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    dataset = construct_kernelbench_dataset(level)
     num_problems = len(dataset)
-    total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in list(range(1, num_problems + 1))]
+    total_work = [(i, *fetch_ref_arch_from_dataset(dataset, i)) for i in dataset.get_problem_ids()]
 
     batch_size = config.num_gpu_devices
     print(f"[Modal] Processing {len(total_work)} problems in parallel batches of {batch_size}")
@@ -325,5 +299,55 @@ if __name__ == "__main__":
     # run_profile(2, 43)
     # get_time(2, 43, torch_compile=False)
     # get_time(2, 43, torch_compile=True)
+
+
+
+
+################################################################################
+# Deprecated
+################################################################################
+
+
+def get_time_old(level_num, problem_id, num_trials=100, torch_compile=False):
+    raise DeprecationWarning("Use New measure_program_time instead")
+    ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
+        level_num, problem_id, with_name=True
+    )
+    ref_arch_name = os.path.basename(ref_arch_name)
+    context = {}
+    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
+        ref_arch_src, context
+    )
+    try:
+        with torch.no_grad():
+            torch.cuda.synchronize(device=device)
+            set_seed(42)
+            inputs = get_inputs()
+            set_seed(42)
+            init_inputs = get_init_inputs()
+            inputs = [
+                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+                for x in inputs
+            ]
+            init_inputs = [
+                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+                for x in init_inputs
+            ]
+            model = Model(*init_inputs)
+            
+            if torch_compile:
+                model = torch.compile(model)
+                print("Compiled model Done")
+            model = model.cuda(device=device)
+            torch.cuda.synchronize(device=device)
+            elapsed_times = time_execution_with_cuda_event(
+                model, *inputs, num_trials=num_trials, verbose=False, device=device
+            )
+            runtime_stats = get_timing_stats(elapsed_times, device=device)
+            # json_results[f"level{level_num}"][ref_arch_name] = runtime_stats
+            print(f"{ref_arch_name} {runtime_stats}")
+            return (ref_arch_name, runtime_stats)
+    except Exception as e:
+        print(f"[Eval] Error in Measuring Performance: {e}")
 
 

@@ -5,12 +5,10 @@ import sys
 import numpy as np
 from kernelbench.eval import (
     load_original_model_and_inputs,
-    time_execution_with_cuda_event,
-    get_timing_stats,
     set_seed,
     fetch_ref_arch_from_problem_id,
 )
-from kernelbench.dataset import construct_problem_dataset_from_problem_dir
+from kernelbench.dataset import construct_kernelbench_dataset
 import os, sys
 import logging
 import json
@@ -93,15 +91,15 @@ def inspect_torch_compile(fn, inputs, output_dir="results/triton_code", filename
     separator("")
     
 def fetch_ref_arch_from_level_problem_id(level_num, problem_id, with_name=False):
-    PROBLEM_DIR = os.path.join(KERNEL_BENCH_PATH, "level" + str(level_num))
-    dataset = construct_problem_dataset_from_problem_dir(PROBLEM_DIR)
+    dataset = construct_kernelbench_dataset(level_num)
     return fetch_ref_arch_from_problem_id(problem_id, dataset, with_name)
 
 def inspect_torch_compile_triton(level_num, problem_id):
     ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
         level_num, problem_id, with_name=True
     )
-    ref_arch_name = ref_arch_name.split("/")[-1]
+    # Extract filename from path (works for both full paths and filenames)
+    ref_arch_name = os.path.basename(ref_arch_name)
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
         ref_arch_src, context
@@ -116,7 +114,8 @@ def inspect_baseline_torch_compile(level_num, problem_id):
         level_num, problem_id, with_name=True
     )
 
-    ref_arch_name = ref_arch_name.split("/")[-1]
+    # Extract filename from path (works for both full paths and filenames)
+    ref_arch_name = os.path.basename(ref_arch_name)
     context = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
         ref_arch_src, context
