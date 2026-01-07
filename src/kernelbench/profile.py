@@ -51,18 +51,22 @@ except ImportError:
     NSIGHT_AVAILABLE = False
 
 
-def profile_with_nsight(func, metrics=None, num_trials=1, *args, **kwargs):
+def profile_with_nsight(func, metrics=None, num_trials=1):
     """Profile a PyTorch function. Returns {metric_name: value}."""
     if not NSIGHT_AVAILABLE:
         raise RuntimeError("nsight-python not available")
     
     metrics = [metrics] if isinstance(metrics, str) else (metrics or ['sm__cycles_active.avg'])
     
-    @nsight.analyze.kernel(metric=metrics, runs=num_trials, configs=[(0,)], 
-                           combine_kernel_metrics=lambda a, b: (a or 0) + (b or 0))
+    @nsight.analyze.kernel(
+        metric=metrics,
+        runs=num_trials,
+        configs=[(0,)],
+        combine_kernel_metrics=lambda a, b: (a or 0) + (b or 0),
+    )
     def profiled(_):
         with nsight.annotate("kernel"):
-            return func(*args, **kwargs)
+            return func()
     
     try:
         result = profiled()
@@ -93,10 +97,15 @@ def example_ncu_python_profile():
     b = torch.randn(256, 256, device="cuda")
     
     print("Running nsight profiling...")
+
+    # Wrap kernel
+    def test_kernel_forward():
+        return test_kernel(a, b)
+
     metric_values = profile_with_nsight(
-        test_kernel, 
+        test_kernel_forward,
         ['sm__cycles_active.avg', 'sm__cycles_elapsed.sum', "smsp__inst_executed_pipe_tensor_op_hmma.sum"],
-        a, b
+        num_trials=1,
     )
     
     print("\nProfiling results:")
@@ -160,7 +169,7 @@ def profile_kernelbench_model_with_nsight(
     Returns:
         Dictionary mapping metric names to their values
     """
-    from kernelbench.eval import (
+    from eval import (
         load_custom_model,
         load_custom_model_with_tempfile,
         load_original_model_and_inputs,
@@ -168,13 +177,14 @@ def profile_kernelbench_model_with_nsight(
         set_seed,
         graceful_eval_cleanup,
     )
-    from kernelbench.utils import set_gpu_arch
+    from utils import set_gpu_arch
     
     device = device or torch.device("cuda:0")
     metrics = metrics or ['sm__cycles_active.avg']
     metrics = [metrics] if isinstance(metrics, str) else metrics
     
-    set_gpu_arch(["Ada"])
+    # set_gpu_arch(["Ada"]) # NOTE: can set GPU arch here if needed
+    
     torch.cuda.set_device(device)
     
     # Load input functions using existing eval function
@@ -237,18 +247,17 @@ def test_flash_attention_profile():
     Test the profile_kernelbench_model_with_nsight function using the tiled_matmul example.
     """
     import os
-    from kernelbench.utils import read_file
+    from utils import read_file
     
     # Get the paths to the reference and custom model files
-    # profile.py is in src/, so we need to go up one level to get repo root
-    repo_root = os.path.dirname(os.path.dirname(__file__))
+    REPO_ROOT = os.path.dirname(__file__)
     ref_model_path = os.path.join(
-        repo_root, 
-        "src/kernelbench/prompts/few_shot/model_ex_flash_attn.py"
+        REPO_ROOT,
+        "prompts/few_shot/model_ex_flash_attn.py"
     )
     custom_model_path = os.path.join(
-        repo_root,
-        "src/kernelbench/prompts/few_shot/model_new_ex_flash_attn.py"
+        REPO_ROOT,
+        "prompts/few_shot/model_new_ex_flash_attn.py"
     )
     
     # Read the model source files

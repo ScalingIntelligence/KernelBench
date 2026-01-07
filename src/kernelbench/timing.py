@@ -407,13 +407,8 @@ def time_execution_with_nsight_python(
     Returns:
         List containing one float: average elapsed time in milliseconds
     """
-    import sys
-    import os
-    # Add parent directory to path to import profile module
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-    from profile import profile_with_nsight
+    
+    from kernelbench.profile import profile_with_nsight
     
     if device is None:
         if verbose:
@@ -434,12 +429,13 @@ def time_execution_with_nsight_python(
             print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}")
         
         # Profile with nsight - returns average time in nanoseconds
+        # Wrap kernel function to avoid argument passing confusion
         def wrapped_kernel():
             return kernel_fn(*args)
         
         metric_values = profile_with_nsight(
-            wrapped_kernel, 
-            metrics=["gpu__time_duration.sum"], 
+            wrapped_kernel,
+            metrics=["gpu__time_duration.sum"],
             num_trials=num_trials
         )
         
@@ -511,124 +507,124 @@ def get_timing_stats(elapsed_times: list[float], device: torch.device = None) ->
     return stats
 
 
-# def test_nsight_timing_accuracy(
-#     num_trials: int = 10,
-#     num_warmup: int = 3,
-#     device: torch.device | None = None,
-#     verbose: bool = True
-# ):
-#     """
-#     Test and benchmark time_execution_with_nsight_python against other timing methods.
+def test_nsight_timing_accuracy(
+    num_trials: int = 10,
+    num_warmup: int = 3,
+    device: torch.device | None = None,
+    verbose: bool = True
+):
+    """
+    Test and benchmark time_execution_with_nsight_python against other timing methods.
     
-#     Compares nsight_python_time with cuda_event and host_time to verify accuracy.
-#     All times are reported in milliseconds for consistency.
+    Compares nsight_python_time with cuda_event and host_time to verify accuracy.
+    All times are reported in milliseconds for consistency.
     
-#     Args:
-#         num_trials: Number of timing trials to run
-#         num_warmup: Number of warmup iterations
-#         device: CUDA device to use, defaults to current device
-#         verbose: Whether to print detailed comparison results
+    Args:
+        num_trials: Number of timing trials to run
+        num_warmup: Number of warmup iterations
+        device: CUDA device to use, defaults to current device
+        verbose: Whether to print detailed comparison results
     
-#     Returns:
-#         Dictionary with timing results and comparison statistics
-#     """
-#     if not torch.cuda.is_available():
-#         raise RuntimeError("CUDA is not available. This test requires a CUDA device.")
+    Returns:
+        Dictionary with timing results and comparison statistics
+    """
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available. This test requires a CUDA device.")
     
-#     if device is None:
-#         device = torch.cuda.current_device()
+    if device is None:
+        device = torch.cuda.current_device()
     
-#     # Create a simple test kernel (matrix multiplication)
-#     M, N, K = 1024, 1024, 1024
-#     a = torch.randn(M, K, device=device, dtype=torch.float32)
-#     b = torch.randn(K, N, device=device, dtype=torch.float32)
+    # Create a simple test kernel (matrix multiplication)
+    M, N, K = 1024, 1024, 1024
+    a = torch.randn(M, K, device=device, dtype=torch.float32)
+    b = torch.randn(K, N, device=device, dtype=torch.float32)
     
-#     def matmul_kernel(a, b):
-#         return torch.matmul(a, b)
+    def matmul_kernel(a, b):
+        return torch.matmul(a, b)
     
-#     args = [a, b]
+    args = [a, b]
     
-#     if verbose:
-#         print("=" * 80)
-#         print("Testing nsight_python_time accuracy against other timing methods")
-#         print(f"Kernel: {M}x{K} @ {K}x{N} matrix multiplication")
-#         print(f"Device: {device} ({torch.cuda.get_device_name(device)})")
-#         print(f"Trials: {num_trials}, Warmup: {num_warmup}")
-#         print("=" * 80)
+    if verbose:
+        print("=" * 80)
+        print("Testing nsight_python_time accuracy against other timing methods")
+        print(f"Kernel: {M}x{K} @ {K}x{N} matrix multiplication")
+        print(f"Device: {device} ({torch.cuda.get_device_name(device)})")
+        print(f"Trials: {num_trials}, Warmup: {num_warmup}")
+        print("=" * 80)
     
-#     results = {}
+    results = {}
     
-#     # Test each timing method
-#     timing_methods = ["cuda_event", "do_bench", "host_time", "nsight_python_time"]
+    # Test each timing method
+    timing_methods = ["cuda_event", "do_bench", "host_time", "nsight_python_time"]
     
-#     for method in timing_methods:
-#         if verbose:
-#             print(f"\n[Testing] {method}...")
+    for method in timing_methods:
+        if verbose:
+            print(f"\n[Testing] {method}...")
         
-#         try:
-#             timing_func = get_timing_function(method)
-#             elapsed_times = timing_func(
-#                 matmul_kernel,
-#                 args=args,
-#                 num_warmup=num_warmup,
-#                 num_trials=num_trials,
-#                 discard_first=1,
-#                 verbose=False,
-#                 device=device
-#             )
+        try:
+            timing_func = get_timing_function(method)
+            elapsed_times = timing_func(
+                matmul_kernel,
+                args=args,
+                num_warmup=num_warmup,
+                num_trials=num_trials,
+                discard_first=1,
+                verbose=False,
+                device=device
+            )
             
-#             # Get statistics
-#             stats = get_timing_stats(elapsed_times, device=device)
-#             results[method] = {
-#                 "times": elapsed_times,
-#                 "stats": stats
-#             }
+            # Get statistics
+            stats = get_timing_stats(elapsed_times, device=device)
+            results[method] = {
+                "times": elapsed_times,
+                "stats": stats
+            }
             
-#             if verbose:
-#                 print(f"  Mean: {stats['mean']:.3f} ms")
-#                 print(f"  Std:  {stats['std']:.3f} ms")
-#                 print(f"  Min:   {stats['min']:.3f} ms")
-#                 print(f"  Max:   {stats['max']:.3f} ms")
+            if verbose:
+                print(f"  Mean: {stats['mean']:.3f} ms")
+                print(f"  Std:  {stats['std']:.3f} ms")
+                print(f"  Min:   {stats['min']:.3f} ms")
+                print(f"  Max:   {stats['max']:.3f} ms")
                 
-#         except Exception as e:
-#             if verbose:
-#                 print(f"  ERROR: {e}")
-#             results[method] = {"error": str(e)}
+        except Exception as e:
+            if verbose:
+                print(f"  ERROR: {e}")
+            results[method] = {"error": str(e)}
     
-#     # Compare results
-#     if verbose:
-#         print("\n" + "=" * 80)
-#         print("Comparison Summary (all times in milliseconds):")
-#         print("=" * 80)
+    # Compare results
+    if verbose:
+        print("\n" + "=" * 80)
+        print("Comparison Summary (all times in milliseconds):")
+        print("=" * 80)
         
-#         if "cuda_event" in results and "stats" in results["cuda_event"]:
-#             cuda_mean = results["cuda_event"]["stats"]["mean"]
+        if "cuda_event" in results and "stats" in results["cuda_event"]:
+            cuda_mean = results["cuda_event"]["stats"]["mean"]
             
-#             if "nsight_python_time" in results and "stats" in results["nsight_python_time"]:
-#                 nsight_mean = results["nsight_python_time"]["stats"]["mean"]
-#                 diff_pct = ((nsight_mean - cuda_mean) / cuda_mean) * 100
-#                 print(f"\nnsight_python_time vs cuda_event:")
-#                 print(f"  cuda_event:        {cuda_mean:.3f} ms (mean of {num_trials} trials)")
-#                 print(f"  nsight_python_time: {nsight_mean:.3f} ms (average across {num_trials} trials)")
-#                 print(f"  Difference:         {diff_pct:+.2f}%")
+            if "nsight_python_time" in results and "stats" in results["nsight_python_time"]:
+                nsight_mean = results["nsight_python_time"]["stats"]["mean"]
+                diff_pct = ((nsight_mean - cuda_mean) / cuda_mean) * 100
+                print(f"\nnsight_python_time vs cuda_event:")
+                print(f"  cuda_event:        {cuda_mean:.3f} ms (mean of {num_trials} trials)")
+                print(f"  nsight_python_time: {nsight_mean:.3f} ms (average across {num_trials} trials)")
+                print(f"  Difference:         {diff_pct:+.2f}%")
                 
-#                 # Check if within reasonable range (within 20% of cuda_event)
-#                 # Note: nsight measures pure GPU time, cuda_event includes some overhead
-#                 # So nsight should be slightly lower or similar
-#                 if abs(diff_pct) < 20:
-#                     print(f"  ✓ Accuracy check PASSED (within 20% of cuda_event)")
-#                 else:
-#                     print(f"  ⚠ Accuracy check WARNING (difference > 20%)")
-#                     print(f"     Note: nsight measures pure GPU time, may differ from cuda_event")
+                # Check if within reasonable range (within 20% of cuda_event)
+                # Note: nsight measures pure GPU time, cuda_event includes some overhead
+                # So nsight should be slightly lower or similar
+                if abs(diff_pct) < 20:
+                    print(f"  ✓ Accuracy check PASSED (within 20% of cuda_event)")
+                else:
+                    print(f"  ⚠ Accuracy check WARNING (difference > 20%)")
+                    print(f"     Note: nsight measures pure GPU time, may differ from cuda_event")
             
-#             if "host_time" in results and "stats" in results["host_time"]:
-#                 host_mean = results["host_time"]["stats"]["mean"]
-#                 print(f"\nhost_time vs cuda_event:")
-#                 print(f"  cuda_event: {cuda_mean:.3f} ms")
-#                 print(f"  host_time:  {host_mean:.3f} ms")
-#                 print(f"  (host_time typically higher due to CPU overhead)")
+            if "host_time" in results and "stats" in results["host_time"]:
+                host_mean = results["host_time"]["stats"]["mean"]
+                print(f"\nhost_time vs cuda_event:")
+                print(f"  cuda_event: {cuda_mean:.3f} ms")
+                print(f"  host_time:  {host_mean:.3f} ms")
+                print(f"  (host_time typically higher due to CPU overhead)")
     
-#     return results
+    return results
 
 
 if __name__ == "__main__":
