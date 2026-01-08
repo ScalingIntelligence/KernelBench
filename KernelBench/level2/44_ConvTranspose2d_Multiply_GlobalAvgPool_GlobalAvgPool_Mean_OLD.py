@@ -14,7 +14,8 @@ class Model(nn.Module):
     def forward(self, x):
         x = self.conv_transpose(x)
         x = x * self.multiplier
-        x = torch.mean(x, dim=[2, 3], keepdim=True)  # Global average pooling
+        x = torch.mean(x, dim=[2, 3], keepdim=True)  # First global average pooling
+        x = torch.mean(x, dim=[2, 3], keepdim=True)  # Second global average pooling
         return x
 
 batch_size = 16
@@ -32,3 +33,4 @@ def get_inputs():
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier]
+

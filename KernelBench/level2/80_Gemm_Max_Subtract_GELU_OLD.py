@@ -20,7 +20,7 @@ class Model(nn.Module):
         """
         x = self.gemm(x)
         x = torch.max(x, dim=self.max_dim, keepdim=True).values
-        x = x - x.mean(dim=0, keepdim=True)
+        x = x - x.mean(dim=1, keepdim=True)
         x = torch.nn.functional.gelu(x)
         return x
 
@@ -34,3 +34,4 @@ def get_inputs():
 
 def get_init_inputs():
     return [in_features, out_features, max_dim]
+
