@@ -6,48 +6,17 @@
 import os
 import torch
 import pandas as pd
+import numpy as np
 
 # wrapper with tool to measure hardware metric
 
 
 # Check if nsight-python is available
-# Monkey-patch nsight-python to support multiple metrics and fix the "cannot insert Annotation" bug
 # Reference: https://docs.nvidia.com/nsight-python
 try:
     import nsight
     NSIGHT_AVAILABLE = True
     
-    # Patch 1: Multiple metrics support
-    _orig_ncu_init = nsight.collection.ncu.NCUCollector.__init__
-    nsight.collection.ncu.NCUCollector.__init__ = lambda self, metric="gpu__time_duration.sum", *a, **kw: \
-        _orig_ncu_init(self, ",".join(metric) if isinstance(metric, (list, tuple)) else metric, *a, **kw)
-    
-    # Patch 2: Extract all metrics from comma-separated string
-    _orig_extract = nsight.extraction.extract_df_from_report
-    def _patched_extract(path, metric, *a, **kw):
-        if "," not in metric:
-            return _orig_extract(path, metric, *a, **kw)
-        rows = []
-        for m in metric.split(","):
-            df = _orig_extract(path, m.strip(), *a, **kw)
-            if df is not None and not df.empty:
-                df = df.copy()
-                df['Metric Name'] = m.strip()
-                rows.extend(df.to_dict('records'))
-        return pd.DataFrame(rows) if rows else None
-    nsight.extraction.extract_df_from_report = _patched_extract
-    
-    # Patch 3: Fix "cannot insert Annotation" bug
-    _orig_agg = nsight.transformation.aggregate_data
-    def _patched_agg(df, func, norm, progress):
-        _orig_gb = pd.DataFrame.groupby
-        pd.DataFrame.groupby = lambda self, *a, **kw: _orig_gb(self, *a, **{**kw, 'as_index': False})
-        try:
-            return _orig_agg(df, func, norm, progress)
-        finally:
-            pd.DataFrame.groupby = _orig_gb
-    nsight.transformation.aggregate_data = _patched_agg
-
 except ImportError:
     NSIGHT_AVAILABLE = False
 
@@ -60,7 +29,7 @@ def profile_with_nsight(func, metrics=None, num_trials=1):
     metrics = [metrics] if isinstance(metrics, str) else (metrics or ['sm__cycles_active.avg'])
     
     @nsight.analyze.kernel(
-        metric=metrics,
+        metrics=metrics,
         runs=num_trials,
         configs=[(0,)],
         combine_kernel_metrics=lambda a, b: (a or 0) + (b or 0), # NOTE: some torch ops launch multiple kernels, so we need to combine metrics
@@ -120,14 +89,15 @@ def check_ncu_available() -> bool:
     return which('ncu') is not None
 
 
-@nsight.analyze.kernel
-def benchmark_matmul(n):
-    """Standard benchmark following nsight-python docs."""
-    a = torch.randn(n, n, device="cuda")
-    b = torch.randn(n, n, device="cuda")
-    with nsight.annotate("matmul"):
-        c = a @ b
-    return c
+if NSIGHT_AVAILABLE:
+    @nsight.analyze.kernel
+    def benchmark_matmul(n):
+        """Standard benchmark following nsight-python docs."""
+        a = torch.randn(n, n, device="cuda")
+        b = torch.randn(n, n, device="cuda")
+        with nsight.annotate("matmul"):
+            c = a @ b
+        return c
 
 
     
