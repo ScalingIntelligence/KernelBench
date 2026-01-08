@@ -5,6 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from kernelbench import timing
+from kernelbench.profile import NSIGHT_AVAILABLE, check_ncu_available
 
 """
 Test Timing
@@ -78,19 +79,59 @@ def _run_timing_smoke_test_matmul(timing_func_name:str, device:str="cuda"):
 # test all currently available timing methods
 def run_all_timing_tests(device="cuda"):
     timing_methods = ["cuda_event", "host_time", "do_bench", "do_bench_impl"]
-    # timing_methods = ["cuda_event", "do_bench_impl"]
     for timing_method in timing_methods:
         _run_timing_smoke_test_matmul(timing_method, device=device)
 
 
-# TODO: make the ncu profiling a spearte one
-# because not veeryone can have hardware counter
-# def run_ncu_against_cuda_event():
-#     pass
-      # need ncu install first (can call the helper function in profile.py to check if ncu exists)
+def run_nsight_timing_test(device="cuda"):
+    """
+    Run nsight-python timing test if available.
+    
+    Nsight requires:
+    - nsight-python package installed
+    - ncu (Nsight Compute CLI) in PATH
+    
+    Compares nsight GPU time against cuda_event timing for the same matmul operation.
+    """
+    if not NSIGHT_AVAILABLE:
+        print("[SKIP] nsight-python not installed")
+        return None
+    
+    if not check_ncu_available():
+        print("[SKIP] ncu not found in PATH")
+        return None
+    
+    print("\n" + "=" * 60)
+    print("Running nsight-python timing benchmark")
+    print("=" * 60)
+    
+    # Run nsight timing
+    print("\n--- nsight_python_time ---")
+    _run_timing_smoke_test_matmul("nsight_python_time", device=device)
+    
+    # Run cuda_event for comparison
+    print("\n--- cuda_event (for comparison) ---")
+    _run_timing_smoke_test_matmul("cuda_event", device=device)
+    
+    print("\n" + "=" * 60)
+    print("nsight-python timing benchmark complete")
+    print("=" * 60)
+
+
+def run_all_timing_tests_with_nsight(device="cuda"):
+    """
+    Run all timing methods including nsight-python if available.
+    """
+    # Standard timing methods (always available)
+    run_all_timing_tests(device=device)
+    
+    # Nsight timing (requires ncu + nsight-python)
+    run_nsight_timing_test(device=device)
+
 
 test_device = torch.device("cuda:5")
 run_all_timing_tests(test_device)
+run_nsight_timing_test(test_device)
 
 
 
