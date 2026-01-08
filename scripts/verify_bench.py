@@ -52,6 +52,10 @@ def check_correctness(
         inputs = get_inputs()
         inputs = [x.cuda().to(precision) if isinstance(x, torch.Tensor) else x for x in inputs]
 
+        for i, x in enumerate(inputs):
+            if isinstance(x, torch.Tensor) and torch.isinf(x).any():
+                raise ValueError(f"Input {i} contains infinity values")
+
         set_seed(seed)
         init_inputs = get_init_inputs()
         init_inputs = [
