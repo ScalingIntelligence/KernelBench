@@ -129,6 +129,7 @@ def run_all_timing_tests_with_nsight(device="cuda"):
     run_nsight_timing_test(device=device)
 
 
+# select a free GPU here or set CUDA_VISIBLE_DEVICES
 test_device = torch.device("cuda:5")
 run_all_timing_tests(test_device)
 run_nsight_timing_test(test_device)

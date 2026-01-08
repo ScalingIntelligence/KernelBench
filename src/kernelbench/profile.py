@@ -5,6 +5,10 @@ Nsight Profiling Module for KernelBench
 This module provides GPU profiling capabilities using NVIDIA Nsight Compute (ncu).
 It allows collecting hardware-level metrics from kernels.
 
+NOTE: this is an experimental module, not part of the default eval pass. 
+You need hardware counter access (usually requires sudo) to accesss hardware counter.
+We only support local mode with this feature, not avaliable on Modal.
+
 Key Features:
 - Profile arbitrary PyTorch functions with hardware metrics
 - Profile KernelBench models (ModelNew) with automatic setup/teardown

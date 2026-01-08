@@ -452,6 +452,8 @@ def time_execution_with_nsight_python(
         if verbose:
             print(f"Average GPU time: {gpu_time_ms:.3f} ms (across {num_trials} trials)")
         
+        # NOTE: nsight only returns average time across num_trials, so we return a single value in a list
+        # it did run num_trials times, but we only return the average (1 item)
         # Return list with single average value for API consistency
         return [gpu_time_ms]
 

@@ -36,6 +36,9 @@ We have (and continue to) implement various approaches to conduct kernel timing 
 
 Check out `timing.py` to see available timing methods and `src/unit_tests/test_eval_timing.py` to test out various timing methods (including leveraging `cuda_event` marker, Triton `do_bench`, `host_time` E2E time). @palic and team is working on a blogpost explaining the different tradeoffs soon. 
 
+### Profiling
+We have experimental profiling support leveraging NVIDIA NCU in `profile.py`.
+
 ### Checkers
 There are potentially many ways model might reward hack and we would like to catch the known ways through checkers [experimental and WIP]. We start with `kernel_static_checker.py`, which is a regex-based checker on the genenrated code against set of rules. We plan to add AST-based, LM-as-a-judge, and more runtime checks in the future. We welcome suggestions and contributions here.
 
