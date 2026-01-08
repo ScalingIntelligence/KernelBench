@@ -44,14 +44,20 @@ def profile_with_nsight(func, metrics=None, num_trials=1):
             return {m: None for m in metrics}
         
         df = result.to_dataframe()
-        if df is None or df.empty:
+        if df is None or (hasattr(df, 'empty') and df.empty):
             return {m: None for m in metrics}
         
-        if 'Metric Name' in df.columns:
+        if isinstance(df, pd.DataFrame) and 'Metric Name' in df.columns:
             return {row['Metric Name']: float(row['AvgValue']) for _, row in df.iterrows()}
-        return {metrics[0]: float(df['AvgValue'].iloc[0])}
+        elif isinstance(df, pd.DataFrame):
+            return {metrics[0]: float(df['AvgValue'].iloc[0])}
+        else:
+            # Handle case where df is not a DataFrame
+            return {m: None for m in metrics}
     except Exception as e:
         print(f"Error profiling: {e}")
+        import traceback
+        traceback.print_exc()
         return {m: None for m in metrics}
 
 
@@ -89,18 +95,6 @@ def check_ncu_available() -> bool:
     return which('ncu') is not None
 
 
-if NSIGHT_AVAILABLE:
-    @nsight.analyze.kernel
-    def benchmark_matmul(n):
-        """Standard benchmark following nsight-python docs."""
-        a = torch.randn(n, n, device="cuda")
-        b = torch.randn(n, n, device="cuda")
-        with nsight.annotate("matmul"):
-            c = a @ b
-        return c
-
-
-    
 
 # pytorch profiler
 # migrate from old repo during ICML / caesar repo
@@ -215,6 +209,24 @@ def profile_kernelbench_model_with_nsight(
     
     return metric_values
 
+
+
+if NSIGHT_AVAILABLE:
+    @nsight.analyze.kernel
+    def benchmark_matmul(n):
+        """Standard benchmark following nsight-python docs."""
+        a = torch.randn(n, n, device="cuda")
+        b = torch.randn(n, n, device="cuda")
+        with nsight.annotate("matmul"):
+            c = a @ b
+        return c
+
+
+
+
+###########
+# 
+############
 def test_flash_attention_profile():
     """
     Test the profile_kernelbench_model_with_nsight function using the tiled_matmul example.
@@ -246,7 +258,8 @@ def test_flash_attention_profile():
         custom_model_src=custom_model_src,
         ref_model_src=ref_model_src,
         metrics=[
-            'gpu__time_duration.sum'
+            'gpu__time_duration.sum',
+            'sm__cycles_elapsed.sum'
         ],
         seed=42,
         backend="cuda",

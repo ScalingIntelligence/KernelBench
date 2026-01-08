@@ -10,7 +10,7 @@ from kernelbench import timing
 Test Timing
 We want to systematically study different timing methodologies.
 """
-REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 
 # use exampls in the few shot directory
 EXAMPLES_PATH = os.path.join(REPO_PATH, "src", "kernelbench", "prompts", "few_shot")
@@ -83,6 +83,11 @@ def run_all_timing_tests(device="cuda"):
         _run_timing_smoke_test_matmul(timing_method, device=device)
 
 
+# TODO: make the ncu profiling a spearte one
+# because not veeryone can have hardware counter
+# def run_ncu_against_cuda_event():
+#     pass
+      # need ncu install first (can call the helper function in profile.py to check if ncu exists)
 
 test_device = torch.device("cuda:5")
 run_all_timing_tests(test_device)
