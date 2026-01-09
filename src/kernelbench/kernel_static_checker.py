@@ -169,6 +169,24 @@ def check_torch_computation_ops(code: str) -> Tuple[bool, str]:
 # use load_inline or cpp_extension (PyTorch's inline compilation).
 CUDA_COMPILE_PATTERNS = ["load_inline", "cpp_extension"]
 
+# Core CUDA patterns that indicate actual kernel implementation
+CUDA_THREAD_PATTERNS = [
+    r"\bthreadIdx\.",       # threadIdx.x, threadIdx.y, threadIdx.z
+    r"\bblockIdx\.",        # blockIdx.x, blockIdx.y, blockIdx.z
+    r"\bblockDim\.",        # blockDim.x, blockDim.y, blockDim.z
+    r"\bgridDim\.",         # gridDim.x, gridDim.y, gridDim.z
+]
+
+# CUDA synchronization and memory patterns
+CUDA_KERNEL_PATTERNS = [
+    r"__syncthreads\s*\(",      # Thread synchronization
+    r"__shared__\s+",           # Shared memory declaration
+    r"__device__\s+",           # Device function
+    r"atomicAdd\s*\(",          # Atomic operations
+    r"atomicMax\s*\(",
+    r"atomicMin\s*\(",
+]
+
 def check_cuda_impl(code: str) -> Tuple[bool, str]:
     """
     Check for valid CUDA kernel implementation.
@@ -176,12 +194,29 @@ def check_cuda_impl(code: str) -> Tuple[bool, str]:
     Requirements:
     - Must have __global__ void kernel_name (kernel definition)
     - Must have load_inline or cpp_extension (PyTorch inline compilation)
+    - Must use CUDA thread indexing (threadIdx, blockIdx, blockDim, or gridDim)
+      OR CUDA kernel features (__syncthreads, __shared__, __device__, atomics)
+    
+    Rationale: Ensures code actually implements a CUDA kernel rather than
+    just wrapping PyTorch operations.
     """
     code = _strip_comments(code)
+    
+    # Check for kernel definition
     if "__global__" not in code:
         return (True, "Missing __global__ kernel definition")
+    
+    # Check for compilation method
     if not any(p in code for p in CUDA_COMPILE_PATTERNS):
         return (True, "Missing load_inline or cpp_extension for compilation")
+    
+    # Check for actual CUDA kernel features (thread indexing or kernel patterns)
+    has_thread_patterns = any(re.search(p, code) for p in CUDA_THREAD_PATTERNS)
+    has_kernel_patterns = any(re.search(p, code) for p in CUDA_KERNEL_PATTERNS)
+    
+    if not (has_thread_patterns or has_kernel_patterns):
+        return (True, "Missing CUDA thread indexing or kernel features (threadIdx, blockIdx, __syncthreads, __shared__, etc.)")
+    
     return (False, "")
 
 # <========= TRITON CHECKS =========>
@@ -190,6 +225,26 @@ def check_cuda_impl(code: str) -> Tuple[bool, str]:
 TRITON_JIT_PATTERN = r"@triton\.(jit|autotune)"
 TRITON_OPS_PATTERN = r"\btl\.\w+"
 
+# Core Triton memory operations (must-have)
+TRITON_MEMORY_OPS = [
+    r"tl\.load\s*\(",           # Memory load
+    r"tl\.store\s*\(",          # Memory store
+]
+
+# Core Triton kernel patterns
+TRITON_KERNEL_PATTERNS = [
+    r"tl\.program_id\s*\(",     # Program/block ID
+    r"tl\.num_programs\s*\(",   # Number of programs
+    r"tl\.constexpr",           # Compile-time constants
+    r"tl\.arange\s*\(",         # Index generation
+    r"tl\.cdiv\s*\(",           # Ceiling division
+]
+
+# Triton data types
+TRITON_DTYPE_PATTERNS = [
+    r"tl\.(float16|float32|float64|int32|int64|bfloat16)",
+]
+
 def check_triton_impl(code: str) -> Tuple[bool, str]:
     """
     Check for valid Triton kernel implementation.
@@ -197,41 +252,137 @@ def check_triton_impl(code: str) -> Tuple[bool, str]:
     Requirements:
     - Must have @triton.jit or @triton.autotune decorator
     - Must have tl.* operations (enforces actual Triton code, not wrapper)
+    - Must have tl.load or tl.store (core memory operations)
+    - Should have tl.program_id or other kernel patterns (for proper indexing)
     
     Note: Triton's compiler itself prevents PyTorch ops inside @triton.jit.
     """
     code = _strip_comments(code)
+    
+    # Check for decorator
     if not re.search(TRITON_JIT_PATTERN, code):
         return (True, "Missing @triton.jit or @triton.autotune")
+    
+    # Check for any tl.* operations
     if not re.search(TRITON_OPS_PATTERN, code):
         return (True, "No tl.* operations found in Triton kernel")
+    
+    # Check for memory operations (load or store)
+    has_memory_ops = any(re.search(p, code) for p in TRITON_MEMORY_OPS)
+    if not has_memory_ops:
+        return (True, "Missing Triton memory operations (tl.load or tl.store)")
+    
+    # Check for kernel patterns (program_id is essential for indexing)
+    has_kernel_patterns = any(re.search(p, code) for p in TRITON_KERNEL_PATTERNS)
+    if not has_kernel_patterns:
+        return (True, "Missing Triton kernel patterns (tl.program_id, tl.arange, etc.)")
+    
     return (False, "")
 
 
 # <========= THUNDERKITTENS CHECKS =========>
 # Rationale: ThunderKittens uses warp/warpgroup primitives and tile abstractions.
 # Valid TK code must have namespace patterns and tile declarations.
-TK_WARP_PATTERNS = [
-    r"kittens::warp\b", r"kittens::warpgroup\b",
-    r"::warpgroup::", r"::warp::", r"warpgroup::", r"warp::"
+# Reference: https://github.com/HazyResearch/ThunderKittens/
+TK_NAMESPACE_PATTERNS = [
+    r"kittens::",               # Core namespace
+    r"using namespace kittens", # Using declaration
 ]
-TK_TILE_PATTERN = r"(?:kittens::)?(?:st|rt)_\w+\s*<[^>]+>"
+
+TK_WARP_PATTERNS = [
+    r"kittens::warp\b", 
+    r"kittens::warpgroup\b",
+    r"kittens::group\s*<\s*\d+\s*>",  # kittens::group<4> for warpgroup operations
+    r"::warpgroup::", 
+    r"::warp::", 
+    r"warpgroup::", 
+    r"warp::"
+]
+
+# ThunderKittens tile types: rt (register tile), st (shared tile)
+# Examples: kittens::rt_bf<32,16>, kittens::st_hf<32,64>, rt_fl<32,64>
+TK_TILE_PATTERN = r"(?:kittens::)?(?:st|rt)_(?:bf|fl|hf|i8|i32)\s*<[^>]+>"
+
+# ThunderKittens vector types (associated with tiles)
+TK_VECTOR_PATTERN = r"::(?:col_vec|row_vec)\b"
+
+# ThunderKittens memory operations (often namespaced)
+TK_MEMORY_OPS = [
+    r"kittens::load\s*\(",      # Namespaced load
+    r"kittens::store\s*\(",     # Namespaced store
+    r"\bload\s*\(",             # Tile load (in using namespace context)
+    r"\bstore\s*\(",            # Tile store (in using namespace context)
+    r"load_async\s*\(",         # Async load
+]
+
+# ThunderKittens compute operations (from the manual)
+TK_COMPUTE_OPS = [
+    r"kittens::(?:warpgroup::)?mma_AB\s*\(",     # Warpgroup MMA: mma_AB
+    r"kittens::(?:warpgroup::)?mma_ABt\s*\(",    # MMA variants
+    r"kittens::(?:warpgroup::)?mma_AtB\s*\(",
+    r"(?:warpgroup::)?mma_AB[t]?\s*\(",          # Without namespace (in using context)
+    r"kittens::mul\s*\(",       # Namespaced element-wise ops
+    r"kittens::add\s*\(",
+    r"kittens::sub\s*\(",
+    r"kittens::copy\s*\(",
+    r"kittens::zero\s*\(",
+    r"\bmul\s*\(",              # Element-wise multiply (in using namespace)
+    r"\badd\s*\(",              # Element-wise add
+    r"\bsub\s*\(",              # Element-wise subtract
+    r"\bcopy\s*\(",             # Copy operation
+    r"\bzero\s*\(",             # Zero initialization
+]
+
+# ThunderKittens control and utilities
+TK_CONTROL_PATTERNS = [
+    r"kittens::warpid\s*\(",    # Get warp ID
+    r"tma::",                   # Tensor Memory Accelerator namespace
+    r"__syncthreads\s*\(",      # Thread synchronization (CUDA primitive often used)
+    r"__syncwarp\s*\(",         # Warp synchronization
+]
 
 def check_tk_impl(code: str) -> Tuple[bool, str]:
     """
     Check for valid ThunderKittens kernel implementation.
     
     Requirements:
-    - Must have warp/warpgroup namespace patterns (kittens::warp, etc.)
-    - Must have tile declarations (st_bf<...>, rt_fl<...>, etc.)
+    - Must have kittens namespace (kittens::, using namespace kittens)
+    - Must have tile declarations (st_bf, rt_fl, st_hf, rt_i8, etc.)
+    - Must have memory operations (kittens::load, kittens::store, load_async)
+    - Should have compute operations (mma_AB, mul, add, copy, zero, etc.)
+    - Optional: warp/warpgroup patterns (kittens::warpgroup, kittens::group<N>)
+      for warpgroup-specific operations
     
-    TODO: Add producer-consumer pattern check for complex kernels.
+    ThunderKittens is a tile-based programming model that abstracts
+    warp-level operations with register (rt) and shared (st) tiles.
+    By default, operations exist at warp-level, so explicit warp/warpgroup
+    scope is only needed for warpgroup operations like mma_AB.
+    
+    Reference: https://github.com/HazyResearch/ThunderKittens/
     """
     code = _strip_comments(code)
-    if not any(re.search(p, code) for p in TK_WARP_PATTERNS):
-        return (True, "Missing ThunderKittens warp/warpgroup patterns")
-    if not re.search(TK_TILE_PATTERN, code):
-        return (True, "Missing ThunderKittens tile declarations (st_*/rt_*)")
+    
+    # Check for kittens namespace (fundamental requirement)
+    has_namespace = any(re.search(p, code) for p in TK_NAMESPACE_PATTERNS)
+    if not has_namespace:
+        return (True, "Missing kittens namespace (kittens:: or using namespace kittens)")
+    
+    # Check for tile declarations (rt_* or st_*)
+    has_tiles = re.search(TK_TILE_PATTERN, code)
+    has_vectors = re.search(TK_VECTOR_PATTERN, code)
+    if not (has_tiles or has_vectors):
+        return (True, "Missing ThunderKittens tile/vector declarations (rt_bf, st_fl, ::col_vec, etc.)")
+    
+    # Check for memory operations
+    has_memory_ops = any(re.search(p, code) for p in TK_MEMORY_OPS)
+    if not has_memory_ops:
+        return (True, "Missing ThunderKittens memory operations (kittens::load, kittens::store, load_async)")
+    
+    # Check for compute operations
+    has_compute_ops = any(re.search(p, code) for p in TK_COMPUTE_OPS)
+    if not has_compute_ops:
+        return (True, "Missing ThunderKittens compute operations (mma_AB, mul, add, copy, zero, etc.)")
+    
     return (False, "")
 
 
@@ -244,11 +395,67 @@ CUTE_PATTERNS = [
     r"from cutlass",     # Python CUTLASS bindings
 ]
 
+# CuTe tensor operations
+CUTE_TENSOR_OPS = [
+    r"make_tensor\s*\(",        # Tensor creation
+    r"make_layout\s*\(",        # Layout creation
+    r"make_shape\s*\(",         # Shape creation
+    r"make_stride\s*\(",        # Stride creation
+]
+
+# CuTe/CUTLASS copy operations
+CUTE_COPY_OPS = [
+    r"copy\s*\(",               # Generic copy
+    r"copy_if\s*\(",            # Conditional copy
+    r"cute::copy",              # Namespaced copy
+    r"Copy_Atom",               # Copy atom template
+]
+
+# CUTLASS GEMM patterns
+CUTLASS_GEMM_PATTERNS = [
+    r"cutlass::gemm",           # GEMM namespace
+    r"cutlass::epilogue",       # Epilogue operations
+    r"Gemm\w*<",                # GEMM templates (Gemm, GemmUniversal, etc.)
+    r"GemmConfiguration",       # GEMM configuration
+    r"ThreadblockSwizzle",      # Threadblock scheduling
+]
+
+# CUTLASS kernel patterns
+CUTLASS_KERNEL_PATTERNS = [
+    r"cutlass::arch",           # Architecture-specific code
+    r"cutlass::layout",         # Layout specifications
+    r"RowMajor|ColumnMajor",    # Layout types
+    r"TensorRef\s*<",           # Tensor reference template
+]
+
 def check_cute_impl(code: str) -> Tuple[bool, str]:
-    """Check for valid CUTLASS/CuTe kernel implementation."""
+    """
+    Check for valid CUTLASS/CuTe kernel implementation.
+    
+    Requirements:
+    - Must have cute:: or cutlass:: namespace (or Python bindings)
+    - Must have tensor operations (make_tensor, make_layout) OR
+      copy operations (copy, Copy_Atom) OR
+      CUTLASS GEMM patterns (cutlass::gemm, Gemm templates)
+    
+    CuTe is a layout/tensor abstraction library used by CUTLASS 3.x.
+    We check for both high-level CUTLASS templates and low-level CuTe ops.
+    """
     code = _strip_comments(code)
+    
+    # Check for namespace
     if not any(p in code for p in ["cute::", "cutlass::", "from cutlass"]):
         return (True, "Missing cute:: or cutlass:: namespace")
+    
+    # Check for actual operations (tensor, copy, or GEMM)
+    has_tensor_ops = any(re.search(p, code) for p in CUTE_TENSOR_OPS)
+    has_copy_ops = any(re.search(p, code) for p in CUTE_COPY_OPS)
+    has_gemm_patterns = any(re.search(p, code) for p in CUTLASS_GEMM_PATTERNS)
+    has_kernel_patterns = any(re.search(p, code) for p in CUTLASS_KERNEL_PATTERNS)
+    
+    if not (has_tensor_ops or has_copy_ops or has_gemm_patterns or has_kernel_patterns):
+        return (True, "Missing CUTLASS/CuTe operations (make_tensor, copy, gemm patterns, etc.)")
+    
     return (False, "")
 
 
@@ -261,11 +468,75 @@ TILELANG_PATTERNS = [
     r"T\.grid",          # TileLang grid
 ]
 
+# TileLang/TVM iteration patterns
+TILELANG_ITERATION = [
+    r"T\.grid\s*\(",            # Grid iteration
+    r"T\.serial\s*\(",          # Serial loop
+    r"T\.parallel\s*\(",        # Parallel loop
+    r"T\.vectorized\s*\(",      # Vectorized loop
+    r"T\.unroll\s*\(",          # Unrolled loop
+]
+
+# TileLang/TVM buffer operations
+TILELANG_BUFFER_OPS = [
+    r"T\.alloc_buffer\s*\(",    # Buffer allocation
+    r"T\.buffer_store\s*\(",    # Buffer store
+    r"T\.buffer_load\s*\(",     # Buffer load
+    r"T\.match_buffer\s*\(",    # Buffer matching
+]
+
+# TileLang/TVM compute patterns
+TILELANG_COMPUTE_PATTERNS = [
+    r"T\.reads\s*\(",           # Read annotations
+    r"T\.writes\s*\(",          # Write annotations
+    r"T\.block\s*\(",           # Computation block
+    r"T\.block_attr\s*\(",      # Block attributes
+]
+
+# TVM build/compile patterns
+TILELANG_BUILD_PATTERNS = [
+    r"tvm\.build\s*\(",         # Build function
+    r"tvm\.IRModule",           # IR module
+    r"tvm\.target\.Target",     # Target specification
+]
+
 def check_tilelang_impl(code: str) -> Tuple[bool, str]:
-    """Check for valid TileLang kernel implementation."""
+    """
+    Check for valid TileLang kernel implementation.
+    
+    Requirements:
+    - Must have @T.prim_func decorator
+    - Must have iteration constructs (T.grid, T.serial, T.parallel, etc.)
+    - Must have buffer operations (T.alloc_buffer, T.buffer_store/load) OR
+      compute patterns (T.block, T.reads, T.writes)
+    - Should have tvm.build or IRModule for compilation
+    
+    TileLang is a tensor program DSL built on TVM that uses structured
+    iteration spaces and explicit buffer operations.
+    """
     code = _strip_comments(code)
+    
+    # Check for decorator
     if not re.search(r"@T\.prim_func", code):
         return (True, "Missing @T.prim_func decorator")
+    
+    # Check for iteration constructs
+    has_iteration = any(re.search(p, code) for p in TILELANG_ITERATION)
+    if not has_iteration:
+        return (True, "Missing TileLang iteration constructs (T.grid, T.serial, T.parallel, etc.)")
+    
+    # Check for buffer operations or compute patterns
+    has_buffer_ops = any(re.search(p, code) for p in TILELANG_BUFFER_OPS)
+    has_compute_patterns = any(re.search(p, code) for p in TILELANG_COMPUTE_PATTERNS)
+    
+    if not (has_buffer_ops or has_compute_patterns):
+        return (True, "Missing TileLang buffer operations (T.alloc_buffer, T.buffer_store/load) or compute patterns (T.block, T.reads, T.writes)")
+    
+    # Check for build patterns (optional but recommended)
+    has_build = any(re.search(p, code) for p in TILELANG_BUILD_PATTERNS)
+    if not has_build:
+        return (True, "Missing TVM build/compilation (tvm.build, IRModule)")
+    
     return (False, "")
 
 
