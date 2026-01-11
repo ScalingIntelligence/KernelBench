@@ -5,7 +5,7 @@ from torch.distributions import Normal
 
 class Model(nn.Module):
     """
-    A model that computes Smooth L1 (Huber) Loss for regression tasks.
+    A model that computes the Mean Squared Error loss for regression tasks.
 
     Parameters:
         None
@@ -14,7 +14,7 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
     def forward(self, predictions, targets):
-        return torch.nn.functional.smooth_l1_loss(predictions, targets)
+        return torch.mean((predictions - targets) ** 2)
 
 batch_size = 32768
 input_shape = (32768,)
@@ -30,3 +30,4 @@ def get_inputs():
 
 def get_init_inputs():
     return []
+

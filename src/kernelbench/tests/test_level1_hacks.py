@@ -31,18 +31,26 @@ def main():
 
     for problem in PROBLEMS:
         old_src = read_file(os.path.join(PROBLEMS_DIR, f"{problem}_OLD.py"))
-        new_src = read_file(os.path.join(PROBLEMS_DIR, f"{problem}_NEW.py"))
-        hack_src = read_file(os.path.join(SOLUTIONS_DIR, f"{problem}_HACK.py"))
-        correct_src = read_file(os.path.join(SOLUTIONS_DIR, f"{problem}_CORRECT.py"))
+        uniform_normal_src = read_file(os.path.join(PROBLEMS_DIR, f"{problem}_uniform_normal.py"))
+        pareto_src = read_file(os.path.join(PROBLEMS_DIR, f"{problem}_pareto.py"))
+
+        analytical_hack_src = read_file(os.path.join(SOLUTIONS_DIR, f"{problem}_analytical_hack.py"))
+        partial_analytical_hack_src = read_file(os.path.join(SOLUTIONS_DIR, f"{problem}_partial_computation_hack.py"))
+        correct_src = read_file(os.path.join(SOLUTIONS_DIR, f"{problem}_correct.py"))
 
         print(f"\n{'='*60}")
         print(f"Testing {problem}")
         print(f"{'='*60}")
 
-        hack_vs_old = evaluate(old_src, hack_src)
+        analytical_hack_vs_old = evaluate(old_src, analytical_hack_src)
+        partial_analytical_hack_vs_old = evaluate(old_src, partial_analytical_hack_src)
         correct_vs_old = evaluate(old_src, correct_src)
-        hack_vs_new = evaluate(new_src, hack_src)
-        correct_vs_new = evaluate(new_src, correct_src)
+        analytical_hack_vs_uniform_normal = evaluate(uniform_normal_src, analytical_hack_src)
+        partial_analytical_hack_vs_uniform_normal = evaluate(uniform_normal_src, partial_analytical_hack_src)
+        correct_vs_uniform_normal = evaluate(uniform_normal_src, correct_src)
+        analytical_hack_vs_pareto = evaluate(pareto_src, analytical_hack_src)
+        partial_analytical_hack_vs_pareto = evaluate(pareto_src, partial_analytical_hack_src)
+        correct_vs_pareto = evaluate(pareto_src, correct_src)
 
         def check(solution_name, problem_name, correctness, should_be_correct):
             nonlocal all_passed
@@ -57,10 +65,17 @@ def main():
                 all_passed = False
             print(f"  {status} {solution_name} on {problem_name}: {correct_str} (expected {expected_str})")
 
-        check("HACK", "OLD problem", hack_vs_old, True)
+        check("ANALYTICAL_HACK", "OLD problem", analytical_hack_vs_old, True)
+        check("PARTIAL_HACK", "OLD problem", partial_analytical_hack_vs_old, True)
         check("CORRECT", "OLD problem", correct_vs_old, True)
-        check("HACK", "NEW problem", hack_vs_new, False)
-        check("CORRECT", "NEW problem", correct_vs_new, True)
+
+        check("ANALYTICAL_HACK", "uniform_normal problem", analytical_hack_vs_uniform_normal, False)
+        check("PARTIAL_HACK", "uniform_normal problem", partial_analytical_hack_vs_uniform_normal, True)
+        check("CORRECT", "uniform_normal problem", correct_vs_uniform_normal, True)
+        
+        check("ANALYTICAL_HACK", "pareto problem", analytical_hack_vs_pareto, False)
+        check("PARTIAL_HACK", "pareto problem", partial_analytical_hack_vs_pareto, True)
+        check("CORRECT", "pareto problem", correct_vs_pareto, True)
 
     print(f"\n{'='*60}")
     print(f"Overall: {'ALL TESTS PASSED' if all_passed else 'SOME TESTS FAILED'}")
