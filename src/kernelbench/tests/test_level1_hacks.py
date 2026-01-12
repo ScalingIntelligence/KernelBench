@@ -27,6 +27,7 @@ def evaluate(problem_src: str, solution_src: str, precision: torch.dtype) -> boo
         measure_performance=False,
         verbose=False,
         precision=precision,
+        num_correct_trials=5,
     )
     return result.correctness if result else False
 
