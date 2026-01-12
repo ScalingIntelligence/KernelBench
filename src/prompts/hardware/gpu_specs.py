@@ -120,7 +120,7 @@ GPU_SPEC_INFO = {
         "Maximum shared memory per thread block": "163 KB",
     },
     "MI300X": {
-        "GPU Architecture": "CDNA3",
+        "GPU Architecture": "gfx942",
         "GPU Memory": "192GB",
         "Memory Bandwidth": "5.3 TB/s",
         "FP64 TFLOPS": "81.7",
@@ -141,7 +141,7 @@ GPU_SPEC_INFO = {
         "Shared memory capacity per CU": "64 KB",
     },
     "MI325X": {
-        "GPU Architecture": "CDNA3",
+        "GPU Architecture": "gfx942",
         "GPU Memory": "256GB",
         "Memory Bandwidth": "6TB/s",
         "FP64 TFLOPS": "81.7",
@@ -162,7 +162,7 @@ GPU_SPEC_INFO = {
         "Shared memory capacity per CU": "64 KB",
     },
     "MI350X": {
-        "GPU Architecture": "CDNA4",
+        "GPU Architecture": "gfx950",
         "GPU Memory": "288GB",
         "Memory Bandwidth": "8TB/s",
         "FP64 TFLOPS": "72.1",
@@ -183,7 +183,7 @@ GPU_SPEC_INFO = {
         "Shared memory capacity per CU": "160 KB",
     },
     "MI355X": {
-        "GPU Architecture": "CDNA4",
+        "GPU Architecture": "gfx950",
         "GPU Memory": "288GB",
         "Memory Bandwidth": "8TB/s",
         "FP64 TFLOPS": "78.6",
