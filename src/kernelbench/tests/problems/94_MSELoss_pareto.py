@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 def sample_pareto(shape, scale=0.01, alpha=1.5):
-    u = torch.rand(shape)
+    u = torch.rand(shape).clamp(min=1e-6)
     return scale / u.pow(1 / alpha)
 
 class Model(nn.Module):
