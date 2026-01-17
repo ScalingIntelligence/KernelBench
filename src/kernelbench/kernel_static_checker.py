@@ -269,6 +269,23 @@ def check_tilelang_impl(code: str) -> Tuple[bool, str]:
     return (False, "")
 
 
+# <========= CUTILE PYTHON CHECKS =========>
+# CuTile Python uses @ct.kernel decorator
+CUTILE_KERNEL_PATTERN = r"@ct\.kernel"
+
+def check_cutile_impl(code: str) -> Tuple[bool, str]:
+    """
+    Check for valid CuTile Python kernel implementation.
+    
+    Requirements:
+    - Must have @ct.kernel decorator
+    """
+    code = _strip_comments(code)
+    if not re.search(CUTILE_KERNEL_PATTERN, code):
+        return (True, "Missing @ct.kernel decorator")
+    return (False, "")
+
+
 # =============================================================================
 # TIMING MANIPULATION CHECKS - Reward Hacking Patterns
 # From adversarial hack PR and DeepReinforce blog
@@ -559,6 +576,7 @@ CHECK_FUNCTIONS: Dict[str, Union[Callable[[str], Tuple[bool, str]], Callable[[st
     "tk_impl": check_tk_impl,
     "cute_impl": check_cute_impl,
     "tilelang_impl": check_tilelang_impl,
+    "cutile_impl": check_cutile_impl,
 }
 
 # Checks that require additional parameters beyond just code
@@ -583,6 +601,7 @@ BACKEND_IMPL_CHECK = {
     "cute": "cute_impl",
     "cutlass": "cute_impl",  # alias
     "tilelang": "tilelang_impl",
+    "cutile": "cutile_impl",
 }
 
 # These are optional checks (by user's decision) - flagged as warnings
