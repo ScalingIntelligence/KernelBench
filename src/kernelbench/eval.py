@@ -404,7 +404,7 @@ def eval_kernel_against_ref(
     device: Union[torch.device, int] = (
         torch.cuda.current_device() if torch.cuda.is_available() else None
     ),  # have to run on GPU
-    backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
+    backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', 'cute', or 'cutile'
     precision: torch.dtype = torch.float32,
 
     # Guard against potential reward hacking [optional but ongoing enhancement]
@@ -420,7 +420,7 @@ def eval_kernel_against_ref(
     num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
     num_perf_trials: run the evalutation many times to take the average
     device: GPU (cuda) device to run the evalutation on
-    backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
+    backend: str, one of 'cuda', 'triton', 'tilelang', 'cute', or 'cutile'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
     timing_method: str, method to time kernel, see timing.py for more details 
 
@@ -444,7 +444,7 @@ def eval_kernel_against_ref(
     
     # Backends that use tempfile approach and need CUDA_VISIBLE_DEVICES
     # TileLang, Triton, and CuTe all use tempfile for proper module loading
-    uses_tempfile = backend.lower() in ["triton", "tilelang", "cute"]
+    uses_tempfile = backend.lower() in ["triton", "tilelang", "cute", "cutile"]
     
     metadata = {}  # for storing result metadata
     metadata["hardware"] = torch.cuda.get_device_name(device=device)
@@ -496,7 +496,7 @@ def eval_kernel_against_ref(
         # add hash for later to distinguish between multi-turn kernels
         
         backend_lower = backend.lower()
-        if backend_lower in ["triton", "tilelang", "cute"]:
+        if backend_lower in ["triton", "tilelang", "cute", "cutile"]:
             # Use tempfile approach for triton, tilelang, and cute
             # These DSLs require proper module import for JIT decorators to work
             ModelNew, tempfile = load_custom_model_with_tempfile(
