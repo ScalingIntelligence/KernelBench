@@ -56,7 +56,7 @@ one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_thunderkittens.py"
 
 [backends.cutile]
 backend_display = "cuTile kernels"
-one_shot_new_arch = "src/prompts/model_new_ex_add_cutile.py"
+one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_cutile.py"
 # No few_shot_examples - will use one-shot when few_shot option is selected
 # Note: cuTile requires CUDA Toolkit 13.1+
 
