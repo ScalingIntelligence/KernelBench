@@ -5,6 +5,7 @@
 # we use latest PyTorch stable release
 torch==2.9.*
 triton==3.5.*
+cuda-tile
 
 # we shall upgrade torch for blackwell when it is stable
 transformers>=4.57.3

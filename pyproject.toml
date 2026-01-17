@@ -13,7 +13,7 @@ dependencies = [
     "torch==2.9.0",
 
     "transformers",
-    "datasets",
+    "datasets>=2.20.0",
     "modal",
 
     # helper
@@ -41,6 +41,7 @@ gpu = [
     "triton",
     "nvidia-cutlass-dsl",
     "tilelang",
+    "cuda-tile",
     "cupy-cuda12x",
     "nsight-python",
 ]

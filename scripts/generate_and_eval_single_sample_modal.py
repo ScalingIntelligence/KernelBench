@@ -105,7 +105,7 @@ image = (
                 )
 
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
-    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
         "PYTHONPATH": "/root:/root/src"
@@ -207,7 +207,7 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
+    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens", "cutile"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(

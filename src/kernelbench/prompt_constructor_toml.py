@@ -141,7 +141,7 @@ def render_prompt_by_option(
     
     Args:
         prompts_toml: Path to the prompts.toml file
-        backend: The kernel backend (triton, cuda, cute, tilelang)
+        backend: The kernel backend (triton, cuda, cute, tilelang, cutile)
         option: The prompt option (zero_shot, one_shot, few_shot)
                 - zero_shot: No examples (model learns from description only)
                 - one_shot: Single example
@@ -196,7 +196,7 @@ def render_prompt_by_option(
     # Add backend-specific content to context
     context = {
         **context,
-        "backend": backend.upper() if backend in ["cuda", "cute"] else backend.capitalize(),
+        "backend": backend.upper() if backend in ["cuda", "cute"] else ("cuTile" if backend == "cutile" else backend.capitalize()),
         "backend_display": backend_display,
         "problem_statement": problem_statement,
         "instruction": instruction,
@@ -332,7 +332,7 @@ def get_prompt_for_backend(
     
     Args:
         ref_arch_src: The reference architecture source code
-        backend: The kernel backend (triton, cuda, cute, tilelang)
+        backend: The kernel backend (triton, cuda, cute, tilelang, cutile)
         option: The prompt option (zero_shot, one_shot, few_shot)
         precision: Optional precision (fp32, fp16, bf16) - defaults to fp32 if not provided
         include_hardware: When True, append hardware guidance blocks (requires gpu_name)
