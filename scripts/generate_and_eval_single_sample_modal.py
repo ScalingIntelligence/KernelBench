@@ -2,6 +2,23 @@
 Example Usage:
 python scripts/generate_and_eval_single_sample_modal.py dataset_src=huggingfac level=1 problem_id=1 eval_mode=modal gpu=L40S 
     server_type=deepseek model_name=deepseek-coder max_tokens=4096 temperature=0.0
+
+TLX Example:
+uv run python scripts/generate_and_eval_single_sample_modal.py \
+    dataset_src=huggingface \
+    level=1 \
+    problem_id=1 \
+    eval_mode=modal \
+    gpu=H100 \
+    backend=tlx \
+    server_type=google \
+    model_name=gemini/gemini-2.5-flash \
+    max_tokens=60000 \
+    temperature=0.0 \
+    log=True \
+    log_prompt=True \
+    log_generated_kernel=True \
+    verbose=True
 '''
 
 import pydra
@@ -101,19 +118,23 @@ image = (
     .apt_install("git",
                 "gcc-10",
                 "g++-10",
-                "clang" # note i skip a step
+                "clang",
+                "cmake",
+                "ninja-build",
+                "zlib1g-dev"
                 )
 
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
-    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .run_commands(
-        "git clone https://github.com/facebookexperimental/triton.git /root/triton",
-        "cd /root/triton && pip install -r python/requirements.txt",
-        "cd /root/triton && pip install -e ."
+        "git clone https://github.com/facebookexperimental/triton.git /root/triton && "
+        "cd /root/triton && "
+        "pip install -r python/requirements.txt && "
+        "pip install -e ."
     )
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
-        "PYTHONPATH": "/root:/root/src"
+        "PYTHONPATH": "/root:/root/src:/root/triton/python"
     })
     .add_local_dir(SRC_DIR, remote_path="/root/src")  # must be last
 )

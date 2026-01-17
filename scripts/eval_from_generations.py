@@ -43,6 +43,16 @@ Usually with eval, we check
 - performance (n_trials): 100 randomized input trials
 
 You can increase the number of trials for correctness and performance
+
+TLX Example:
+uv run python scripts/eval_from_generations.py \
+    run_name=test_tlx_level1 \
+    dataset_src=huggingface \
+    level=1 \
+    subset="(5,6)" \
+    eval_mode=modal \
+    backend=tlx \
+    verbose=True
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,19 +77,23 @@ image = (
     .apt_install("git",
                 "gcc-10",
                 "g++-10",
-                "clang"
+                "clang",
+                "cmake",
+                "ninja-build",
+                "zlib1g-dev"
                 )
 
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
-    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .run_commands(
-        "git clone https://github.com/facebookexperimental/triton.git /root/triton",
-        "cd /root/triton && pip install -r python/requirements.txt",
-        "cd /root/triton && pip install -e ."
+        "git clone https://github.com/facebookexperimental/triton.git /root/triton && "
+        "cd /root/triton && "
+        "pip install -r python/requirements.txt && "
+        "pip install -e ."
     )
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
-        "PYTHONPATH": "/root/src:/root"
+        "PYTHONPATH": "/root/src:/root:/root/triton/python"
     })
     .add_local_dir(SRC_DIR, remote_path="/root/src")
     .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last

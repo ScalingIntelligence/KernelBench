@@ -90,15 +90,19 @@ image = (
     .apt_install("git",
                 "gcc-10",
                 "g++-10",
-                "clang" # note i skip a step
+                "clang",
+                "cmake",
+                "ninja-build",
+                "zlib1g-dev"
                 )
     .uv_sync(uv_project_dir=REPO_TOP_PATH, extras=["gpu"])
     .run_commands(
-        "git clone https://github.com/facebookexperimental/triton.git /root/triton",
-        "cd /root/triton && pip install -r python/requirements.txt",
-        "cd /root/triton && pip install -e ."
+        "git clone https://github.com/facebookexperimental/triton.git /root/triton && "
+        "cd /root/triton && "
+        "pip install -r python/requirements.txt && "
+        "pip install -e ."
     )
-    .env({"PYTHONPATH": "/root/src"})
+    .env({"PYTHONPATH": "/root/src:/root/triton/python"})
     .add_local_dir(SRC_DIR, remote_path="/root/src")
     .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last
 )

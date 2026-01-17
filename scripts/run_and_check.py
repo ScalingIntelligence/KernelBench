@@ -37,17 +37,18 @@ KERNELBENCH_DIR = os.path.join(REPO_TOP_PATH, "KernelBench")
 
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-    .apt_install("git", "gcc-10", "g++-10", "clang")
+    .apt_install("git", "gcc-10", "g++-10", "clang", "cmake", "ninja-build", "zlib1g-dev")
     .uv_sync(uv_project_dir=REPO_TOP_PATH)
-    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .run_commands(
-        "git clone https://github.com/facebookexperimental/triton.git /root/triton",
-        "cd /root/triton && pip install -r python/requirements.txt",
-        "cd /root/triton && pip install -e ."
+        "git clone https://github.com/facebookexperimental/triton.git /root/triton && "
+        "cd /root/triton && "
+        "pip install -r python/requirements.txt && "
+        "pip install -e ."
     )
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
-        "PYTHONPATH": "/root:/root/src:/root/scripts"
+        "PYTHONPATH": "/root:/root/src:/root/scripts:/root/triton/python"
     })
     .add_local_dir(SRC_DIR, remote_path="/root/src")
     .add_local_dir(SCRIPTS_DIR, remote_path="/root/scripts")
@@ -81,6 +82,38 @@ python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbe
 
 4. PyTorch reference is a kernelbench problem (modal eval on cloud GPU)
 python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=modal gpu=L40S
+
+TLX Examples:
+uv run python scripts/run_and_check.py \
+    ref_origin=kernelbench \
+    level=1 \
+    problem_id=1 \
+    kernel_src_path=runs/valid_tlx/gemm_pc.py \
+    eval_mode=modal \
+    gpu=H100 \
+    backend=tlx \
+    precision=bf16 \
+    verbose=True
+
+uv run python scripts/run_and_check.py \
+    ref_origin=local \
+    ref_arch_src_path=runs/valid_tlx/fftconv_reference.py \
+    kernel_src_path=runs/valid_tlx/fftconv_pc.py \
+    eval_mode=modal \
+    gpu=H100 \
+    backend=tlx \
+    precision=bf16 \
+    verbose=True
+
+uv run python scripts/run_and_check.py \
+    ref_origin=local \
+    ref_arch_src_path=runs/valid_tlx/layernorm_reference.py \
+    kernel_src_path=runs/valid_tlx/layernorm_nonpc.py \
+    eval_mode=modal \
+    gpu=H100 \
+    backend=tlx \
+    precision=bf16 \
+    verbose=True
 ====================================================
 
 """

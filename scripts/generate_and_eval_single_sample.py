@@ -20,6 +20,20 @@ Easiest way to get started, to test a single problem for experimentation or debu
 
 Example usage:
 python3 scripts/generate_and_eval_single_sample.py dataset_src=huggingface level=1 problem_id=1 eval_mode=local server_type=google model_name=gemini/gemini-2.5-flash max_tokens=8192 temperature=0.0
+
+TLX Example (NEED LOCAL GPU):
+uv run python scripts/generate_and_eval_single_sample.py \
+    dataset_src=huggingface \
+    level=1 \
+    problem_id=1 \
+    backend=tlx \
+    server_type=google \
+    model_name=gemini/gemini-2.5-flash \
+    max_tokens=60000 \
+    temperature=0.0 \
+    log=True \
+    log_generated_kernel=True \
+    verbose=True
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
