@@ -93,6 +93,11 @@ image = (
                 "clang" # note i skip a step
                 )
     .uv_sync(uv_project_dir=REPO_TOP_PATH, extras=["gpu"])
+    .run_commands(
+        "git clone https://github.com/facebookexperimental/triton.git /root/triton",
+        "cd /root/triton && pip install -r python/requirements.txt",
+        "cd /root/triton && pip install -e ."
+    )
     .env({"PYTHONPATH": "/root/src"})
     .add_local_dir(SRC_DIR, remote_path="/root/src")
     .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last

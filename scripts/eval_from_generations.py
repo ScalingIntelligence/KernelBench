@@ -72,6 +72,11 @@ image = (
 
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
     .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands(
+        "git clone https://github.com/facebookexperimental/triton.git /root/triton",
+        "cd /root/triton && pip install -r python/requirements.txt",
+        "cd /root/triton && pip install -e ."
+    )
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
         "PYTHONPATH": "/root/src:/root"
