@@ -98,6 +98,9 @@ def matmul(a, b):
         a.stride(0), a.stride(1),  #
         b.stride(0), b.stride(1),  #
         c.stride(0), c.stride(1),  #
+        BLOCK_SIZE_M=128, BLOCK_SIZE_N=256,
+        BLOCK_SIZE_K=64, GROUP_SIZE_M=8,
+        NUM_STAGES=3
     )
     return c
 
