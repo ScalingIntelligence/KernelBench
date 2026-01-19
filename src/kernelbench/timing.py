@@ -7,23 +7,27 @@ import os
 
 
 def measure_ref_program_time(
-        ref_arch_name: str,
-        ref_arch_src: str,
-        num_trials: int = 100,
-        num_warmup: int = 3,
-        discard_first: int = 1,
-        use_torch_compile: bool = False,
-        torch_compile_backend: str = "inductor",
-        torch_compile_options: str = "default",
-        device: torch.device = "cuda:0",
-        verbose: bool = False,
-        timing_method: str = "cuda_event",
+    ref_arch_name: str,
+    ref_arch_src: str, # PyTorch program code string
+    num_warmup: int = 5,
+    num_trials: int = 100,
+    discard_first: int = 1,
+    timing_method: str = "cuda_event",
+    # Torch eager or torch.compile configuration
+    use_torch_compile: bool = False,
+    torch_compile_backend: str = "inductor",
+    torch_compile_options: str = "default",
+    device: torch.device = "cuda:0",
+    verbose: bool = False,
 ) -> dict:
     """Measure the runtime of a KernelBench *reference* program.
 
     This measures the execution time of the reference `Model` defined in
     `ref_arch_src` (i.e., *not* `ModelNew`). It can optionally run the reference
     model under `torch.compile`.
+
+    NOTE: for pure PyTorch program, we assume it operates all on main stream (as torch operators execute on the default cuda stream)
+    Standard PyTorch ops do NOT spawn extra streams
     """
     from kernelbench.eval import load_original_model_and_inputs, set_seed
 
@@ -51,9 +55,12 @@ def measure_ref_program_time(
             model = Model(*init_inputs)
 
             if use_torch_compile:
+                torch._dynamo.reset() # reset torch dynamo cache (clear memory and reset graph)
                 print(
                     f"Using torch.compile to compile model {ref_arch_name} with {torch_compile_backend} backend and {torch_compile_options} mode"
                 )
+                # NOTE: torch compile uses lazy compilation (triggered by first forward pass)
+                # the warmup in the timing function handles that and should not affect timed trials
                 model = torch.compile(
                     model,
                     backend=torch_compile_backend,
