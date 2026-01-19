@@ -77,7 +77,7 @@ class BaselineConfig(Config):
 import modal
 app = modal.App("generate_baseline_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "A100-80GB": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
-cuda_version = "12.8.0"  # should be no greater than host CUDA version
+cuda_version = "13.0.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"

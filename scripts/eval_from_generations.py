@@ -53,7 +53,7 @@ torch.set_printoptions(precision=4, threshold=10)
 app = modal.App("eval_from_generations_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
 
-cuda_version = "12.8.0"  # should be no greater than host CUDA version
+cuda_version = "13.0.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -71,7 +71,7 @@ image = (
                 )
 
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
-    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
         "PYTHONPATH": "/root/src:/root"

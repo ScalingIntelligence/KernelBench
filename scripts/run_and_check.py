@@ -26,7 +26,7 @@ gpu_arch_mapping = {
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-cuda_version = "12.8.0"
+cuda_version = "13.0.0"
 flavor = "devel"
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -38,8 +38,8 @@ KERNELBENCH_DIR = os.path.join(REPO_TOP_PATH, "KernelBench")
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
-    .uv_sync(uv_project_dir=REPO_TOP_PATH)
-    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .uv_sync(uv_project_dir=REPO_TOP_PATH, extras=["gpu"])
+    .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
         "PYTHONPATH": "/root:/root/src:/root/scripts"
