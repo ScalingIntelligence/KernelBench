@@ -114,7 +114,7 @@ tag = f"{cuda_version}-{flavor}-{operating_sys}"
 SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
 
 image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.11")
     .apt_install("git",
                 "gcc-10",
                 "g++-10",
@@ -123,18 +123,19 @@ image = (
                 "ninja-build",
                 "zlib1g-dev"
                 )
-
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
     .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    # Uninstall standard triton first (fast step, separate layer to avoid rebuilding triton on changes)
+    .run_commands("pip uninstall -y triton || true")
+    # Install TLX-enabled Triton (slow step, cached unless repo changes)
+    .env({"MAX_JOBS": "8"}) # Speed up compilation
     .run_commands(
-        "git clone https://github.com/facebookexperimental/triton.git /root/triton && "
-        "cd /root/triton && "
-        "pip install -r python/requirements.txt && "
-        "pip install -e ."
+        "git clone --depth 1 https://github.com/facebookexperimental/triton.git /root/triton",
+        "cd /root/triton && pip install -r python/requirements.txt && pip install -e ."
     )
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
-        "PYTHONPATH": "/root:/root/src:/root/triton/python"
+        "PYTHONPATH": "/root:/root/src:/root/scripts:/root/triton/python"
     })
     .add_local_dir(SRC_DIR, remote_path="/root/src")  # must be last
 )
