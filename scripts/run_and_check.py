@@ -7,7 +7,7 @@ import modal
 
 from kernelbench import eval as kernel_eval
 from kernelbench import utils as kernel_utils
-from scripts.generate_baseline_time import measure_program_time
+from kernelbench.timing import measure_ref_program_time
 from kernelbench.utils import read_file
 from kernelbench.kernel_static_checker import validate_kernel_static
 
@@ -223,25 +223,22 @@ class EvalFunc:
         ref_arch_src: str,
         num_trials: int,
         use_torch_compile: bool,
-        torch_compile_backend: str,
-        torch_compile_options: str,
         gpu_arch: list
     ):
         """Measure the execution time of a reference program on Modal"""
-        from scripts.generate_baseline_time import measure_program_time
+        from kernelbench.timing import measure_ref_program_time
         from kernelbench.utils import set_gpu_arch
 
         set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")
 
-        return measure_program_time(
+        return measure_ref_program_time(
             ref_arch_name="Reference Program",
             ref_arch_src=ref_arch_src,
             num_trials=num_trials,
             use_torch_compile=use_torch_compile,
-            torch_compile_backend=torch_compile_backend,
-            torch_compile_options=torch_compile_options,
-            device=device
+            verbose=False,
+            device=device,
         )
 
 
@@ -311,21 +308,25 @@ def main(config: ScriptConfig):
         # Measure baseline time
         print("[INFO] Measuring reference program time")
         # Default using PyTorch Eager here
-        ref_time_eager_result = measure_program_time(ref_arch_name="Reference Program",
+        ref_time_eager_result = measure_ref_program_time(ref_arch_name="Reference Program",
                                                     ref_arch_src=ref_arch_src,
                                                     num_trials=config.num_perf_trials,
                                                     use_torch_compile=False,
-                                                    device=device)
+                                                    timing_method=config.timing_method,
+                                                    device=device,
+                                                    verbose=False,
+                                                    )
         ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
         # Measure Torch Compile time
-        ref_time_compile_result = measure_program_time(ref_arch_name="Reference Program",
+        ref_time_compile_result = measure_ref_program_time(ref_arch_name="Reference Program",
                                                     ref_arch_src=ref_arch_src,
                                                     num_trials=config.num_perf_trials,
                                                     use_torch_compile=True,
-                                                    torch_compile_backend="inductor",
-                                                    torch_compile_options="default",
-                                                    device=device)
+                                                    timing_method=config.timing_method,
+                                                    device=device,
+                                                    verbose=False,
+                                                    )
         ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 
     elif config.eval_mode == "modal":

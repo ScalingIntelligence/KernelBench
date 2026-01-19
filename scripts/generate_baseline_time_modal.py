@@ -141,58 +141,20 @@ class EvalFunc:
             device: torch.device = torch.cuda.current_device() if torch.cuda.is_available() else None,
             verbose: bool = False,
     ):
-        """
-        Measure the time of a KernelBench reference architecture
-        """
-        context = {}
-        Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-            ref_arch_src, context
+        from kernelbench.timing import measure_ref_program_time
+        return measure_ref_program_time(
+            ref_arch_name=ref_arch_name,
+            ref_arch_src=ref_arch_src,
+            num_trials=num_trials,
+            num_warmup=3,
+            discard_first=1,
+            timing_method=timing_method,
+            use_torch_compile=use_torch_compile,
+            torch_compile_backend=torch_compile_backend,
+            torch_compile_options=torch_compile_options,
+            device=device,
+            verbose=verbose,
         )
-        try:
-            with torch.no_grad():
-                torch.cuda.synchronize(device=device)
-                set_seed(42)
-                inputs = get_inputs()
-                set_seed(42)
-                init_inputs = get_init_inputs()
-                inputs = [
-                    x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                    for x in inputs
-                ]
-                init_inputs = [
-                    x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                    for x in init_inputs
-                ]
-
-                # Initialize PyTorch model, use this for eager mode execution
-                model = Model(*init_inputs)
-                
-                if use_torch_compile:
-                    print(f"Using torch.compile to compile model {ref_arch_name} with {torch_compile_backend} backend and {torch_compile_options} mode")
-                    model = torch.compile(model, backend=torch_compile_backend, mode=torch_compile_options)
-                else:
-                    print(f"Using PyTorch Eager Execution on {ref_arch_name}")
-                
-                model = model.cuda(device=device)
-                timing_func = get_timing_function(timing_method)
-                torch.cuda.synchronize(device=device)
-                elapsed_times = timing_func(
-                    model,
-                    inputs,
-                    num_warmup=3,  # or any default you prefer
-                    num_trials=num_trials,
-                    discard_first=1,  # or 0 to include first trial
-                    verbose=verbose,
-                    device=device,
-                )
-                runtime_stats = get_timing_stats(elapsed_times, device=device)
-
-                if verbose:
-                    print(f"{ref_arch_name} {runtime_stats}")
-                
-                return runtime_stats
-        except Exception as e:
-            print(f"[Eval] Error in Measuring Performance: {e}")
 
 def record_baseline_times(config: BaselineConfig,
                           use_torch_compile: bool = False,
