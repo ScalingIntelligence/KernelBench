@@ -2,23 +2,6 @@
 Example Usage:
 python scripts/generate_and_eval_single_sample_modal.py dataset_src=huggingfac level=1 problem_id=1 eval_mode=modal gpu=L40S 
     server_type=deepseek model_name=deepseek-coder max_tokens=4096 temperature=0.0
-
-TLX Example:
-uv run python scripts/generate_and_eval_single_sample_modal.py \
-    dataset_src=huggingface \
-    level=1 \
-    problem_id=1 \
-    eval_mode=modal \
-    gpu=H100 \
-    backend=tlx \
-    server_type=google \
-    model_name=gemini/gemini-2.5-flash \
-    max_tokens=60000 \
-    temperature=0.0 \
-    log=True \
-    log_prompt=True \
-    log_generated_kernel=True \
-    verbose=True
 '''
 
 import pydra
@@ -114,15 +97,8 @@ tag = f"{cuda_version}-{flavor}-{operating_sys}"
 SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
 
 image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.11")
-    .apt_install("git",
-                "gcc-10",
-                "g++-10",
-                "clang",
-                "cmake",
-                "ninja-build",
-                "zlib1g-dev"
-                )
+    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+    .apt_install("git", "gcc-10", "g++-10", "clang", "cmake", "ninja-build", "zlib1g-dev")
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
     .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     # Uninstall standard triton first (fast step, separate layer to avoid rebuilding triton on changes)
@@ -249,6 +225,11 @@ def main(config: EvalConfig):
     # thunderkittens can use bf16 or fp16 by default, also set default GPU to H100
     if backend == "thunderkittens":
         config.precision = "bf16"
+        config.gpu = "H100"
+    
+    # TLX: for research purposes we only support fp16
+    if backend == "tlx":
+        config.precision = "fp16"
         config.gpu = "H100"
 
     if not custom_prompt_key:
