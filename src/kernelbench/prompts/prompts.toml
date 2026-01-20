@@ -57,7 +57,6 @@ one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_thunderkittens.py"
 [backends.tlx]
 backend_display = "TLX (Triton Language Extensions) kernels"
 one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_matmul_tlx.py"
-few_shot_example_arch = "src/kernelbench/prompts/model_ex_matmul_tlx.py"
 # No few_shot_examples - will use one-shot when few_shot option is selected
 
 # -------------------------------------------------------------------------
