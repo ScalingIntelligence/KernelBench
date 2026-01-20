@@ -223,7 +223,10 @@ class EvalFunc:
         ref_arch_src: str,
         num_trials: int,
         use_torch_compile: bool,
-        gpu_arch: list
+        torch_compile_backend: str,
+        torch_compile_options: str,
+        gpu_arch: list,
+        precision: str,
     ):
         """Measure the execution time of a reference program on Modal"""
         from kernelbench.timing import measure_ref_program_time
@@ -237,9 +240,11 @@ class EvalFunc:
             ref_arch_src=ref_arch_src,
             num_trials=num_trials,
             use_torch_compile=use_torch_compile,
+            torch_compile_backend=torch_compile_backend,
+            torch_compile_options=torch_compile_options,
             verbose=False,
             device=device,
-            precision=configs["precision"],
+            precision=precision,
         )
 
 
@@ -360,7 +365,8 @@ def main(config: ScriptConfig):
                 use_torch_compile=False,
                 torch_compile_backend=None,
                 torch_compile_options=None,
-                gpu_arch=gpu_arch
+                gpu_arch=gpu_arch,
+                precision=config.precision,
             )
             ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
@@ -374,7 +380,8 @@ def main(config: ScriptConfig):
                 use_torch_compile=True,
                 torch_compile_backend="inductor",
                 torch_compile_options="default",
-                gpu_arch=gpu_arch
+                gpu_arch=gpu_arch,
+                precision=config.precision,
             )
             ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 

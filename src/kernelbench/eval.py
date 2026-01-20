@@ -626,6 +626,8 @@ def eval_kernel_against_ref(
                 print(f"[Eval] Error in Measuring Performance: {e}")
             kernel_exec_result.metadata["error_during_performance"] = e
 
+    # To get base PyTorch time (eager, various compile modes)
+    # please use timing.measure_ref_program_time()   
 
 
     ###############################################################

@@ -5,6 +5,22 @@ This folder contains a set of baseline timing results for the KernelBench proble
 
 Since KernelBench measures the speedup between Runtime(refernece architecture) and Runtime(LLM-generated architecture), it is important to measure the baseline reference module runtime.
 
+## When are these baseline JSONs used?
+
+Baseline timing JSONs in this folder are primarily used for **offline analysis / scoring** where you want a consistent reference runtime without re-timing the PyTorch reference on every run.
+
+In contrast, some workflows compute speedup using **live timing**:
+
+- **`scripts/run_and_check.py`**
+  - Measures the PyTorch reference runtime by calling `kernelbench.timing.measure_ref_program_time(...)` (eager and optionally `torch.compile`).
+  - Measures the candidate kernel runtime via `kernelbench.eval.eval_kernel_against_ref(...)`.
+  - Prints speedup as reference_time / kernel_time.
+
+- **`kernelbench.eval.eval_kernel_against_ref(...)`** (library API)
+  - Measures candidate kernel runtime directly.
+  - May also time the reference model runtime for additional checks (e.g. excessive speedup detection).
+  - Does **not** read baseline JSONs from this folder.
+
 We have provided a set of baseline results for the KernelBench problems on a variety of hardware as well as various PyTorch configurations.
 All (current) baseline are ran with PyTorch `2.5.0+cu124` and CUDA `12.4`.
 
