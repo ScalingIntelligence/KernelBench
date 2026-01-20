@@ -72,12 +72,15 @@ class BaselineConfig(Config):
         # Number of trials for timing
         self.num_trials = 100
 
+        # Precision for timing
+        self.precision = "fp32"
+
 
 # Modal Infra
 import modal
 app = modal.App("generate_baseline_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "A100-80GB": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
-cuda_version = "12.8.0"  # should be no greater than host CUDA version
+cuda_version = "13.0.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -145,65 +148,30 @@ class EvalFunc:
             torch_compile_options: str="default",
             device: torch.device = torch.cuda.current_device() if torch.cuda.is_available() else None,
             verbose: bool = False,
+            precision: str = "fp32",
     ):
-        """
-        Measure the time of a KernelBench reference architecture
-        """
-        context = {}
-        Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-            ref_arch_src, context
+        from kernelbench.timing import measure_ref_program_time
+        return measure_ref_program_time(
+            ref_arch_name=ref_arch_name,
+            ref_arch_src=ref_arch_src,
+            num_trials=num_trials,
+            num_warmup=3,
+            discard_first=1,
+            timing_method=timing_method,
+            use_torch_compile=use_torch_compile,
+            torch_compile_backend=torch_compile_backend,
+            torch_compile_options=torch_compile_options,
+            device=device,
+            verbose=verbose,
+            precision=precision,
         )
-        try:
-            with torch.no_grad():
-                torch.cuda.synchronize(device=device)
-                set_seed(42)
-                inputs = get_inputs()
-                set_seed(42)
-                init_inputs = get_init_inputs()
-                inputs = [
-                    x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                    for x in inputs
-                ]
-                init_inputs = [
-                    x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                    for x in init_inputs
-                ]
-
-                # Initialize PyTorch model, use this for eager mode execution
-                model = Model(*init_inputs)
-                
-                if use_torch_compile:
-                    print(f"Using torch.compile to compile model {ref_arch_name} with {torch_compile_backend} backend and {torch_compile_options} mode")
-                    model = torch.compile(model, backend=torch_compile_backend, mode=torch_compile_options)
-                else:
-                    print(f"Using PyTorch Eager Execution on {ref_arch_name}")
-                
-                model = model.cuda(device=device)
-                timing_func = get_timing_function(timing_method)
-                torch.cuda.synchronize(device=device)
-                elapsed_times = timing_func(
-                    model,
-                    inputs,
-                    num_warmup=3,  # or any default you prefer
-                    num_trials=num_trials,
-                    discard_first=1,  # or 0 to include first trial
-                    verbose=verbose,
-                    device=device,
-                )
-                runtime_stats = get_timing_stats(elapsed_times, device=device)
-
-                if verbose:
-                    print(f"{ref_arch_name} {runtime_stats}")
-                
-                return runtime_stats
-        except Exception as e:
-            print(f"[Eval] Error in Measuring Performance: {e}")
 
 def record_baseline_times(config: BaselineConfig,
                           use_torch_compile: bool = False,
                           torch_compile_backend: str="inductor",
                           torch_compile_options: str="default",
-                          file_name: str="baseline_time.json"):
+                          file_name: str="baseline_time.json",
+                          precision: str = "fp32"):
     """
     Generate baseline time for KernelBench using Modal's native parallelization.
     Spawns multiple GPU containers in parallel for faster processing.
@@ -239,6 +207,7 @@ def record_baseline_times(config: BaselineConfig,
                         torch_compile_options=torch_compile_options,
                         device=torch.device("cuda:0"),
                         verbose=False,
+                        precision=precision,
                     )
                     futures.append((p_id, ref_arch_name, future))
 
@@ -281,6 +250,7 @@ def main(config: BaselineConfig):
     print("\n[2/2] Recording baseline times with Torch Compile (inductor, default mode)...")
     record_baseline_times(
         config=config,
+        precision=config.precision,
         use_torch_compile=True,
         torch_compile_backend="inductor",
         torch_compile_options="default",
@@ -304,55 +274,4 @@ if __name__ == "__main__":
     # run_profile(2, 43)
     # get_time(2, 43, torch_compile=False)
     # get_time(2, 43, torch_compile=True)
-
-
-
-
-################################################################################
-# Deprecated
-################################################################################
-
-
-def get_time_old(level_num, problem_id, num_trials=100, torch_compile=False):
-    raise DeprecationWarning("Use New measure_program_time instead")
-    ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
-        level_num, problem_id, with_name=True
-    )
-    ref_arch_name = os.path.basename(ref_arch_name)
-    context = {}
-    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-        ref_arch_src, context
-    )
-    try:
-        with torch.no_grad():
-            torch.cuda.synchronize(device=device)
-            set_seed(42)
-            inputs = get_inputs()
-            set_seed(42)
-            init_inputs = get_init_inputs()
-            inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in inputs
-            ]
-            init_inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in init_inputs
-            ]
-            model = Model(*init_inputs)
-            
-            if torch_compile:
-                model = torch.compile(model)
-                print("Compiled model Done")
-            model = model.cuda(device=device)
-            torch.cuda.synchronize(device=device)
-            elapsed_times = time_execution_with_cuda_event(
-                model, *inputs, num_trials=num_trials, verbose=False, device=device
-            )
-            runtime_stats = get_timing_stats(elapsed_times, device=device)
-            # json_results[f"level{level_num}"][ref_arch_name] = runtime_stats
-            print(f"{ref_arch_name} {runtime_stats}")
-            return (ref_arch_name, runtime_stats)
-    except Exception as e:
-        print(f"[Eval] Error in Measuring Performance: {e}")
-
 

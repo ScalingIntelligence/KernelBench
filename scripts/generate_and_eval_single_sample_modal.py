@@ -1,7 +1,7 @@
 '''
 Example Usage:
-python scripts/generate_and_eval_single_sample_modal.py dataset_src=huggingfac level=1 problem_id=1 eval_mode=modal gpu=L40S 
-    server_type=deepseek model_name=deepseek-coder max_tokens=4096 temperature=0.0
+uv run python scripts/generate_and_eval_single_sample_modal.py dataset_src=huggingface level=1 problem_id=1 eval_mode=modal gpu=L40S 
+    server_type=gemini model_name=gemini-2.5-flash max_tokens=4096 temperature=0.0
 '''
 
 import pydra
@@ -89,7 +89,7 @@ class EvalConfig(Config):
     def __repr__(self):
         return f"EvalConfig({self.to_dict()})"
 
-cuda_version = "12.8.0"  # should be no greater than host CUDA version
+cuda_version = "13.0.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -100,7 +100,7 @@ image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang", "cmake", "ninja-build", "zlib1g-dev")
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
-    .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     # Uninstall standard triton first (fast step, separate layer to avoid rebuilding triton on changes)
     .run_commands("pip uninstall -y triton || true")
     # Install TLX-enabled Triton (slow step, cached unless repo changes)

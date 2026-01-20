@@ -53,7 +53,7 @@ torch.set_printoptions(precision=4, threshold=10)
 app = modal.App("eval_from_generations_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
 
-cuda_version = "12.8.0"  # should be no greater than host CUDA version
+cuda_version = "13.0.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -66,7 +66,7 @@ image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang", "cmake", "ninja-build", "zlib1g-dev" )
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
-    .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     # Uninstall standard triton first (fast step, separate layer to avoid rebuilding triton on changes)
     .run_commands("pip uninstall -y triton || true")
     # Install TLX-enabled Triton (slow step, cached unless repo changes)

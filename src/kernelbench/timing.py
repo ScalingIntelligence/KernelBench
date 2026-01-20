@@ -2,8 +2,118 @@ import torch
 import json
 import numpy as np
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Union
 import os
+
+
+def measure_ref_program_time(
+    ref_arch_name: str,
+    ref_arch_src: str, # PyTorch program code string
+    num_warmup: int = 5,
+    num_trials: int = 100,
+    discard_first: int = 1,
+    timing_method: str = "cuda_event",
+    # Torch eager or torch.compile configuration
+    use_torch_compile: bool = False,
+    torch_compile_backend: str = "inductor",
+    torch_compile_options: str = "default",
+    device: torch.device = torch.device("cuda:0"),
+    verbose: bool = False,
+    precision: Union[str, torch.dtype] = "fp32", # fp16, fp32, bf16 or torch.dtype
+) -> dict:
+    """Measure the runtime of a KernelBench *reference* program.
+
+    This measures the execution time of the reference `Model` defined in
+    `ref_arch_src` (i.e., *not* `ModelNew`). It can optionally run the reference
+    model under `torch.compile`.
+
+    NOTE: This function is for PyTorch-only reference models, so no `backend` parameter is needed.
+    For pure PyTorch program, we assume it operates all on main stream (as torch operators execute on the default cuda stream).
+    Standard PyTorch ops do NOT spawn extra streams.
+    """
+    from kernelbench.eval import load_original_model_and_inputs, set_seed
+
+    context = {}
+    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
+        ref_arch_src, context
+    )
+
+    try:
+        with torch.no_grad():
+            if isinstance(device, str):
+                device = torch.device(device)
+            elif isinstance(device, int):
+                device = torch.device(f"cuda:{device}")
+            torch.cuda.set_device(device)
+
+            torch.cuda.synchronize(device=device)
+            set_seed(42)
+            inputs = get_inputs()
+            set_seed(42)
+            init_inputs = get_init_inputs()
+
+            from kernelbench.eval import get_torch_dtype_from_string
+            if isinstance(precision, str):
+                precision_dtype = get_torch_dtype_from_string(precision)
+            else:
+                precision_dtype = precision
+
+
+            # set model weights and inputs to specified precision
+            inputs = [
+                x.to(device=device, dtype=precision_dtype) if isinstance(x, torch.Tensor) else x
+                for x in inputs
+            ]
+            init_inputs = [
+                x.to(device=device, dtype=precision_dtype) if isinstance(x, torch.Tensor) else x
+                for x in init_inputs
+            ]
+
+            model = Model(*init_inputs)
+            model = model.to(device=device, dtype=precision_dtype)
+
+            # convert all precision so torch compile can target specific dtype
+            if use_torch_compile:
+                torch._dynamo.reset() # reset torch dynamo cache (clear memory and reset graph)
+                print(
+                    f"Using torch.compile to compile model {ref_arch_name} with {torch_compile_backend} backend and {torch_compile_options} mode"
+                )
+                # NOTE: torch compile uses lazy compilation (triggered by first forward pass)
+                # the warmup in the timing function handles that and should not affect timed trials
+                model = torch.compile(
+                    model,
+                    backend=torch_compile_backend,
+                    mode=torch_compile_options,
+                )
+            else:
+                print(f"Using PyTorch Eager Execution on {ref_arch_name}")
+
+            torch.cuda.synchronize(device=device)
+
+            timing_fn = get_timing_function(timing_method)
+            elapsed_times = timing_fn(
+                model,
+                inputs,
+                num_warmup=num_warmup,
+                num_trials=num_trials,
+                discard_first=discard_first,
+                verbose=verbose,
+                device=device,
+            )
+            runtime_stats = get_timing_stats(elapsed_times, device=device)
+
+            if verbose:
+                print(f"{ref_arch_name} {runtime_stats}")
+
+            return runtime_stats
+    except Exception as e:
+        print(f"[Eval] Error in Measuring Performance: {e}")
+        return None
+
+
+def measure_program_time(*args, **kwargs):
+    """Alias for backwards compatibility. See `measure_ref_program_time`."""
+    return measure_ref_program_time(*args, **kwargs)
 
 ################################################################################
 # timing.py
