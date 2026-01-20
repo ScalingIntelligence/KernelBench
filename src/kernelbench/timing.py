@@ -2,7 +2,7 @@ import torch
 import json
 import numpy as np
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Union
 import os
 
 
@@ -17,9 +17,9 @@ def measure_ref_program_time(
     use_torch_compile: bool = False,
     torch_compile_backend: str = "inductor",
     torch_compile_options: str = "default",
-    device: torch.device = "cuda:0",
+    device: torch.device = torch.device("cuda:0"),
     verbose: bool = False,
-    precision: str = "fp32",
+    precision: Union[str, torch.dtype] = "fp32", # fp16, fp32, bf16 or torch.dtype
 ) -> dict:
     """Measure the runtime of a KernelBench *reference* program.
 
@@ -27,8 +27,9 @@ def measure_ref_program_time(
     `ref_arch_src` (i.e., *not* `ModelNew`). It can optionally run the reference
     model under `torch.compile`.
 
-    NOTE: for pure PyTorch program, we assume it operates all on main stream (as torch operators execute on the default cuda stream)
-    Standard PyTorch ops do NOT spawn extra streams
+    NOTE: This function is for PyTorch-only reference models, so no `backend` parameter is needed.
+    For pure PyTorch program, we assume it operates all on main stream (as torch operators execute on the default cuda stream).
+    Standard PyTorch ops do NOT spawn extra streams.
     """
     from kernelbench.eval import load_original_model_and_inputs, set_seed
 
@@ -39,6 +40,12 @@ def measure_ref_program_time(
 
     try:
         with torch.no_grad():
+            if isinstance(device, str):
+                device = torch.device(device)
+            elif isinstance(device, int):
+                device = torch.device(f"cuda:{device}")
+            torch.cuda.set_device(device)
+
             torch.cuda.synchronize(device=device)
             set_seed(42)
             inputs = get_inputs()
@@ -46,19 +53,26 @@ def measure_ref_program_time(
             init_inputs = get_init_inputs()
 
             from kernelbench.eval import get_torch_dtype_from_string
-            precision_dtype = get_torch_dtype_from_string(precision)
+            if isinstance(precision, str):
+                precision_dtype = get_torch_dtype_from_string(precision)
+            else:
+                precision_dtype = precision
 
+
+            # set model weights and inputs to specified precision
             inputs = [
-                x.cuda(device=device).to(precision_dtype) if isinstance(x, torch.Tensor) else x
+                x.to(device=device, dtype=precision_dtype) if isinstance(x, torch.Tensor) else x
                 for x in inputs
             ]
             init_inputs = [
-                x.cuda(device=device).to(precision_dtype) if isinstance(x, torch.Tensor) else x
+                x.to(device=device, dtype=precision_dtype) if isinstance(x, torch.Tensor) else x
                 for x in init_inputs
             ]
 
             model = Model(*init_inputs)
+            model = model.to(device=device, dtype=precision_dtype)
 
+            # convert all precision so torch compile can target specific dtype
             if use_torch_compile:
                 torch._dynamo.reset() # reset torch dynamo cache (clear memory and reset graph)
                 print(
@@ -74,7 +88,6 @@ def measure_ref_program_time(
             else:
                 print(f"Using PyTorch Eager Execution on {ref_arch_name}")
 
-            model = model.cuda(device=device)
             torch.cuda.synchronize(device=device)
 
             timing_fn = get_timing_function(timing_method)
