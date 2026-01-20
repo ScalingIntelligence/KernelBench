@@ -14,8 +14,8 @@ class Model(nn.Module):
         self.dim = dim
 
     def forward(self, x):
-        exclusive_cumsum = torch.cat((torch.zeros_like(x.select(self.dim, 0).unsqueeze(self.dim)), x), dim=self.dim)[:-1]
-        return torch.cumsum(exclusive_cumsum, dim=self.dim)
+        cumsum = torch.cumsum(x.narrow(dim=self.dim, start=0, length=x.size(self.dim)-1), dim=self.dim)
+        return torch.cat((torch.zeros_like(x.select(self.dim, 0).unsqueeze(self.dim)), cumsum), dim=self.dim)
 
 batch_size = 32768
 input_shape = (32768,)

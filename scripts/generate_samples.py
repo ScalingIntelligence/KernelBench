@@ -5,20 +5,18 @@ from dataclasses import dataclass
 import pydra
 import torch
 
-from datasets import load_dataset
 from pydra import Config, REQUIRED
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import eval_kernel_against_ref
-from src.prompt_constructor import prompt_generate_custom_cuda_from_prompt_template
-from src.prompt_constructor_multilang import get_prompt_for_backend
-from src.utils import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import eval_kernel_against_ref
+from kernelbench.prompt_constructor_toml import get_prompt_for_backend, get_custom_prompt
+from kernelbench.utils import (
     create_inference_server_from_presets,
     extract_first_code,
     maybe_multithread,
-    read_file,
     set_gpu_arch,
 )
+from kernelbench.kernel_static_checker import validate_kernel_static
 
 """
 Batch Generate Samples for Particular Level
@@ -46,7 +44,7 @@ class GenerationConfig(Config):
         self.subset = (
             None,
             None,
-        )  # (problem_id, problem_name), these are the logical index
+        )  # (start_id, end_id), both inclusive - logical 1-indexed IDs
 
         self.run_name = REQUIRED  # name of the run
 
@@ -80,6 +78,12 @@ class GenerationConfig(Config):
         self.backend = "cuda"
         
         self.precision = "fp32"
+        self.prompt_option = "one_shot"  # zero_shot, one_shot, few_shot
+        self.include_hardware_info = False
+        self.hardware_gpu_name = None
+        self.custom_prompt_key = None
+
+        self.check_kernel = True  # [experimental] optional static checker catching potential hacking patterns
 
     def greedy(self):
         # For greedy decoding, epsecially baseline eval
@@ -102,40 +106,29 @@ def generate_sample_single(
     inference_server: callable,
     run_dir: str,
 ) -> bool:
-    # 1. Fetch Problem
-    if config.dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(
-            lambda x: x["problem_id"] == work.problem_id, desc=None
+    # 1. Fetch Problem - unified interface
+    problem = dataset.get_problem_by_id(work.problem_id)
+    ref_arch_src = problem.code
+    problem_name = problem.name
+
+    if config.custom_prompt_key:
+        custom_prompt = get_custom_prompt(
+            config.custom_prompt_key,
+            ref_arch_src=ref_arch_src,
+            backend=config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
         )
-
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-    elif config.dataset_src == "local":
-        problem_idx_in_dataset = (
-            work.problem_id - 1
-        )  # due to dataset list being 0-indexed locally
-        ref_arch_path = dataset[problem_idx_in_dataset]
-
-        problem_name = os.path.basename(ref_arch_path)
-        ref_arch_src = read_file(ref_arch_path)
-
-    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
-    problem_number = int(problem_name.split("_")[0])
-    assert (
-        problem_number == work.problem_id
-    ), f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
-
-    # Construct Prompt
-    if config.backend == "cuda":
-        custom_cuda_prompt = prompt_generate_custom_cuda_from_prompt_template(
-            ref_arch_src
-        )
-    elif config.backend in ["triton", "hip", "cute", "tilelang"]:
-        custom_cuda_prompt = get_prompt_for_backend(ref_arch_src, config.backend)
     else:
-        raise ValueError(
-            f"Unsupported backend: {config.backend}. Must be 'cuda', `hip`, 'triton', 'cute', or 'tilelang'."
+        custom_prompt = get_prompt_for_backend(
+            ref_arch_src,
+            config.backend,
+            option=config.prompt_option,
+            precision=config.precision,
+            include_hardware=config.include_hardware_info,
+            gpu_name=config.hardware_gpu_name,
         )
     if config.log_prompt:
         prompt_path = os.path.join(
@@ -143,13 +136,26 @@ def generate_sample_single(
             f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_prompt.txt",
         )
         with open(prompt_path, "w") as f:
-            f.write(custom_cuda_prompt)
+            f.write(custom_prompt)
 
     # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
+    custom_kernel = inference_server(custom_prompt)
+    custom_kernel = extract_first_code(custom_kernel, ["python", "cpp"])
     # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
+    assert custom_kernel is not None, "Custom CUDA code generation failed"
+
+    # Optional: we provide a static code checker for kernel code using regex matching
+    # NOTE: by no means, is this checker complete, but it might could help catch some potential hacks and issues
+    if config.check_kernel:
+        static_check_status, error, warnings = validate_kernel_static(custom_kernel,
+            backend=config.backend,
+            precision=config.precision, 
+            # uses the default set of forbidden and warning patterns, 
+            # you could adapt the patterns to your own setting (degree of banning cuda stream, allowing some torch ops)
+        )
+        assert static_check_status, f"Static check failed for sample {work.sample_id} for problem {problem_number}: {problem_name}. Error: {error}. Warnings: {warnings}"
+        if warnings:
+            print(f"Static check warnings for sample {work.sample_id} for problem {problem_number}: {problem_name}. Warnings: {warnings}")
 
     if config.verbose:
         print(
@@ -162,7 +168,7 @@ def generate_sample_single(
         f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py",
     )
     with open(kernel_path, "w") as f:
-        f.write(custom_cuda)
+        f.write(custom_kernel)
 
     return True
 
@@ -199,7 +205,7 @@ def main(config: GenerationConfig):
     Batch Generate Samples for Particular Level
     Store generated kernels in the specified run directory
     """
-    from src.utils import SERVER_PRESETS
+    from kernelbench.utils import SERVER_PRESETS
     
     if config.server_type and config.server_type in SERVER_PRESETS:
         preset = SERVER_PRESETS[config.server_type]
@@ -214,27 +220,65 @@ def main(config: GenerationConfig):
     if isinstance(config.is_reasoning_model, str):
         config.is_reasoning_model = config.is_reasoning_model.lower() in ['true', '1', 'yes']
     
+    custom_prompt_key = getattr(config, "custom_prompt_key", None)
+    if isinstance(custom_prompt_key, str):
+        trimmed = custom_prompt_key.strip()
+        if trimmed.lower() in {"", "none"}:
+            custom_prompt_key = None
+        else:
+            custom_prompt_key = trimmed
+    config.custom_prompt_key = custom_prompt_key
+
+    include_hardware = config.include_hardware_info
+    if isinstance(include_hardware, str):
+        include_hardware = include_hardware.lower() in ["true", "1", "yes"]
+    config.include_hardware_info = include_hardware
+
+    supported_backends = {"cuda", "triton", "cute", "tilelang", "thunderkittens", "hip"}
+    backend = config.backend.lower()
+    if backend not in supported_backends:
+        raise ValueError(
+            f"Unsupported backend: {config.backend}. Must be one of {sorted(supported_backends)}."
+        )
+    config.backend = backend
+    if backend == "tilelang":
+        config.precision = "fp16"
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+
+    config.prompt_option = str(config.prompt_option).lower()
+    valid_prompt_options = {"zero_shot", "one_shot", "few_shot"}
+    if not config.custom_prompt_key:
+        if config.prompt_option not in valid_prompt_options:
+            raise ValueError(
+                f"Invalid prompt_option '{config.prompt_option}'. Must be one of {sorted(valid_prompt_options)}."
+            )
+        if include_hardware and not config.hardware_gpu_name:
+            raise ValueError(
+                "include_hardware_info is True but hardware_gpu_name is not provided."
+            )
+
     print(f"Starting Batch Generation with config: {config}")
 
-    # Dataset Configurations
-    if config.dataset_src == "huggingface":
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-    elif config.dataset_src == "local":
-        curr_level_dataset = construct_kernelbench_dataset(config.level)
+    # Dataset Configurations - Unified loading
+    dataset = construct_kernelbench_dataset(
+        level=config.level,
+        source=config.dataset_src,
+        dataset_name=config.dataset_name,
+    )
 
-    num_problems_in_level = len(curr_level_dataset)
+    all_problem_ids = dataset.get_problem_ids()
 
     if config.subset == (None, None):
-        problem_id_range = range(1, num_problems_in_level)
+        problem_ids_to_run = all_problem_ids
     else:
-        assert (
-            config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level
-        ), f"Subset range {config.subset} out of range for Level {config.level}"
-        problem_id_range = range(config.subset[0], config.subset[1])
+        start, end = config.subset
+        problem_ids_to_run = [pid for pid in all_problem_ids if start <= pid <= end]
+        if not problem_ids_to_run:
+            print(f"Warning: No problems found in subset range {config.subset}")
 
     print(
-        f"Generating {config.num_samples} sample(s) each for level {config.level} problems: {problem_id_range}"
+        f"Generating {config.num_samples} sample(s) each for level {config.level} problems: {problem_ids_to_run}"
     )
 
     # set up run directory
@@ -253,9 +297,7 @@ def main(config: GenerationConfig):
     problems_to_run = []
     total_problems = 0
     already_completed = 0
-    for problem_id in range(
-        problem_id_range.start, problem_id_range.stop + 1
-    ):  # end index is inclusive
+    for problem_id in problem_ids_to_run:
         for sample_id in range(config.num_samples):
             total_problems += 1
             if not check_kernel_exists(run_dir, config.level, problem_id, sample_id):
@@ -289,7 +331,7 @@ def main(config: GenerationConfig):
         time_interval=config.api_query_interval,
         # extra args
         config=config,
-        dataset=curr_level_dataset,
+        dataset=dataset,
         inference_server=inference_server,
         run_dir=run_dir,
     )

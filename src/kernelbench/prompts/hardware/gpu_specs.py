@@ -44,7 +44,7 @@ GPU_SPEC_INFO = {
     "A100": {
         "GPU Architecture": "Ampere",
         "GPU Memory": "40GB",
-        "Memory Bandwidth": "1935 GB/s",
+        "Memory Bandwidth": "1555 GB/s",
         "FP64 TFLOPS": "9.7",
         "FP64 Tensor Core TFLOPS": "19.5",
         "FP32 TFLOPS": "19.5",

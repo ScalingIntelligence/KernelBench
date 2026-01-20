@@ -5,8 +5,8 @@ import time
 from tqdm import tqdm
 
 import shutil
-from src.eval import build_compile_cache
-from src import utils as utils
+from kernelbench.eval import build_compile_cache
+from kernelbench import utils as utils
 import torch
 import os
 import multiprocessing as mp

@@ -12,14 +12,13 @@ import numpy as np
 import pydra
 import torch
 
-from datasets import load_dataset
 from pydra import Config, REQUIRED
 
 # Import only what we need
-from src import compile, eval, utils
+from kernelbench import compile, eval, utils
 
-from src.dataset import construct_kernelbench_dataset
-from src.eval import (
+from kernelbench.dataset import construct_kernelbench_dataset
+from kernelbench.eval import (
     build_compile_cache,
     get_error_name,
     check_metadata_serializable_all_types,
@@ -27,7 +26,7 @@ from src.eval import (
     KernelExecResult,
 )
 
-from src.utils import read_file, set_gpu_arch
+from kernelbench.utils import read_file, set_gpu_arch
 from tqdm import tqdm
 
 # Modal support
@@ -47,7 +46,6 @@ You can increase the number of trials for correctness and performance
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-KERNEL_BENCH_PATH = os.path.join(REPO_TOP_DIR, "KernelBench")
 
 torch.set_printoptions(precision=4, threshold=10)
 
@@ -55,10 +53,14 @@ torch.set_printoptions(precision=4, threshold=10)
 app = modal.App("eval_from_generations_modal")
 gpu_arch_mapping = {"L40S": ["Ada"], "H100": ["Hopper"], "A100": ["Ampere"], "L4": ["Ada"], "T4": ["Turing"], "A10G": ["Ampere"]}
 
-cuda_version = "12.8.0"  # should be no greater than host CUDA version
+cuda_version = "13.0.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
+
+SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
+
+KERNELBENCH_DIR = os.path.join(REPO_TOP_DIR, "KernelBench")
 
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
@@ -67,12 +69,15 @@ image = (
                 "g++-10",
                 "clang"
                 )
-    .pip_install_from_requirements(os.path.join(REPO_TOP_DIR, "requirements.txt"))
-    .add_local_dir(
-        KERNEL_BENCH_PATH,
-        remote_path="/root/KernelBench"
-    )
-    .add_local_python_source("src")
+
+    .uv_sync(uv_project_dir=REPO_TOP_DIR)
+    .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root/src:/root"
+    })
+    .add_local_dir(SRC_DIR, remote_path="/root/src")
+    .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last
 )
 
 
@@ -91,6 +96,9 @@ class EvalConfig(Config):
 
         # subset of problems to evaluate
         self.subset = (None, None)  # (start_id, end_id), these are the logical index
+
+        # specific problem IDs to evaluate (overrides subset if provided)
+        self.problem_ids = None  # e.g., [71, 86, 95] for specific problems
 
         # Evaluation Mode: local (requires GPU), modal (cloud GPU)
         self.eval_mode = "local"
@@ -113,6 +121,7 @@ class EvalConfig(Config):
         self.num_perf_trials = 100
         self.timeout = 180  # in seconds
         self.measure_performance = True
+        self.timing_method = "cuda_event"
 
         # Eval Flow setting
         # To speedup evaluation, you can start building the kernel on CPU on disk as cache
@@ -173,6 +182,7 @@ class ModalEvaluator:
         num_correct_trials: int = 5,
         num_perf_trials: int = 100,
         measure_performance: bool = True,
+        timing_method: str = "cuda_event",
         verbose: bool = False,
         backend: str = "cuda",
         precision: str = "fp32",
@@ -181,8 +191,8 @@ class ModalEvaluator:
         Evaluate a single sample on Modal GPU with automatic retries for GPU attachment failures
         and proper GPU corruption handling via stop_fetching_inputs()
         """
-        from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
-        from src.utils import set_gpu_arch
+        from kernelbench.eval import eval_kernel_against_ref, get_torch_dtype_from_string
+        from kernelbench.utils import set_gpu_arch
         import torch
         import time
         import modal.experimental
@@ -212,6 +222,7 @@ class ModalEvaluator:
                 original_model_src=ref_arch_src,
                 custom_model_src=kernel_src,
                 measure_performance=measure_performance,
+                timing_method=timing_method,
                 verbose=verbose,
                 num_correct_trials=num_correct_trials,
                 num_perf_trials=num_perf_trials,
@@ -243,36 +254,17 @@ class ModalEvaluator:
 
 
 def fetch_ref_arch_from_problem_id(
-    dataset, problem_id: int, dataset_src: str
+    dataset, problem_id: int, dataset_src: str = None
 ) -> str | None:
     """
-    Fetch reference architecture from problem directory
-    Either from Hugging Face or Local Dataset
+    Fetch reference architecture from problem directory.
+    Uses the unified dataset interface.
+    
+    Note: dataset_src parameter is kept for backward compatibility but ignored
+    since the dataset object already handles both sources.
     """
-    if dataset_src == "huggingface":
-        curr_problem_row = dataset.filter(
-            lambda x: x["problem_id"] == problem_id, num_proc=None, desc=None
-        )
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-    elif dataset_src == "local":
-        problem_idx_in_dataset = (
-            problem_id - 1
-        )  # due to dataset list being 0-indexed locally
-        ref_arch_path = dataset[problem_idx_in_dataset]
-
-        problem_name = os.path.basename(ref_arch_path)
-        ref_arch_src = read_file(ref_arch_path)
-
-    # verify
-    # Extract problem number from problem name (e.g. "1" from "1_Square_matrix_multiplication_.py")
-    problem_number = int(problem_name.split("_")[0])
-    assert (
-        problem_number == problem_id
-    ), f"Problem number in filename ({problem_number}) does not match config problem_id ({problem_id})"
-
-    return ref_arch_src
+    problem = dataset.get_problem_by_id(problem_id)
+    return problem.code
 
 
 def fetch_kernel_from_disk(
@@ -324,6 +316,7 @@ def evaluate_single_sample(
             original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=configs.measure_performance,
+            timing_method=configs.timing_method,
             verbose=configs.verbose,
             num_correct_trials=configs.num_correct_trials,
             num_perf_trials=configs.num_perf_trials,
@@ -334,6 +327,10 @@ def evaluate_single_sample(
         )
         return eval_result
     except Exception as e:
+        # INNER CATCH: Handles errors during kernel execution
+        # - CUDA errors (illegal memory access, kernel launch failures)
+        # - Runtime errors from the custom kernel
+        # - Any exception from eval_kernel_against_ref()
         print(
             f"[WARNING] Last level catch on {sample_id}: Some issue evaluating for kernel: {e} "
         )
@@ -384,6 +381,7 @@ def evaluate_single_sample_modal_direct(
             num_correct_trials=configs.num_correct_trials,
             num_perf_trials=configs.num_perf_trials,
             measure_performance=configs.measure_performance,
+            timing_method=configs.timing_method,
             verbose=configs.verbose,
         )
         return eval_result
@@ -502,6 +500,7 @@ def batch_eval_modal(
                             num_correct_trials=config.num_correct_trials,
                             num_perf_trials=config.num_perf_trials,
                             measure_performance=config.measure_performance,
+                            timing_method=config.timing_method,
                             verbose=config.verbose,
                             backend=config.backend,
                             precision=config.precision,
@@ -512,22 +511,43 @@ def batch_eval_modal(
                 results = []
                 for i, future in enumerate(futures):
                     problem_id, sample_id = curr_work_batch[i]
-                    
+
                     if future is None:
-                        results.append((problem_id, sample_id, None))
+                        # Create a failure result for None futures
+                        fail_result = KernelExecResult(
+                            compiled=False,
+                            correctness=False,
+                            metadata={"error": "Future was None - evaluation did not complete"},
+                            runtime=-1.0,
+                            runtime_stats={},
+                        )
+                        results.append((problem_id, sample_id, fail_result))
                     else:
                         try:
                             result = future.get()
                             results.append((problem_id, sample_id, result))
                         except Exception as e:
+                            # OUTER CATCH: Modal infrastructure or remote execution failures
+                            # - GPU attachment failures after retries
+                            # - Network/container issues
+                            # - Import errors in the kernel (can't even start evaluation)
+                            # - Any exception from future.get()
                             error_msg = str(e)
                             # Check if it's a GPU attachment failure that exhausted retries
                             if "GPU not attached" in error_msg or "CUDA is not available" in error_msg:
                                 print(f"[ERROR] Modal GPU attachment FAILED after retries for Problem ID: {problem_id}, Sample ID: {sample_id}")
-                                print(f"        This is a Modal infrastructure issue. Sample will be skipped.")
+                                print(f"        This is a Modal infrastructure issue. Sample will be recorded as failed.")
                             else:
                                 print(f"[ERROR] Modal evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {error_msg}")
-                            results.append((problem_id, sample_id, None))
+                            # Create a failure result instead of None
+                            fail_result = KernelExecResult(
+                                compiled=False,
+                                correctness=False,
+                                metadata={"error": error_msg},
+                                runtime=-1.0,
+                                runtime_stats={},
+                            )
+                            results.append((problem_id, sample_id, fail_result))
                 
                 end_time = time.time()
                 
@@ -536,12 +556,10 @@ def batch_eval_modal(
                     print("-" * 128)
                     print(f"[Eval Result] Problem ID: {problem_id}, Sample ID: {sample_id}")
                     print(result)
-                    
-                    if result is not None:
-                        print(f"Adding Eval Result to file for problem {problem_id} sample {sample_id}")
-                        add_to_eval_results_file(
-                            problem_id, sample_id, result, eval_file_path
-                        )
+                    print(f"Adding Eval Result to file for problem {problem_id} sample {sample_id}")
+                    add_to_eval_results_file(
+                        problem_id, sample_id, result, eval_file_path
+                    )
                 
                 print("-" * 128)
                 print(f"[Modal Batch] Evaluation took {end_time - start_time:.2f} seconds")
@@ -619,10 +637,19 @@ def batch_eval(
                         results.append((problem_id, sample_id, result))
 
                     except mp.TimeoutError:
+                        # OUTER CATCH: Evaluation exceeded timeout (config.timeout seconds)
+                        # - Kernel hangs, infinite loops, very slow compilation
                         print(
                             f"[WARNING] Evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}"
                         )
-                        results.append((problem_id, sample_id, None))
+                        fail_result = KernelExecResult(
+                            compiled=False,
+                            correctness=False,
+                            metadata={"error": "Evaluation timed out"},
+                            runtime=-1.0,
+                            runtime_stats={},
+                        )
+                        results.append((problem_id, sample_id, fail_result))
 
                         remove_cache_dir(
                             config.kernel_eval_build_dir,
@@ -631,10 +658,21 @@ def batch_eval(
                             sample_id,
                         )
                     except Exception as e:
+                        # OUTER CATCH: Multiprocessing-level failures
+                        # - Process crashes, pickling errors
+                        # - Errors that escape the inner handler
+                        error_msg = str(e)
                         print(
-                            f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {str(e)}"
+                            f"[ERROR] Evaluation FAILED for Problem ID: {problem_id}, Sample ID: {sample_id}: {error_msg}"
                         )
-                        results.append((problem_id, sample_id, None))
+                        fail_result = KernelExecResult(
+                            compiled=False,
+                            correctness=False,
+                            metadata={"error": error_msg},
+                            runtime=-1.0,
+                            runtime_stats={},
+                        )
+                        results.append((problem_id, sample_id, fail_result))
                         remove_cache_dir(
                             config.kernel_eval_build_dir,
                             config.run_name,
@@ -653,14 +691,12 @@ def batch_eval(
                     print(result)
 
                     # add all the batch results here to avoid file race condition
-                    # add to eval result if valid result
-                    if result is not None:
-                        print(
-                            f"Adding Eval Result to file for problem {problem_id} sample {sample_id}"
-                        )
-                        add_to_eval_results_file(
-                            problem_id, sample_id, result, eval_file_path
-                        )
+                    print(
+                        f"Adding Eval Result to file for problem {problem_id} sample {sample_id}"
+                    )
+                    add_to_eval_results_file(
+                        problem_id, sample_id, result, eval_file_path
+                    )
 
                 print("-" * 128)
                 print(
@@ -710,12 +746,13 @@ def add_to_eval_results_file(
         }
     )
 
-    # Write updated results back to file
+    # Write updated results back to file (sorted by numeric key)
     if not os.path.exists(eval_file_path):
         os.makedirs(os.path.dirname(eval_file_path), exist_ok=True)
 
+    sorted_results = dict(sorted(eval_results.items(), key=lambda x: int(x[0])))
     with open(eval_file_path, "w") as f:
-        json.dump(eval_results, f, indent=4)
+        json.dump(sorted_results, f, indent=4)
 
 
 def single_eval_example(
@@ -740,6 +777,15 @@ def main(config: EvalConfig):
     """
     print(f"Starting Batch Eval with config: {config}")
 
+    # Handle backend-specific settings
+    backend = config.backend.lower()
+    
+    # thunderkittens requires bf16 and H100 GPU
+    if backend == "thunderkittens":
+        config.precision = "bf16"
+        config.gpu = "H100"
+        print(f"[ThunderKittens] Auto-configured: precision=bf16, gpu=H100")
+
     # Check if CUDA is available (only for local mode)
     if config.eval_mode == "local":
         if not torch.cuda.is_available():
@@ -756,51 +802,48 @@ def main(config: EvalConfig):
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method("spawn")
 
-    # Dataset Configurations
-    if config.dataset_src == "huggingface":
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-    elif config.dataset_src == "local":
-        curr_level_dataset = construct_kernelbench_dataset(config.level)
+    # Dataset Configurations - Unified loading
+    dataset = construct_kernelbench_dataset(
+        level=config.level,
+        source=config.dataset_src,
+        dataset_name=config.dataset_name,
+    )
 
-    num_problems_in_level = len(curr_level_dataset)
+    all_problem_ids = dataset.get_problem_ids()
 
     if config.subset == (None, None):
-        problem_id_range = range(1, num_problems_in_level)
+        problem_ids_to_run = all_problem_ids
     else:
-        assert (
-            config.subset[0] >= 1 and config.subset[1] <= num_problems_in_level
-        ), f"Subset range {config.subset} out of range for Level {config.level}"
-        problem_id_range = range(config.subset[0], config.subset[1])
+        start, end = config.subset
+        problem_ids_to_run = [pid for pid in all_problem_ids if start <= pid <= end]
+        if not problem_ids_to_run:
+            print(f"Warning: No problems found in subset range {config.subset}")
 
     print(
-        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_id_range}"
+        f"Evaluating {config.num_samples_per_problem} sample(s) each for level {config.level} problems: {problem_ids_to_run}"
     )
 
     run_dir = os.path.join(config.runs_dir, config.run_name)
     eval_file_path = os.path.join(run_dir, f"eval_results.json")
 
     # To Debug
-    # single_eval_example(config, curr_level_dataset, run_dir, eval_file_path)
+    # single_eval_example(config, dataset, run_dir, eval_file_path)
 
     total_work = []
-    for problem_id in range(
-        problem_id_range.start, problem_id_range.stop + 1
-    ):  # end index is inclusive
+    for problem_id in problem_ids_to_run:
         for sample_id in range(config.num_samples_per_problem):
             if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
                 total_work.append((problem_id, sample_id))
 
     print(
         f"Start evaluation on {len(total_work)} unevaluated samples"
-        f" in range: {problem_id_range}"
+        f" in range: {problem_ids_to_run}"
     )
     # Build Cache on CPU as that is faster (only for local mode)
     if config.build_cache and config.eval_mode == "local":
         compile.batch_compile(total_work, config.to_dict())
 
-    # Batch Eval on multiple GPUs in parallel
-    batch_eval(total_work, config, curr_level_dataset, run_dir, eval_file_path)
+    batch_eval(total_work, config, dataset, run_dir, eval_file_path)
 
     # Calculate pass@k metrics if multiple samples per problem were evaluated
     if config.num_samples_per_problem > 1:

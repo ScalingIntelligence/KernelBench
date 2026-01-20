@@ -3,13 +3,13 @@ import torch
 import pydra
 from pydra import REQUIRED, Config
 import os
-from datasets import load_dataset
 import modal
 
-from src import eval as kernel_eval
-from src import utils as kernel_utils
-from scripts.generate_baseline_time import measure_program_time
-from src.utils import read_file
+from kernelbench import eval as kernel_eval
+from kernelbench import utils as kernel_utils
+from kernelbench.timing import measure_ref_program_time
+from kernelbench.utils import read_file
+from kernelbench.kernel_static_checker import validate_kernel_static
 
 # Modal setup
 app = modal.App("run_and_check")
@@ -25,20 +25,28 @@ gpu_arch_mapping = {
 }
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
-cuda_version = "12.8.0"
+cuda_version = "13.0.0"
 flavor = "devel"
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
+SRC_DIR = os.path.join(REPO_TOP_PATH, "src")
+SCRIPTS_DIR = os.path.join(REPO_TOP_PATH, "scripts")
+KERNELBENCH_DIR = os.path.join(REPO_TOP_PATH, "KernelBench")
+
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
-    .pip_install_from_requirements(os.path.join(REPO_TOP_PATH, "requirements.txt"))
-    .add_local_dir(KERNEL_BENCH_PATH, remote_path="/root/KernelBench")
-    .add_local_python_source("src")
-    .add_local_python_source("scripts")
+    .uv_sync(uv_project_dir=REPO_TOP_PATH, extras=["gpu"])
+    .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .env({
+        "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
+        "PYTHONPATH": "/root:/root/src:/root/scripts"
+    })
+    .add_local_dir(SRC_DIR, remote_path="/root/src")
+    .add_local_dir(SCRIPTS_DIR, remote_path="/root/scripts")
+    .add_local_dir(KERNELBENCH_DIR, remote_path="/root/KernelBench")  # must be last
 )
 
 """
@@ -47,7 +55,7 @@ Run a pair of KernelBench format (problem, solution) to check if solution is cor
 You will need two files
 1. Reference: PyTorch reference (module Model) implementation with init and input shapes
 2. Solution: PyTorch solution (module ModelNew) with inline CUDA Code
-Please see examples in src/prompts
+Please see examples in src/kernelbench/prompts
 
 The Reference could be either
 1. a local file: specify the path to the file
@@ -56,13 +64,15 @@ The Reference could be either
 ====================================================
 Usage:
 1. PyTorch reference is a local file (local eval)
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/model_ex_add.py kernel_src_path=src/prompts/model_new_ex_add.py eval_mode=local
+python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=local
+python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/few_shot/model_ex_tiled_matmul.py kernel_src_path=src/kernelbench/prompts/few_shot/model_new_ex_tiled_matmul.py eval_mode=local
+
 
 2. PyTorch reference is a kernelbench problem (local eval)
 python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=local
 
 3. PyTorch reference is a local file (modal eval on cloud GPU)
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/prompts/model_ex_add.py kernel_src_path=src/prompts/model_new_ex_add.py eval_mode=modal gpu=H100
+python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=modal gpu=H100
 
 4. PyTorch reference is a kernelbench problem (modal eval on cloud GPU)
 python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=modal gpu=L40S
@@ -81,6 +91,7 @@ class ScriptConfig(Config):
         # ref_origin is local, specify local file path
         self.ref_arch_src_path = ""
         # ref_origin is kernelbench, specify level and problem id
+        self.dataset_src = "huggingface" # either huggingface or local
         self.dataset_name = "ScalingIntelligence/KernelBench"
         self.level = ""
         self.problem_id = ""
@@ -101,6 +112,7 @@ class ScriptConfig(Config):
         # verbose logging
         self.verbose = False
         self.measure_performance = True
+        self.timing_method = "cuda_event"  # see timing.py
         self.build_dir_prefix = "" # if you want to specify a custom build directory
         self.clear_cache = False # TODO
 
@@ -108,6 +120,8 @@ class ScriptConfig(Config):
         self.gpu_arch = ["Ada"]
         self.precision = "fp32"
         self.backend = "cuda"
+
+        self.check_kernel = True  # [experimental] optional static checker catching potential hacking patterns
 
     def __repr__(self):
         return f"ScriptConfig({self.to_dict()})"
@@ -128,18 +142,23 @@ def evaluate_single_sample_src(ref_arch_src: str, kernel_src: str, configs: dict
     num_perf_trials = configs["num_perf_trials"]    
     verbose = configs["verbose"]
     measure_performance = configs["measure_performance"]
+    timing_method = configs["timing_method"]
+    backend = configs["backend"]
+    precision = kernel_eval.get_torch_dtype_from_string(configs["precision"])
+    
     try:
         eval_result = kernel_eval.eval_kernel_against_ref(
         original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=measure_performance,
+            timing_method=timing_method,
             verbose=verbose,
             num_correct_trials=num_correct_trials,
             num_perf_trials=num_perf_trials,
             build_dir=build_dir,
             device=device,
-            backend=configs["backend"],
-            precision=kernel_eval.get_torch_dtype_from_string(configs["precision"])
+            backend=backend,
+            precision=precision
         )
         return eval_result
     except Exception as e:
@@ -170,8 +189,8 @@ class EvalFunc:
     @modal.method()
     def evaluate_single_sample_src_modal(self, ref_arch_src: str, kernel_src: str, configs: dict, gpu_arch: list):
         """Evaluate a single sample source code against a reference source code on Modal"""
-        from src.utils import set_gpu_arch
-        from src.eval import eval_kernel_against_ref, get_torch_dtype_from_string
+        from kernelbench.utils import set_gpu_arch
+        from kernelbench.eval import eval_kernel_against_ref, get_torch_dtype_from_string
 
         set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")
@@ -180,17 +199,21 @@ class EvalFunc:
         num_perf_trials = configs["num_perf_trials"]
         verbose = configs["verbose"]
         measure_performance = configs["measure_performance"]
+        timing_method = configs["timing_method"]
+        backend = configs["backend"]
+        precision = kernel_eval.get_torch_dtype_from_string(configs["precision"])
 
         eval_result = eval_kernel_against_ref(
             original_model_src=ref_arch_src,
             custom_model_src=kernel_src,
             measure_performance=measure_performance,
+            timing_method=timing_method,
             verbose=verbose,
             num_correct_trials=num_correct_trials,
             num_perf_trials=num_perf_trials,
             device=device,
-            backend=configs["backend"],
-            precision=get_torch_dtype_from_string(configs["precision"])
+            backend=backend,
+            precision=precision
         )
         return eval_result
 
@@ -202,23 +225,26 @@ class EvalFunc:
         use_torch_compile: bool,
         torch_compile_backend: str,
         torch_compile_options: str,
-        gpu_arch: list
+        gpu_arch: list,
+        precision: str,
     ):
         """Measure the execution time of a reference program on Modal"""
-        from scripts.generate_baseline_time import measure_program_time
-        from src.utils import set_gpu_arch
+        from kernelbench.timing import measure_ref_program_time
+        from kernelbench.utils import set_gpu_arch
 
         set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")
 
-        return measure_program_time(
+        return measure_ref_program_time(
             ref_arch_name="Reference Program",
             ref_arch_src=ref_arch_src,
             num_trials=num_trials,
             use_torch_compile=use_torch_compile,
             torch_compile_backend=torch_compile_backend,
             torch_compile_options=torch_compile_options,
-            device=device
+            verbose=False,
+            device=device,
+            precision=precision,
         )
 
 
@@ -235,29 +261,37 @@ def main(config: ScriptConfig):
     if config.ref_origin == "local":
         assert config.ref_arch_src_path != "", "ref_arch_src_path is required"
         ref_arch_src = read_file(config.ref_arch_src_path)
+        print(f"Loaded reference from local file: {config.ref_arch_src_path}")
     elif config.ref_origin == "kernelbench":
-        assert config.dataset_name != "", "dataset_name is required"
+        from kernelbench.dataset import construct_kernelbench_dataset
+        
         assert config.level != "", "level is required"
         assert config.problem_id != "", "problem_id is required"
-
-        # for now use the HuggingFace dataset
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-
-        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-        problem_number = int(problem_name.split("_")[0])
-        assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
-
-        print(f"Fetched problem {config.problem_id} from KernelBench level {config.level}: {problem_name}")
-
-
-    else:
-        raise ValueError("Invalid ref_origin")
+        
+        # Unified interface - same code for huggingface and local!
+        dataset = construct_kernelbench_dataset(
+            level=int(config.level),
+            source=config.dataset_src,
+            dataset_name=config.dataset_name,
+        )
+        problem = dataset.get_problem_by_id(int(config.problem_id))
+        ref_arch_src = problem.code
+        
+        print(f"Fetched problem {problem.problem_id} from KernelBench level {problem.level}: {problem.name}")
     
     kernel_src = read_file(config.kernel_src_path)
+
+    # Optional: static code checker for kernel code using regex matching
+    # NOTE: by no means is this checker complete, but it could help catch some potential hacks
+    if config.check_kernel:
+        static_check_status, errors, warnings = validate_kernel_static(
+            kernel_src,
+            backend=config.backend,
+            precision=config.precision,
+        )
+        assert static_check_status, f"Static check failed. Errors: {errors}. Warnings: {warnings}"
+        if warnings:
+            print(f"[WARN] Static check warnings: {warnings}")
 
     # Start Evaluation
     assert config.eval_mode in ["local", "modal"], "eval_mode must be either 'local' or 'modal'"
@@ -280,21 +314,27 @@ def main(config: ScriptConfig):
         # Measure baseline time
         print("[INFO] Measuring reference program time")
         # Default using PyTorch Eager here
-        ref_time_eager_result = measure_program_time(ref_arch_name="Reference Program",
+        ref_time_eager_result = measure_ref_program_time(ref_arch_name="Reference Program",
                                                     ref_arch_src=ref_arch_src,
                                                     num_trials=config.num_perf_trials,
                                                     use_torch_compile=False,
-                                                    device=device)
+                                                    timing_method=config.timing_method,
+                                                    device=device,
+                                                    verbose=False,
+                                                    precision=config.precision,
+                                                    )
         ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
         # Measure Torch Compile time
-        ref_time_compile_result = measure_program_time(ref_arch_name="Reference Program",
+        ref_time_compile_result = measure_ref_program_time(ref_arch_name="Reference Program",
                                                     ref_arch_src=ref_arch_src,
                                                     num_trials=config.num_perf_trials,
                                                     use_torch_compile=True,
-                                                    torch_compile_backend="inductor",
-                                                    torch_compile_options="default",
-                                                    device=device)
+                                                    timing_method=config.timing_method,
+                                                    device=device,
+                                                    verbose=False,
+                                                    precision=config.precision,
+                                                    )
         ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 
     elif config.eval_mode == "modal":
@@ -325,7 +365,8 @@ def main(config: ScriptConfig):
                 use_torch_compile=False,
                 torch_compile_backend=None,
                 torch_compile_options=None,
-                gpu_arch=gpu_arch
+                gpu_arch=gpu_arch,
+                precision=config.precision,
             )
             ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
@@ -339,7 +380,8 @@ def main(config: ScriptConfig):
                 use_torch_compile=True,
                 torch_compile_backend="inductor",
                 torch_compile_options="default",
-                gpu_arch=gpu_arch
+                gpu_arch=gpu_arch,
+                precision=config.precision,
             )
             ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 
