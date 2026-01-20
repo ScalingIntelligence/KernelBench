@@ -249,7 +249,7 @@ def profile_kernelbench_model_with_nsight(
     tempfile = None
     
     # Different backends require different loading mechanisms
-    if backend.lower() in ["triton", "tilelang", "cute"]:
+    if backend.lower() in ["triton", "tlx", "tilelang", "cute"]:
         # These backends need a temp file for proper module loading
         ModelNew, tempfile = load_custom_model_with_tempfile(
             custom_model_src, entry_point="ModelNew"

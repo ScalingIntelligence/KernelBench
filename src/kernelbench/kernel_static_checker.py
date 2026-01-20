@@ -208,6 +208,28 @@ def check_triton_impl(code: str) -> Tuple[bool, str]:
     return (False, "")
 
 
+# <========= TLX (Triton Language Extensions) CHECKS =========>
+# Rationale: TLX extends Triton with async tasks and barriers for specialization.
+# Valid TLX code MUST use "tlx.async" primitives.
+TLX_ASYNC_PATTERN = r"tlx\.async"
+TLX_FORBIDDEN_PATTERN = r"@triton\.autotune"
+
+def check_tlx_impl(code: str) -> Tuple[bool, str]:
+    """
+    Check for valid TLX (Triton Language Extensions) kernel implementation.
+    
+    Requirements:
+    - MUST contain "tlx.async" primitives (e.g., tlx.async_tasks, tlx.async_load, tlx.async_dot).
+    - MUST NOT contain "@triton.autotune"
+    """
+    code = _strip_comments(code)
+    if not re.search(TLX_ASYNC_PATTERN, code):
+        return (True, "Missing 'tlx.async' - TLX kernels must use tlx.async primitives")
+    if re.search(TLX_FORBIDDEN_PATTERN, code):
+        return (True, "TLX kernels cannot use @triton.autotune")
+    return (False, "")
+
+
 # <========= THUNDERKITTENS CHECKS =========>
 # Rationale: ThunderKittens uses warp/warpgroup primitives and tile abstractions.
 # Valid TK code must have namespace patterns and tile declarations.
@@ -556,6 +578,7 @@ CHECK_FUNCTIONS: Dict[str, Union[Callable[[str], Tuple[bool, str]], Callable[[st
     # should be strict
     "cuda_impl": check_cuda_impl,
     "triton_impl": check_triton_impl,
+    "tlx_impl": check_tlx_impl,
     "tk_impl": check_tk_impl,
     "cute_impl": check_cute_impl,
     "tilelang_impl": check_tilelang_impl,
@@ -579,6 +602,7 @@ STRICT_CHECKS = [
 BACKEND_IMPL_CHECK = {
     "cuda": "cuda_impl",
     "triton": "triton_impl",
+    "tlx": "tlx_impl",
     "thunderkittens": "tk_impl",
     "cute": "cute_impl",
     "cutlass": "cute_impl",  # alias
@@ -614,7 +638,7 @@ def validate_kernel_static(
     
     Args:
         code: Kernel source code
-        backend: "cuda", "triton", or "thunderkittens"
+        backend: "cuda", "triton", "tlx", "thunderkittens", "cute", or "tilelang"
         precision: "fp16", "fp32", or "bf16" (for future precision checks)
         forbidden: Check categories that cause errors (default: STRICT_CHECKS)
         warnings: Check categories that cause warnings (default: WARNING_CHECKS)

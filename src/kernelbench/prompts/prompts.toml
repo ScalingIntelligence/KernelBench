@@ -54,6 +54,11 @@ backend_display = "ThunderKittens kernels"
 one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_thunderkittens.py"
 # No few_shot_examples - will use one-shot when few_shot option is selected
 
+[backends.tlx]
+backend_display = "TLX (Triton Language Extensions) kernels"
+one_shot_new_arch = "src/kernelbench/prompts/model_new_ex_add_tlx.py"
+# No few_shot_examples - will use one-shot when few_shot option is selected
+
 # -------------------------------------------------------------------------
 # Precision: Precision-specific configuration
 # -------------------------------------------------------------------------

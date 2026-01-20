@@ -98,17 +98,20 @@ SRC_DIR = os.path.join(REPO_TOP_DIR, "src")
 
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-    .apt_install("git",
-                "gcc-10",
-                "g++-10",
-                "clang" # note i skip a step
-                )
-
+    .apt_install("git", "gcc-10", "g++-10", "clang", "cmake", "ninja-build", "zlib1g-dev")
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
     .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    # Uninstall standard triton first (fast step, separate layer to avoid rebuilding triton on changes)
+    .run_commands("pip uninstall -y triton || true")
+    # Install TLX-enabled Triton (slow step, cached unless repo changes)
+    .env({"MAX_JOBS": "8"}) # Speed up compilation
+    .run_commands(
+        "git clone --depth 1 https://github.com/facebookexperimental/triton.git /root/triton",
+        "cd /root/triton && pip install -r python/requirements.txt && pip install -e ."
+    )
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
-        "PYTHONPATH": "/root:/root/src"
+        "PYTHONPATH": "/root:/root/src:/root/scripts:/root/triton/python"
     })
     .add_local_dir(SRC_DIR, remote_path="/root/src")  # must be last
 )
@@ -207,7 +210,7 @@ def main(config: EvalConfig):
         include_hardware = include_hardware.lower() in ["true", "1", "yes"]
     config.include_hardware_info = include_hardware
 
-    supported_backends = {"cuda", "triton", "tilelang", "cute", "thunderkittens"}
+    supported_backends = {"cuda", "triton", "tlx", "tilelang", "cute", "thunderkittens"}
     backend = config.backend.lower()
     if backend not in supported_backends:
         raise ValueError(
@@ -222,6 +225,11 @@ def main(config: EvalConfig):
     # thunderkittens can use bf16 or fp16 by default, also set default GPU to H100
     if backend == "thunderkittens":
         config.precision = "bf16"
+        config.gpu = "H100"
+    
+    # TLX: for research purposes we only support fp16
+    if backend == "tlx":
+        config.precision = "fp16"
         config.gpu = "H100"
 
     if not custom_prompt_key:
