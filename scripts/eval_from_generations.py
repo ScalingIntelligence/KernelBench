@@ -43,16 +43,6 @@ Usually with eval, we check
 - performance (n_trials): 100 randomized input trials
 
 You can increase the number of trials for correctness and performance
-
-TLX Example:
-uv run python scripts/eval_from_generations.py \
-    run_name=test_tlx_level1 \
-    dataset_src=huggingface \
-    level=1 \
-    subset="(5,6)" \
-    eval_mode=modal \
-    backend=tlx \
-    verbose=True
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
