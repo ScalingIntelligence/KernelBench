@@ -22,7 +22,6 @@ from kernelbench.kernel_static_checker import validate_kernel_static
 Batch Generate Samples for Particular Level
 
 Assume 1 sample per problem here
-
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
