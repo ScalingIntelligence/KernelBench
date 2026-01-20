@@ -21,19 +21,14 @@ Easiest way to get started, to test a single problem for experimentation or debu
 Example usage:
 python3 scripts/generate_and_eval_single_sample.py dataset_src=huggingface level=1 problem_id=1 eval_mode=local server_type=google model_name=gemini/gemini-2.5-flash max_tokens=8192 temperature=0.0
 
-TLX Example (NEED LOCAL GPU):
-uv run python scripts/generate_and_eval_single_sample.py \
-    dataset_src=huggingface \
-    level=1 \
-    problem_id=1 \
-    backend=tlx \
-    server_type=google \
-    model_name=gemini/gemini-2.5-flash \
-    max_tokens=60000 \
-    temperature=0.0 \
-    log=True \
-    log_generated_kernel=True \
-    verbose=True
+(YOU NEED A LOCAL H100 TO RUN THIS SCRIPT)
+- Because this is research code, you need to make the following changes:
+-   Make sure you have the following apt-installed: ("git", "gcc-10", "g++-10", "clang", "cmake", "ninja-build", "zlib1g-dev")
+-   Make sure you run the following commands:
+-       Uninstall triton: ("pip uninstall -y triton || true")
+-       Reinstall triton w/ TLX: "git clone --depth 1 https://github.com/facebookexperimental/triton.git /root/triton"
+-       Reinstall triton w/ TLX: "cd /root/triton && pip install -r python/requirements.txt && pip install -e ."
+-       Update your PYTHONPATH environment variable: "PYTHONPATH": "/root:/root/src:/root/scripts:/root/triton/python"
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
