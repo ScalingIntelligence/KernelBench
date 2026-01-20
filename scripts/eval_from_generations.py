@@ -74,22 +74,16 @@ KERNELBENCH_DIR = os.path.join(REPO_TOP_DIR, "KernelBench")
 
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
-    .apt_install("git",
-                "gcc-10",
-                "g++-10",
-                "clang",
-                "cmake",
-                "ninja-build",
-                "zlib1g-dev"
-                )
-
+    .apt_install("git", "gcc-10", "g++-10", "clang", "cmake", "ninja-build", "zlib1g-dev" )
     .uv_sync(uv_project_dir=REPO_TOP_DIR)
     .run_commands("git clone https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    # Uninstall standard triton first (fast step, separate layer to avoid rebuilding triton on changes)
+    .run_commands("pip uninstall -y triton || true")
+    # Install TLX-enabled Triton (slow step, cached unless repo changes)
+    .env({"MAX_JOBS": "8"}) # Speed up compilation
     .run_commands(
-        "git clone https://github.com/facebookexperimental/triton.git /root/triton && "
-        "cd /root/triton && "
-        "pip install -r python/requirements.txt && "
-        "pip install -e ."
+        "git clone --depth 1 https://github.com/facebookexperimental/triton.git /root/triton",
+        "cd /root/triton && pip install -r python/requirements.txt && pip install -e ."
     )
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
