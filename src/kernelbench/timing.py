@@ -19,6 +19,7 @@ def measure_ref_program_time(
     torch_compile_options: str = "default",
     device: torch.device = "cuda:0",
     verbose: bool = False,
+    precision: str = "fp32",
 ) -> dict:
     """Measure the runtime of a KernelBench *reference* program.
 
@@ -43,12 +44,16 @@ def measure_ref_program_time(
             inputs = get_inputs()
             set_seed(42)
             init_inputs = get_init_inputs()
+
+            from kernelbench.eval import get_torch_dtype_from_string
+            precision_dtype = get_torch_dtype_from_string(precision)
+
             inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+                x.cuda(device=device).to(precision_dtype) if isinstance(x, torch.Tensor) else x
                 for x in inputs
             ]
             init_inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
+                x.cuda(device=device).to(precision_dtype) if isinstance(x, torch.Tensor) else x
                 for x in init_inputs
             ]
 

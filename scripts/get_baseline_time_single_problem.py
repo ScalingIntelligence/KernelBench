@@ -25,4 +25,4 @@ def get_inputs():
 def get_init_inputs():
     return []  # No special initialization inputs needed
     """
-    print(measure_ref_program_time(ref_arch_name, ref_arch_src, use_torch_compile=False, timing_method="cuda_event"))
+    print(measure_ref_program_time(ref_arch_name, ref_arch_src, use_torch_compile=False, timing_method="cuda_event", precision="fp32"))

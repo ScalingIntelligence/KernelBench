@@ -72,6 +72,9 @@ class BaselineConfig(Config):
         # Number of trials for timing
         self.num_trials = 100
 
+        # Precision for timing
+        self.precision = "fp32"
+
 
 # Modal Infra
 import modal
@@ -154,6 +157,7 @@ class EvalFunc:
             torch_compile_options=torch_compile_options,
             device=device,
             verbose=verbose,
+            precision="fp32",
         )
 
 def record_baseline_times(config: BaselineConfig,
@@ -196,6 +200,7 @@ def record_baseline_times(config: BaselineConfig,
                         torch_compile_options=torch_compile_options,
                         device=torch.device("cuda:0"),
                         verbose=False,
+                        precision=config.precision,
                     )
                     futures.append((p_id, ref_arch_name, future))
 
@@ -238,6 +243,7 @@ def main(config: BaselineConfig):
     print("\n[2/2] Recording baseline times with Torch Compile (inductor, default mode)...")
     record_baseline_times(
         config=config,
+        precision=config.precision,
         use_torch_compile=True,
         torch_compile_backend="inductor",
         torch_compile_options="default",

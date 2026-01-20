@@ -239,6 +239,7 @@ class EvalFunc:
             use_torch_compile=use_torch_compile,
             verbose=False,
             device=device,
+            precision=configs["precision"],
         )
 
 
@@ -315,6 +316,7 @@ def main(config: ScriptConfig):
                                                     timing_method=config.timing_method,
                                                     device=device,
                                                     verbose=False,
+                                                    precision=config.precision,
                                                     )
         ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
@@ -326,6 +328,7 @@ def main(config: ScriptConfig):
                                                     timing_method=config.timing_method,
                                                     device=device,
                                                     verbose=False,
+                                                    precision=config.precision,
                                                     )
         ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 

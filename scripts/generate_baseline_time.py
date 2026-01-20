@@ -45,7 +45,8 @@ TIMING_DIR = os.path.join(REPO_TOP_PATH, "results", "timing")
 def record_baseline_times(use_torch_compile: bool = False, 
                           torch_compile_backend: str="inductor", 
                           torch_compile_options: str="default",
-                          file_name: str="baseline_time.json"):
+                          file_name: str="baseline_time.json",
+                          precision: str="fp32"):
     """
     Generate baseline time for KernelBench, 
     configure profiler options for PyTorch
@@ -68,7 +69,8 @@ def record_baseline_times(use_torch_compile: bool = False,
                 torch_compile_backend=torch_compile_backend,
                 torch_compile_options=torch_compile_options,
                 device=device,
-                verbose=False # do not print 
+                verbose=False, # do not print 
+                precision=precision,
             )
             json_results[f"level{level}"][ref_arch_name] = runtime_stats
 
@@ -120,20 +122,23 @@ if __name__ == "__main__":
     record_baseline_times(use_torch_compile=False, 
                           torch_compile_backend=None,
                           torch_compile_options=None, 
-                          file_name=f"{hardware_name}/baseline_time_torch.json")
+                          file_name=f"{hardware_name}/baseline_time_torch.json",
+                          precision="bf16")
     
     # 2. Record Torch Compile using Inductor
     for torch_compile_mode in ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]:
         record_baseline_times(use_torch_compile=True, 
                               torch_compile_backend="inductor",
                               torch_compile_options=torch_compile_mode, 
-                              file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_{torch_compile_mode}.json")
+                              file_name=f"{hardware_name}/baseline_time_torch_compile_inductor_{torch_compile_mode}.json",
+                              precision="bf16")
  
     # 3. Record Torch Compile using cudagraphs
     record_baseline_times(use_torch_compile=True, 
                           torch_compile_backend="cudagraphs",
                           torch_compile_options=None, 
-                          file_name=f"{hardware_name}/baseline_time_torch_compile_cudagraphs.json")
+                          file_name=f"{hardware_name}/baseline_time_torch_compile_cudagraphs.json",
+                          precision="bf16")
     
 
 
