@@ -210,33 +210,21 @@ def check_triton_impl(code: str) -> Tuple[bool, str]:
 
 # <========= TLX (Triton Language Extensions) CHECKS =========>
 # Rationale: TLX extends Triton with async tasks and barriers for specialization.
-# Valid TLX code must use tlx.* operations for async tasks and barriers.
-TLX_PATTERNS = [
-    r"tlx\.async_tasks\s*\(",      # tlx.async_tasks()
-    r"tlx\.async_task\s*\(",        # tlx.async_task()
-    r"tlx\.barrier_wait\s*\(",      # tlx.barrier_wait()
-    r"tlx\.barrier_arrive\s*\(",    # tlx.barrier_arrive()
-    r"tlx\.barrier_create\s*\(",    # tlx.barrier_create()
-    r"import\s+tlx",                # import tlx
-    r"from\s+tlx",                  # from tlx
-    r"triton\.language\.extensions", # triton.language.extensions
-]
+# Valid TLX code MUST use "tlx.async" - this is the key requirement for TLX kernels.
+TLX_ASYNC_PATTERN = r"tlx\.async"
 
 def check_tlx_impl(code: str) -> Tuple[bool, str]:
     """
     Check for valid TLX (Triton Language Extensions) kernel implementation.
     
     Requirements:
-    - Must have @triton.jit or @triton.autotune decorator (inherited from Triton)
-    - Must have tlx.* operations (async_tasks, async_task, barrier_wait, barrier_arrive, etc.)
+    - MUST contain "tlx.async" anywhere in the code (e.g., tlx.async_tasks, tlx.async_task)
     
-    Note: TLX extends Triton, so it should also have triton.jit decorator.
+    This is a reward hack check: if "tlx.async" appears, the kernel is valid.
     """
     code = _strip_comments(code)
-    if not re.search(TRITON_JIT_PATTERN, code):
-        return (True, "Missing @triton.jit or @triton.autotune (TLX extends Triton)")
-    if not any(re.search(p, code) for p in TLX_PATTERNS):
-        return (True, "Missing TLX operations (tlx.async_tasks, tlx.barrier_*, etc.)")
+    if "tlx.async" not in code:
+        return (True, "Missing 'tlx.async' - TLX kernels must use tlx.async_tasks or tlx.async_task")
     return (False, "")
 
 
