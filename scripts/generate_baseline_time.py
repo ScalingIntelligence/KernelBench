@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-from kernelbench.eval import fetch_ref_arch_from_problem_id
 from kernelbench.dataset import construct_kernelbench_dataset, fetch_ref_arch_from_dataset
 from kernelbench.timing import measure_ref_program_time
 from kernelbench.utils import read_file

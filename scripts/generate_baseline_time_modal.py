@@ -143,6 +143,7 @@ class EvalFunc:
             torch_compile_options: str="default",
             device: torch.device = torch.cuda.current_device() if torch.cuda.is_available() else None,
             verbose: bool = False,
+            precision: str = "fp32",
     ):
         from kernelbench.timing import measure_ref_program_time
         return measure_ref_program_time(
@@ -157,14 +158,15 @@ class EvalFunc:
             torch_compile_options=torch_compile_options,
             device=device,
             verbose=verbose,
-            precision="fp32",
+            precision=precision,
         )
 
 def record_baseline_times(config: BaselineConfig,
                           use_torch_compile: bool = False,
                           torch_compile_backend: str="inductor",
                           torch_compile_options: str="default",
-                          file_name: str="baseline_time.json"):
+                          file_name: str="baseline_time.json",
+                          precision: str = "fp32"):
     """
     Generate baseline time for KernelBench using Modal's native parallelization.
     Spawns multiple GPU containers in parallel for faster processing.
@@ -200,7 +202,7 @@ def record_baseline_times(config: BaselineConfig,
                         torch_compile_options=torch_compile_options,
                         device=torch.device("cuda:0"),
                         verbose=False,
-                        precision=config.precision,
+                        precision=precision,
                     )
                     futures.append((p_id, ref_arch_name, future))
 
@@ -267,55 +269,4 @@ if __name__ == "__main__":
     # run_profile(2, 43)
     # get_time(2, 43, torch_compile=False)
     # get_time(2, 43, torch_compile=True)
-
-
-
-
-################################################################################
-# Deprecated
-################################################################################
-
-
-def get_time_old(level_num, problem_id, num_trials=100, torch_compile=False):
-    raise DeprecationWarning("Use New measure_program_time instead")
-    ref_arch_name, ref_arch_src = fetch_ref_arch_from_level_problem_id(
-        level_num, problem_id, with_name=True
-    )
-    ref_arch_name = os.path.basename(ref_arch_name)
-    context = {}
-    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-        ref_arch_src, context
-    )
-    try:
-        with torch.no_grad():
-            torch.cuda.synchronize(device=device)
-            set_seed(42)
-            inputs = get_inputs()
-            set_seed(42)
-            init_inputs = get_init_inputs()
-            inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in inputs
-            ]
-            init_inputs = [
-                x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-                for x in init_inputs
-            ]
-            model = Model(*init_inputs)
-            
-            if torch_compile:
-                model = torch.compile(model)
-                print("Compiled model Done")
-            model = model.cuda(device=device)
-            torch.cuda.synchronize(device=device)
-            elapsed_times = time_execution_with_cuda_event(
-                model, *inputs, num_trials=num_trials, verbose=False, device=device
-            )
-            runtime_stats = get_timing_stats(elapsed_times, device=device)
-            # json_results[f"level{level_num}"][ref_arch_name] = runtime_stats
-            print(f"{ref_arch_name} {runtime_stats}")
-            return (ref_arch_name, runtime_stats)
-    except Exception as e:
-        print(f"[Eval] Error in Measuring Performance: {e}")
-
 
