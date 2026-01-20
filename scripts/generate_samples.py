@@ -23,18 +23,6 @@ Batch Generate Samples for Particular Level
 
 Assume 1 sample per problem here
 
-TLX Example:
-uv run python scripts/generate_samples.py \
-    dataset_src=huggingface \
-    level=1 \
-    subset="(1,5)" \
-    run_name=test_tlx_level1 \
-    backend=tlx \
-    num_samples=1 \
-    server_type=google \
-    model_name=gemini/gemini-2.5-flash \
-    max_tokens=8192 \
-    temperature=0.0
 """
 
 REPO_TOP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
