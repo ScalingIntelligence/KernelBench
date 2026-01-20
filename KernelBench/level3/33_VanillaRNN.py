@@ -31,7 +31,7 @@ class Model(nn.Module):
         """
         if initial_hidden is not None:
             self.hidden.copy_(initial_hidden)
-        self.hidden = self.hidden.to(x.device)
+        self.hidden = self.hidden.to(x.device).to(x.dtype)
         combined = torch.cat((x, self.hidden), dim=1)  # Concatenate input and hidden state
         self.hidden = self.tanh(self.i2h(combined))  # Update hidden state
         output = self.h2o(self.hidden)  # Compute output
