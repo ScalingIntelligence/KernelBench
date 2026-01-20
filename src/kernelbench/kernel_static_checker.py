@@ -210,7 +210,7 @@ def check_triton_impl(code: str) -> Tuple[bool, str]:
 
 # <========= TLX (Triton Language Extensions) CHECKS =========>
 # Rationale: TLX extends Triton with async tasks and barriers for specialization.
-# Valid TLX code MUST use "tlx.async" - this is the key requirement for TLX kernels.
+# Valid TLX code MUST use "tlx.async" primitives.
 TLX_ASYNC_PATTERN = r"tlx\.async"
 TLX_FORBIDDEN_PATTERN = r"@triton\.autotune"
 
@@ -219,12 +219,12 @@ def check_tlx_impl(code: str) -> Tuple[bool, str]:
     Check for valid TLX (Triton Language Extensions) kernel implementation.
     
     Requirements:
-    - MUST contain "tlx.async" anywhere in the code (e.g., tlx.async_tasks, tlx.async_task)
+    - MUST contain "tlx.async" primitives (e.g., tlx.async_tasks, tlx.async_load, tlx.async_dot).
     - MUST NOT contain "@triton.autotune"
     """
     code = _strip_comments(code)
     if not re.search(TLX_ASYNC_PATTERN, code):
-        return (True, "Missing 'tlx.async' - TLX kernels must use tlx.async_tasks or tlx.async_task")
+        return (True, "Missing 'tlx.async' - TLX kernels must use tlx.async primitives")
     if re.search(TLX_FORBIDDEN_PATTERN, code):
         return (True, "TLX kernels cannot use @triton.autotune")
     return (False, "")
