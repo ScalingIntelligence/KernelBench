@@ -1,35 +1,38 @@
-# ARCHIVED: We are transitioning to pyproject.toml and uv-based project management
-# However, we provide this as a backup for now
-
 # Frameworks
-# we use latest PyTorch stable release
-torch==2.9.*
-triton==3.5.*
-
+# torch==2.5.0
 # we shall upgrade torch for blackwell when it is stable
-transformers>=4.57.3
-datasets>=4.4.2
-modal>=1.3.0
+# AMD ROCm note: install ROCm-enabled torch from the PyTorch ROCm index.
+# Current ROCm env:
+# torch==2.8.0+rocm7.1.1.gitcba8b9d2
+# HIP==7.1.52802-26aae437f6
+# ROCm SMI (concise):
+# Device IDs: 0x7551 x4
+transformers
+datasets
+modal
 
 # DSLs
-nvidia-cutlass-dsl
-tilelang
+# nvidia-cutlass-dsl
+# triton (required for AMD ROCm kernels)
+# helion (optional, Helion DSL; install separately if needed)
 
 # helper
-tqdm>=4.67.1
+tqdm
 packaging
-pydra-config
-ninja>=1.13.0
-cupy-cuda12x==13.6.0
-tomli>=2.3.0
-tabulate>=0.9.0
-nsight-python
+pydra_config
+dill>=0.3.7,<0.4
+pytest
+ninja
 
 # Numerics
-einops>=0.8.1
-python-dotenv>=1.2.1
-numpy==2.4.0
+einops
+dotenv
+numpy
 
-# use litellm for cloud providers and openai for local
-openai>=2.14.0
-litellm[proxy]>=1.80.10
+# to deprecate with litellm
+google-generativeai
+together
+openai
+anthropic
+pydantic==2.12.4
+
