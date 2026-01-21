@@ -107,7 +107,7 @@ image = (
                 )
 
     .uv_sync(uv_project_dir=REPO_TOP_DIR, extras=["gpu"])
-    .run_commands("git clone -b tk-v2 https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
+    .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
         "PYTHONPATH": "/root:/root/src"
