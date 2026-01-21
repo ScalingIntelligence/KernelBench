@@ -66,13 +66,15 @@ We organize the repo into the following structure:
 KernelBench/
 ├── assets/
 ├── KernelBench/ # Benchmark dataset files
-├── src/ # KernelBench logic code
+├── src/kernelbench/ # KernelBench logic code
 │   ├── unit_tests/  
 │   ├── prompts/
 │   ├── ....
 ├── scripts/ # helpful scripts to run the benchmark
 ├── results/ # baseline times across hardware 
 ├── runs/ # where your runs will be stored
+├── notebooks/ # example notebooks for analysis
+├── pyproject.toml # Project configuration and dependencies
 ```
 
 ## 🔧 Set up

@@ -2,8 +2,118 @@ import torch
 import json
 import numpy as np
 import time
-from typing import Any
+from typing import Any, Optional, Union
 import os
+
+
+def measure_ref_program_time(
+    ref_arch_name: str,
+    ref_arch_src: str, # PyTorch program code string
+    num_warmup: int = 5,
+    num_trials: int = 100,
+    discard_first: int = 1,
+    timing_method: str = "cuda_event",
+    # Torch eager or torch.compile configuration
+    use_torch_compile: bool = False,
+    torch_compile_backend: str = "inductor",
+    torch_compile_options: str = "default",
+    device: torch.device = torch.device("cuda:0"),
+    verbose: bool = False,
+    precision: Union[str, torch.dtype] = "fp32", # fp16, fp32, bf16 or torch.dtype
+) -> dict:
+    """Measure the runtime of a KernelBench *reference* program.
+
+    This measures the execution time of the reference `Model` defined in
+    `ref_arch_src` (i.e., *not* `ModelNew`). It can optionally run the reference
+    model under `torch.compile`.
+
+    NOTE: This function is for PyTorch-only reference models, so no `backend` parameter is needed.
+    For pure PyTorch program, we assume it operates all on main stream (as torch operators execute on the default cuda stream).
+    Standard PyTorch ops do NOT spawn extra streams.
+    """
+    from kernelbench.eval import load_original_model_and_inputs, set_seed
+
+    context = {}
+    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
+        ref_arch_src, context
+    )
+
+    try:
+        with torch.no_grad():
+            if isinstance(device, str):
+                device = torch.device(device)
+            elif isinstance(device, int):
+                device = torch.device(f"cuda:{device}")
+            torch.cuda.set_device(device)
+
+            torch.cuda.synchronize(device=device)
+            set_seed(42)
+            inputs = get_inputs()
+            set_seed(42)
+            init_inputs = get_init_inputs()
+
+            from kernelbench.eval import get_torch_dtype_from_string
+            if isinstance(precision, str):
+                precision_dtype = get_torch_dtype_from_string(precision)
+            else:
+                precision_dtype = precision
+
+
+            # set model weights and inputs to specified precision
+            inputs = [
+                x.to(device=device, dtype=precision_dtype) if isinstance(x, torch.Tensor) else x
+                for x in inputs
+            ]
+            init_inputs = [
+                x.to(device=device, dtype=precision_dtype) if isinstance(x, torch.Tensor) else x
+                for x in init_inputs
+            ]
+
+            model = Model(*init_inputs)
+            model = model.to(device=device, dtype=precision_dtype)
+
+            # convert all precision so torch compile can target specific dtype
+            if use_torch_compile:
+                torch._dynamo.reset() # reset torch dynamo cache (clear memory and reset graph)
+                print(
+                    f"Using torch.compile to compile model {ref_arch_name} with {torch_compile_backend} backend and {torch_compile_options} mode"
+                )
+                # NOTE: torch compile uses lazy compilation (triggered by first forward pass)
+                # the warmup in the timing function handles that and should not affect timed trials
+                model = torch.compile(
+                    model,
+                    backend=torch_compile_backend,
+                    mode=torch_compile_options,
+                )
+            else:
+                print(f"Using PyTorch Eager Execution on {ref_arch_name}")
+
+            torch.cuda.synchronize(device=device)
+
+            timing_fn = get_timing_function(timing_method)
+            elapsed_times = timing_fn(
+                model,
+                inputs,
+                num_warmup=num_warmup,
+                num_trials=num_trials,
+                discard_first=discard_first,
+                verbose=verbose,
+                device=device,
+            )
+            runtime_stats = get_timing_stats(elapsed_times, device=device)
+
+            if verbose:
+                print(f"{ref_arch_name} {runtime_stats}")
+
+            return runtime_stats
+    except Exception as e:
+        print(f"[Eval] Error in Measuring Performance: {e}")
+        return None
+
+
+def measure_program_time(*args, **kwargs):
+    """Alias for backwards compatibility. See `measure_ref_program_time`."""
+    return measure_ref_program_time(*args, **kwargs)
 
 ################################################################################
 # timing.py
@@ -77,6 +187,8 @@ def get_timing_function(
             return time_execution_with_do_bench_impl
         case "host_time":
             return time_execution_with_host_time 
+        case "nsight_python_time":
+            return time_execution_with_nsight_python
         # we might add other methods in the future
         case _: 
             raise ValueError(f"Unsupported timing method: {method}")
@@ -85,7 +197,6 @@ def get_timing_function(
 Kernel Timing Functions
 NOTE: we have a WIP blogpost on this topic covering the various timing approaches   
 """
-
 
 def time_execution_with_cuda_event(
     kernel_fn: callable,
@@ -388,13 +499,81 @@ def time_execution_with_host_time(
 
     return elapsed_times
 
+def time_execution_with_nsight_python(
+    kernel_fn: callable,
+    args: list[Any],
+    num_warmup: int = 3,
+    num_trials: int = 10,
+    discard_first: int = 1, # not used here
+    verbose: bool = True,
+    device: torch.device | None = None) -> list[float]:
+    """
+    Time a CUDA kernel function using nsight-python.
+    
+    Note: nsight returns an average time across num_trials runs.
+    Returns a list with a single value (average time) for API consistency.
+    GPU time from nsight is in nanoseconds, converted to milliseconds.
+    
+    Returns:
+        List containing one float: average elapsed time in milliseconds
+    """
+    
+    from kernelbench.profile import profile_with_nsight
+    
+    if device is None:
+        if verbose:
+            print(f"Using current device: {torch.cuda.current_device()}")
+        device = torch.cuda.current_device()
+
+    with torch.cuda.device(device):
+        # Warm ups
+        for _ in range(num_warmup):
+            kernel_fn(*args)
+            torch.cuda.synchronize(device=device)
+        
+        # Clear cache for cold start
+        torch.cuda.empty_cache()
+        clear_l2_cache(device=device)
+        
+        if verbose:
+            print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}")
+        
+        # Profile with nsight - returns average time in nanoseconds
+        # Wrap kernel function
+        def wrapped_kernel():
+            return kernel_fn(*args)
+        
+        # Profile with nsight, use gpu_time_duration.sum metric for GPU time
+        metric_values = profile_with_nsight(
+            wrapped_kernel,
+            metrics=["gpu__time_duration.sum"],
+            num_trials=num_trials
+        )
+        
+        # Convert from nanoseconds to milliseconds
+        gpu_time_ns = metric_values.get("gpu__time_duration.sum")
+        if gpu_time_ns is None:
+            raise RuntimeError("Failed to get GPU time from nsight")
+        
+        # Convert nanoseconds to milliseconds
+        # nsight returns average across num_trials, so we return a single value in a list
+        gpu_time_ms = gpu_time_ns / 1_000_000.0
+        
+        if verbose:
+            print(f"Average GPU time: {gpu_time_ms:.3f} ms (across {num_trials} trials)")
+        
+        # NOTE: nsight only returns average time across num_trials, so we return a single value in a list
+        # it did run num_trials times, but we only return the average (1 item)
+        # Return list with single average value for API consistency
+        return [gpu_time_ms]
+
 ########################################################
 # Timing stats
 # tools to help compute speedup and other time
 #########################################################
 def fetch_baseline_time(
-    level_name: str, problem_id: int, dataset: list[str], baseline_time_filepath: str
-) -> dict:
+    level_name: str, problem_id: int, dataset: "BaseDataset", baseline_time_filepath: str
+) -> Optional[float]:
     """
     Fetch the baseline time from the time
 
@@ -409,8 +588,8 @@ def fetch_baseline_time(
     with open(baseline_time_filepath, "r") as f:
         baseline_json = json.load(f)
 
-    # TODO: replace with the new Dataset object that Omar will merge in
-    problem_name = dataset[problem_id].split("/")[-1]
+    problem = dataset.get_problem_by_id(problem_id)
+    problem_name = problem.name
     baseline_time = baseline_json[level_name].get(problem_name, None)
     return baseline_time
 
@@ -439,3 +618,4 @@ def get_timing_stats(elapsed_times: list[float], device: torch.device = None) ->
         stats["device"] = str(device)  # for debugging
 
     return stats
+

@@ -42,6 +42,7 @@ gpu = [
     "nvidia-cutlass-dsl",
     "tilelang",
     "cupy-cuda12x",
+    "nsight-python",
 ]
 dev = [
     "pytest",
@@ -52,3 +53,6 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["kernelbench*"]
+
+[tool.setuptools.package-data]
+kernelbench = ["prompts/**/*"]

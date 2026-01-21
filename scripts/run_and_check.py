@@ -3,12 +3,11 @@ import torch
 import pydra
 from pydra import REQUIRED, Config
 import os
-from datasets import load_dataset
 import modal
 
 from kernelbench import eval as kernel_eval
 from kernelbench import utils as kernel_utils
-from scripts.generate_baseline_time import measure_program_time
+from kernelbench.timing import measure_ref_program_time
 from kernelbench.utils import read_file
 from kernelbench.kernel_static_checker import validate_kernel_static
 
@@ -27,7 +26,7 @@ gpu_arch_mapping = {
 
 REPO_TOP_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-cuda_version = "12.8.0"
+cuda_version = "13.0.0"
 flavor = "devel"
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
@@ -39,7 +38,7 @@ KERNELBENCH_DIR = os.path.join(REPO_TOP_PATH, "KernelBench")
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("git", "gcc-10", "g++-10", "clang")
-    .uv_sync(uv_project_dir=REPO_TOP_PATH)
+    .uv_sync(uv_project_dir=REPO_TOP_PATH, extras=["gpu"])
     .run_commands("git clone -b main https://github.com/HazyResearch/ThunderKittens.git /root/ThunderKittens")
     .env({
         "THUNDERKITTENS_ROOT": "/root/ThunderKittens",
@@ -92,6 +91,7 @@ class ScriptConfig(Config):
         # ref_origin is local, specify local file path
         self.ref_arch_src_path = ""
         # ref_origin is kernelbench, specify level and problem id
+        self.dataset_src = "huggingface" # either huggingface or local
         self.dataset_name = "ScalingIntelligence/KernelBench"
         self.level = ""
         self.problem_id = ""
@@ -225,23 +225,26 @@ class EvalFunc:
         use_torch_compile: bool,
         torch_compile_backend: str,
         torch_compile_options: str,
-        gpu_arch: list
+        gpu_arch: list,
+        precision: str,
     ):
         """Measure the execution time of a reference program on Modal"""
-        from scripts.generate_baseline_time import measure_program_time
+        from kernelbench.timing import measure_ref_program_time
         from kernelbench.utils import set_gpu_arch
 
         set_gpu_arch(gpu_arch)
         device = torch.device("cuda:0")
 
-        return measure_program_time(
+        return measure_ref_program_time(
             ref_arch_name="Reference Program",
             ref_arch_src=ref_arch_src,
             num_trials=num_trials,
             use_torch_compile=use_torch_compile,
             torch_compile_backend=torch_compile_backend,
             torch_compile_options=torch_compile_options,
-            device=device
+            verbose=False,
+            device=device,
+            precision=precision,
         )
 
 
@@ -258,27 +261,23 @@ def main(config: ScriptConfig):
     if config.ref_origin == "local":
         assert config.ref_arch_src_path != "", "ref_arch_src_path is required"
         ref_arch_src = read_file(config.ref_arch_src_path)
+        print(f"Loaded reference from local file: {config.ref_arch_src_path}")
     elif config.ref_origin == "kernelbench":
-        assert config.dataset_name != "", "dataset_name is required"
+        from kernelbench.dataset import construct_kernelbench_dataset
+        
         assert config.level != "", "level is required"
         assert config.problem_id != "", "problem_id is required"
-
-        # for now use the HuggingFace dataset
-        dataset = load_dataset(config.dataset_name)
-        curr_level_dataset = dataset[f"level_{config.level}"]
-
-        curr_problem_row = curr_level_dataset.filter(lambda x: x["problem_id"] == config.problem_id)
-        ref_arch_src = curr_problem_row["code"][0]
-        problem_name = curr_problem_row["name"][0]
-
-        problem_number = int(problem_name.split("_")[0])
-        assert problem_number == config.problem_id, f"Problem number in filename ({problem_number}) does not match config problem_id ({config.problem_id})"
-
-        print(f"Fetched problem {config.problem_id} from KernelBench level {config.level}: {problem_name}")
-
-
-    else:
-        raise ValueError("Invalid ref_origin")
+        
+        # Unified interface - same code for huggingface and local!
+        dataset = construct_kernelbench_dataset(
+            level=int(config.level),
+            source=config.dataset_src,
+            dataset_name=config.dataset_name,
+        )
+        problem = dataset.get_problem_by_id(int(config.problem_id))
+        ref_arch_src = problem.code
+        
+        print(f"Fetched problem {problem.problem_id} from KernelBench level {problem.level}: {problem.name}")
     
     kernel_src = read_file(config.kernel_src_path)
 
@@ -315,21 +314,27 @@ def main(config: ScriptConfig):
         # Measure baseline time
         print("[INFO] Measuring reference program time")
         # Default using PyTorch Eager here
-        ref_time_eager_result = measure_program_time(ref_arch_name="Reference Program",
+        ref_time_eager_result = measure_ref_program_time(ref_arch_name="Reference Program",
                                                     ref_arch_src=ref_arch_src,
                                                     num_trials=config.num_perf_trials,
                                                     use_torch_compile=False,
-                                                    device=device)
+                                                    timing_method=config.timing_method,
+                                                    device=device,
+                                                    verbose=False,
+                                                    precision=config.precision,
+                                                    )
         ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
         # Measure Torch Compile time
-        ref_time_compile_result = measure_program_time(ref_arch_name="Reference Program",
+        ref_time_compile_result = measure_ref_program_time(ref_arch_name="Reference Program",
                                                     ref_arch_src=ref_arch_src,
                                                     num_trials=config.num_perf_trials,
                                                     use_torch_compile=True,
-                                                    torch_compile_backend="inductor",
-                                                    torch_compile_options="default",
-                                                    device=device)
+                                                    timing_method=config.timing_method,
+                                                    device=device,
+                                                    verbose=False,
+                                                    precision=config.precision,
+                                                    )
         ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 
     elif config.eval_mode == "modal":
@@ -360,7 +365,8 @@ def main(config: ScriptConfig):
                 use_torch_compile=False,
                 torch_compile_backend=None,
                 torch_compile_options=None,
-                gpu_arch=gpu_arch
+                gpu_arch=gpu_arch,
+                precision=config.precision,
             )
             ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
@@ -374,7 +380,8 @@ def main(config: ScriptConfig):
                 use_torch_compile=True,
                 torch_compile_backend="inductor",
                 torch_compile_options="default",
-                gpu_arch=gpu_arch
+                gpu_arch=gpu_arch,
+                precision=config.precision,
             )
             ref_exec_compile_time = ref_time_compile_result.get("mean", None)
 

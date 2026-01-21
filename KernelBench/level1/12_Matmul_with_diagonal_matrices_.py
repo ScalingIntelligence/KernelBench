@@ -20,7 +20,9 @@ class Model(nn.Module):
         Returns:
             torch.Tensor: The result of the matrix multiplication. Shape: (N, M).
         """
-        return torch.diag(A) @ B
+        # Logically equivalent to torch.diag(A) @ B 
+        # more efficient as no need to materialize a full N×N matrix
+        return A.unsqueeze(1) * B
 
 M = 4096
 N = 4096
