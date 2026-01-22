@@ -845,9 +845,8 @@ def main(config: EvalConfig):
 
     batch_eval(total_work, config, dataset, run_dir, eval_file_path)
 
-    # Calculate pass@k metrics if multiple samples per problem were evaluated
-    if config.num_samples_per_problem > 1:
-        calculate_pass_at_k(eval_file_path, config.pass_at_k_values)
+    # Calculate pass@k metrics
+    calculate_pass_at_k(eval_file_path, config.pass_at_k_values)
 
 
 def calc_pass_at_k(n, c, k):

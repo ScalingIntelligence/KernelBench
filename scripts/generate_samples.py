@@ -57,6 +57,8 @@ class GenerationConfig(Config):
         self.model_name = None
         self.max_tokens = None
         self.temperature = 0.0
+        self.server_address = None
+        self.server_port = None
         
         # Reasoning model specific parameters
         self.is_reasoning_model = False  # set to True for o1, o3, Gemini 2.5 thinking, etc.
@@ -153,13 +155,13 @@ def generate_sample_single(
             # uses the default set of forbidden and warning patterns, 
             # you could adapt the patterns to your own setting (degree of banning cuda stream, allowing some torch ops)
         )
-        assert static_check_status, f"Static check failed for sample {work.sample_id} for problem {problem_number}: {problem_name}. Error: {error}. Warnings: {warnings}"
+        assert static_check_status, f"Static check failed for sample {work.sample_id} for problem {work.problem_id}: {problem_name}. Error: {error}. Warnings: {warnings}"
         if warnings:
-            print(f"Static check warnings for sample {work.sample_id} for problem {problem_number}: {problem_name}. Warnings: {warnings}")
+            print(f"Static check warnings for sample {work.sample_id} for problem {work.problem_id}: {problem_name}. Warnings: {warnings}")
 
     if config.verbose:
         print(
-            f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}"
+            f"Generated sample {work.sample_id} for problem {work.problem_id}: {problem_name}"
         )
 
     # Store to local file
@@ -321,6 +323,8 @@ def main(config: GenerationConfig):
         is_reasoning_model=config.is_reasoning_model,
         reasoning_effort=config.reasoning_effort,
         budget_tokens=config.budget_tokens,
+        server_address=config.server_address,
+        server_port=config.server_port,
     )
 
     # Launch workers
