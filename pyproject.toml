@@ -12,9 +12,11 @@ dependencies = [
     # Frameworks
     "torch==2.9.0",
 
+    "pytorch-triton-rocm>=3.4.0",
     "transformers",
     "datasets",
     "modal",
+    "ruff",
 
     # helper
     "tqdm",
@@ -37,12 +39,9 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = [
-    # GPU-specific dependencies (requires CUDA)
+    # GPU-specific dependencies (ROCm / AMD Radeon)
     "triton",
-    "nvidia-cutlass-dsl",
     "tilelang",
-    "cupy-cuda12x",
-    "nsight-python",
 ]
 dev = [
     "pytest",
@@ -56,3 +55,13 @@ include = ["kernelbench*"]
 
 [tool.setuptools.package-data]
 kernelbench = ["prompts/**/*"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-rocm" }]
+torchvision = [{ index = "pytorch-rocm" }]
+pytorch-triton-rocm = [{ index = "pytorch-rocm" }]
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.4"
+explicit = true

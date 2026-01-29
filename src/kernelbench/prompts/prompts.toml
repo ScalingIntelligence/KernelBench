@@ -142,6 +142,7 @@ other placeholder supported in the shared context.
 
 # -------------------------------------------------------------------------
 # Hardware Templates: GPU-specific information blocks
+# Supports both NVIDIA and AMD GPUs via {gpu_vendor_display} placeholder
 # -------------------------------------------------------------------------
 [templates.hardware]
 hardware_header = """
@@ -149,7 +150,7 @@ Here is some information about the underlying hardware that you should keep in m
 """
 
 hardware_specs = """
-The GPU that will run the kernel is NVIDIA {gpu_name}, {gpu_architecture} architecture.
+The GPU that will run the kernel is {gpu_vendor_display} {gpu_name}, {gpu_architecture} architecture.
 
 {gpu_specs_bullets}
 """
@@ -164,6 +165,11 @@ hardware_best_practices = """
 Here are some best practices for writing kernels on GPU:
 
 {gpu_best_practices_bullets}
+"""
+
+# AMD-specific optimization guidance (only included for AMD GPUs)
+amd_optimization_guidance = """
+{amd_optimization_guidance}
 """
 
 # -------------------------------------------------------------------------

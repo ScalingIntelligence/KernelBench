@@ -1,5 +1,9 @@
 """
 Helpers for Evaluations
+
+Supports both NVIDIA CUDA and AMD ROCm GPUs.
+ROCm support is provided through PyTorch's HIP backend, which exposes
+the same torch.cuda API for AMD GPUs.
 """
 
 import hashlib
@@ -13,7 +17,7 @@ import tempfile
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
-from typing import Union, Optional
+from typing import Union, Optional, Literal
 
 import numpy as np
 import requests
@@ -22,6 +26,103 @@ import torch.nn as nn
 from pydantic import BaseModel
 
 from . import timing, dataset
+
+
+################################################################################
+# GPU Detection and Compatibility
+################################################################################
+
+def is_rocm_available() -> bool:
+    """
+    Check if ROCm (AMD GPU) is available.
+    ROCm uses PyTorch's HIP backend which exposes torch.cuda API.
+    """
+    if not torch.cuda.is_available():
+        return False
+    # Check for HIP version (ROCm indicator)
+    return hasattr(torch.version, 'hip') and torch.version.hip is not None
+
+
+def is_cuda_available() -> bool:
+    """
+    Check if NVIDIA CUDA is available (not ROCm).
+    """
+    if not torch.cuda.is_available():
+        return False
+    return not is_rocm_available()
+
+
+def get_gpu_vendor() -> Literal["nvidia", "amd", "unknown"]:
+    """
+    Detect the GPU vendor (NVIDIA or AMD).
+    """
+    if not torch.cuda.is_available():
+        return "unknown"
+    if is_rocm_available():
+        return "amd"
+    return "nvidia"
+
+
+def get_gpu_info(device: torch.device = None) -> dict:
+    """
+    Get GPU information including vendor, name, and memory.
+    
+    Returns:
+        dict with keys: vendor, name, memory_total_gb, compute_capability (NVIDIA only)
+    """
+    if device is None:
+        device = torch.cuda.current_device()
+    
+    info = {
+        "vendor": get_gpu_vendor(),
+        "name": torch.cuda.get_device_name(device),
+        "memory_total_gb": torch.cuda.get_device_properties(device).total_memory / (1024**3),
+    }
+    
+    # Add compute capability for NVIDIA GPUs
+    if info["vendor"] == "nvidia":
+        props = torch.cuda.get_device_properties(device)
+        info["compute_capability"] = f"{props.major}.{props.minor}"
+    
+    # Add ROCm-specific info for AMD GPUs
+    if info["vendor"] == "amd":
+        info["hip_version"] = torch.version.hip
+        # Try to get architecture info
+        try:
+            props = torch.cuda.get_device_properties(device)
+            info["gcn_arch"] = getattr(props, 'gcnArchName', 'unknown')
+        except:
+            pass
+    
+    return info
+
+
+def check_gpu_available(verbose: bool = False) -> bool:
+    """
+    Check if any GPU (CUDA or ROCm) is available.
+    
+    Args:
+        verbose: If True, print GPU information
+    
+    Returns:
+        True if GPU is available, False otherwise
+    """
+    if not torch.cuda.is_available():
+        if verbose:
+            print("[GPU] No GPU available")
+        return False
+    
+    if verbose:
+        gpu_info = get_gpu_info()
+        vendor_name = "AMD ROCm" if gpu_info["vendor"] == "amd" else "NVIDIA CUDA"
+        print(f"[GPU] {vendor_name} available: {gpu_info['name']}")
+        print(f"[GPU] Memory: {gpu_info['memory_total_gb']:.1f} GB")
+        if gpu_info["vendor"] == "amd":
+            print(f"[GPU] HIP Version: {gpu_info.get('hip_version', 'unknown')}")
+        else:
+            print(f"[GPU] Compute Capability: {gpu_info.get('compute_capability', 'unknown')}")
+    
+    return True
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -63,9 +164,19 @@ def fetch_ref_arch_from_level_problem_id(level, problem_id, with_name=False):
 
 
 def set_seed(seed: int):
+    """
+    Set random seed for reproducibility.
+    Works with both NVIDIA CUDA and AMD ROCm GPUs.
+    """
     torch.manual_seed(seed)
-    # NOTE: this only sets on current cuda device
-    torch.cuda.manual_seed(seed)
+    # NOTE: this sets on current GPU device (CUDA or ROCm via HIP)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # for multi-GPU
+    # Set deterministic behavior
+    # NOTE: cudnn settings may not be fully supported on ROCm
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def get_torch_dtype_from_string(precision: str) -> torch.dtype:
     """
@@ -225,24 +336,39 @@ def graceful_eval_cleanup(
     tempfile: tempfile.NamedTemporaryFile = None,
 ):
     """
-    Clean up env, gpu cache, and compiled CUDA extensions after evaluation
-    """  # delete ran-specific function definitions before next eval run
+    Clean up environment, GPU cache, and compiled extensions after evaluation.
+    Works with both NVIDIA CUDA and AMD ROCm GPUs.
+    """
+    # Clean up linecache entries
+    fake_filenames = [k for k in linecache.cache.keys() if k.startswith(("<generated_model_", "<original_model_"))]
+    for fname in fake_filenames:
+        del linecache.cache[fname]
+    
+    # Clean up temp_module from sys.modules if it exists (used by Helion)
+    if "temp_module" in sys.modules:
+        del sys.modules["temp_module"]
+    
     del curr_context
-    # Clear CUDA cache and reset GPU state
-    with torch.cuda.device(device):
-        torch.cuda.empty_cache()
-
-        # does this help?
-        torch.cuda.reset_peak_memory_stats(device=device)
-
-        torch.cuda.synchronize(
-            device=device
-        )  # Wait for all CUDA operations to complete
+    
+    # Clean up GPU memory (works for both CUDA and ROCm)
+    if torch.cuda.is_available():
+        try:
+            with torch.cuda.device(device):
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats(device=device)
+                torch.cuda.synchronize(device=device)
+        except Exception:
+            # Ignore cleanup errors
+            pass
+    
+    # Clean up temporary file
     if tempfile:
-        tempfile.close()
-        os.remove(tempfile.name)
-
-    # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
+        try:
+            tempfile.close()
+            if os.path.exists(tempfile.name):
+                os.remove(tempfile.name)
+        except Exception:
+            pass
 
 
 def build_compile_cache_legacy(
@@ -404,7 +530,7 @@ def eval_kernel_against_ref(
     device: Union[torch.device, int] = (
         torch.cuda.current_device() if torch.cuda.is_available() else None
     ),  # have to run on GPU
-    backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', or 'cute'
+    backend: str = "cuda",  # can be 'cuda', 'triton', 'tilelang', 'cute'
     precision: torch.dtype = torch.float32,
 
     # Guard against potential reward hacking [optional but ongoing enhancement]
@@ -412,22 +538,41 @@ def eval_kernel_against_ref(
     excessive_speedup_threshold: float = 10, # flag if the kernel is more than <excessive_speedup_threshold>x faster than the reference
 ) -> KernelExecResult:
     """
-    Evaluate the custom kernel against the original model
+    Evaluate the custom kernel against the original model.
+    
+    Supports both NVIDIA CUDA and AMD ROCm GPUs.
 
     NOTE: we are thinking about refactor this to be more modularized 
-    and we can add more checks as our other ongiong PRs are working on
+    and we can add more checks as our other ongoing PRs are working on
 
-    num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
-    num_perf_trials: run the evalutation many times to take the average
-    device: GPU (cuda) device to run the evalutation on
-    backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
-    precision: torch.dtype for computation (note: tilelang only supports fp16)
-    timing_method: str, method to time kernel, see timing.py for more details 
+    Args:
+        original_model_src: Source code of the reference PyTorch model
+        custom_model_src: Source code of the optimized model with custom kernels
+        seed_num: Random seed for reproducibility
+        num_correct_trials: Number of trials with different random inputs; pass only if all pass
+        num_perf_trials: Run the evaluation many times to take the average
+        measure_performance: Whether to measure and compare performance
+        timing_method: Method to time kernel, see timing.py for more details
+        verbose: Enable verbose logging
+        build_dir: Directory for caching compiled kernels
+        device: GPU device to run evaluation on (CUDA or ROCm)
+        backend: One of 'cuda', 'triton', 'tilelang', or 'cute'
+        precision: torch.dtype for computation (note: tilelang only supports fp16)
+        check_for_excessive_speedup: Guard against potential reward hacking
+        excessive_speedup_threshold: Flag if kernel is more than this faster than reference
+
+    Returns:
+        KernelExecResult with compilation status, correctness, and performance metrics
 
     ONGOING EFFORT to refactor and modularize this, and adding more tests for eval.
     """
-    # TODO: check device is busy
-    assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
+    # Check GPU availability (works for both CUDA and ROCm)
+    if not check_gpu_available(verbose=verbose):
+        raise RuntimeError("No GPU available (CUDA or ROCm), cannot run Eval")
+    
+    # Get GPU vendor info for metadata
+    gpu_vendor = get_gpu_vendor()
+    gpu_info = get_gpu_info(device if isinstance(device, int) else None)
     
     if backend.lower() == "tilelang":
         assert precision == torch.float16 or precision == torch.bfloat16, "TileLang only supports fp16 or bfloat16"
@@ -439,35 +584,55 @@ def eval_kernel_against_ref(
         linewidth=80,  # Maximum width before wrapping
     )
 
-    # set CUDA device
+    # Set GPU device (works for both CUDA and ROCm via HIP)
     torch.cuda.set_device(device)
     
-    # Backends that use tempfile approach and need CUDA_VISIBLE_DEVICES
-    # TileLang, Triton, and CuTe all use tempfile for proper module loading
-    uses_tempfile = backend.lower() in ["triton", "tilelang", "cute"]
+    # Backends that use tempfile approach
+    # - triton: @triton.jit decorator requires file-based import
+    # - cute: CUTLASS requires file-based compilation
+    # - tilelang: JIT requires file-based import
+    backend_lower = backend.lower()
+    uses_tempfile = backend_lower in ["triton", "tilelang", "cute"]
     
     metadata = {}  # for storing result metadata
     metadata["hardware"] = torch.cuda.get_device_name(device=device)
-    metadata["device"] = str(device)  # for debugging
+    metadata["device"] = str(device)
+    metadata["gpu_vendor"] = gpu_vendor
+    metadata["backend"] = backend_lower
+    
+    # Add vendor-specific info
+    if gpu_vendor == "amd":
+        metadata["hip_version"] = gpu_info.get("hip_version", "unknown")
+        metadata["gcn_arch"] = gpu_info.get("gcn_arch", "unknown")
+    else:
+        metadata["compute_capability"] = gpu_info.get("compute_capability", "unknown")
 
     if uses_tempfile:
-        # need to set env var for triton/cute code to guarantee no wrong device shenanigans
+        # Set device visibility for triton/cute/tilelang
         if isinstance(device, int):
             device_num = device
         elif isinstance(device, torch.device):
             assert (
                 device.type == "cuda"
-            ), "CUDA is not availible on device, cannot run Eval"
-            device_num = device.index
+            ), "GPU is not available on device, cannot run Eval"
+            device_num = device.index if device.index is not None else 0
         else:
             raise ValueError(
                 f"device must be an int or torch.device, got {type(device)}"
             )
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(device_num)
+        
+        # Set device visibility
+        # For ROCm, use HIP_VISIBLE_DEVICES; for CUDA, use CUDA_VISIBLE_DEVICES
+        if gpu_vendor == "amd":
+            os.environ["HIP_VISIBLE_DEVICES"] = str(device_num)
+            os.environ["ROCR_VISIBLE_DEVICES"] = str(device_num)
+        else:
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(device_num)
     context = {}
 
     if verbose:
-        print(f"[Eval] Start Evalulation! on device: {device}")
+        vendor_str = "AMD ROCm" if gpu_vendor == "amd" else "NVIDIA CUDA"
+        print(f"[Eval] Start Evaluation on device: {device} ({vendor_str})")
         print("[Eval] Loading Original Model")
 
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
@@ -495,7 +660,6 @@ def eval_kernel_against_ref(
         tempfile = None
         # add hash for later to distinguish between multi-turn kernels
         
-        backend_lower = backend.lower()
         if backend_lower in ["triton", "tilelang", "cute"]:
             # Use tempfile approach for triton, tilelang, and cute
             # These DSLs require proper module import for JIT decorators to work
