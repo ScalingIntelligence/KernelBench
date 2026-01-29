@@ -184,36 +184,7 @@ def _gpu_context_from_gpu_specs(py_path: str, gpu_name: str, vendor: str = "nvid
         "gpu_best_practices_bullets": best_bullets,
         "gpu_vendor": vendor.lower(),
         "gpu_vendor_display": vendor_display,
-    }
-    
-    # Add AMD-specific prompts to context-In progress
-    # if is_amd:
-    #     context["amd_high_correct_prompt"] = high_correct_prompt
-    #     context["amd_rdna4_prompt"] = rdna4_prompt
-    #     context["amd_quant_op_prompt"] = quant_op_prompt
-    #     context["amd_helion_prompt"] = helion_prompt
-        
-    #     # Determine which AMD prompts to include based on GPU architecture
-    #     gpu_name_lower = gpu_name.lower()
-    #     gpu_arch_lower = gpu_architecture.lower()
-        
-    #     amd_extra_guidance = ""
-    #     amd_extra_guidance += "\n\n### AMD GPU Optimization Guidance\n\n"
-    #     amd_extra_guidance += high_correct_prompt
-        
-    #     # RDNA4 specific guidance
-    #     if any(x in gpu_name_lower or x in gpu_arch_lower for x in ["gfx12", "rdna4", "rx 9", "rx9", "r9700"]):
-    #         amd_extra_guidance += "\n\n" + rdna4_prompt
-        
-    #     # CDNA / MI series specific guidance
-    #     if any(x in gpu_name_lower or x in gpu_arch_lower for x in ["mi300", "mi355", "mi3", "gfx9"]):
-    #         amd_extra_guidance += "\n\n" + quant_op_prompt
-        
-    #     # Helion guidance for all AMD GPUs
-    #     amd_extra_guidance += "\n\n" + helion_prompt
-        
-    #     context["amd_optimization_guidance"] = amd_extra_guidance
-    
+    } 
     return context
 
 def render_prompt_by_option(
@@ -441,7 +412,7 @@ def get_prompt_for_backend(
         option: The prompt option (zero_shot, one_shot, few_shot)
         precision: Optional precision (fp32, fp16, bf16) - defaults to fp32 if not provided
         include_hardware: When True, append hardware guidance blocks (requires gpu_name)
-        gpu_name: GPU identifier used when include_hardware is True (e.g., "A100", "MI355X")
+        gpu_name: GPU identifier used when include_hardware is True (e.g., "A100", "R9700", "W7900D")
         vendor: GPU vendor ("nvidia" or "amd")
     """
     return render_prompt_by_option(
@@ -483,7 +454,7 @@ def get_custom_prompt(
         option: The prompt option (zero_shot, one_shot, few_shot)
         precision: Optional precision (fp32, fp16, bf16)
         include_hardware: When True, include hardware guidance
-        gpu_name: GPU identifier (e.g., "A100", "MI355X")
+        gpu_name: GPU identifier (e.g., "A100", "R9700", "W7900D")
         prompts_toml: Path to prompts.toml file
         vendor: GPU vendor ("nvidia" or "amd")
     """
@@ -576,17 +547,6 @@ def test_prompt():
     )
     log_prompt(hardware_prompt, os.path.join(scratch_dir), "hardware_prompt.txt")
 
-    # AMD hardware prompt (MI355X - CDNA)
-    amd_cdna_prompt = get_prompt_for_backend(
-        ref_arch_src=ref_arch_src,
-        backend="triton",
-        option="one_shot",
-        precision="fp32",
-        include_hardware=True,
-        gpu_name="MI355X",
-        vendor="amd",
-    )
-    log_prompt(amd_cdna_prompt, os.path.join(scratch_dir), "amd_cdna_prompt.txt")
     
     # AMD hardware prompt (RDNA4 - R9700)
     amd_rdna4_prompt = get_prompt_for_backend(
@@ -598,7 +558,7 @@ def test_prompt():
         gpu_name="R9700",
         vendor="amd",
     )
-    log_prompt(amd_rdna4_prompt, os.path.join(scratch_dir), "amd_rdna4_prompt.txt")
+
 
     # custom prompt defined in prompts.toml
     custom_prompt = get_custom_prompt(
@@ -614,8 +574,6 @@ def test_prompt():
         vendor="nvidia",
     )
     log_prompt(custom_prompt, os.path.join(scratch_dir), "custom_prompt.txt")
-    
-    print("All prompts generated successfully!")
     
 if __name__ == "__main__":
     test_prompt()

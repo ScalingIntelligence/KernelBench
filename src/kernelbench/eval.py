@@ -556,7 +556,7 @@ def eval_kernel_against_ref(
         verbose: Enable verbose logging
         build_dir: Directory for caching compiled kernels
         device: GPU device to run evaluation on (CUDA or ROCm)
-        backend: One of 'cuda', 'triton', 'tilelang', 'cute', or 'helion'
+        backend: One of 'cuda', 'triton', 'tilelang', or 'cute'
         precision: torch.dtype for computation (note: tilelang only supports fp16)
         check_for_excessive_speedup: Guard against potential reward hacking
         excessive_speedup_threshold: Flag if kernel is more than this faster than reference
@@ -590,10 +590,9 @@ def eval_kernel_against_ref(
     # Backends that use tempfile approach
     # - triton: @triton.jit decorator requires file-based import
     # - cute: CUTLASS requires file-based compilation
-    # - helion: @helion.kernel decorator requires inspect.getsource()
     # - tilelang: JIT requires file-based import
     backend_lower = backend.lower()
-    uses_tempfile = backend_lower in ["triton", "tilelang", "cute", "helion"]
+    uses_tempfile = backend_lower in ["triton", "tilelang", "cute"]
     
     metadata = {}  # for storing result metadata
     metadata["hardware"] = torch.cuda.get_device_name(device=device)
@@ -609,7 +608,7 @@ def eval_kernel_against_ref(
         metadata["compute_capability"] = gpu_info.get("compute_capability", "unknown")
 
     if uses_tempfile:
-        # Set device visibility for triton/cute/helion/tilelang
+        # Set device visibility for triton/cute/tilelang
         if isinstance(device, int):
             device_num = device
         elif isinstance(device, torch.device):
@@ -661,7 +660,7 @@ def eval_kernel_against_ref(
         tempfile = None
         # add hash for later to distinguish between multi-turn kernels
         
-        if backend_lower in ["triton", "tilelang", "cute", "helion"]:
+        if backend_lower in ["triton", "tilelang", "cute"]:
             # Use tempfile approach for triton, tilelang, and cute
             # These DSLs require proper module import for JIT decorators to work
             ModelNew, tempfile = load_custom_model_with_tempfile(
