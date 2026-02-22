@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.cpp_extension import load_inline
 
+# Must include this line so PyTorch could use HIP compiler for AMD GPUs
 os.environ["CXX"] = "hipcc"
 
 elementwise_add_cpp_source = """

@@ -429,7 +429,18 @@ def eval_kernel_against_ref(
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
     
-    if backend.lower() == "tilelang":
+    # Backend-GPU vendor validation
+    from .utils import get_gpu_vendor
+    vendor = get_gpu_vendor(device)
+    backend_lower = backend.lower()
+    # HIP is AMD-only
+    if backend_lower == "hip" and vendor != "amd":
+        raise ValueError(f"HIP backend requires AMD GPU, got {vendor}")
+    # cuda/cute/thunderkittens are NVIDIA-only (triton/tilelang work on both)
+    if backend_lower in ["cuda", "cute", "thunderkittens"] and vendor == "amd":
+        raise ValueError(f"{backend} backend requires NVIDIA GPU, got AMD")
+    
+    if backend_lower == "tilelang":
         assert precision == torch.float16 or precision == torch.bfloat16, "TileLang only supports fp16 or bfloat16"
     
     torch.set_printoptions(
@@ -463,7 +474,11 @@ def eval_kernel_against_ref(
             raise ValueError(
                 f"device must be an int or torch.device, got {type(device)}"
             )
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(device_num)
+        # NVIDIA uses CUDA_VISIBLE_DEVICES, AMD uses HIP_VISIBLE_DEVICES
+        if vendor == "amd":
+            os.environ["HIP_VISIBLE_DEVICES"] = str(device_num)
+        else:
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(device_num)
     context = {}
 
     if verbose:

@@ -510,20 +510,25 @@ def time_execution_with_nsight_python(
     """
     Time a CUDA kernel function using nsight-python.
     
-    Note: nsight returns an average time across num_trials runs.
+    NOTE: NVIDIA-only. NSight Compute (ncu) does not work on AMD GPUs.
+    
     Returns a list with a single value (average time) for API consistency.
     GPU time from nsight is in nanoseconds, converted to milliseconds.
-    
-    Returns:
-        List containing one float: average elapsed time in milliseconds
     """
-    
     from kernelbench.profile import profile_with_nsight
+    from kernelbench.utils import get_gpu_vendor
     
     if device is None:
         if verbose:
             print(f"Using current device: {torch.cuda.current_device()}")
         device = torch.cuda.current_device()
+    
+    # NSight is NVIDIA-only
+    if get_gpu_vendor(device) != "nvidia":
+        raise RuntimeError(
+            "NSight profiling requires NVIDIA GPU. "
+            "Use timing_method='cuda_event' or 'do_bench' for AMD."
+        )
 
     with torch.cuda.device(device):
         # Warm ups

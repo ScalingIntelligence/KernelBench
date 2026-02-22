@@ -119,6 +119,7 @@ GPU_SPEC_INFO = {
         "Shared memory capacity per SM": "164 KB",
         "Maximum shared memory per thread block": "163 KB",
     },
+    # NOTE: In the future we will have a more unified format for various GPUs
     "MI300X": {
         "GPU Architecture": "gfx942",
         "GPU Memory": "192GB",

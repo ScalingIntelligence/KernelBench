@@ -90,11 +90,18 @@ def profile_with_nsight(func, metrics=None, num_trials=1):
         >>> print(results['gpu__time_duration.sum'])  # Time in nanoseconds
     
     Raises:
-        RuntimeError: If nsight-python is not installed.
+        RuntimeError: If nsight-python is not installed or not on NVIDIA GPU.
     """
     if not NSIGHT_AVAILABLE:
         raise RuntimeError(
             "nsight-python not available."
+        )
+    
+    # NSight is NVIDIA-only
+    from kernelbench.utils import get_gpu_vendor
+    if get_gpu_vendor() != "nvidia":
+        raise RuntimeError(
+            "NSight profiling requires NVIDIA GPU. Not available on AMD."
         )
     
     # Normalize metrics to a list
