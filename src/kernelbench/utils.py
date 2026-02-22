@@ -38,16 +38,51 @@ SGLANG_KEY = os.environ.get("SGLANG_API_KEY")
 # Inference Helpers
 ########################################################
 
+NVIDIA_ARCHS = ["Maxwell", "Pascal", "Volta", "Turing", "Ampere", "Hopper", "Ada", "Blackwell"]
+AMD_ARCHS = ["gfx942", "gfx950"] # gfx942: CDNA3 (MI300), gfx950: CDNA4 (MI350) 
+
+
+########################################################
+# GPU Vendor Detection
+########################################################
+
+def get_gpu_vendor(device: torch.device | int | None = None) -> str:
+    """Returns 'nvidia', 'amd', or 'unknown' for the given device."""
+    if not torch.cuda.is_available():
+        return "unknown"
+    if device is None:
+        device = torch.cuda.current_device()
+    name = torch.cuda.get_device_name(device).upper()
+    if "NVIDIA" in name:
+        return "nvidia"
+    if "AMD" in name or "MI3" in name:
+        return "amd"
+    return "unknown"
+
+
 def set_gpu_arch(arch_list: list[str]):
     """
-    Set env variable for torch cuda arch list to build kernels for specified architectures
+    Set env variable for torch to build kernels for specified architectures.
+    Supports both NVIDIA (TORCH_CUDA_ARCH_LIST) and AMD (PYTORCH_ROCM_ARCH).
     """
-    valid_archs = ["Maxwell", "Pascal", "Volta", "Turing", "Ampere", "Hopper", "Ada", "gfx942", "gfx950"]
-    for arch in arch_list:
-        if arch not in valid_archs:
-            raise ValueError(f"Invalid architecture: {arch}. Must be one of {valid_archs}")
+    nvidia_archs = []
+    amd_archs = []
     
-    os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
+    for arch in arch_list:
+        if arch in NVIDIA_ARCHS:
+            nvidia_archs.append(arch)
+        elif arch in AMD_ARCHS:
+            amd_archs.append(arch)
+        else:
+            raise ValueError(f"Invalid architecture: {arch}. Must be one of NVIDIA: {NVIDIA_ARCHS} or AMD: {AMD_ARCHS}")
+    
+    if nvidia_archs and amd_archs:
+        raise ValueError(f"Cannot mix NVIDIA and AMD architectures. Got NVIDIA: {nvidia_archs}, AMD: {amd_archs}")
+    
+    if nvidia_archs:
+        os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(nvidia_archs)
+    elif amd_archs:
+        os.environ["PYTORCH_ROCM_ARCH"] = ";".join(amd_archs)
 
 def query_server(
     prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,

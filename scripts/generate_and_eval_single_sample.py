@@ -124,7 +124,7 @@ def main(config: EvalConfig):
     )
 
     if config.gpu_arch:
-        if (type(config.gpu_arch) is not list):
+        if (type(config.gpu_arch) is not list): # normalization to list
             config.gpu_arch = [config.gpu_arch]
         set_gpu_arch(config.gpu_arch)  # otherwise build for all architectures
 
