@@ -184,6 +184,29 @@ def check_cuda_impl(code: str) -> Tuple[bool, str]:
         return (True, "Missing load_inline or cpp_extension for compilation")
     return (False, "")
 
+# <========= HIP CHECKS =========>
+# Rationale: Valid HIP kernels must have __global__ (kernel definition),
+# use load_inline or cpp_extension (PyTorch's inline compilation) and
+# use hipcc compiler
+HIP_COMPILE_PATTERNS = ["load_inline", "cpp_extension"]
+
+def check_hip_impl(code: str) -> Tuple[bool, str]:
+    """
+    Check for valid HIP kernel implementation.
+    
+    Requirements:
+    - Must have __global__ void kernel_name (kernel definition)
+    - Must have load_inline or cpp_extension (PyTorch inline compilation)
+    """
+    code = _strip_comments(code)
+    if "__global__" not in code:
+        return (True, "Missing __global__ kernel definition")
+    if not any(p in code for p in HIP_COMPILE_PATTERNS):
+        return (True, "Missing load_inline or cpp_extension for compilation")
+    if "hipcc" not in code:
+        return (True, "Missing hipcc compiler")
+    return (False, "")
+
 # <========= TRITON CHECKS =========>
 # Rationale: Triton kernels are compiled from @triton.jit decorated functions.
 # They must use tl.* operations (tl.load, tl.store, etc.) for actual kernel work.
@@ -555,6 +578,7 @@ CHECK_FUNCTIONS: Dict[str, Union[Callable[[str], Tuple[bool, str]], Callable[[st
     # Backend-specific implementation checks
     # should be strict
     "cuda_impl": check_cuda_impl,
+    "hip_impl": check_hip_impl,
     "triton_impl": check_triton_impl,
     "tk_impl": check_tk_impl,
     "cute_impl": check_cute_impl,
@@ -578,6 +602,7 @@ STRICT_CHECKS = [
 # per backend implementation check, usually strict
 BACKEND_IMPL_CHECK = {
     "cuda": "cuda_impl",
+    "hip": "hip_impl",
     "triton": "triton_impl",
     "thunderkittens": "tk_impl",
     "cute": "cute_impl",
@@ -614,7 +639,7 @@ def validate_kernel_static(
     
     Args:
         code: Kernel source code
-        backend: "cuda", "triton", or "thunderkittens"
+        backend: "cuda", "hip", "triton", or "thunderkittens"
         precision: "fp16", "fp32", or "bf16" (for future precision checks)
         forbidden: Check categories that cause errors (default: STRICT_CHECKS)
         warnings: Check categories that cause warnings (default: WARNING_CHECKS)
