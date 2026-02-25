@@ -254,7 +254,7 @@ def test_different_backends():
     """
     
     # Test multiple backends
-    backends = ["cuda", "triton", "thunderkittens", "cute", "tilelang"]
+    backends = ["cuda", "hip", "triton", "thunderkittens", "cute", "tilelang"]
     
     for backend in backends:
         valid, errors, warnings = validate_kernel_static(code, backend=backend)
