@@ -720,12 +720,20 @@ def check_if_eval_exists_local(
 
 
 def add_to_eval_results_file(
-    problem_id: int, sample_id: int, eval_result: KernelExecResult, eval_file_path: str
+    problem_id: int, sample_id: int, eval_result: KernelExecResult | None, eval_file_path: str
 ):
     """
     Add evaluation result to eval results file
     TODO: migrate database support
     """
+    if eval_result is None:
+        eval_result = KernelExecResult(
+            compiled=False,
+            correctness=False,
+            metadata={"error": "Evaluation returned no result"},
+            runtime=-1.0,
+            runtime_stats={},
+        )
     # Load existing results if file exists
     if os.path.exists(eval_file_path):
         with open(eval_file_path, "r") as f:
