@@ -212,7 +212,7 @@ SERVER_PRESETS = {
         "max_tokens": 4096
     },
     "google": {
-        "model_name": "gemini/gemini-2.5-flash",
+        "model_name": "vertex_ai/gemini-2.0-flash-001",
         "temperature": 0.7, # need to experiment with temperature
         "max_tokens": 16384,
     },
