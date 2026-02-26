@@ -845,6 +845,27 @@ def main(config: EvalConfig):
 
     batch_eval(total_work, config, dataset, run_dir, eval_file_path)
 
+    # Print a short summary of eval results
+    if os.path.exists(eval_file_path):
+        with open(eval_file_path, "r") as f:
+            eval_results = json.load(f)
+        total_samples = sum(len(samples) for samples in eval_results.values())
+        compiled = sum(
+            1 for samples in eval_results.values() for r in samples if r.get("compiled")
+        )
+        correct = sum(
+            1 for samples in eval_results.values() for r in samples if r.get("correctness")
+        )
+        print(f"\n{'='*60}")
+        print("Evaluation summary")
+        print(f"{'='*60}")
+        print(f"  Results file: {eval_file_path}")
+        print(f"  Problems with results: {len(eval_results)}")
+        print(f"  Total samples: {total_samples}  |  Compiled: {compiled}  |  Correct: {correct}")
+        if total_samples > 0:
+            print(f"  Success rate (correct): {100.0 * correct / total_samples:.1f}%")
+        print(f"{'='*60}\n")
+
     # Calculate pass@k metrics if multiple samples per problem were evaluated
     if config.num_samples_per_problem > 1:
         calculate_pass_at_k(eval_file_path, config.pass_at_k_values)

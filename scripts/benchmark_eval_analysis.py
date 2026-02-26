@@ -139,6 +139,10 @@ def analyze_greedy_eval(run_name, hardware, baseline, level,
         if entry["correctness"] == True:
             correct_count += 1
 
+    # Failure breakdown: did not compile vs compiled but incorrect
+    compilation_failures = total_count - compiled_count
+    correctness_failures = compiled_count - correct_count  # compiled but wrong
+
     # Print results
     print("-" * 128)
     print(f"Eval Summary for {run_name}")
@@ -146,6 +150,11 @@ def analyze_greedy_eval(run_name, hardware, baseline, level,
     print(f"Total test cases with Eval Results: {total_eval} out of {total_count}")
     print(f"Successfully compiled: {compiled_count}")
     print(f"Functionally correct: {correct_count}")
+
+    print(f"\nFailure breakdown:")
+    print(f"  Compilation failures (did not compile): {compilation_failures}")
+    print(f"  Correctness failures (compiled but incorrect): {correctness_failures}")
+    print(f"  Correct: {correct_count}")
 
     print(f"\nSuccess rates:")
     print(f"Compilation rate: {compiled_count/total_count*100:.1f}%")
@@ -194,7 +203,21 @@ def analyze_greedy_eval(run_name, hardware, baseline, level,
     actual_speed = np.array(actual_speed_list)
     n = len(is_correct)
 
+    # Among correct samples: how many meet 1x speedup (faster than baseline) vs not
+    n_correct_aligned = int(np.sum(is_correct))
+    speedup = np.where(
+        is_correct & (actual_speed > 0),
+        baseline_speed / np.maximum(actual_speed, 1e-10),
+        0.0,
+    )
+    correct_meets_1x = int(np.sum(is_correct & (actual_speed > 0) & (speedup > 1.0)))
+    correct_but_slow = n_correct_aligned - correct_meets_1x  # correct but speedup <= 1x
+
     print(f"Aligned {n} problems for analysis")
+
+    print(f"\nTiming (among {n_correct_aligned} correct, aligned with baseline):")
+    print(f"  Correct and faster than baseline (speedup > 1x): {correct_meets_1x}")
+    print(f"  Correct but not optimized enough (speedup ≤ 1x): {correct_but_slow}")
 
     # Calculate the metrics
     gmsr_correct = geometric_mean_speed_ratio_correct_only(
@@ -248,6 +271,10 @@ def analyze_greedy_eval(run_name, hardware, baseline, level,
         "total_eval": total_eval,
         "compiled_count": compiled_count,
         "correct_count": correct_count,
+        "compilation_failures": compilation_failures,
+        "correctness_failures": correctness_failures,
+        "correct_meets_1x_speedup": correct_meets_1x,
+        "correct_but_slow": correct_but_slow,
         "compilation_rate": compiled_count / total_count if total_count > 0 else 0.0,
         "correctness_rate": correct_count / total_count if total_count > 0 else 0.0,
         "geo_mean_speedup": float(gmsr_correct),

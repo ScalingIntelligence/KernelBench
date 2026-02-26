@@ -22,6 +22,12 @@ from importlib.resources import files, as_file
 from openai import OpenAI
 from litellm import completion
 
+# Optional: use litellm's RateLimitError when available for clearer retry logic
+try:
+    from litellm import RateLimitError as LiteLLMRateLimitError
+except ImportError:
+    LiteLLMRateLimitError = None
+
 import numpy as np
 from contextlib import contextmanager
 from collections import defaultdict
@@ -85,6 +91,20 @@ def set_gpu_arch(arch_list: list[str]):
     elif amd_archs:
         os.environ["PYTORCH_ROCM_ARCH"] = ";".join(amd_archs)
 
+
+def _is_retryable_api_error(exc: BaseException) -> bool:
+    """Return True if the exception indicates a transient/rate-limit error worth retrying."""
+    msg = (getattr(exc, "message", None) or str(exc)).lower()
+    if "rate" in msg or "429" in msg or "too many requests" in msg or "overloaded" in msg or "capacity" in msg:
+        return True
+    if LiteLLMRateLimitError is not None and isinstance(exc, LiteLLMRateLimitError):
+        return True
+    # OpenAI client raises openai.RateLimitError
+    if type(exc).__name__ == "RateLimitError":
+        return True
+    return False
+
+
 def query_server(
     prompt: str | list[dict],  # string if normal prompt, list of dicts if chat prompt,
     system_prompt: str = "You are a helpful assistant",  # only used for chat prompts
@@ -102,14 +122,21 @@ def query_server(
     is_reasoning_model: bool = False, # indiactor of using reasoning models
     budget_tokens: int = 0, # for claude thinking
     reasoning_effort: str = None, # only for o1 and o3 / more reasoning models in the future
+
+    # exponential backoff on rate limit / transient errors
+    max_retries: int = 5,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
 ):
     """
     Query various sort of LLM inference API providers
     Done through liteLLM:
     - Local Server (SGLang, vLLM, Tokasaurus)
+
+    On rate limit or transient API errors, retries with exponential backoff
+    (initial_delay, then initial_delay * backoff_factor, etc.) up to max_retries times.
     """
-    # Local Server (SGLang, vLLM, Tokasaurus) - special handling
-    if server_type == "local":
+    def _do_local():
         url = f"http://{server_address}:{server_port}"
         client = OpenAI(
             api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
@@ -134,75 +161,93 @@ def query_server(
                 top_p=top_p,
             )
             outputs = [choice.message.content for choice in response.choices]
-        
-        # output processing
         if len(outputs) == 1:
             return outputs[0]
-        else:
-            return outputs
-    
-    # All other providers - use LiteLLM unified interface
-    # Build messages list with system prompt first (if not already present)
-    messages = []
-    
-    # Check if prompt is already a list with a system message
-    if isinstance(prompt, list) and prompt and prompt[0].get("role") == "system":
-        # Prompt already has system message, use it directly
-        messages = prompt
-    else:
-        # Add system prompt first if provided
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        
-        # Then add the actual prompt
-        if isinstance(prompt, str):
-            messages.append({"role": "user", "content": prompt})
-        else:
-            messages.extend(prompt)
-    
-    try:
+        return outputs
+
+    def _do_litellm():
         completion_kwargs = {
             "model": model_name,
             "messages": messages,
             "max_tokens": max_tokens,
             "n": num_completions,
         }
-        
-        # Reasoning models (o1, o3, etc.) don't support standard sampling params
         if is_reasoning_model:
-            # Note: o1/o3 models don't support temperature, top_p, top_k
-            # LiteLLM will pass through reasoning_effort for OpenAI o1/o3 models
             if reasoning_effort:
                 completion_kwargs["reasoning_effort"] = reasoning_effort
-            # Claude extended thinking uses "thinking" parameter with dict structure
-            # Format: {"type": "enabled", "budget_tokens": <int>}
             if budget_tokens > 0 and "anthropic" in model_name.lower():
                 completion_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget_tokens}
         else:
-            # Standard models support temperature and top_p
             completion_kwargs["temperature"] = temperature
             completion_kwargs["top_p"] = top_p
-            
-            # top_k is not supported by OpenAI models
             if "openai/" not in model_name.lower() and "gpt" not in model_name.lower():
                 completion_kwargs["top_k"] = top_k
-        
         response = completion(**completion_kwargs)
-        
-        # output processing
         if num_completions == 1:
             content = response.choices[0].message.content
             if content is None:
-                raise ValueError(f"LLM returned None content for model {model_name}. finish_reason: {response.choices[0].finish_reason}")
+                raise ValueError(
+                    f"LLM returned None content for model {model_name}. finish_reason: {response.choices[0].finish_reason}"
+                )
             return content
+        contents = [choice.message.content for choice in response.choices]
+        if any(c is None for c in contents):
+            raise ValueError(
+                f"LLM returned None content in one or more completions for model {model_name}"
+            )
+        return contents
+
+    # Local Server (SGLang, vLLM, Tokasaurus) - special handling
+    if server_type == "local":
+        last_exc = None
+        delay = initial_delay
+        for attempt in range(max_retries + 1):
+            try:
+                return _do_local()
+            except Exception as e:
+                last_exc = e
+                if attempt < max_retries and _is_retryable_api_error(e):
+                    print(
+                        f"[query_server] Rate limit or transient error (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay *= backoff_factor
+                else:
+                    print(f"Error in query_server for model {model_name}: {e}")
+                    raise
+        print(f"Error in query_server for model {model_name}: {last_exc}")
+        raise last_exc
+
+    # All other providers - use LiteLLM unified interface
+    messages = []
+    if isinstance(prompt, list) and prompt and prompt[0].get("role") == "system":
+        messages = prompt
+    else:
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        if isinstance(prompt, str):
+            messages.append({"role": "user", "content": prompt})
         else:
-            contents = [choice.message.content for choice in response.choices]
-            if any(c is None for c in contents):
-                raise ValueError(f"LLM returned None content in one or more completions for model {model_name}")
-            return contents
-    except Exception as e:
-        print(f"Error in query_server for model {model_name}: {e}")
-        raise
+            messages.extend(prompt)
+
+    last_exc = None
+    delay = initial_delay
+    for attempt in range(max_retries + 1):
+        try:
+            return _do_litellm()
+        except Exception as e:
+            last_exc = e
+            if attempt < max_retries and _is_retryable_api_error(e):
+                print(
+                    f"[query_server] Rate limit or transient error (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+                delay *= backoff_factor
+            else:
+                print(f"Error in query_server for model {model_name}: {e}")
+                raise
+    print(f"Error in query_server for model {model_name}: {last_exc}")
+    raise last_exc
 
 
 # a list of presets for API server configs
