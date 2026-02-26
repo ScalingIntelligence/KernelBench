@@ -740,8 +740,6 @@ def register_and_format_exception(
 
     metadata["error_type"] = exception_type
     metadata["error_msg"] = exception_str
-    # Keep the legacy key for backward compatibility
-    metadata[exception_type] = exception_str
 
     return metadata
 
