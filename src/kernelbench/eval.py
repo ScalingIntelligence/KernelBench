@@ -108,7 +108,6 @@ class KernelExecResult(BaseModel):
     """
     # Execution
     compiled: bool = False
-    run: bool = False  # True if the kernel ran without crashing (distinct from correctness)
     correctness: bool = False
     metadata: dict = {} # NOTE: to include warning if any
 
@@ -564,7 +563,7 @@ def eval_kernel_against_ref(
         metadata = register_and_format_exception("runtime_error", e, metadata)
         metadata["runtime_error_name"] = get_error_name(e)
         return KernelExecResult(
-            compiled=True, run=False, correctness=False, metadata=metadata
+            compiled=True, correctness=False, metadata=metadata
         )  # skip further steps
 
     kernel_exec_result = None
@@ -589,7 +588,7 @@ def eval_kernel_against_ref(
         metadata = register_and_format_exception("runtime_error", e, metadata)
         metadata["runtime_error_name"] = get_error_name(e)
         kernel_exec_result = KernelExecResult(
-            compiled=True, run=False, correctness=False, metadata=metadata
+            compiled=True, correctness=False, metadata=metadata
         )
 
     # Measure Performance [Optional] | conditioned on compilation + correctness + no exception so far
@@ -816,7 +815,7 @@ def run_and_check_correctness(
                             f"[FAIL] trial {trial}: Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
                         )
                     return KernelExecResult(
-                        compiled=True, run=True, correctness=False, metadata=metadata
+                        compiled=True, correctness=False, metadata=metadata
                     )
 
                 # in torchbench, they use both precisions for atol and rtol
@@ -853,7 +852,7 @@ def run_and_check_correctness(
                 # Also store the full traceback in metadata for debugging
                 metadata["runtime_error_traceback"] = traceback.format_exc()
                 return KernelExecResult(
-                    compiled=True, run=False, correctness=False, metadata=metadata
+                    compiled=True, correctness=False, metadata=metadata
                 )
                 # break
 
@@ -866,9 +865,9 @@ def run_and_check_correctness(
     metadata["correctness_trials"] = f"({pass_count} / {num_correct_trials})"
 
     if pass_count == num_correct_trials:
-        return KernelExecResult(compiled=True, run=True, correctness=True, metadata=metadata)
+        return KernelExecResult(compiled=True, correctness=True, metadata=metadata)
     else:
-        return KernelExecResult(compiled=True, run=True, correctness=False, metadata=metadata)
+        return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
 
 
 def check_metadata_serializable(metadata: dict):
