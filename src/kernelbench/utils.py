@@ -127,11 +127,18 @@ def query_server(
     max_retries: int = 5,
     initial_delay: float = 1.0,
     backoff_factor: float = 2.0,
+
+    # Vertex AI (GCP) – passed through to litellm.completion when using server_type=vertex_ai
+    vertex_project: str = None,
+    vertex_location: str = None,
+    vertex_credentials: str = None,
+    **kwargs,
 ):
     """
     Query various sort of LLM inference API providers
     Done through liteLLM:
     - Local Server (SGLang, vLLM, Tokasaurus)
+    - Vertex AI (GCP) – use server_type=vertex_ai and set VERTEXAI_PROJECT, VERTEXAI_LOCATION (and optionally GOOGLE_APPLICATION_CREDENTIALS)
 
     On rate limit or transient API errors, retries with exponential backoff
     (initial_delay, then initial_delay * backoff_factor, etc.) up to max_retries times.
@@ -182,6 +189,19 @@ def query_server(
             completion_kwargs["top_p"] = top_p
             if "openai/" not in model_name.lower() and "gpt" not in model_name.lower():
                 completion_kwargs["top_k"] = top_k
+        # Vertex AI (GCP): project, location, credentials
+        vertex_project_val = vertex_project or os.environ.get("VERTEXAI_PROJECT")
+        vertex_location_val = vertex_location or os.environ.get("VERTEXAI_LOCATION", "us-central1")
+        if vertex_project_val:
+            completion_kwargs["vertex_project"] = vertex_project_val
+        if vertex_location_val:
+            completion_kwargs["vertex_location"] = vertex_location_val
+        if vertex_credentials:
+            completion_kwargs["vertex_credentials"] = vertex_credentials
+        # Pass through any extra kwargs accepted by litellm (e.g. from presets)
+        for key in ("vertex_project", "vertex_location", "vertex_credentials"):
+            if key in kwargs and kwargs[key] is not None:
+                completion_kwargs[key] = kwargs[key]
         response = completion(**completion_kwargs)
         if num_completions == 1:
             content = response.choices[0].message.content
@@ -262,6 +282,12 @@ SERVER_PRESETS = {
         "temperature": 0.7, # need to experiment with temperature
         "max_tokens": 16384,
     },
+    # Vertex AI (GCP) – uses billing/quota from your GCP project; set VERTEXAI_PROJECT and VERTEXAI_LOCATION in .env
+    "vertex_ai": {
+        "model_name": "vertex_ai/gemini-2.5-flash",
+        "temperature": 0.7,
+        "max_tokens": 16384,
+    },
     "together": { # mostly for Llama 3.1
         "model_name": "together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
         # "model_name": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
@@ -312,7 +338,12 @@ def create_inference_server_from_presets(server_type: str = None,
         if kwargs:
             filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None and v != "None"}
             server_args.update(filtered_kwargs)
-        
+        # Vertex AI: inject project/location from env so GCP billing applies
+        if server_type == "vertex_ai":
+            if "vertex_project" not in server_args or server_args.get("vertex_project") is None:
+                server_args["vertex_project"] = os.environ.get("VERTEXAI_PROJECT")
+            if "vertex_location" not in server_args or server_args.get("vertex_location") is None:
+                server_args["vertex_location"] = os.environ.get("VERTEXAI_LOCATION", "us-central1")
         if greedy_sample:
             server_args["temperature"] = 0.0
             server_args["top_p"] = 1.0
