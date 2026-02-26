@@ -489,7 +489,7 @@ def eval_kernel_against_ref(
             print("[Eval] Original Model Loaded")
     
     if verbose:
-        print(f"[Eval] Loading and Compiling New Model with Custom Kernel (backend={backend})")
+        print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
 
     # this is where compilation happens
     try:
