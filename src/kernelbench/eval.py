@@ -8,6 +8,7 @@ import json
 import linecache
 import os, subprocess
 import random
+import re
 import sys
 import tempfile
 import traceback
@@ -108,6 +109,7 @@ class KernelExecResult(BaseModel):
     """
     # Execution
     compiled: bool = False
+    run: bool = False  # True if the kernel ran without crashing (distinct from correctness)
     correctness: bool = False
     metadata: dict = {} # NOTE: to include warning if any
 
@@ -487,7 +489,7 @@ def eval_kernel_against_ref(
             print("[Eval] Original Model Loaded")
     
     if verbose:
-        print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
+        print(f"[Eval] Loading and Compiling New Model with Custom Kernel (backend={backend})")
 
     # this is where compilation happens
     try:
@@ -507,10 +509,10 @@ def eval_kernel_against_ref(
             ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:
-        print(
-            f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
-        )
-        # TODO: add metadata for compilation error (how to we get the compilation error message?)
+        if verbose:
+            print(
+                f"[Eval] Failed to compile custom kernel ({backend}): Record as compilation failure. \nError: {e}"
+            )
 
         if "lock" in str(e) or "No such file or directory" in str(e):
             # this is a lock file error, likely due to concurrent compilation
@@ -518,11 +520,12 @@ def eval_kernel_against_ref(
             print(
                 f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
             )
+            metadata = register_and_format_exception("lock_file_error", e, metadata, verbose=verbose)
             graceful_eval_cleanup(context, device, tempfile)
             return None
         else:
+            metadata = register_and_format_exception("compilation_error", e, metadata, verbose=verbose)
             metadata["compilation_error_name"] = get_error_name(e)
-            metadata["compilation_error"] = e
             graceful_eval_cleanup(context, device, tempfile)
             return KernelExecResult(
                 compiled=False, metadata=metadata
@@ -530,11 +533,16 @@ def eval_kernel_against_ref(
 
     # Check if ModelNew was successfully loaded (load_custom_model returns None on syntax errors)
     if ModelNew is None:
-        print(
-            "Failed to load custom model: Syntax error or ModelNew not found in generated code. Record as compilation failure."
+        if verbose:
+            print(
+                "Failed to load custom model: Syntax error or ModelNew not found in generated code. Record as compilation failure."
+            )
+        metadata = register_and_format_exception(
+            "syntax_error",
+            "Syntax error in custom generated code or ModelNew not found",
+            metadata, verbose=verbose,
         )
         metadata["compilation_error_name"] = "SyntaxError"
-        metadata["compilation_error"] = "Syntax error in custom generated code or ModelNew not found"
         graceful_eval_cleanup(context, device, tempfile)
         return KernelExecResult(
             compiled=False, metadata=metadata
@@ -552,15 +560,15 @@ def eval_kernel_against_ref(
         if verbose:
             print("[Eval] New Model with Custom CUDA Kernel Loaded")
     except RuntimeError as e:
-        print(
-            f"Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
-        )
-        # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
+        if verbose:
+            print(
+                f"[Eval] Failed to instantiate custom kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
+            )
         graceful_eval_cleanup(context, device, tempfile)
-        metadata["runtime_error"] = e
+        metadata = register_and_format_exception("runtime_error", e, metadata, verbose=verbose)
         metadata["runtime_error_name"] = get_error_name(e)
         return KernelExecResult(
-            compiled=True, correctness=False, metadata=metadata
+            compiled=True, run=False, correctness=False, metadata=metadata
         )  # skip further steps
 
     kernel_exec_result = None
@@ -582,11 +590,10 @@ def eval_kernel_against_ref(
             precision=precision,
         )
     except Exception as e:
-        # TODO: add metadata for runtime error e.g. error in launching kernel, illegal memory access, ...
-        metadata["runtime_error"] = e
+        metadata = register_and_format_exception("runtime_error", e, metadata, verbose=verbose)
         metadata["runtime_error_name"] = get_error_name(e)
         kernel_exec_result = KernelExecResult(
-            compiled=True, correctness=False, metadata=metadata
+            compiled=True, run=False, correctness=False, metadata=metadata
         )
 
     # Measure Performance [Optional] | conditioned on compilation + correctness + no exception so far
@@ -624,7 +631,9 @@ def eval_kernel_against_ref(
         except Exception as e:
             if verbose:
                 print(f"[Eval] Error in Measuring Performance: {e}")
-            kernel_exec_result.metadata["error_during_performance"] = e
+            kernel_exec_result.metadata = register_and_format_exception(
+                "error_during_performance", e, kernel_exec_result.metadata, verbose=verbose
+            )
 
     # To get base PyTorch time (eager, various compile modes)
     # please use timing.measure_ref_program_time()   
@@ -689,21 +698,62 @@ def register_and_format_exception(
     exception_msg: Exception | str,
     metadata: dict,
     verbose: bool = False,
-    truncate=False,
-    max_length=200,
+    truncate: bool = True,
+    max_length: int = 1000,
 ):
     """
-    max_length characters
+    Store a structured error in metadata with error_type and error_msg.
 
-    NOTE: I can't get torch truncate to work during exception handling so I have this for now
+    For compilation and runtime errors, extracts the most relevant error lines
+    from verbose compiler output using regex, rather than storing the full wall of text.
+
+    For SyntaxErrors, formats line/column/code information.
+
+    Args:
+        exception_type: one of 'syntax_error', 'compilation_error', 'runtime_error',
+                        'lock_file_error', 'correctness_issue', 'error_during_performance'
+        exception_msg: the Exception object or a string description
+        metadata: dict to store error info into
+        truncate: whether to truncate the final message
+        max_length: max characters for the error message
     """
-    # Truncate exception message if too long
     exception_str = str(exception_msg)
+
+    # For SyntaxErrors, format the line/column/code info concisely
+    if exception_type == "syntax_error" and isinstance(exception_msg, SyntaxError):
+        exception_str = (
+            f"{exception_msg.msg}\n"
+            f" Line: {exception_msg.lineno}, Column: {exception_msg.offset}\n"
+            f" Code: {exception_msg.text.strip() if exception_msg.text else 'N/A'}"
+        )
+
+    # For compilation/runtime errors, extract the most relevant error lines
+    # from potentially enormous compiler output
+    if exception_type in ("compilation_error", "runtime_error"):
+        error_pattern = r"([^\n]* error:[^\n]*\n[^\n]*\n)"
+        error_messages = []
+        remaining_text = exception_str
+        for _ in range(3):  # extract up to 3 error messages
+            match = re.search(error_pattern, remaining_text)
+            if not match:
+                break
+            error_messages.append(match.group(1).strip())
+            pos = match.end()
+            if pos >= len(remaining_text):
+                break
+            remaining_text = remaining_text[pos:]
+        if error_messages:
+            exception_str = "\n\n".join(error_messages)
+
     if truncate and len(exception_str) > max_length:
         exception_str = exception_str[: max_length - 3] + "..."
 
     if verbose:
         print(f"[Exception {exception_type}] {exception_str} ")
+
+    metadata["error_type"] = exception_type
+    metadata["error_msg"] = exception_str
+    # Keep the legacy key for backward compatibility
     metadata[exception_type] = exception_str
 
     return metadata
@@ -778,7 +828,7 @@ def run_and_check_correctness(
                             f"[FAIL] trial {trial}: Output shape mismatch: Expected {output.shape}, got {output_new.shape}"
                         )
                     return KernelExecResult(
-                        compiled=True, correctness=False, metadata=metadata
+                        compiled=True, run=True, correctness=False, metadata=metadata
                     )
 
                 # in torchbench, they use both precisions for atol and rtol
@@ -802,20 +852,21 @@ def run_and_check_correctness(
                         print(f"[PASS] trial {trial}: New Model matches Model")
 
             except Exception as e:
-                print("[Error] Exception happens during correctness check")
-                print(f"Error in launching kernel for ModelNew: {e}")
-                print("\n[Full Traceback]:")
-                traceback.print_exc()
-                print("\n")
+                if verbose:
+                    print("[Error] Exception happens during correctness check")
+                    print(f"Error in launching kernel for ModelNew: {e}")
+                    print("\n[Full Traceback]:")
+                    traceback.print_exc()
+                    print("\n")
 
                 metadata = register_and_format_exception(
-                    "runtime_error", e, metadata, truncate=True
+                    "runtime_error", e, metadata, verbose=verbose
                 )
                 metadata["runtime_error_name"] = get_error_name(e)
                 # Also store the full traceback in metadata for debugging
                 metadata["runtime_error_traceback"] = traceback.format_exc()
                 return KernelExecResult(
-                    compiled=True, correctness=False, metadata=metadata
+                    compiled=True, run=False, correctness=False, metadata=metadata
                 )
                 # break
 
@@ -828,9 +879,9 @@ def run_and_check_correctness(
     metadata["correctness_trials"] = f"({pass_count} / {num_correct_trials})"
 
     if pass_count == num_correct_trials:
-        return KernelExecResult(compiled=True, correctness=True, metadata=metadata)
+        return KernelExecResult(compiled=True, run=True, correctness=True, metadata=metadata)
     else:
-        return KernelExecResult(compiled=True, correctness=False, metadata=metadata)
+        return KernelExecResult(compiled=True, run=True, correctness=False, metadata=metadata)
 
 
 def check_metadata_serializable(metadata: dict):
