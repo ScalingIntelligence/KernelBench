@@ -8,7 +8,6 @@ import json
 import linecache
 import os, subprocess
 import random
-import re
 import sys
 import tempfile
 import traceback
@@ -509,10 +508,9 @@ def eval_kernel_against_ref(
             ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:
-        if verbose:
-            print(
-                f"[Eval] Failed to compile custom kernel ({backend}): Record as compilation failure. \nError: {e}"
-            )
+        print(
+            f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
+        )
 
         if "lock" in str(e) or "No such file or directory" in str(e):
             # this is a lock file error, likely due to concurrent compilation
@@ -520,12 +518,12 @@ def eval_kernel_against_ref(
             print(
                 f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
             )
-            metadata = register_and_format_exception("lock_file_error", e, metadata, verbose=verbose)
+            metadata = register_and_format_exception("lock_file_error", e, metadata)
             graceful_eval_cleanup(context, device, tempfile)
             return None
         else:
-            metadata = register_and_format_exception("compilation_error", e, metadata, verbose=verbose)
             metadata["compilation_error_name"] = get_error_name(e)
+            metadata = register_and_format_exception("compilation_error", e, metadata)
             graceful_eval_cleanup(context, device, tempfile)
             return KernelExecResult(
                 compiled=False, metadata=metadata
@@ -533,16 +531,15 @@ def eval_kernel_against_ref(
 
     # Check if ModelNew was successfully loaded (load_custom_model returns None on syntax errors)
     if ModelNew is None:
-        if verbose:
-            print(
-                "Failed to load custom model: Syntax error or ModelNew not found in generated code. Record as compilation failure."
-            )
+        print(
+            "Failed to load custom model: Syntax error or ModelNew not found in generated code. Record as compilation failure."
+        )
+        metadata["compilation_error_name"] = "SyntaxError"
         metadata = register_and_format_exception(
             "syntax_error",
             "Syntax error in custom generated code or ModelNew not found",
-            metadata, verbose=verbose,
+            metadata,
         )
-        metadata["compilation_error_name"] = "SyntaxError"
         graceful_eval_cleanup(context, device, tempfile)
         return KernelExecResult(
             compiled=False, metadata=metadata
@@ -560,12 +557,11 @@ def eval_kernel_against_ref(
         if verbose:
             print("[Eval] New Model with Custom CUDA Kernel Loaded")
     except RuntimeError as e:
-        if verbose:
-            print(
-                f"[Eval] Failed to instantiate custom kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
-            )
+        print(
+            f"Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
+        )
         graceful_eval_cleanup(context, device, tempfile)
-        metadata = register_and_format_exception("runtime_error", e, metadata, verbose=verbose)
+        metadata = register_and_format_exception("runtime_error", e, metadata)
         metadata["runtime_error_name"] = get_error_name(e)
         return KernelExecResult(
             compiled=True, run=False, correctness=False, metadata=metadata
@@ -590,7 +586,7 @@ def eval_kernel_against_ref(
             precision=precision,
         )
     except Exception as e:
-        metadata = register_and_format_exception("runtime_error", e, metadata, verbose=verbose)
+        metadata = register_and_format_exception("runtime_error", e, metadata)
         metadata["runtime_error_name"] = get_error_name(e)
         kernel_exec_result = KernelExecResult(
             compiled=True, run=False, correctness=False, metadata=metadata
@@ -632,7 +628,7 @@ def eval_kernel_against_ref(
             if verbose:
                 print(f"[Eval] Error in Measuring Performance: {e}")
             kernel_exec_result.metadata = register_and_format_exception(
-                "error_during_performance", e, kernel_exec_result.metadata, verbose=verbose
+                "error_during_performance", e, kernel_exec_result.metadata
             )
 
     # To get base PyTorch time (eager, various compile modes)
@@ -708,14 +704,6 @@ def register_and_format_exception(
     from verbose compiler output using regex, rather than storing the full wall of text.
 
     For SyntaxErrors, formats line/column/code information.
-
-    Args:
-        exception_type: one of 'syntax_error', 'compilation_error', 'runtime_error',
-                        'lock_file_error', 'correctness_issue', 'error_during_performance'
-        exception_msg: the Exception object or a string description
-        metadata: dict to store error info into
-        truncate: whether to truncate the final message
-        max_length: max characters for the error message
     """
     exception_str = str(exception_msg)
 
@@ -852,15 +840,14 @@ def run_and_check_correctness(
                         print(f"[PASS] trial {trial}: New Model matches Model")
 
             except Exception as e:
-                if verbose:
-                    print("[Error] Exception happens during correctness check")
-                    print(f"Error in launching kernel for ModelNew: {e}")
-                    print("\n[Full Traceback]:")
-                    traceback.print_exc()
-                    print("\n")
+                print("[Error] Exception happens during correctness check")
+                print(f"Error in launching kernel for ModelNew: {e}")
+                print("\n[Full Traceback]:")
+                traceback.print_exc()
+                print("\n")
 
                 metadata = register_and_format_exception(
-                    "runtime_error", e, metadata, verbose=verbose
+                    "runtime_error", e, metadata, truncate=True
                 )
                 metadata["runtime_error_name"] = get_error_name(e)
                 # Also store the full traceback in metadata for debugging
