@@ -8,6 +8,7 @@ import json
 import linecache
 import os, subprocess
 import random
+import re
 import sys
 import tempfile
 import traceback
@@ -490,11 +491,34 @@ def eval_kernel_against_ref(
         print("[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
 
     # this is where compilation happens
+    # Capture stdout at the OS level to get compiler error messages.
+    # PyTorch's _run_ninja_build merges stderr into stdout (stderr=subprocess.STDOUT).
+    # When load_inline is called with verbose=True, ninja output goes directly to
+    # fd 1 (stdout) and the exception message is terse. By capturing fd 1, we
+    # intercept the compiler output. When verbose=False, the output is piped and
+    # included in the exception message directly, so str(e) already has it.
+    capturing_stdout = False
+    stdout_tmp_path = None
+    stdout_tmp_fd = -1
+    original_stdout_fd = -1
+    try:
+        stdout_tmp_path = os.path.join(
+            os.environ.get('TMPDIR', os.environ.get('TEMP', '/tmp')),
+            f'kb_stdout_{os.getpid()}.log'
+        )
+        stdout_tmp_fd = os.open(stdout_tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        original_stdout_fd = os.dup(1)
+        os.dup2(stdout_tmp_fd, 1)
+        capturing_stdout = True
+    except OSError:
+        # If stdout capture setup fails, proceed without it
+        pass
+
     try:
         os.environ["TORCH_USE_CUDA_DSA"] = "1"  # compile with device side assertion
         tempfile = None
         # add hash for later to distinguish between multi-turn kernels
-        
+
         backend_lower = backend.lower()
         if backend_lower in ["triton", "tilelang", "cute"]:
             # Use tempfile approach for triton, tilelang, and cute
@@ -506,7 +530,39 @@ def eval_kernel_against_ref(
             # Default CUDA backend
             ModelNew = load_custom_model(custom_model_src, context, build_dir)
         torch.cuda.synchronize(device=device)  # not sure if this is too much
+
+        # Compilation succeeded, restore stdout and discard capture
+        if capturing_stdout:
+            os.dup2(original_stdout_fd, 1)
+            os.close(original_stdout_fd)
+            os.close(stdout_tmp_fd)
+            try:
+                os.unlink(stdout_tmp_path)
+            except OSError:
+                pass
     except Exception as e:
+        # Restore stdout before any print statements
+        captured_stdout = ""
+        if capturing_stdout:
+            os.dup2(original_stdout_fd, 1)
+            os.close(original_stdout_fd)
+            os.close(stdout_tmp_fd)
+
+            # Read captured compiler output from the temp file
+            try:
+                with open(stdout_tmp_path, 'r', errors='replace') as f:
+                    captured_stdout = f.read()
+            except OSError:
+                pass
+            finally:
+                try:
+                    os.unlink(stdout_tmp_path)
+                except OSError:
+                    pass
+
+        # Use captured stdout if it contains more detail than str(e)
+        error_detail = captured_stdout if len(captured_stdout) > len(str(e)) else str(e)
+
         print(
             f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
         )
@@ -522,7 +578,7 @@ def eval_kernel_against_ref(
             return None
         else:
             metadata["compilation_error_name"] = get_error_name(e)
-            metadata = register_and_format_exception("compilation_error", e, metadata)
+            metadata = register_and_format_exception("compilation_error", error_detail, metadata)
             graceful_eval_cleanup(context, device, tempfile)
             return KernelExecResult(
                 compiled=False, metadata=metadata
