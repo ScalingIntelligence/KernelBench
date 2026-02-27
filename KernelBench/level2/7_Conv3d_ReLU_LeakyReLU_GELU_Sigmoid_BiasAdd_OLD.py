@@ -13,6 +13,7 @@ class Model(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         x = torch.relu(x)
+        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
         x = torch.nn.functional.gelu(x)
         x = torch.sigmoid(x)
         x = x + self.bias
@@ -30,3 +31,4 @@ def get_inputs():
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, bias_shape]
+

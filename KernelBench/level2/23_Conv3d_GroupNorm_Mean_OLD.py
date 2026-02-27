@@ -19,7 +19,7 @@ class Model(nn.Module):
         """
         x = self.conv(x)
         x = self.group_norm(x)
-        x = x.amax(dim=[1, 2, 3, 4]) # Global max pool 
+        x = x.mean(dim=[1, 2, 3, 4]) # Compute mean across all dimensions except batch
         return x
 
 batch_size = 128
@@ -34,3 +34,4 @@ def get_inputs():
 
 def get_init_inputs():
     return [in_channels, out_channels, kernel_size, num_groups]
+
