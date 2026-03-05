@@ -1,6 +1,8 @@
 # KernelBench: Can LLMs Write Efficient GPU Kernels? [ICML '25]
 A benchmark and environment for evaluating LLMs' ability to generate efficient GPU kernels
 
+Specifically we task LLM to generate correct and efficient CUDA / DSL kernels for PyTorch programs on a target GPU.
+
 [arXiv](https://arxiv.org/html/2502.10517v1) | [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [HuggingFace Dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) 
 
 <img src="./assets/figures/KernelBenchMascot.png" width="200">
@@ -157,15 +159,15 @@ Check out our [roadmap](https://github.com/ScalingIntelligence/KernelBench/issue
 ## 🔌 Integration 
 You can also use KernelBench as a library for your projects, for example: `from kernelbench import timing`, `from kernelbench import eval as kb_eval`, or `from kernelbench.utils import set_gpu_arch`.
 
-- **Adapter with Harbor** — We are integrating with [Harbor](https://harborframework.com/docs) to enable higher-throughput eval and richer evaluation of agentic performance beyond model pass@1/k. *(Ongoing)*
+- **Adapter with Harbor** — We are integrating with [Harbor](https://harborframework.com/docs) to enable higher-throughput eval and richer evaluation of agentic performance beyond model pass@1/k. *([Ongoing](https://github.com/harbor-framework/harbor/pull/999))*
 
 - **Multi-Turn / Test-Time Scaling** — [Caesar](https://github.com/ScalingIntelligence/caesar) is our throughput-oriented multi-turn inference engine (ICML '25), used for the iterative refinement experiments in the paper. It runs generation trajectories in batch, feeding back correctness, runtime, and profiling signals across turns for sequential test-time scaling.
 
-- **Reinforcement Learning (RLVR)** — [kernelbench-tinker](https://github.com/ScalingIntelligence/kernelbench-tinker) is an end-to-end integration with Thinking Machines Lab's [Tinker](https://github.com/thinking-machines-lab/tinker). The pipeline has the policy model generate kernels, evaluates them on cloud GPUs via Modal, and converts results into RL rewards — a minimal playground for experimenting with RLVR on GPU kernel optimization.
+- **Reinforcement Learning (RLVR)** — [kernelbench-tinker](https://github.com/ScalingIntelligence/kernelbench-tinker) is an end-to-end integration with Thinking Machines Lab's [Tinker RL library](https://github.com/thinking-machines-lab/tinker). The pipeline has the policy model generate kernels, evaluates them on cloud GPUs via Modal, and converts results into RL rewards — a minimal playground for experimenting with RLVR on GPU kernel optimization.
 
 - **Evolutionary Search** — Evolutionary search like AlphaEvolve has shown promise for discovering innovative solutions for optimization problems. We are working on an integration for [OpenEvolve](https://github.com/algorithmicsuperintelligence/openevolve). Releasing soon.
 
-- **Roofline / Max Speedup Analysis** — [simple-torchroofline](https://github.com/simonguozirui/simple-torchroofline) provides analytical roofline analysis for PyTorch programs, estimating the speed-of-light compute and memory bounds for a target GPU — no hardware required. Combined with hardware counter-based profiling for empirical roofline analysis, this helps sanity-check whether a reported speedup is physically realistic. *(Experimental, WIP)*
+- **Roofline / Max Speedup Analysis** —   *(Experimental, WIP)* [simple-torchroofline](https://github.com/simonguozirui/simple-torchroofline) provides analytical roofline analysis for PyTorch programs, estimating the speed-of-light (SoL) compute and memory bounds for a target GPU — no hardware required. Combined with hardware counter-based profiling for empirical roofline analysis, this helps sanity-check whether a reported speedup is physically realistic. 
 
 
 ## 🔍 Known Usage
