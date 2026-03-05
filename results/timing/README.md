@@ -30,10 +30,10 @@ For timing, we measure wall clock time. We warm up 3 times and collect runtime s
 
 ### Run on your own cluster
 Since your cluster might be different from ours (different GPU, different power setting, etc.), you can create the baseline results on your own cluster.
-Take a look at `python3 scripts/generate_baseline_time.py` to see how to set and run timing results.
+Take a look at `uv run python scripts/generate_baseline_time.py` to see how to set and run timing results.
 
 ### Run on modal
-To gather baseline on modal, take a look at `python3 scripts/generate_baseline_time_modal.py` to see how we are doing it.
+To gather baseline on modal, take a look at `uv run python scripts/generate_baseline_time_modal.py` to see how we are doing it.
 
 ### Hardware
 

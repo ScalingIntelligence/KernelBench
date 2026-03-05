@@ -17,13 +17,13 @@ Given generations and eval results, this script will compute the following:
 
 Usage:
 ```
-python3 scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline>
+uv run python scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline>
 ```
 hardware + baseline should correspond to the results/timing/hardware/baseline.json file
 
 Optional path overrides (for external tools like leaderboards):
 ```
-python3 scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline> \
+uv run python scripts/benchmark_eval_analysis.py run_name=<run_name> level=<level> hardware=<hardware> baseline=<baseline> \
     baseline_file=/path/to/baseline.json \
     eval_results_dir=/path/to/runs \
     output_file=/path/to/output.json
