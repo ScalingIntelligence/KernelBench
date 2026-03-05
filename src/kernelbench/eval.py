@@ -533,8 +533,12 @@ def eval_kernel_against_ref(
             print(
                 f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
             )
+            metadata["compilation_error_name"] = "LockFileError"
+            metadata["compilation_error"] = f"Lock file error during concurrent compilation: {e}"
             graceful_eval_cleanup(context, device, tempfile)
-            return None
+            return KernelExecResult(
+                compiled=False, correctness=False, metadata=metadata
+            )
         else:
             metadata["compilation_error_name"] = get_error_name(e)
             metadata["compilation_error"] = e
