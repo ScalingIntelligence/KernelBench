@@ -85,12 +85,12 @@ def check_code_bypass(code: str) -> Tuple[bool, str]:
 # Allows: nn.Module, nn.Parameter, nn.ParameterList, nn.ParameterDict, 
 #         nn.ModuleList, nn.ModuleDict, nn.init (needed for model structure)
 # Blocks: nn.Linear, nn.Conv2d, nn.ReLU, etc. (compute layers)
-PYTORCH_DISALLOWED_NN_PATTERN = r'torch\.nn\.(?!(Module|parameter|Parameter|ParameterList|ParameterDict|ModuleList|ModuleDict|init)\b)'
+PYTORCH_DISALLOWED_NN_PATTERN = r'(?<!\w)nn\.(?!(Module|parameter|Parameter|ParameterList|ParameterDict|ModuleList|ModuleDict|init)\b)'
 
 def check_pytorch_wrap(code: str) -> Tuple[bool, str]:
     """
     Check for PyTorch nn module usage (nn.Linear, nn.Conv2d, etc.).
-    
+
     Allows containers (nn.Module, nn.Parameter, nn.init) needed for model structure.
     Blocks compute layers (nn.Linear, nn.Conv2d, nn.ReLU, etc.).
     """
