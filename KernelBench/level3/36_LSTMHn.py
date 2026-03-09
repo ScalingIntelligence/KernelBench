@@ -15,7 +15,6 @@ class Model(nn.Module):
         super(Model, self).__init__()
         # Initialize hidden state with random values
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout, bidirectional=False)
-        self.fc = nn.Linear(hidden_size, output_size)
     
     def forward(self, x,h0,c0):
         """
@@ -26,11 +25,7 @@ class Model(nn.Module):
         """
         
         # Forward propagate LSTM
-        out, state = self.lstm(x, (h0, c0))  # out: tensor of shape (batch_size, seq_length, hidden_size)
-        
-        # Decode the hidden state of the last time step
-        out = self.fc(out[:, -1, :])  # out: tensor of shape (batch_size, output_size)
-        
+        _, state = self.lstm(x, (h0, c0))
         return state[0]
 
 # Test code
