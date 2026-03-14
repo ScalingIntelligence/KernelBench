@@ -384,6 +384,9 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     if not isinstance(input, torch.Tensor):
         return input
     
+    if input.abs().max() > torch.finfo(precision).max:
+        print(f"[WARNING] Input overflow for {precision}: max {input.abs().max().item():.2e} > {torch.finfo(precision).max:.2e}")
+    
     # cast to the desired percision dtype for activations
     input_tensor = input.to(dtype=precision)
     
