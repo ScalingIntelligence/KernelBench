@@ -82,7 +82,7 @@ class Model(nn.Module):
         x = x + self.mlpf(self.ln_2(x))
         return x
 
-batch_size = 128
+batch_size = 32
 max_seqlen = 1024
 seq_len = 512
 n_embd = 768
