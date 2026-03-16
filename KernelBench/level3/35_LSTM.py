@@ -31,9 +31,9 @@ class Model(nn.Module):
         batch_size = x.size(0)
 
         if h0 is None:
-            h0 = torch.randn(self.num_layers, batch_size, self.hidden_size, device=x.device)
+            h0 = torch.randn(self.num_layers, batch_size, self.hidden_size, device=x.device, dtype=x.dtype)
         if c0 is None:
-            c0 = torch.randn(self.num_layers, batch_size, self.hidden_size, device=x.device)
+            c0 = torch.randn(self.num_layers, batch_size, self.hidden_size, device=x.device, dtype=x.dtype)
 
         out, _ = self.lstm(x, (h0, c0))  # out: (batch_size, seq_length, hidden_size)
         out = self.fc(out[:, -1, :])     # out: (batch_size, output_size)
