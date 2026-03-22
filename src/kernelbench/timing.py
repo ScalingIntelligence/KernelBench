@@ -238,7 +238,7 @@ def time_execution_with_cuda_event(
         # Warm ups
         for _ in range(num_warmup):
             kernel_fn(*args)
-            torch.cuda.synchronize(device=device)
+        torch.cuda.synchronize(device=device)
         
         # note this only release PyTorch’s CUDA caching allocator, not necessarily clearing device's L2 cache
         torch.cuda.empty_cache()
@@ -465,7 +465,7 @@ def time_execution_with_host_time(
     # Warm ups
     for _ in range(num_warmup):
         kernel_fn(*args)
-        torch.cuda.synchronize(device=device)
+    torch.cuda.synchronize(device=device)
 
     print(f"[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, warm up {num_warmup}, trials {num_trials}")
     elapsed_times = []
@@ -534,7 +534,7 @@ def time_execution_with_nsight_python(
         # Warm ups
         for _ in range(num_warmup):
             kernel_fn(*args)
-            torch.cuda.synchronize(device=device)
+        torch.cuda.synchronize(device=device)
         
         # Clear cache for cold start
         torch.cuda.empty_cache()
