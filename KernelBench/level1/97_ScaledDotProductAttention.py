@@ -12,12 +12,12 @@ class Model(nn.Module):
 batch_size = 32
 num_heads = 32
 sequence_length = 512
-embedding_dimension = 1024
+head_dimension = 32
 
 def get_inputs():
-    Q = torch.rand(batch_size, num_heads, sequence_length, embedding_dimension)
-    K = torch.rand(batch_size, num_heads, sequence_length, embedding_dimension)
-    V = torch.rand(batch_size, num_heads, sequence_length, embedding_dimension)
+    Q = torch.rand(batch_size, num_heads, sequence_length, head_dimension)
+    K = torch.rand(batch_size, num_heads, sequence_length, head_dimension)
+    V = torch.rand(batch_size, num_heads, sequence_length, head_dimension)
     return [Q, K, V]
 
 def get_init_inputs():
