@@ -380,14 +380,22 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
         Processed tensor on correct device with correct dtype, or original value if not a tensor
     """
 
-    # sometimes things like init inputs are floats (like in the case of labels / targets, classification losses, etc.) 
     if not isinstance(input, torch.Tensor):
         return input
-    
-    # cast to the desired percision dtype for activations
+
+    # Preserve integer tensors as-is — these are typically class indices for
+    # losses like cross_entropy / nll_loss / kl_div (target labels from
+    # torch.randint(...)) or boolean masks. Casting them to a floating-point
+    # `precision` breaks dispatch for ops that require Long targets and
+    # surfaces as misleading errors such as:
+    #   NotImplementedError: "nll_loss_forward_reduce_cuda_kernel_2d_index"
+    #     not implemented for 'Float'
+    if not input.is_floating_point():
+        return input.to(device=device)
+
+    # cast floating-point activations / weights to the desired precision dtype
     input_tensor = input.to(dtype=precision)
-    
-    # Default for all other backends and float types
+
     return input_tensor.to(device=device)
 
 
