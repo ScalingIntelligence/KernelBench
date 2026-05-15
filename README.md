@@ -1,5 +1,7 @@
 # KernelBench: Can LLMs Write Efficient GPU Kernels? [ICML '25]
-A benchmark for evaluating LLMs' ability to generate efficient GPU kernels
+A benchmark and environment for evaluating LLMs' ability to generate efficient GPU kernels
+
+Specifically we task LLM to generate correct and efficient CUDA / DSL kernels for PyTorch programs on a target GPU.
 
 [arXiv](https://arxiv.org/html/2502.10517v1) | [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [HuggingFace Dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) 
 
@@ -16,7 +18,7 @@ The Huggingface [dataset](https://huggingface.co/datasets/ScalingIntelligence/Ke
 This repo provides core functionality for KernelBench and an easy-to-use set of scripts for evaluation. It is not intended to provide complex agentic scaffolds that solve this task; we recommend cloning and modifying this repo for your experiment, or using it as a git submodule.
 
 ## 👋 Task Description
-We structure the problem for LLM to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity it desires to.
+We structure the problem for LLMs to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity they desire.
 ![KernelBenchMascot](./assets/figures/KernelBenchWorkFlow.png)
 
 We construct KernelBench to have 4 Levels of categories:
@@ -34,8 +36,8 @@ We are actively extending KernelBench to other DSLs beyond `cuda` as well (see b
 ## ⚖️ Evaluation
 #### Methodology
 To evaluate model-generated kernels, we need to check if they:
-- **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
-- **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
+- **are correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
+- **are performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
 
 Check out `src/eval.py` for details on how we implement correctness check and timing and `EVAL.md` for notes on evaluation and benchmarking guidelines [WIP].
 
@@ -116,11 +118,11 @@ It is easier to get started with a single problem. This will fetch the problem, 
 uv run python scripts/generate_and_eval_single_sample.py dataset_src=huggingface level=2 problem_id=40 server_type=google model_name=gemini/gemini-2.5-flash
 
 # dataset_src could be "local" or "huggingface"
-# add .verbose_logging for more visbility
+# add .verbose_logging for more visibility
 ```
 
 **What you might need to modify**
-* **`gpu_arch`** - Depend on your GPU, you might need to adjust the `gpu_arch` argument to reflect your hardware.
+* **`gpu_arch`** - Depending on your GPU, you might need to adjust the `gpu_arch` argument to reflect your hardware.
 * **`precision`** - You can specify the precision of tensor by `precision=fp32`. Currently all of our reported results are `fp32` but we added support for `fp16` & `bf16`.
 *  **`backend`** - We are also supporting other GPU programming languages beyond `cuda`. For example, simply specify `backend=triton` or `backend=hip`. For now we support NVIDIA GPUs with programming frameworks and DSLs: `cuda`, `triton`, `cute`, `tilelang`, `thunderkittens`. 
 
@@ -128,7 +130,7 @@ Note for AMD GPUs: Use `hip` backend, `gpu_arch` currently supported: `gfx942`, 
 
 Note on setting up ThunderKittens (TK) locally: to use `backend=thunderkittens`, you need to git clone the ThunderKittens repo and set the following environment variable to point to your local ThunderKittens directory, `export THUNDERKITTENS_ROOT=<PATH to ThunderKittens folder>`, and all ThunderKitten programs as shown in the [example](src/kernelbench/prompts/model_new_ex_add_thunderkittens.py), should contain `tk_root = os.environ.get("THUNDERKITTENS_ROOT", "/root/ThunderKittens")`, which enable the kernel to include the right TK primitives. In addition, we only support BF16 for TK right now.
 
-Check the config fields for comprehensive set of options. Note we provide the model with a one-shot example by default along with the minimum set of info; you can check out other prompt settings or construct your own in `src/prompt_constructor_toml.py`.
+Check the config fields for a comprehensive set of options. Note we provide the model with a one-shot example by default along with the minimum set of info; you can check out other prompt settings or construct your own in `src/prompt_constructor_toml.py`.
 
 ### Run on all problems 
 
@@ -149,20 +151,30 @@ We provide `scripts/benchmark_eval_analysis.py` to analyze the eval results to c
 uv run python scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=1 hardware=L40S_matx3 baseline=baseline_time_torch
 ```
 If you are using a different hardware, you can generate the baseline time with `scripts/generate_baseline_time.py` script.
-We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
-
-### Multi-Turn Framework & Integrations
-We have also releaed the test-time framework [Caesar](https://github.com/ScalingIntelligence/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems.
-
-You can also use KernelBench as a library for your projects, for example: `from kernelbench import timing`, `from kernelbench import eval as kb_eval`, or `from kernelbench.utils import set_gpu_arch`.
+We provide some reference baseline times for a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you generate your own baseline time for more accurate results (cluster power, software version, all affect timing results). See `results/timing/README.md` for more details.
 
 ## 🛣️ Upcoming Roadmap
-Check out our [roadmap](https://github.com/ScalingIntelligence/KernelBench/issues/74) for what we plan to add as features. We welcome community contirbutions in these directions. 
+Check out our [roadmap](https://github.com/ScalingIntelligence/KernelBench/issues/74) for what we plan to add as features. We welcome community contributions and discussions in these directions. 
+
+## 🔌 Integration 
+You can also use KernelBench as a library for your projects, for example: `from kernelbench import timing`, `from kernelbench import eval as kb_eval`, or `from kernelbench.utils import set_gpu_arch`.
+
+- **Adapter with Harbor** — We are integrating with [Harbor](https://harborframework.com/docs) to enable higher-throughput eval and richer evaluation of agentic performance beyond model pass@1/k. *([Ongoing](https://github.com/harbor-framework/harbor/pull/999))*
+
+- **Multi-Turn / Test-Time Scaling** — [Caesar](https://github.com/ScalingIntelligence/caesar) is our throughput-oriented multi-turn inference engine (ICML '25), used for the iterative refinement experiments in the paper. It runs generation trajectories in batch, feeding back correctness, runtime, and profiling signals across turns for sequential test-time scaling.
+
+- **Reinforcement Learning (RLVR)** — [kernelbench-tinker](https://github.com/ScalingIntelligence/kernelbench-tinker) is an end-to-end integration with Thinking Machines Lab's [Tinker RL library](https://github.com/thinking-machines-lab/tinker). The pipeline has the policy model generate kernels, evaluates them on cloud GPUs via Modal, and converts results into RL rewards — a minimal playground for experimenting with RLVR on GPU kernel optimization.
+
+- **Evolutionary Search** — Evolutionary search like AlphaEvolve has shown promise for discovering innovative solutions for optimization problems. We are working on an integration for [OpenEvolve](https://github.com/algorithmicsuperintelligence/openevolve). Releasing soon.
+
+- **Roofline / Max Speedup Analysis** —   *(Experimental, WIP)* [simple-torchroofline](https://github.com/simonguozirui/simple-torchroofline) provides analytical roofline analysis for PyTorch programs, estimating the speed-of-light (SoL) compute and memory bounds for a target GPU — no hardware required. Combined with hardware counter-based profiling for empirical roofline analysis, this helps sanity-check whether a reported speedup is physically realistic. 
+
 
 ## 🔍 Known Usage
 Since release, we have gotten a lot of interest from researchers, research labs, and companies that use KernelBench to explore this direction. We have documented [known usage](https://docs.google.com/document/d/e/2PACX-1vTjS-UMH1HB5n_PENq2k-3YRfXIXkqKIKeNC2zcWMyLPdl4Jrwvdk4dNDVSsM8ybKrCxZB7GJq1slZF/pub) of KernelBench and related efforts towards automated kernel generations. If you are using KernelBench, we love to hear more about it!
 
-Disclaimer: KernelBench is designed as an open-source evaluation framework and toolkit. The KernelBench team does not review, validate, or endorse individual kernels or reported results. Users are responsible for independently verifying any results obtained using the framework. Please check out `EVAL.md` for more guidance on benchmarking and evaluating kernels.
+Disclaimer: KernelBench is designed as an **open-source** evaluation framework and toolkit. The KernelBench team does not review, validate, or endorse individual kernels or reported results. Users are responsible for independently verifying any results obtained using the framework. Please check out `EVAL.md` for more guidance on benchmarking and evaluating kernels.
+
 
 ## 🪪 License
 MIT. Check `LICENSE.md` for more details.
@@ -180,3 +192,5 @@ MIT. Check `LICENSE.md` for more details.
       url={https://arxiv.org/abs/2502.10517}, 
 }
 ```
+
+We are grateful for the support from [GPU Mode](https://gpu-mode.github.io/popcorn/), [PyTorch](https://pytorch.org/), [Modal Labs](https://modal.com/blog/accelerating-ai-research-case-study) and the broader open-source community that made this project possible.

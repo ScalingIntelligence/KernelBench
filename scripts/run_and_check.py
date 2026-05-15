@@ -64,18 +64,18 @@ The Reference could be either
 ====================================================
 Usage:
 1. PyTorch reference is a local file (local eval)
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=local
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/few_shot/model_ex_tiled_matmul.py kernel_src_path=src/kernelbench/prompts/few_shot/model_new_ex_tiled_matmul.py eval_mode=local
+uv run python scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=local
+uv run python scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/few_shot/model_ex_tiled_matmul.py kernel_src_path=src/kernelbench/prompts/few_shot/model_new_ex_tiled_matmul.py eval_mode=local
 
 
 2. PyTorch reference is a kernelbench problem (local eval)
-python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=local
+uv run python scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=local
 
 3. PyTorch reference is a local file (modal eval on cloud GPU)
-python3 scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=modal gpu=H100
+uv run python scripts/run_and_check.py ref_origin=local ref_arch_src_path=src/kernelbench/prompts/model_ex_add.py kernel_src_path=src/kernelbench/prompts/model_new_ex_add.py eval_mode=modal gpu=H100
 
 4. PyTorch reference is a kernelbench problem (modal eval on cloud GPU)
-python3 scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=modal gpu=L40S
+uv run python scripts/run_and_check.py ref_origin=kernelbench level=<level> problem_id=<problem_id> kernel_src_path=<path to model-generated kernel> eval_mode=modal gpu=L40S
 ====================================================
 
 """

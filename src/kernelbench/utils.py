@@ -15,6 +15,7 @@ import math
 import os
 import json
 from tqdm import tqdm
+import torch
 from importlib.resources import files, as_file
 
 # API clients
