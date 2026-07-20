@@ -566,7 +566,7 @@ def eval_kernel_against_ref(
             torch.cuda.synchronize(device=device)
         if verbose:
             print("[Eval] New Model with Custom CUDA Kernel Loaded")
-    except RuntimeError as e:
+    except Exception as e:
         print(
             f"Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
         )
