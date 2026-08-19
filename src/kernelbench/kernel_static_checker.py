@@ -20,6 +20,7 @@ Usage:
     will return a tuple (valid, errors, warnings) 
 """
 
+import ast
 import re
 from typing import List, Tuple, Dict, Any, Optional, Callable, Union
 
@@ -45,10 +46,93 @@ def _strip_comments(code: str) -> str:
 # This allows them to pass tests without actually implementing the kernel.
 TRY_EXCEPT_PATTERNS = [r"\btry\s*:", r"\bexcept\s*:", r"\bexcept\s+\w+"]
 
+
+def _except_handler_produces_answer(handler: ast.ExceptHandler) -> bool:
+    """
+    An except handler is a reward-hacking-shaped fallback only if it actually
+    computes/produces an alternative result - a return of a non-trivial value,
+    or an assignment whose value comes from calling something (e.g. re-running
+    the computation a different, non-custom way). An inert handler (pass, bare
+    raise, a flag/constant assignment, a log/print call) can't silently swap in
+    a different answer, so it's left alone - that's the "legit fallback, not
+    wrapped around the kernel itself" case.
+    """
+    for stmt in ast.walk(handler):
+        if isinstance(stmt, ast.Return):
+            if stmt.value is not None and not (
+                isinstance(stmt.value, ast.Constant) and stmt.value.value is None
+            ):
+                return True
+        elif isinstance(stmt, (ast.Assign, ast.AugAssign)):
+            for sub in ast.walk(stmt.value):
+                if isinstance(sub, ast.Call):
+                    return True
+    return False
+
+
+def _check_try_except_bypass(code: str) -> Tuple[bool, str]:
+    """
+    AST-based classification of try/except blocks: only flag ones whose except
+    handler produces a computed alternative answer (the actual "wrap the kernel
+    call and fall back to a different computation" hack). Falls back to the
+    blunt regex check if the code doesn't parse as valid Python (e.g. mid-edit
+    snippets), since that's a case the AST walk can't handle safely.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        for pattern in TRY_EXCEPT_PATTERNS:
+            if re.search(pattern, code):
+                return (True, "Contains try-except block (potential fallback bypass)")
+        return (False, "")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Try):
+            for handler in node.handlers:
+                if _except_handler_produces_answer(handler):
+                    return (True, "Contains try-except block whose except branch computes and returns an alternative result (potential fallback bypass)")
+
+    return (False, "")
+
 # --- Pass Statement / Inheritance Bypass ---
 # Rationale: Model inherits from reference class and uses 'pass' to do nothing,
 # effectively just calling the parent implementation.
 PASS_PATTERN = r"\bpass\b"
+
+
+def _is_noop_body(body: list) -> bool:
+    """
+    True if a function body is empty of real work: just `pass` (and/or a
+    leading docstring). A `pass` used elsewhere - e.g. an inert except handler
+    inside a function that does real work - doesn't make the function itself
+    a no-op, so this only looks at whether the ENTIRE body reduces to nothing.
+    """
+    stmts = list(body)
+    if stmts and isinstance(stmts[0], ast.Expr) and isinstance(stmts[0].value, ast.Constant) and isinstance(stmts[0].value.value, str):
+        stmts = stmts[1:]  # drop a leading docstring
+    return len(stmts) == 1 and isinstance(stmts[0], ast.Pass)
+
+
+def _check_pass_bypass(code: str) -> Tuple[bool, str]:
+    """
+    AST-based classification: only flag a function/method whose entire body
+    is a no-op (just `pass`, optionally after a docstring) - the actual
+    "inherits and does nothing" bypass. Falls back to the blunt regex check
+    if the code doesn't parse as valid Python.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        if re.search(PASS_PATTERN, code):
+            return (True, "Contains 'pass' statement (inheritance bypass)")
+        return (False, "")
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_noop_body(node.body):
+            return (True, f"Function '{node.name}' has a no-op body (just 'pass') - potential inheritance bypass")
+
+    return (False, "")
+
 
 def check_code_bypass(code: str) -> Tuple[bool, str]:
     """
@@ -59,17 +143,17 @@ def check_code_bypass(code: str) -> Tuple[bool, str]:
        effectively calling parent implementation.
         Uses word boundary for 'pass' to avoid matching 'passed', 'bypass', etc.
     """
-    code = _strip_comments(code)
-    
-    # Check for try-except fallback
-    for pattern in TRY_EXCEPT_PATTERNS:
-        if re.search(pattern, code):
-            return (True, "Contains try-except block (potential fallback bypass)")
-    
-    # Check for pass statement
-    if re.search(PASS_PATTERN, code):
-        return (True, "Contains 'pass' statement (inheritance bypass)")
-    
+    # Check for try-except fallback (AST-based, on the unstripped code so
+    # comment-stripping can't mangle CUDA/C++ string literals before parsing)
+    try_except_hit, try_except_msg = _check_try_except_bypass(code)
+    if try_except_hit:
+        return (True, try_except_msg)
+
+    # Check for pass statement (AST-based, on the unstripped code)
+    pass_hit, pass_msg = _check_pass_bypass(code)
+    if pass_hit:
+        return (True, pass_msg)
+
     return (False, "")
 
 # Since KernelBench problems uses PyTorch as a reference, there could be settigs where
