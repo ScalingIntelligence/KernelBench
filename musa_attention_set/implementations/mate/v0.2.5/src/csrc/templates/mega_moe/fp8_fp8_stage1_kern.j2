@@ -1,0 +1,117 @@
+#include <cstdint>
+
+#include <musa_runtime.h>
+#include <mutlass/mutlass.h>
+#include <tvm/ffi/extra/musa/device_guard.h>
+
+#include "mate/mega_moe/mega_moe_stage1.hpp"
+#include "op_utils.hpp"
+
+using namespace tvm;
+
+void {{ func_name }}(
+  ffi::TensorView l1_acts,
+  ffi::TensorView l1_acts_sf,
+  ffi::TensorView l2_acts,
+  ffi::TensorView l2_acts_sf,
+  ffi::TensorView l1_weights,
+  ffi::TensorView l1_weights_sf,
+  ffi::TensorView sym_buffer_ptrs,
+  int rank_idx,
+  int num_tokens,
+  float activation_clamp
+) {
+  CHECK_INPUT_AND_TYPE(l1_acts, dl_float8_e4m3fn);
+  CHECK_INPUT_AND_TYPE(l1_acts_sf, dl_float32);
+  CHECK_INPUT_AND_TYPE(l2_acts, dl_float8_e4m3fn);
+  CHECK_INPUT_AND_TYPE(l2_acts_sf, dl_float32);
+  CHECK_INPUT_AND_TYPE(l1_weights, dl_float8_e4m3fn);
+  CHECK_INPUT_AND_TYPE(l1_weights_sf, dl_float32);
+  CHECK_DEVICE(l1_acts_sf, l1_acts);
+  CHECK_DEVICE(l2_acts, l1_acts);
+  CHECK_DEVICE(l2_acts_sf, l1_acts);
+  CHECK_DEVICE(l1_weights, l1_acts);
+  CHECK_DEVICE(l1_weights_sf, l1_acts);
+  CHECK_DIM(2, l1_acts);
+  CHECK_DIM(2, l1_acts_sf);
+  CHECK_DIM(2, l2_acts);
+  CHECK_DIM(2, l2_acts_sf);
+  CHECK_DIM(3, l1_weights);
+  CHECK_DIM(3, l1_weights_sf);
+
+  TVM_FFI_ICHECK_EQ(l1_acts.size(0), {{ num_max_pool_tokens }});
+  TVM_FFI_ICHECK_EQ(l1_acts.size(1), {{ hidden }});
+  TVM_FFI_ICHECK_EQ(l1_acts_sf.size(0), {{ num_padded_sf_pool_tokens }});
+  TVM_FFI_ICHECK_EQ(l1_acts_sf.size(1), {{ hidden // 128 }});
+  TVM_FFI_ICHECK_EQ(l2_acts.size(0), {{ num_max_pool_tokens }});
+  TVM_FFI_ICHECK_EQ(l2_acts.size(1), {{ intermediate_hidden }});
+  TVM_FFI_ICHECK_EQ(l2_acts_sf.size(0), {{ num_padded_sf_pool_tokens }});
+  TVM_FFI_ICHECK_EQ(l2_acts_sf.size(1), {{ intermediate_hidden // 128 }});
+  TVM_FFI_ICHECK_EQ(l1_weights.size(0), {{ num_experts_per_rank }});
+  TVM_FFI_ICHECK_EQ(l1_weights.size(1), {{ intermediate_hidden * 2 }});
+  TVM_FFI_ICHECK_EQ(l1_weights.size(2), {{ hidden }});
+  TVM_FFI_ICHECK_EQ(l1_weights_sf.size(0), {{ num_experts_per_rank }});
+  TVM_FFI_ICHECK_EQ(l1_weights_sf.size(1), {{ (intermediate_hidden * 2) // 64 }});
+  TVM_FFI_ICHECK_EQ(l1_weights_sf.size(2), {{ hidden // 128 }});
+  TVM_FFI_ICHECK_GE(num_tokens, 0);
+  TVM_FFI_ICHECK_LE(num_tokens, {{ num_max_tokens_per_rank }});
+  TVM_FFI_ICHECK_GE(activation_clamp, 0.0f);
+
+  ffi::MUSADeviceGuard device_guard(l1_acts.device().device_id);
+  auto sym_buffer = mate::mega_moe::make_sym_buffer<{{ num_ranks }}>(sym_buffer_ptrs, rank_idx);
+
+  constexpr auto fp8_dtype = MU_TENSOR_DESCRIPTOR_DATA_TYPE_UINT8;
+  const auto tensor_map_l1_acts = TmeDesc(
+      mute::make_tuple(
+          static_cast<muuint64_t>({{ hidden }}),
+          static_cast<muuint64_t>(l1_acts.size(0)),
+          1),
+      mute::make_tuple(
+          static_cast<muuint64_t>(l1_acts.stride(0)),
+          static_cast<muuint64_t>(l1_acts.size(0) * l1_acts.stride(0))),
+      l1_acts.data_ptr(),
+      fp8_dtype).desc;
+  const auto tensor_map_l1_weights = TmeDesc(
+      mute::make_tuple(
+          static_cast<muuint64_t>({{ hidden }}),
+          static_cast<muuint64_t>(l1_weights.size(1)),
+          static_cast<muuint64_t>({{ num_experts_per_rank }})),
+      mute::make_tuple(
+          static_cast<muuint64_t>(l1_weights.stride(1)),
+          static_cast<muuint64_t>(l1_weights.stride(0))),
+      l1_weights.data_ptr(),
+      fp8_dtype).desc;
+
+  auto kernel = ::mega_moe::fp8_fp8_mega_moe_stage1_impl<
+      {{ num_max_tokens_per_rank }},
+      {{ hidden }}, {{ intermediate_hidden }},
+      {{ num_experts }}, {{ num_topk }},
+      {{ num_experts_per_wave }},
+      {{ block_m }}, {{ block_n }}, {{ block_k }},
+      {{ num_max_pool_tokens }},
+      {{ num_padded_sf_pool_tokens }},
+      {{ num_stages }},
+      {{ num_dispatch_threads }}, {{ num_compute_threads }},
+      {{ num_mps }}, {{ num_ranks }}>;
+  MATE_MUSA_RUNTIME_CHECK(musaFuncSetAttribute(
+      kernel, musaFuncAttributeMaxDynamicSharedMemorySize, {{ smem_size }}));
+
+  musaStream_t stream = get_stream(l1_acts.device());
+  kernel<<<{{ num_mps }}, {{ num_threads }}, {{ smem_size }}, stream>>>(
+      static_cast<uint32_t>(num_tokens),
+      sym_buffer,
+      static_cast<const float*>(l1_weights_sf.data_ptr()),
+      static_cast<const float*>(l1_acts_sf.data_ptr()),
+      static_cast<mutlass::float_e4m3_t*>(l2_acts.data_ptr()),
+      static_cast<float*>(l2_acts_sf.data_ptr()),
+      static_cast<uint64_t>(l1_weights_sf.stride(0)),
+      static_cast<uint64_t>(l1_weights_sf.stride(1)),
+      static_cast<uint64_t>(l1_weights_sf.stride(2)),
+      static_cast<uint64_t>(l1_acts_sf.stride(0)),
+      static_cast<uint64_t>(l1_acts_sf.stride(1)),
+      static_cast<uint64_t>(l2_acts_sf.stride(0)),
+      static_cast<uint64_t>(l2_acts_sf.stride(1)),
+      tensor_map_l1_acts,
+      tensor_map_l1_weights);
+  MATE_CHECK_MUSA_KERNEL_LAUNCH();
+}

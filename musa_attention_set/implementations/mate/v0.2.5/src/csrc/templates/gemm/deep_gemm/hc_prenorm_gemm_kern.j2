@@ -1,0 +1,93 @@
+#include <mute/tensor.hpp>
+#include <mutlass/mutlass.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/kernel_hardware_info.h>
+#include <tvm/ffi/extra/musa/device_guard.h>
+
+#include "mate/gemm/deep_gemm/mp31_tf32_hc_prenorm_gemm.hpp"
+#include "op_utils.hpp"
+
+using namespace mute;
+using namespace tvm;
+
+void {{ func_name }}(
+  ffi::TensorView a,
+  ffi::TensorView b,
+  ffi::TensorView d,
+  ffi::TensorView sqr_sum,
+  int             num_splits
+) {
+  ffi::MUSADeviceGuard device_guard(a.device().device_id);
+
+  CHECK_INPUT_TYPE(a, dl_bfloat16);
+  CHECK_INPUT_TYPE(b, dl_float32);
+  CHECK_INPUT_TYPE(d, dl_float32);
+  CHECK_INPUT_TYPE(sqr_sum, dl_float32);
+  CHECK_CONTIGUOUS(a);
+  CHECK_CONTIGUOUS(b);
+  CHECK_CONTIGUOUS(d);
+  CHECK_CONTIGUOUS(sqr_sum);
+  CHECK_DEVICE(b, a);
+  CHECK_DEVICE(d, a);
+  CHECK_DEVICE(sqr_sum, a);
+
+  TVM_FFI_ICHECK(a.dim() == 2);
+  TVM_FFI_ICHECK(b.dim() == 2);
+
+  int64_t M = a.size(0);
+  int64_t K = a.size(1);
+  int64_t N = b.size(0);
+
+  TVM_FFI_ICHECK(b.size(1) == K);
+  if (num_splits == 1) {
+    TVM_FFI_ICHECK(d.dim() == 2 && d.size(0) == M && d.size(1) == N);
+    TVM_FFI_ICHECK(sqr_sum.dim() == 1 && sqr_sum.size(0) == M);
+  } else {
+    TVM_FFI_ICHECK(d.dim() == 3 && d.size(0) == num_splits && d.size(1) == M
+                   && d.size(2) == N);
+    TVM_FFI_ICHECK(sqr_sum.dim() == 2 && sqr_sum.size(0) == num_splits
+                   && sqr_sum.size(1) == M);
+  }
+
+  using ElementA = mutlass::bfloat16_t;
+  using ElementB = float;
+  using ElementD = float;
+
+  using TileShape                      = Shape<Int<{{ tile_m }}>, Int<{{ tile_n }}>, Int<{{ tile_k }}>>;
+  constexpr uint32_t kStages           = {{ stages }};
+  constexpr uint32_t kNumMmaWarpSquads = {{ num_mma_warp_squads }};
+
+  musaStream_t stream = static_cast<musaStream_t>(
+      TVMFFIEnvGetStream(a.device().device_type, a.device().device_id));
+
+  auto stride_a       = make_stride(a.stride(0), a.stride(1));
+  auto stride_b       = make_stride(b.stride(0), b.stride(1));
+  auto stride_d       = make_stride(M * N, d.stride(d.ndim() - 2), d.stride(d.ndim() - 1));
+  auto stride_sqr_sum = make_stride(M, sqr_sum.stride(sqr_sum.ndim() - 1));
+
+  using Kernel = mate::deep_gemm::Mp31Tf32HcPrenormGemm<
+      ElementA, ElementB, ElementD,
+      decltype(stride_a), decltype(stride_b), decltype(stride_d),
+      decltype(stride_sqr_sum),
+      TileShape, kStages, kNumMmaWarpSquads>;
+
+  typename Kernel::Arguments args{
+    .ptr_a          = reinterpret_cast<ElementA const*>(a.data_ptr()),
+    .ptr_b          = reinterpret_cast<ElementB const*>(b.data_ptr()),
+    .ptr_d          = reinterpret_cast<ElementD*>(d.data_ptr()),
+    .ptr_sqr_sum    = reinterpret_cast<float*>(sqr_sum.data_ptr()),
+    .stride_a       = stride_a,
+    .stride_b       = stride_b,
+    .stride_d       = stride_d,
+    .stride_sqr_sum = stride_sqr_sum,
+    .m              = static_cast<int>(M),
+    .n              = static_cast<int>(N),
+    .k              = static_cast<int>(K),
+    .num_splits     = num_splits,
+  };
+
+  auto params = Kernel::to_underlying_arguments(args);
+  dim3 grid   = Kernel::get_grid_shape(params);
+  mutlass::device_kernel<Kernel><<<grid, Kernel::MaxThreadsPerBlock,
+                                   Kernel::SharedStorageSize, stream>>>(params);
+}

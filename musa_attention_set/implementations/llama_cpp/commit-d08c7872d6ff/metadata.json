@@ -1,0 +1,19 @@
+{
+  "project": "llama_cpp",
+  "repository": "https://github.com/ggml-org/llama.cpp",
+  "revision": "d08c7872d6ffe3f059f8647840a29aa390413e27",
+  "revision_label": "master snapshot",
+  "upstream_commit_date": "2026-09-01T13:37:40+03:00",
+  "retrieved_at": "2026-09-01",
+  "license": "MIT",
+  "operator_families": ["ggml_flash_attention", "quantized_kv_flash_attention"],
+  "hardware": ["MUSA mp_21", "MUSA mp_22", "MUSA mp_31"],
+  "software_requirements": ["MUSA SDK", "GGML_MUSA=ON"],
+  "source_scope": [
+    "ggml-musa build/backend bridge",
+    "ggml-cuda fattn sources and template instances compiled by the MUSA backend",
+    "MUSA build documentation"
+  ],
+  "archive_status": "source-archived-selective",
+  "validation_status": "provenance-verified-not-built"
+}

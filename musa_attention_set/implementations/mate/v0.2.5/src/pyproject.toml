@@ -1,0 +1,123 @@
+[project]
+name = "mate"
+description = "MATE: MUSA AI Tensor Engine - A centralized library for Generative AI"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10,<4.0"
+authors = [
+    { name = "MATE Contributors" }
+]
+keywords = ["musa", "ai", "attention", "gemm", "pytorch"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dynamic = ["version"]
+dependencies = [
+    "apache-tvm-ffi==0.1.9.post3",
+    "torch>=2.7.0",
+    "click>=8.0.0",
+    "jinja2",
+    "packaging>=24",
+    "requests",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "mate._build_meta.__version__" }
+
+[build-system]
+requires = [
+    "setuptools>=77",
+    "packaging>=24",
+    "ninja",
+    "apache-tvm-ffi>=0.1.8",
+    "torch>=2.7.0",
+]
+build-backend = "build_backend"
+backend-path = ["."]
+
+[tool.setuptools]
+include-package-data = false
+py-modules = ["build_backend", "build_utils"]
+
+
+[tool.mypy]
+files = ["mate"]
+ignore_missing_imports = true
+show_column_numbers = true
+show_error_context = true
+follow_imports = "skip"
+ignore_errors = false
+strict_optional = false
+exclude = [
+    "wrappers/",
+    "3rdparty/",
+    "build/",
+]
+
+[tool.ruff.lint]
+ignore = [
+    # assign `lambda` expressions
+    "E731",
+    # temp disable
+    "F821",
+]
+
+[tool.setuptools.packages.find]
+where=["."]
+include=["mate*"]
+exclude=["mate-mubin*"]
+
+[tool.setuptools.package-data]
+"mate" = ["_build_meta.py"]
+"mate.data" = ["csrc/**", "include/**", "aot/**"]
+"mate.data.mutlass" = ["include/**", "experimental/**", "tools/**"]
+
+[project.optional-dependencies]
+# Full functionality including safetensors support and TileLang-backed ops
+all = [
+    "safetensors>=0.4.0",
+    "tilelang-musa==0.1.8",
+]
+
+# CLI extension for full replay support (safetensors enables tensor dump/replay)
+cli = ["safetensors>=0.4.0"]
+
+# TileLang-backed operators such as FlashMLA / GDN
+tilelang = ["tilelang-musa==0.1.8"]
+
+# Testing dependencies
+testing = [
+    "einops",
+    "numpy",
+    "pytest>=7.0.0",
+]
+
+# Benchmark dependencies
+benchmark = [
+    "einops",
+    "numpy",
+    "triton",
+]
+
+# Development dependencies
+dev = [
+    "einops",
+    "numpy",
+    "safetensors>=0.4.0",
+    "pytest>=7.0.0",
+    "tilelang-musa==0.1.8",
+    "triton",
+]
+
+[project.urls]
+Homepage = "https://github.com/MooreThreads/mate"
+Repository = "https://github.com/MooreThreads/mate"
+Documentation = "https://github.com/MooreThreads/mate/tree/main/docs"
+
+[project.scripts]
+mate = "mate.__main__:cli"

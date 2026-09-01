@@ -1,0 +1,297 @@
+ARG BASE_IMAGE=registry.mthreads.com/mcconline/musa_sdk:5.2.0-devel-ubuntu22.04-s5000
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="MATE development base" \
+      org.opencontainers.image.description="Reusable UID/GID-independent toolchain for MATE development" \
+      org.opencontainers.image.source="https://github.com/MooreThreads/mate"
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG MINIFORGE_VERSION=26.3.2-3
+ARG MINIFORGE_ASSET_ID=435215381
+ARG MINIFORGE_SHA256=848194851a98903134187fbb4ab50efe87b003e0c0f808f97644b7524a62bf2c
+ARG MINIFORGE_URL=""
+ARG MUALG_REF=e189e81f545694cfc79db7d216a049637235d176
+ARG MUALG_SHA256=750e8ad1acbe7e8fffe0998f4d484a6edb9f3abee5f2db2248cd72423ca2bc0c
+ARG MUTHRUST_REF=c2e8bbfc8f07b7e755e87ef360505f63fbe9e59e
+ARG MUTHRUST_SHA256=a39e0b31ad734d4a0b4f74a1594c2809765b25222d845cb1b746da9f07e9782a
+ARG OH_MY_ZSH_REF=6adfef3a8b25ca5ccf429bb87e10547ed444eaa1
+ARG OH_MY_ZSH_SHA256=67ab54a917ca3d986aa96f8e9891a8c2b1dc08e5b72f40effd53a378f995b6a9
+ARG ZSH_AUTOSUGGESTIONS_REF=85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5
+ARG ZSH_AUTOSUGGESTIONS_SHA256=20665e469e720e674964a66854d5534b9af78cdfd438512746ecd1ade8e819ce
+ARG NVM_REF=977563e97ddc66facf3a8e31c6cff01d236f09bd
+ARG NVM_SHA256=154aae309d9275dc52c1fc8b45b4b27796ff91271d8ac6bdcd6350fd4a6a28fa
+ENV MATE_TOOLS_DIR=/opt/mate \
+    CONDA_DIR=/opt/mate/miniforge3 \
+    CONDA_ENV=/opt/mate/miniforge3/envs/mate \
+    NVM_DIR=/opt/mate/nvm \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    PIP_NO_CACHE_DIR=1 \
+    TERM=xterm-256color
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        bash-completion \
+        build-essential \
+        ca-certificates \
+        ccache \
+        clang \
+        cmake \
+        curl \
+        gdb \
+        git \
+        git-lfs \
+        htop \
+        jq \
+        less \
+        libaio-dev \
+        libnuma-dev \
+        libopenblas-dev \
+        libopenmpi-dev \
+        libssl-dev \
+        ncdu \
+        ninja-build \
+        openssh-client \
+        patchelf \
+        pkg-config \
+        rsync \
+        shellcheck \
+        sudo \
+        tmux \
+        unzip \
+        vim \
+        wget \
+        zsh
+
+RUN set -eux; \
+    mkdir -p "${MATE_TOOLS_DIR}/bin" /workspace/mate; \
+    if getent group render >/dev/null; then \
+        :; \
+    elif getent group 109 >/dev/null; then \
+        :; \
+    else \
+        groupadd --gid 109 render; \
+    fi
+
+RUN --mount=type=cache,target=/tmp/source-cache,sharing=locked \
+    set -eux; \
+    fetch_public_project() { \
+        project="$1"; \
+        revision="$2"; \
+        checksum="$3"; \
+        archive="/tmp/source-cache/${project}-${revision}.tar.gz"; \
+        if ! echo "${checksum}  ${archive}" | sha256sum --check --strict \
+                >/dev/null 2>&1; then \
+            rm -f "${archive}"; \
+            curl --fail --location --retry 3 --retry-all-errors \
+                --connect-timeout 30 --max-time 300 \
+                "https://codeload.github.com/MooreThreads/${project}/tar.gz/${revision}" \
+                --output "${archive}"; \
+        fi; \
+        echo "${checksum}  ${archive}" | sha256sum --check --strict; \
+        source_dir="/tmp/build/${project}"; \
+        mkdir -p "${source_dir}"; \
+        tar -xzf "${archive}" -C "${source_dir}" --strip-components=1; \
+    }; \
+    rm -rf /tmp/build; \
+    fetch_public_project muAlg "${MUALG_REF}" "${MUALG_SHA256}"; \
+    fetch_public_project muThrust "${MUTHRUST_REF}" "${MUTHRUST_SHA256}"; \
+    rm -rf /tmp/build/muThrust/dependencies/cub; \
+    mkdir -p /tmp/build/muThrust/dependencies/cub; \
+    tar -xzf "/tmp/source-cache/muAlg-${MUALG_REF}.tar.gz" \
+        -C /tmp/build/muThrust/dependencies/cub --strip-components=1; \
+    (cd /tmp/build/muAlg && ./mt_build.sh -i); \
+    (cd /tmp/build/muThrust && ./mt_build.sh -i); \
+    rm -rf /tmp/build
+
+RUN --mount=type=cache,target=/tmp/user-tool-cache,sharing=locked \
+    set -eux; \
+    install_github_archive() { \
+        owner="$1"; \
+        project="$2"; \
+        revision="$3"; \
+        checksum="$4"; \
+        destination="$5"; \
+        archive="/tmp/user-tool-cache/${project}-${revision}.tar.gz"; \
+        if ! echo "${checksum}  ${archive}" | sha256sum --check --strict \
+                >/dev/null 2>&1; then \
+            rm -f "${archive}"; \
+            curl --fail --location --retry 3 --retry-all-errors \
+                --connect-timeout 30 --max-time 300 \
+                "https://codeload.github.com/${owner}/${project}/tar.gz/${revision}" \
+                --output "${archive}"; \
+        fi; \
+        echo "${checksum}  ${archive}" | sha256sum --check --strict; \
+        rm -rf "${destination}"; \
+        mkdir -p "${destination}"; \
+        tar -xzf "${archive}" -C "${destination}" --strip-components=1; \
+    }; \
+    install_github_archive ohmyzsh ohmyzsh "${OH_MY_ZSH_REF}" \
+        "${OH_MY_ZSH_SHA256}" "${MATE_TOOLS_DIR}/oh-my-zsh"; \
+    install_github_archive zsh-users zsh-autosuggestions \
+        "${ZSH_AUTOSUGGESTIONS_REF}" "${ZSH_AUTOSUGGESTIONS_SHA256}" \
+        "${MATE_TOOLS_DIR}/oh-my-zsh/custom/plugins/zsh-autosuggestions"; \
+    install_github_archive nvm-sh nvm "${NVM_REF}" "${NVM_SHA256}" \
+        "${NVM_DIR}"
+
+RUN --mount=type=cache,target=/tmp/downloads,sharing=locked \
+    set -eux; \
+    installer="/tmp/downloads/Miniforge3-${MINIFORGE_VERSION}-Linux-x86_64.sh"; \
+    installer_url="${MINIFORGE_URL:-https://api.github.com/repos/conda-forge/miniforge/releases/assets/${MINIFORGE_ASSET_ID}}"; \
+    if ! echo "${MINIFORGE_SHA256}  ${installer}" | sha256sum --check --strict \
+            >/dev/null 2>&1; then \
+        rm -f "${installer}"; \
+        curl --fail --location --retry 3 --retry-all-errors \
+            --connect-timeout 30 --max-time 600 \
+            --header 'Accept: application/octet-stream' "${installer_url}" \
+            --output "${installer}"; \
+    fi; \
+    echo "${MINIFORGE_SHA256}  ${installer}" | sha256sum --check --strict; \
+    bash "${installer}" -b -p "${CONDA_DIR}"; \
+    "${CONDA_DIR}/bin/mamba" create --yes --quiet --prefix "${CONDA_ENV}" \
+        python=3.10 pip; \
+    "${CONDA_DIR}/bin/conda" clean --all --yes
+
+ENV PATH=${CONDA_ENV}/bin:${CONDA_DIR}/bin:${MATE_TOOLS_DIR}/bin:${PATH} \
+    LD_LIBRARY_PATH=${CONDA_ENV}/lib:${LD_LIBRARY_PATH}
+
+# The MUSA torch wheel requires MKL's .so.2 and pre-2024.1 iJIT ABI.
+ARG MKL_VERSION=2024.0.0
+ARG TORCH_VERSION=2.9.1.post1+musa5.2.0
+ARG TORCH_MUSA_VERSION=2.9.1.post1+musa5.2.0
+ARG TVM_FFI_VERSION=0.1.11.post1+musa.1
+ARG TORCH_DLPACK_VERSION=0.1.5
+ARG TILELANG_MUSA_VERSION=0.1.12+musa.2
+ARG TRITON_VERSION=3.6.0
+
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    set -eux; \
+    unset PIP_NO_CACHE_DIR; \
+    python -m pip install --upgrade pip setuptools wheel; \
+    python -m pip install \
+        build \
+        click \
+        cloudpickle \
+        einops \
+        filelock \
+        fsspec \
+        jinja2 \
+        "mkl==${MKL_VERSION}" \
+        "ml-dtypes>=0.5.1" \
+        networkx \
+        ninja \
+        "numpy<2" \
+        packaging \
+        pre-commit \
+        psutil \
+        pytest \
+        pytest-repeat \
+        pytest-xdist \
+        pyyaml \
+        requests \
+        safetensors \
+        sympy \
+        tabulate \
+        termcolor \
+        tqdm \
+        typing-extensions \
+        uv \
+        "z3-solver>=4.13.0,<4.15.5"; \
+    python -m pip install --no-deps \
+        --index-url https://dl.mthreads.com/repo/api/pypi/pypi/simple \
+        "torch==${TORCH_VERSION}" \
+        "torch_musa==${TORCH_MUSA_VERSION}" \
+        "apache-tvm-ffi==${TVM_FFI_VERSION}" \
+        "torch-c-dlpack-ext==${TORCH_DLPACK_VERSION}" \
+        "tilelang-musa==${TILELANG_MUSA_VERSION}" \
+        "triton==${TRITON_VERSION}"; \
+    python -m pip check; \
+    for library in \
+        libmkl_core.so.2 \
+        libmkl_gnu_thread.so.2 \
+        libmkl_intel_lp64.so.2; do \
+        test -e "${CONDA_ENV}/lib/${library}"; \
+    done; \
+    TORCH_VERSION="${TORCH_VERSION}" \
+    TORCH_MUSA_VERSION="${TORCH_MUSA_VERSION}" \
+    TVM_FFI_VERSION="${TVM_FFI_VERSION}" \
+    TORCH_DLPACK_VERSION="${TORCH_DLPACK_VERSION}" \
+    TILELANG_MUSA_VERSION="${TILELANG_MUSA_VERSION}" \
+    TRITON_VERSION="${TRITON_VERSION}" \
+    python - <<'PY'
+import os
+from importlib.metadata import version
+
+expected = {
+    "torch": os.environ["TORCH_VERSION"],
+    "torch_musa": os.environ["TORCH_MUSA_VERSION"],
+    "apache-tvm-ffi": os.environ["TVM_FFI_VERSION"],
+    "torch-c-dlpack-ext": os.environ["TORCH_DLPACK_VERSION"],
+    "tilelang-musa": os.environ["TILELANG_MUSA_VERSION"],
+    "triton": os.environ["TRITON_VERSION"],
+}
+for distribution, expected_version in expected.items():
+    installed_version = version(distribution)
+    if installed_version != expected_version:
+        raise RuntimeError(
+            f"{distribution}: expected {expected_version}, got {installed_version}"
+        )
+PY
+
+RUN set -eux; \
+    source "${NVM_DIR}/nvm.sh"; \
+    nvm install --lts; \
+    nvm alias default 'lts/*'; \
+    npm install --global @anthropic-ai/claude-code @openai/codex opencode-ai; \
+    node_bin_dir="$(dirname "$(command -v node)")"; \
+    for tool in node npm npx claude codex opencode; do \
+        if [ -x "${node_bin_dir}/${tool}" ]; then \
+            ln -s "${node_bin_dir}/${tool}" "${MATE_TOOLS_DIR}/bin/${tool}"; \
+        fi; \
+    done; \
+    if [ -x "${node_bin_dir}/claude" ]; then \
+        ln -s "${node_bin_dir}/claude" "${MATE_TOOLS_DIR}/bin/claude-code"; \
+    fi
+
+# Keep interactive productivity tools in a leaf layer so additions do not
+# invalidate the much larger compiler, Python, and Node dependency layers.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        bat \
+        dnsutils \
+        fd-find \
+        fzf \
+        iproute2 \
+        iputils-ping \
+        lsof \
+        netcat-openbsd \
+        ripgrep \
+        strace \
+        tree \
+        zip; \
+    ln -s /usr/bin/fdfind "${MATE_TOOLS_DIR}/bin/fd"; \
+    ln -s /usr/bin/batcat "${MATE_TOOLS_DIR}/bin/bat"; \
+    mkdir -p "${MATE_TOOLS_DIR}/runtime-lib"; \
+    for pattern in libmkl\*.so\* libgomp.so.1\* libiomp5.so; do \
+        for library in "${CONDA_ENV}"/lib/${pattern}; do \
+            test -e "${library}" || continue; \
+            ln -sf "${library}" \
+                "${MATE_TOOLS_DIR}/runtime-lib/$(basename "${library}")"; \
+        done; \
+    done
+
+# Expose only the Conda runtime libraries needed by the MUSA torch wheel.
+# Adding the complete Conda lib directory here would override Ubuntu OpenSSL
+# for system tools such as Git.
+ENV LD_LIBRARY_PATH=${MATE_TOOLS_DIR}/runtime-lib:/usr/local/musa/lib
+
+ENV MTHREADS_VISIBLE_DEVICES=all \
+    MTHREADS_DRIVER_CAPABILITIES=all
+
+WORKDIR /workspace/mate

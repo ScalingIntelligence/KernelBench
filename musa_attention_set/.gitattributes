@@ -1,0 +1,5 @@
+# Metadata and documentation use stable LF endings across platforms.
+* text=auto eol=lf
+
+# Archived upstream bytes are covered by SHA256SUMS and must not be normalized.
+implementations/** -text

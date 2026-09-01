@@ -1,0 +1,20 @@
+<div class="sidebar-scroll">
+{% if docs_version_targets %}
+<div class="docs-version-switcher">
+  <div class="docs-version-switcher__list">
+    {% for target in docs_version_targets %}
+      {% set target_path = target.url_prefix ~ pagename ~ '.html' %}
+      {% set fallback_path = target.url_prefix %}
+      <a
+        class="docs-version-switcher__link{% if target.value == docs_current_version %} is-active{% endif %}"
+        href="{% if target.value == docs_current_version %}{{ target_path }}{% else %}{{ fallback_path }}{% endif %}"
+        data-target-path="{{ target_path }}"
+        data-fallback-path="{{ fallback_path }}"
+        {% if target.value == docs_current_version %}aria-current="page"{% endif %}
+      >
+        {{ target.label }}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

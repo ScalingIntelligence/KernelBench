@@ -1,0 +1,19 @@
+{
+  "project": "mutlass",
+  "repository": "https://github.com/MooreThreads/mutlass",
+  "revision": "68f1bf1806f5435246518bbeecd3aa810704e3ae",
+  "revision_label": "v0.2.0",
+  "upstream_commit_date": "2025-02-26T23:03:03+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "BSD-3-Clause",
+  "operator_families": ["mp31_flash_attention_forward"],
+  "hardware": ["MP31"],
+  "software_requirements": ["MUSA Toolkit (version not pinned by this tag)"],
+  "source_scope": [
+    "complete upstream working tree except VCS/automation/agent instruction files",
+    "contains the earlier experimental/mp31_flash_attention_fwd implementation",
+    "exact dependency used by MT-flashMLA commit c564db4a1b4a"
+  ],
+  "archive_status": "source-archived",
+  "validation_status": "provenance-verified-not-built"
+}

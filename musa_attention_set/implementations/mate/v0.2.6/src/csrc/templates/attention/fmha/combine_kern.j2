@@ -1,0 +1,134 @@
+#include <mute/tensor.hpp>
+
+#include <mutlass/mutlass.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/kernel_hardware_info.h>
+
+#include <tvm/ffi/extra/musa/device_guard.h>
+
+#include "mate/attention/fmha/fmha.hpp"
+#include "mate/attention/fmha/fmha_combine.hpp"
+#include "mate_utils.hpp"
+
+using namespace mute;
+using namespace tvm;
+
+void {{ func_name }} (
+  ffi::Optional<ffi::TensorView> cu_seqlens_q,
+  ffi::Optional<ffi::TensorView> seqused_q,
+  ffi::Optional<int> max_seqlen_q,
+  ffi::TensorView out,
+  ffi::TensorView lse,
+  ffi::TensorView out_accum,
+  ffi::TensorView lse_accum,
+  ffi::Optional<ffi::TensorView> metadata,
+  int num_split
+) {
+  // FMHA config
+  constexpr bool HasCuseqlensQ = {{ 'true' if has_cu_seqlens_q else 'false' }};
+  constexpr bool HasSequsedQ = {{ 'true' if has_seqused_q else 'false' }};
+  constexpr bool HasMetadata = {{ 'true' if has_metadata else 'false' }};
+
+  constexpr int TileM = {{ tile_m }};
+  constexpr int TileN = {{ tile_n }};
+  constexpr bool IsVarlenQ = HasCuseqlensQ || HasSequsedQ;
+
+  // If no metadata, fallback to SingleTileScheduler without split.
+  constexpr int MaxSplits = {{ max_splits }};
+
+  using Element = {{ element }};
+  using ElementPartial = float;
+
+  using TileShape_MK = Shape<Int<TileM>, Int<TileN>>;
+
+  ffi::MUSADeviceGuard device_guard(out.device().device_id);
+
+  int const headdim_v   = out_accum.size(-1);
+  int const batch_size  = HasCuseqlensQ
+      ? cu_seqlens_q.value().size(0) - 1
+      : (HasMetadata ? out_accum.size(0) : out_accum.size(1));
+  int const seqlen_q    = HasCuseqlensQ ? max_seqlen_q.value() : out_accum.size(-2);
+  int const total_q     = HasCuseqlensQ ? out_accum.size(-2) : batch_size * seqlen_q;
+  int const num_head    = HasMetadata ? out_accum.size(1) : out_accum.size(2);
+  int32_t* num_splits_dynamic_ptr = nullptr;
+  int32_t* batch_table_ptr = nullptr;
+  int b_rounded = (batch_size + 4 - 1) / 4 * 4; // round up to multiple of 4
+  if constexpr (HasMetadata) {
+    int32_t* metadata_ptr = static_cast<int32_t*>(metadata.value().data_ptr());
+    num_splits_dynamic_ptr = metadata_ptr;
+    batch_table_ptr = metadata_ptr + b_rounded;
+  }
+
+  using CombineKernel = mate::attention::fmha::FmhaFwdCombine<TileShape_MK, MaxSplits,
+                                                              256 /*kNThreads*/, 1 /*AlignmentLSE*/,
+                                                              IsVarlenQ, HasCuseqlensQ, HasSequsedQ,
+                                                              Element, ElementPartial>;
+
+  // Set Params
+  mate::attention::fmha::FmhaFwdParams params {
+    // QKV params
+    .h = num_head,
+
+    // Output
+    .o_ptr = out.data_ptr(),
+    .oaccum_ptr = static_cast<ElementPartial*>(out_accum.data_ptr()),
+    .o_batch_stride = HasCuseqlensQ ? 0 : out.stride(0),
+    .o_row_stride = out.stride(-3),
+    .o_head_stride = out.stride(-2),
+
+    // LSE
+    .softmax_lse_ptr = lse.data_ptr(),
+    .softmax_lseaccum_ptr = static_cast<ElementPartial*>(lse_accum.data_ptr()),
+    .lse_batch_stride = HasCuseqlensQ ? 0 : lse.stride(0),
+    .lse_head_stride = lse.stride(-2),
+
+    // Shape params
+    .b = batch_size,
+    .seqlen_q = seqlen_q,
+    .total_q = total_q,
+    .dv = headdim_v,
+
+    // Ragged params
+    .cu_seqlens_q = HasCuseqlensQ ? static_cast<uint32_t*>(cu_seqlens_q.value().data_ptr()) : nullptr,
+    .seqused_q = HasSequsedQ ? static_cast<uint32_t*>(seqused_q.value().data_ptr()) : nullptr,
+
+    // Oaccum strides
+    .oaccum_split_stride = HasMetadata ? out_accum.stride(2) : out_accum.stride(0),
+    .oaccum_batch_stride = HasCuseqlensQ ? 0 : (
+        HasMetadata ? out_accum.stride(0) : out_accum.stride(1)),
+    .oaccum_row_stride = out_accum.stride(-2),
+    .oaccum_head_stride = HasMetadata ? out_accum.stride(1) : out_accum.stride(2),
+
+    // lseaccum strides
+    .lseaccum_split_stride = HasMetadata ? lse_accum.stride(2) : lse_accum.stride(0),
+    .lseaccum_batch_stride = HasCuseqlensQ ? 0 : (
+        HasMetadata ? lse_accum.stride(0) : lse_accum.stride(1)),
+    .lseaccum_head_stride = HasMetadata ? lse_accum.stride(1) : lse_accum.stride(2),
+
+    .num_splits = num_split,
+  };
+
+  typename CombineKernel::Arguments combine_args {
+    .ptr_O_partial = static_cast<ElementPartial const*>(params.oaccum_ptr),
+    .shape_O_partial = {!HasCuseqlensQ ? params.seqlen_q : params.total_q, params.dv, params.num_splits, params.h, !HasCuseqlensQ ? params.b : 1},
+    .stride_O_partial = {params.oaccum_row_stride, _1{}, params.oaccum_split_stride, params.oaccum_head_stride, !HasCuseqlensQ ? params.oaccum_batch_stride : 0},
+    .ptr_LSE_partial = static_cast<ElementPartial const*>(params.softmax_lseaccum_ptr),
+    .shape_LSE_partial = {!HasCuseqlensQ ? params.seqlen_q : params.total_q, params.num_splits, params.h, !HasCuseqlensQ ? params.b : 1},
+    .stride_LSE_partial = {_1{}, params.lseaccum_split_stride, params.lseaccum_head_stride, !HasCuseqlensQ ? params.lseaccum_batch_stride : 0},
+    .ptr_O = static_cast<Element*>(params.o_ptr),
+    .stride_O = {params.o_row_stride, _1{}, params.o_head_stride, !HasCuseqlensQ ? params.o_batch_stride : 0},
+    .ptr_LSE = static_cast<float*>(params.softmax_lse_ptr),
+    .stride_LSE = {_1{}, !HasCuseqlensQ ? params.seqlen_q : params.total_q, !HasCuseqlensQ ? params.h * params.seqlen_q : 0},
+    .cu_seqlens = params.cu_seqlens_q,
+    .seqused = params.seqused_q,
+    .num_splits_dynamic_ptr = num_splits_dynamic_ptr,
+    .varlen_batch_idx_ptr = batch_table_ptr,
+  };
+  typename CombineKernel::Params combine_params = CombineKernel::to_underlying_arguments(combine_args);
+  musaStream_t stream = static_cast<musaStream_t>(TVMFFIEnvGetStream(out.device().device_type, out.device().device_id));
+  int m_blocks = mute::ceil_div(params.seqlen_q * params.h, TileM);
+  int k_blocks = mute::ceil_div(params.dv, TileN);
+  dim3 grid_combine(m_blocks, k_blocks, params.b);
+  mutlass::device_kernel<CombineKernel><<<grid_combine, CombineKernel::MaxThreadsPerBlock, CombineKernel::SharedStorageSize, stream>>>(combine_params);
+  MATE_CHECK_MUSA_KERNEL_LAUNCH();
+}

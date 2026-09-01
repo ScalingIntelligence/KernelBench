@@ -1,0 +1,251 @@
+#include <musa_runtime.h>
+
+#include <cstdint>
+
+#include "mate/gemm/deep_gemm/mp31_fp8_paged_mqa_logits.hpp"
+#include "mate/gemm/deep_gemm/mpxx_clean_logits.hpp"
+#include "mutlass/device_kernel.h"
+#include "op_utils.hpp"
+
+using namespace mute;
+
+namespace {
+
+inline int32_t* optional_int32_data_ptr(ffi::Optional<ffi::TensorView> maybe_tensor) {
+  return maybe_tensor.has_value() ? static_cast<int32_t*>(maybe_tensor.value().data_ptr()) : nullptr;
+}
+
+void clean_paged_mqa_logits(
+  ffi::TensorView                logits,
+  ffi::Optional<ffi::TensorView> cu_seq_len_k_start,
+  ffi::TensorView                cu_seq_len_k_end,
+  int64_t                        next_n,
+  int64_t                        seq_len,
+  int64_t                        seq_len_kv,
+  uint64_t                       stride_kv
+) {
+  constexpr int kBlockKV  = 8192;
+  constexpr int kNumWarps = 8;
+  constexpr int kSmemSize = kBlockKV * sizeof(float);
+
+  CHECK_MUSA(logits);
+  CHECK_INPUT_TYPE(logits, dl_float32);
+  CHECK_MUSA(cu_seq_len_k_end);
+  CHECK_CONTIGUOUS(cu_seq_len_k_end);
+  CHECK_INPUT_TYPE(cu_seq_len_k_end, dl_int32);
+  CHECK_DEVICE(cu_seq_len_k_end, logits);
+  TVM_FFI_ICHECK(next_n == 1 || next_n == 2 || next_n == 4) << "next_n must be 1, 2 or 4";
+
+  if (cu_seq_len_k_start.has_value()) {
+    CHECK_MUSA(cu_seq_len_k_start.value());
+    CHECK_CONTIGUOUS(cu_seq_len_k_start.value());
+    CHECK_INPUT_TYPE(cu_seq_len_k_start.value(), dl_int32);
+    CHECK_DEVICE(cu_seq_len_k_start.value(), logits);
+  }
+
+  ffi::MUSADeviceGuard device_guard(logits.device().device_id);
+
+  musaDeviceProp dprops{};
+  MATE_MUSA_RUNTIME_CHECK(musaGetDeviceProperties(&dprops, logits.device().device_id));
+  const int num_mps = dprops.multiProcessorCount;
+  TVM_FFI_ICHECK(num_mps > 0) << "No available MUSA MPs";
+
+  musaStream_t stream = get_stream(logits.device());
+
+  auto launch = [&](auto NextNTag) {
+    constexpr int kNextN = decltype(NextNTag)::value;
+    mate::deep_gemm::mpxx_clean_logits<kNextN, kBlockKV, kNumWarps>
+        <<<num_mps, kNumWarps * 32, kSmemSize, stream>>>(
+            static_cast<uint32_t>(seq_len),
+            static_cast<uint32_t>(seq_len_kv),
+            stride_kv,
+            reinterpret_cast<uint32_t const*>(optional_int32_data_ptr(cu_seq_len_k_start)),
+            static_cast<uint32_t*>(cu_seq_len_k_end.data_ptr()),
+            static_cast<float*>(logits.data_ptr()));
+  };
+
+  if (next_n == 1) {
+    launch(mute::_1{});
+  } else if (next_n == 2) {
+    launch(mute::_2{});
+  } else {
+    launch(mute::_4{});
+  }
+
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+}
+
+}  // namespace
+
+ffi::Tensor {{ func_name }}(
+  ffi::TensorView q,
+  ffi::TensorView fused_kv_cache,
+  ffi::TensorView weights,
+  ffi::TensorView context_lens,
+  ffi::TensorView block_table,
+  ffi::TensorView schedule_meta,
+  int64_t         max_context_len,
+  bool            clean_logits
+) {
+  CHECK_INPUT(q);
+  CHECK_MUSA(fused_kv_cache);
+  CHECK_INPUT(weights);
+  CHECK_MUSA(context_lens);
+  CHECK_MUSA(block_table);
+  CHECK_MUSA(schedule_meta);
+  CHECK_DIM(4, q);
+  CHECK_DIM(4, fused_kv_cache);
+  CHECK_DIM(2, weights);
+  CHECK_DIM(2, block_table);
+  CHECK_DIM(2, schedule_meta);
+  CHECK_INPUT_TYPE(q, dl_float8_e4m3fn);
+  CHECK_INPUT_TYPE(fused_kv_cache, dl_uint8);
+  CHECK_INPUT_TYPE(weights, dl_float32);
+  CHECK_INPUT_TYPE(context_lens, dl_int32);
+  CHECK_INPUT_TYPE(block_table, dl_int32);
+  CHECK_INPUT_TYPE(schedule_meta, dl_int32);
+  CHECK_DEVICE(fused_kv_cache, q);
+  CHECK_DEVICE(weights, q);
+  CHECK_DEVICE(context_lens, q);
+  CHECK_DEVICE(block_table, q);
+  CHECK_DEVICE(schedule_meta, q);
+
+  constexpr int  kNextN           = {{ next_n }};
+  constexpr int  kNumHeads        = {{ num_heads }};
+  constexpr int  kHeadDim         = {{ head_dim }};
+  constexpr int  kBlockKV         = {{ block_kv }};
+  constexpr bool kIsContextLens2D = {{ is_context_lens_2d_literal }};
+
+  TVM_FFI_ICHECK(context_lens.dim() == (kIsContextLens2D ? 2 : 1))
+      << "Unexpected context_lens rank for this JIT kernel";
+  CHECK_CONTIGUOUS(context_lens);
+  CHECK_CONTIGUOUS(schedule_meta);
+  TVM_FFI_ICHECK(block_table.stride(1) == 1) << "block_table must be contiguous at the last dimension";
+
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+
+  const int64_t batch_size = q.size(0);
+  const int64_t next_n     = q.size(1);
+  const int64_t num_heads  = q.size(2);
+  const int64_t head_dim   = q.size(3);
+
+  const int64_t num_kv_blocks    = fused_kv_cache.size(0);
+  const int64_t block_kv         = fused_kv_cache.size(1);
+  const int64_t num_heads_kv     = fused_kv_cache.size(2);
+  const int64_t head_dim_with_sf = fused_kv_cache.size(3);
+
+  if constexpr (kIsContextLens2D) {
+    TVM_FFI_ICHECK(context_lens.size(0) == batch_size && context_lens.size(1) == next_n)
+        << "2D context_lens shape must be [batch_size, next_n]";
+  } else {
+    TVM_FFI_ICHECK(context_lens.size(0) == batch_size) << "1D context_lens shape must be [batch_size]";
+  }
+
+  const int64_t batch_size_next_n  = weights.size(0);
+  const int64_t schedule_meta_size = schedule_meta.size(0);
+  const int64_t meta_info_size     = schedule_meta.size(1);
+  const int64_t kv_cache_stride    = fused_kv_cache.stride(0);
+  const int     num_mps            = static_cast<int>(schedule_meta_size - 1);
+
+  TVM_FFI_ICHECK(next_n == kNextN) << "Unexpected next_n for this JIT kernel";
+  TVM_FFI_ICHECK(num_heads == kNumHeads) << "Unexpected num_heads for this JIT kernel";
+  TVM_FFI_ICHECK(head_dim == kHeadDim) << "Unexpected head_dim for this JIT kernel";
+  TVM_FFI_ICHECK(block_kv == kBlockKV) << "Unexpected block_kv for this JIT kernel";
+  TVM_FFI_ICHECK(batch_size == block_table.size(0)) << "block_table.shape[0] must match batch_size";
+  TVM_FFI_ICHECK(batch_size_next_n == batch_size * next_n) << "weights.shape[0] must match batch_size * next_n";
+  TVM_FFI_ICHECK(num_heads == weights.size(1) && num_heads_kv == 1) << "Unsupported weights or kv head layout";
+  TVM_FFI_ICHECK(head_dim_with_sf == head_dim + static_cast<int64_t>(sizeof(float)))
+      << "fused_kv_cache last dim must be head_dim + 4";
+  TVM_FFI_ICHECK(schedule_meta_size >= 2 && meta_info_size == 2) << "schedule_meta shape must be [num_mps + 1, 2]";
+  TVM_FFI_ICHECK(num_mps > 0) << "schedule_meta must encode at least one MP";
+  TVM_FFI_ICHECK(max_context_len >= 0) << "max_context_len must be non-negative";
+  TVM_FFI_ICHECK(kv_cache_stride % sizeof(float) == 0) << "fused_kv_cache row stride must be 4-byte aligned";
+  TVM_FFI_ICHECK(fused_kv_cache.stride(1) == head_dim_with_sf);
+  TVM_FFI_ICHECK(fused_kv_cache.stride(2) == head_dim_with_sf);
+  TVM_FFI_ICHECK(fused_kv_cache.stride(3) == 1);
+
+  constexpr int kNumMathWarpGroups = 4;
+  auto          align_to           = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b * b; };
+  const int64_t aligned_max_context_len = align_to(max_context_len, int64_t(kNumMathWarpGroups * kBlockKV));
+
+  ffi::Tensor logits_pad =
+      alloc_tensor(ffi::Shape{batch_size * next_n, aligned_max_context_len}, dl_float32, q.device());
+  ffi::Shape  logits_shape{batch_size * next_n, max_context_len};
+  ffi::Shape  logits_strides{aligned_max_context_len, 1};
+  ffi::Tensor logits = logits_pad.as_strided(logits_shape, logits_strides);
+
+  using Element = mutlass::float_e4m3_t;
+
+  auto stride_q           = make_stride(q.stride(2), _1{});
+  auto stride_k           = make_stride(head_dim, _1{}, kv_cache_stride);
+  auto stride_sfk         = make_stride(_1{}, kv_cache_stride / static_cast<int64_t>(sizeof(float)));
+  auto stride_w           = make_stride(_1{}, weights.size(1) * next_n);
+  auto stride_block_table = make_stride(block_table.stride(0), _1{});
+  auto stride_logits      = make_stride(logits.stride(0), _1{});
+
+  auto* kv_cache_ptr = static_cast<Element const*>(fused_kv_cache.data_ptr());
+  auto* kv_scale_ptr =
+      reinterpret_cast<float const*>(static_cast<uint8_t*>(fused_kv_cache.data_ptr()) + kBlockKV * head_dim);
+
+  using Kernel = mate::deep_gemm::Mp31Fp8PagedMqaLogits<kNextN,
+                                                        kNumHeads,
+                                                        kHeadDim,
+                                                        kBlockKV,
+                                                        kIsContextLens2D,
+                                                        decltype(stride_q),
+                                                        decltype(stride_k),
+                                                        decltype(stride_sfk),
+                                                        decltype(stride_w),
+                                                        decltype(stride_block_table),
+                                                        decltype(stride_logits)>;
+
+  typename Kernel::Arguments arguments = {
+      .ptr_q              = static_cast<Element const*>(q.data_ptr()),
+      .stride_q           = stride_q,
+      .ptr_k              = kv_cache_ptr,
+      .stride_k           = stride_k,
+      .ptr_sfk            = kv_scale_ptr,
+      .stride_sfk         = stride_sfk,
+      .ptr_weights        = static_cast<float*>(weights.data_ptr()),
+      .stride_weights     = stride_w,
+      .ptr_context_lens   = static_cast<uint32_t*>(context_lens.data_ptr()),
+      .ptr_schedule_meta  = static_cast<uint32_t*>(schedule_meta.data_ptr()),
+      .ptr_block_table    = static_cast<int32_t*>(block_table.data_ptr()),
+      .stride_block_table = stride_block_table,
+      .ptr_logits         = static_cast<float*>(logits.data_ptr()),
+      .stride_logits      = stride_logits,
+      .batch_size         = static_cast<int32_t>(batch_size),
+      .num_kv_blocks      = static_cast<int32_t>(num_kv_blocks),
+  };
+
+  musaStream_t stream = get_stream(q.device());
+  auto         params = Kernel::to_underlying_arguments(arguments);
+  mutlass::device_kernel<Kernel>
+      <<<num_mps, Kernel::MaxThreadsPerBlock, Kernel::SharedStorageSize, stream>>>(params);
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+
+  if (clean_logits) {
+    if constexpr (kIsContextLens2D) {
+      ffi::Shape      context_lens_flat_shape{batch_size * next_n};
+      ffi::Shape      context_lens_flat_strides{1};
+      ffi::TensorView context_lens_flat = context_lens.as_strided(context_lens_flat_shape, context_lens_flat_strides);
+      clean_paged_mqa_logits(logits,
+                             ffi::Optional<ffi::TensorView>(),
+                             context_lens_flat,
+                             /*next_n=*/1,
+                             batch_size * next_n,
+                             max_context_len,
+                             static_cast<uint64_t>(aligned_max_context_len));
+    } else {
+      clean_paged_mqa_logits(logits,
+                             ffi::Optional<ffi::TensorView>(),
+                             context_lens,
+                             next_n,
+                             batch_size * next_n,
+                             max_context_len,
+                             static_cast<uint64_t>(aligned_max_context_len));
+    }
+  }
+
+  return logits;
+}

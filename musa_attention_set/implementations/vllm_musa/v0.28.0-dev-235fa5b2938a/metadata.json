@@ -1,0 +1,27 @@
+{
+  "project": "vllm_musa",
+  "repository": "https://github.com/MooreThreads/vllm-musa",
+  "revision": "235fa5b2938a2ee69173498a87cf223f1751fbbe",
+  "revision_label": "v0.28.0-dev branch snapshot",
+  "upstream_commit_date": "2026-09-01T16:00:21+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "Apache-2.0",
+  "operator_families": [
+    "deepseek_v4_sparse_flash_mla",
+    "deepseek_v4_indexer_topk",
+    "deepseek_v4_cache_store",
+    "deepseek_v4_fused_qkv_rmsnorm",
+    "glm52_indexer_topk",
+    "flash_attention_backend",
+    "tree_attention"
+  ],
+  "hardware": ["Moore Threads MUSA GPUs supported by vLLM-MUSA 0.28 development line"],
+  "software_requirements": ["MATE", "flash_attn_3", "flash_mla", "TorchMUSA", "torchada"],
+  "source_scope": [
+    "csrc/musa/attention",
+    "vllm_musa/v1/attention",
+    "MUSA dependency pins and build entry point"
+  ],
+  "archive_status": "source-archived-selective",
+  "validation_status": "provenance-verified-not-built"
+}

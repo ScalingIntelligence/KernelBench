@@ -1,0 +1,110 @@
+/***************************************************************************************************
+ * Copyright (c) 2024 - 2025 Moore Threads Technology Co., Ltd("Moore Threads"). All rights reserved.
+ * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ **************************************************************************************************/
+/*! \file
+    \brief Utilities for packing constructing canonical MuTe stride types for 3.x mainloop params.
+*/
+
+#pragma once
+
+#include "mute/stride.hpp"
+#include "mute/container/array.hpp"   // mute::array
+#include "mutlass/conv/convolution.h" // mutlass::conv::Operator
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace mutlass {
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Strides without batch mode
+
+template <class IntT>
+mute::Stride<IntT, mute::Int<1>>
+make_mute_packed_stride(mute::Stride<IntT, mute::Int<1>> s, mute::Shape<int,int,int> shape_MKL) {
+  static_assert(std::is_integral_v<IntT>,
+    "Stride must have an integral type so it can be set dynamically. Static strides not supported.");
+  auto s_copy = s;
+  mute::get<0>(s_copy) = static_cast<IntT>(mute::get<1>(shape_MKL));
+  return s_copy;
+}
+
+template <class IntT>
+mute::Stride<mute::Int<1>, IntT>
+make_mute_packed_stride(mute::Stride<mute::Int<1>, IntT> s, mute::Shape<int,int,int> shape_MKL) {
+  static_assert(std::is_integral_v<IntT>,
+    "Stride must have an integral type so it can be set dynamically. Static strides not supported.");
+  auto s_copy = s;
+  mute::get<1>(s_copy) = static_cast<IntT>(mute::get<0>(shape_MKL));
+  return s_copy;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Strides with batch mode
+
+template <class IntT>
+mute::Stride<IntT, mute::Int<1>, int64_t>
+make_mute_packed_stride(mute::Stride<IntT, mute::Int<1>, int64_t> s, mute::Shape<int,int,int> shape_MKL) {
+  static_assert(std::is_integral_v<IntT>,
+    "Stride must have an integral type so it can be set dynamically. Static strides not supported.");
+  auto s_copy = s;
+  mute::get<0>(s_copy) = static_cast<IntT>(mute::get<1>(shape_MKL));
+  int batch_count =  mute::get<2>(shape_MKL);
+  if (batch_count > 1) {
+    mute::get<2>(s_copy) = static_cast<IntT>(mute::get<0>(shape_MKL) * mute::get<1>(shape_MKL));
+  }
+  else {
+    mute::get<2>(s_copy) = static_cast<IntT>(0);
+  }
+  return s_copy;
+}
+
+template <class IntT>
+mute::Stride<mute::Int<1>, IntT, int64_t>
+make_mute_packed_stride(mute::Stride<mute::Int<1>, IntT, int64_t> s, mute::Shape<int,int,int> shape_MKL) {
+  static_assert(std::is_integral_v<IntT>,
+    "Stride must have an integral type so it can be set dynamically. Static strides not supported.");
+  auto s_copy = s;
+  mute::get<1>(s_copy) = static_cast<IntT>(mute::get<0>(shape_MKL));
+  int batch_count =  mute::get<2>(shape_MKL);
+  if (batch_count > 1) {
+    mute::get<2>(s_copy) = static_cast<IntT>(mute::get<0>(shape_MKL) * mute::get<1>(shape_MKL));
+  }
+  else {
+    mute::get<2>(s_copy) = static_cast<IntT>(0);
+  }
+  return s_copy;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+} // namespace mutlass

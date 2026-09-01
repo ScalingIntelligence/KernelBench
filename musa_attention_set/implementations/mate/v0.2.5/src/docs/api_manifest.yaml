@@ -1,0 +1,205 @@
+{
+  "summary_page": "docs/source/api_reference.rst",
+  "groups": [
+    {
+      "name": "Attention",
+      "summary_sources": [
+        {
+          "kind": "lazy_attr_modules",
+          "path": "mate/__init__.py",
+          "module_targets": ["mha_interface", "flashmla"]
+        }
+      ],
+      "detail_pages": [
+        {
+          "path": "docs/source/api/attention.rst",
+          "sources": [
+            {
+              "kind": "module_mate_api",
+              "path": "mate/mha_interface.py"
+            },
+            {
+              "kind": "module_mate_api",
+              "path": "mate/flashmla.py",
+              "exclude_names": [
+                "flash_mla_sparse_fwd",
+                "flash_mla_sparse_fwd_pack8"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SageAttention",
+      "summary_sources": [
+        {
+          "kind": "lazy_attr_modules",
+          "path": "mate/__init__.py",
+          "module_targets": ["sage_attention_interface"]
+        }
+      ],
+      "detail_pages": []
+    },
+    {
+      "name": "GEMM",
+      "summary_sources": [
+        {
+          "kind": "module_mate_api",
+          "path": "mate/gemm.py",
+          "exclude_names": [
+            "ragged_m_moe_gemm_16bit",
+            "masked_moe_gemm_16bit",
+            "ragged_k_moe_gemm_16bit"
+          ]
+        },
+        {
+          "kind": "module_mate_api",
+          "path": "mate/deep_gemm.py",
+          "exclude_names": [
+            "fp8_einsum",
+            "fp8_mqa_logits",
+            "tf32_hc_prenorm_gemm"
+          ]
+        }
+      ],
+      "detail_pages": [
+        {
+          "path": "docs/source/api/gemm.rst",
+          "sources": [
+            {
+              "kind": "module_mate_api",
+              "path": "mate/gemm.py",
+              "exclude_names": [
+                "ragged_m_moe_gemm_16bit",
+                "masked_moe_gemm_16bit",
+                "ragged_k_moe_gemm_16bit"
+              ]
+            },
+            {
+              "kind": "module_mate_api",
+              "path": "mate/deep_gemm.py",
+              "exclude_names": [
+                "fp8_einsum",
+                "fp8_mqa_logits",
+                "tf32_hc_prenorm_gemm"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Mega MoE",
+      "summary_sources": [
+        {
+          "kind": "module_import_from",
+          "path": "mate/deep_gemm.py",
+          "import_module": "mate.mega_moe",
+          "exclude_names": ["SymmBuffer"]
+        }
+      ],
+      "detail_pages": [
+        {
+          "path": "docs/source/api/mega_moe.rst",
+          "sources": [
+            {
+              "kind": "module_import_from",
+              "path": "mate/deep_gemm.py",
+              "import_module": "mate.mega_moe",
+              "exclude_names": ["SymmBuffer"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Hyperconnection",
+      "summary_sources": [
+        {
+          "kind": "lazy_attr_modules",
+          "path": "mate/__init__.py",
+          "module_targets": ["hyperconnection"]
+        }
+      ],
+      "detail_pages": [
+        {
+          "path": "docs/source/api/hyperconnection.rst",
+          "sources": [
+            {
+              "kind": "module_mate_api",
+              "path": "mate/hyperconnection.py"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GDN",
+      "summary_sources": [
+        {
+          "kind": "lazy_attr_modules",
+          "path": "mate/__init__.py",
+          "module_targets": ["gdn_decode"]
+        },
+        {
+          "kind": "module_mate_api",
+          "path": "mate/gdn_prefill.py"
+        }
+      ],
+      "detail_pages": [
+        {
+          "path": "docs/gdn.md",
+          "extractor": "markdown_code",
+          "sources": [
+            {
+              "kind": "lazy_attr_modules",
+              "path": "mate/__init__.py",
+              "module_targets": ["gdn_decode"]
+            },
+            {
+              "kind": "module_mate_api",
+              "path": "mate/gdn_prefill.py"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "KDA",
+      "summary_sources": [
+        {
+          "kind": "lazy_attr_modules",
+          "path": "mate/__init__.py",
+          "module_targets": ["kda"]
+        },
+        {
+          "kind": "module_mate_api",
+          "path": "mate/kda.py"
+        }
+      ],
+      "detail_pages": [
+        {
+          "path": "docs/source/api/kda.rst",
+          "sources": [
+            {
+              "kind": "module_mate_api",
+              "path": "mate/kda.py"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MoE Routing & Gating",
+      "summary_sources": [
+        {
+          "kind": "lazy_attr_modules",
+          "path": "mate/__init__.py",
+          "module_targets": ["hash_topk", "moe_fused_gate"]
+        }
+      ],
+      "detail_pages": []
+    }
+  ]
+}

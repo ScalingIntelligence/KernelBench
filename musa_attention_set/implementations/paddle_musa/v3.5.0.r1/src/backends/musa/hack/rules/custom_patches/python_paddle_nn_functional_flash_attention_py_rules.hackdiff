@@ -1,0 +1,109 @@
+-    if "xpu" in place:
+-        return "flash_attn"
+-
+-    enabled_backends = _get_enabled_backends()
++    if "xpu" in place:
++        return "flash_attn"
++    if "musa" in place:
++        return "flash_attn"
++
++    enabled_backends = _get_enabled_backends()
+
+-        elif "iluvatar_gpu" in paddle.get_device():
+-            fa_version = 2
+-        elif paddle.get_flags(["FLAGS_cudnn_deterministic"])[
++        elif "iluvatar_gpu" in paddle.get_device():
++            fa_version = 2
++        elif "musa" in paddle.get_device():
++            fa_version = 2
++        elif paddle.get_flags(["FLAGS_cudnn_deterministic"])[
+
+-_flashmask_unique_id_cache: dict[int, paddle.Tensor] = {}
+-
+-
+-def _get_or_create_unique_id(group):
+-    """Get or create the NVSHMEM unique_id for a communication group.
+-
+-    On first call for a given group: rank 0 generates the unique_id via
+-    ``flashmask_get_unique_id()``, then broadcasts it to all group members
+-    using ``all_gather_object`` (CPU tensor, so regular ``all_gather`` would
+-    raise). The result is cached by ``group.id``.
+-
+-    On subsequent calls: returns the cached unique_id directly.
+-
+-    Args:
+-        group: A ``paddle.distributed.Group`` instance.
+-
+-    Returns:
+-        tuple[Tensor, bool]: ``(unique_id, is_new)`` where ``unique_id`` is
+-        a 128-byte uint8 CPU tensor, and ``is_new`` indicates whether this
+-        is the first time (True) or a cache hit (False).
+-    """
+-    import paddle.distributed as dist
+-
+-    gid = group.id
+-    if gid in _flashmask_unique_id_cache:
+-        return _flashmask_unique_id_cache[gid], False
+-
+-    # Rank 0 of this group generates the unique_id
+-    if group.rank == 0:
+-        unique_id = flashmask_get_unique_id()
+-    else:
+-        unique_id = paddle.zeros([128], dtype='uint8', device='cpu')
+-
+-    # Broadcast via all_gather_object (tensor is on CPU, dist env is GPU)
+-    result_list = []
+-    dist.all_gather_object(result_list, unique_id, group=group)
+-    unique_id = result_list[0]
+-
+-    _flashmask_unique_id_cache[gid] = unique_id
+-    return unique_id, True
+-
+-
+-def flashmask_attention(
++
++_flashmask_unique_id_cache: dict[int, paddle.Tensor] = {}
++
++
++def _get_or_create_unique_id(group):
++    import paddle.distributed as dist
++
++    gid = group.id
++    if gid in _flashmask_unique_id_cache:
++        return _flashmask_unique_id_cache[gid], False
++
++    if group.rank == 0:
++        unique_id = flashmask_get_unique_id()
++    else:
++        unique_id = paddle.zeros([128], dtype='uint8', device='cpu')
++
++    result_list = []
++    dist.all_gather_object(result_list, unique_id, group=group)
++    unique_id = result_list[0]
++
++    _flashmask_unique_id_cache[gid] = unique_id
++    return unique_id, True
++
++
++def flashmask_attention(
+
+-        if "xpu" in paddle.get_device():
+-            fa_version = 2
+-        elif (
++        if "xpu" in paddle.get_device():
++            fa_version = 2
++        elif "musa" in paddle.get_device():
++            fa_version = 2
++        elif (
+
+-    paddle._C_ops.flashmask_get_unique_id_(output)
+-    return output
+-
+-
+-def calc_reduced_attention_scores(
++    paddle._C_ops.flashmask_get_unique_id_(output)
++    return output
++
++
++
++def calc_reduced_attention_scores(

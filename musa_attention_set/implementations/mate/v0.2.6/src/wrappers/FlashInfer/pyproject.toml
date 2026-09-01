@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "_mate_wrapper_build_backend"
+backend-path = ["."]
+
+[project]
+dynamic = ["version", "dependencies"]
+name = "flashinfer-python"
+description = "A FlashInfer compatibility wrapper backed by MATE on MUSA"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "MATE Contributors" }]
+keywords = ["musa", "flashinfer", "gemm", "mla", "attention", "pytorch", "mate"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.setuptools.dynamic]
+version = { file = ["_mate_wrapper_version.txt"] }
+dependencies = { file = ["_mate_wrapper_requirements.txt"] }
+
+[project.urls]
+Homepage = "https://github.com/MooreThreads/mate"
+Repository = "https://github.com/MooreThreads/mate"
+Documentation = "https://github.com/MooreThreads/mate/tree/main/wrappers/FlashInfer"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flashinfer*"]

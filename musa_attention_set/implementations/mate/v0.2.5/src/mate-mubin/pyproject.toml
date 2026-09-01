@@ -1,0 +1,49 @@
+[build-system]
+requires = [
+    "setuptools>=77",
+    "packaging>=24",
+    "wheel",
+    "requests",
+    "apache-tvm-ffi>=0.1.8",
+]
+build-backend = "build_backend"
+backend-path = ["."]
+
+[project]
+name = "mate-mubin"
+dynamic = ["version"]
+description = "Pre-generated MUBIN objects for MATE"
+readme = {text = "This package contains pre-generated MUBIN objects for MATE.", content-type = "text/plain"}
+requires-python = ">=3.10,<4.0"
+license = "Apache-2.0"
+authors = [
+    {name = "MATE Contributors"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/MooreThreads/mate"
+Repository = "https://github.com/MooreThreads/mate"
+Documentation = "https://github.com/MooreThreads/mate/tree/main/docs"
+
+[tool.setuptools]
+packages = ["mate_mubin"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "mate_mubin._build_meta.__version__"}
+
+[tool.setuptools.package-data]
+mate_mubin = ["mubin/**/*", "_build_meta.py"]
+
+[tool.setuptools.exclude-package-data]
+mate_mubin = ["mubin/**/*.lock"]

@@ -1,0 +1,251 @@
+diff --git a/docs/api_manifest.yaml b/docs/api_manifest.yaml
+index 0dbce632..2a5cba2c 100644
+--- a/docs/api_manifest.yaml
++++ b/docs/api_manifest.yaml
+@@ -10,0 +11,8 @@
++        },
++        {
++          "kind": "module_mate_api",
++          "path": "mate/flashmla.py",
++          "only_names": [
++            "flash_mla_sparse_fwd",
++            "flash_mla_sparse_fwd_pack8"
++          ]
+@@ -23,5 +31 @@
+-              "path": "mate/flashmla.py",
+-              "exclude_names": [
+-                "flash_mla_sparse_fwd",
+-                "flash_mla_sparse_fwd_pack8"
+-              ]
++              "path": "mate/flashmla.py"
+@@ -49,6 +53 @@
+-          "path": "mate/gemm.py",
+-          "exclude_names": [
+-            "ragged_m_moe_gemm_16bit",
+-            "masked_moe_gemm_16bit",
+-            "ragged_k_moe_gemm_16bit"
+-          ]
++          "path": "mate/gemm.py"
+@@ -58,6 +57 @@
+-          "path": "mate/deep_gemm.py",
+-          "exclude_names": [
+-            "fp8_einsum",
+-            "fp8_mqa_logits",
+-            "tf32_hc_prenorm_gemm"
+-          ]
++          "path": "mate/deep_gemm.py"
+@@ -72,6 +66 @@
+-              "path": "mate/gemm.py",
+-              "exclude_names": [
+-                "ragged_m_moe_gemm_16bit",
+-                "masked_moe_gemm_16bit",
+-                "ragged_k_moe_gemm_16bit"
+-              ]
++              "path": "mate/gemm.py"
+@@ -81,6 +70,23 @@
+-              "path": "mate/deep_gemm.py",
+-              "exclude_names": [
+-                "fp8_einsum",
+-                "fp8_mqa_logits",
+-                "tf32_hc_prenorm_gemm"
+-              ]
++              "path": "mate/deep_gemm.py"
++            }
++          ]
++        }
++      ]
++    },
++    {
++      "name": "MSA",
++      "summary_sources": [
++        {
++          "kind": "module_mate_api",
++          "path": "mate/msa_interface.py",
++          "exclude_names": ["_msa_plan_from_lengths"]
++        }
++      ],
++      "detail_pages": [
++        {
++          "path": "docs/source/api/msa.rst",
++          "sources": [
++            {
++              "kind": "module_mate_api",
++              "path": "mate/msa_interface.py",
++              "exclude_names": ["_msa_plan_from_lengths"]
+diff --git a/docs/gdn.md b/docs/gdn.md
+index 5302513e..1b0fe39e 100644
+--- a/docs/gdn.md
++++ b/docs/gdn.md
+@@ -58 +58,2 @@ On the currently supported MATE path:
+-- `A_log / dt_bias`: `float32`
++- `A_log`: `float32`
++- `dt_bias`: `float32` or `bfloat16`
+diff --git a/docs/source/api/attention.rst b/docs/source/api/attention.rst
+index e4c91417..97ba312c 100644
+--- a/docs/source/api/attention.rst
++++ b/docs/source/api/attention.rst
+@@ -57,2 +57,2 @@ Minimal dense MLA example:
+-   q = torch.randn((1, 32, 8, 128), device="musa", dtype=torch.bfloat16)
+-   k_cache = torch.randn((4, 16, 2, 128), device="musa", dtype=torch.bfloat16)
++   q = torch.randn((1, 32, 8, 576), device="musa", dtype=torch.bfloat16)
++   k_cache = torch.randn((4, 16, 2, 576), device="musa", dtype=torch.bfloat16)
+@@ -76 +76 @@ Minimal dense MLA example:
+-       head_dim_v=128,
++       head_dim_v=512,
+@@ -82,0 +83,2 @@ Minimal dense MLA example:
++.. autofunction:: flash_mla_sparse_fwd
++.. autofunction:: flash_mla_sparse_fwd_pack8
+diff --git a/docs/source/api/gemm.rst b/docs/source/api/gemm.rst
+index 1120858d..86a58015 100644
+--- a/docs/source/api/gemm.rst
++++ b/docs/source/api/gemm.rst
+@@ -16,5 +16,3 @@ The direct MoE GEMM entrypoints below cover both the existing 8-bit paths and
+-mixed-dtype W4A8 paths. ``GemmMixedDType.S4FP8`` uses
+-``b_quant_recipe=(1, 128)``; ``GemmMixedDType.FP4FP8`` uses E2M1 weights,
+-E8M0 residual scales, an FP32 epilogue scale, and
+-``b_quant_recipe=(1, 32)``. Both use ``backend="mubin"`` and
+-``a_quant_recipe=(1, -1)``.
++the ``0.2.4`` mixed-dtype W4A8 path. The current mixed-dtype support is
++``mixed_dtype="s4fp8"`` / ``GemmMixedDType.S4FP8`` with ``backend="mubin"``,
++``a_quant_recipe=(1, -1)``, and ``b_quant_recipe=(1, 128)``.
+@@ -22,0 +21 @@ E8M0 residual scales, an FP32 epilogue scale, and
++.. autofunction:: ragged_m_moe_gemm_16bit
+@@ -23,0 +23 @@ E8M0 residual scales, an FP32 epilogue scale, and
++.. autofunction:: ragged_k_moe_gemm_16bit
+@@ -24,0 +25 @@ E8M0 residual scales, an FP32 epilogue scale, and
++.. autofunction:: masked_moe_gemm_16bit
+@@ -38,0 +40,3 @@ DeepGemm Lighting Indexer
++.. autofunction:: fp8_einsum
++.. autofunction:: tf32_hc_prenorm_gemm
++.. autofunction:: fp8_mqa_logits
+diff --git a/docs/source/api/msa.rst b/docs/source/api/msa.rst
+new file mode 100644
+index 00000000..4e4c17db
+--- /dev/null
++++ b/docs/source/api/msa.rst
+@@ -0,0 +1,37 @@
++.. _apimsa:
++
++MSA
++===
++
++.. currentmodule:: mate.msa_interface
++
++Use the ``fmha_sm100`` wrapper first when your project already targets the MSA
++package surface. Use the direct MATE APIs below when you need the native plan
++and runtime contract.
++
++MSA (MiniMax Sparse Attention) covers dense, paged, and sparse attention on
++MUSA.
++
++The ``mate`` package also exports these entrypoints at the top level.
++
++Dense and paged paths
++---------------------
++
++.. autofunction:: msa_plan
++.. autofunction:: msa
++
++.. autoclass:: MsaPlan
++.. autoclass:: MsaPrefillPlan
++.. autoclass:: MsaDecodePlan
++.. autoclass:: MsaRuntimeMetadata
++
++The page table helper ``build_page_table_from_flat_kv_indices`` turns flat page
++indices into a fixed-shape page table for paged MSA.
++
++Sparse paths
++------------
++
++.. autofunction:: sparse_msa_plan
++.. autofunction:: sparse_msa
++.. autofunction:: sparse_topk_select
++.. autofunction:: sparse_decode_atten_func
+diff --git a/docs/source/api_reference.rst b/docs/source/api_reference.rst
+index 6c6f2045..a2683960 100644
+--- a/docs/source/api_reference.rst
++++ b/docs/source/api_reference.rst
+@@ -33,0 +34,2 @@ metadata, and MLA-related :doc:`attention <api/attention>` paths.
++- ``mate.flashmla.flash_mla_sparse_fwd``
++- ``mate.flashmla.flash_mla_sparse_fwd_pack8``
+@@ -51,0 +54 @@ helpers.
++- ``mate.gemm.ragged_m_moe_gemm_16bit``
+@@ -52,0 +56 @@ helpers.
++- ``mate.gemm.ragged_k_moe_gemm_16bit``
+@@ -53,0 +58 @@ helpers.
++- ``mate.gemm.masked_moe_gemm_16bit``
+@@ -58,0 +64,3 @@ helpers.
++- ``mate.deep_gemm.fp8_einsum``
++- ``mate.deep_gemm.fp8_mqa_logits``
++- ``mate.deep_gemm.tf32_hc_prenorm_gemm``
+@@ -103,0 +112,18 @@ the ``flash_kda`` wrapper is not the right integration surface.
++MSA
++---
++
++MSA (MiniMax Sparse Attention) covers MATE's direct dense, paged, and sparse
++attention APIs on MUSA. Use the ``fmha_sm100`` wrapper first when your project
++already targets that package surface. Use the direct MATE APIs below when you
++need the native planning and runtime contract.
++
++- ``mate.msa_interface.msa_plan``
++- ``mate.msa_interface.msa``
++- ``mate.msa_interface.sparse_msa_plan``
++- ``mate.msa_interface.sparse_msa``
++- ``mate.msa_interface.sparse_topk_select``
++- ``mate.msa_interface.sparse_decode_atten_func``
++
++The detail page documents the plan types, runtime metadata, and page table
++helper used by the direct API path.
++
+diff --git a/docs/source/documentation_history.rst b/docs/source/documentation_history.rst
+index 40997263..b1e4e9db 100644
+--- a/docs/source/documentation_history.rst
++++ b/docs/source/documentation_history.rst
+@@ -18,2 +18,3 @@ The current docs site history starts at ``0.2.2``.
+-- Added the :doc:`MSA/fmha_sm100 wrapper <wrappers/fmha_sm100_wrapper>` for
+-  MiniMax Sparse Attention (MSA) workflows on MUSA.
++- Added :doc:`MSA <api/msa>` direct APIs and the
++  :doc:`MSA/fmha_sm100 wrapper <wrappers/fmha_sm100_wrapper>` for MiniMax
++  Sparse Attention (MSA) workflows on MUSA.
+diff --git a/docs/source/index.rst b/docs/source/index.rst
+index c10862b2..3e495f30 100644
+--- a/docs/source/index.rst
++++ b/docs/source/index.rst
+@@ -77,0 +78 @@ comprehensive logging, and environment inspection tools.
++   MSA <api/msa>
+diff --git a/mate/kda_kernels/tilelang/kda_decode.py b/mate/kda_kernels/tilelang/kda_decode.py
+--- a/mate/kda_kernels/tilelang/kda_decode.py
++++ b/mate/kda_kernels/tilelang/kda_decode.py
+@@ -0,0 +1,2 @@
++from __future__ import annotations
++
+diff --git a/mate/gemm.py b/mate/gemm.py
+--- a/mate/gemm.py
++++ b/mate/gemm.py
+@@ -230 +230,3 @@ def masked_moe_gemm_16bit(
+-        Signal tensor with shape ``(num_expert * ceil_div(max_m, 64))``for SBO. Required if enable_overlap is True. If None, a new tensor will be created if needed.
++        Signal tensor with shape ``(num_expert * ceil_div(max_m, 64))`` for
++        SBO. Required if ``enable_overlap`` is ``True``. If ``None``, a new
++        tensor is created when needed.
+diff --git a/mate/deep_gemm.py b/mate/deep_gemm.py
+--- a/mate/deep_gemm.py
++++ b/mate/deep_gemm.py
+@@ -506,5 +506,5 @@ def fp8_mqa_logits(
+-        A tuple ``(kv_fp8, kv_scale)``:
+-        - ``kv_fp8``: FP8 KV tensor with shape ``(seq_len_kv, head_dim)`` and dtype
+-          ``torch.float8_e4m3fn``. (MQA uses a single KV head.)
+-        - ``kv_scale``: FP32 scale tensor with shape ``(seq_len_kv,)`` and dtype
+-          ``torch.float32``.
++        A tuple ``(kv_fp8, kv_scale)``. ``kv_fp8`` is an FP8 KV tensor with
++        shape ``(seq_len_kv, head_dim)`` and dtype ``torch.float8_e4m3fn``;
++        MQA uses a single KV head. ``kv_scale`` is an FP32 scale tensor with
++        shape ``(seq_len_kv,)`` and dtype ``torch.float32``.
++
+@@ -529,4 +529,3 @@ def fp8_mqa_logits(
+-        FP32 logits tensor with shape:
+-        - ``(seq_len, seq_len_kv)`` if ``max_seqlen_k == 0``
+-        - ``(seq_len, max_seqlen_k)`` if ``max_seqlen_k > 0``
+-        and dtype ``torch.float32``.
++        FP32 logits tensor with shape ``(seq_len, seq_len_kv)`` when
++        ``max_seqlen_k == 0`` or ``(seq_len, max_seqlen_k)`` otherwise.
++        The tensor has dtype ``torch.float32``.

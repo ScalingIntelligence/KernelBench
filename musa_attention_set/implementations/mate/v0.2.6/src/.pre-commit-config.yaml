@@ -1,0 +1,85 @@
+# To use:
+#
+#     pre-commit run -a
+#
+# Or:
+#
+#     pre-commit install  # (runs every time you commit in git)
+#
+# To update this file:
+#
+#     pre-commit autoupdate
+#
+# See https://github.com/pre-commit/pre-commit
+
+repos:
+  # Standard hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks.git
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: requirements-txt-fixer
+      - id: trailing-whitespace
+
+  # Changes tabs to spaces
+  - repo: https://github.com/Lucas-C/pre-commit-hooks.git
+    rev: v1.5.5
+    hooks:
+      - id: remove-tabs
+      - id: remove-crlf
+
+  # Formatters
+  - repo: https://github.com/pre-commit/mirrors-clang-format.git
+    rev: v19.1.1
+    hooks:
+      - id: clang-format
+        types_or: [c++, c, cuda]
+        exclude: |
+          (?x)^(3rdparty/.*)$
+
+      - id: clang-format
+        types_or: [file]
+        files: '\.(mu|muh)$'
+        exclude: |
+          (?x)^(3rdparty/.*)$
+
+  -   repo: https://github.com/pre-commit/mirrors-mypy.git
+      rev: 'v1.17.1'  # Use the sha / tag you want to point at
+      hooks:
+      -   id: mypy
+          args: ["--config-file", "pyproject.toml"]
+          files: ^mate/
+          exclude: ^(wrappers/|3rdparty/|build/)
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit.git
+    # Ruff version.
+    rev: v0.12.8
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+      # Run the formatter.
+      - id: ruff-format
+        types_or: [ python, pyi ]
+
+  - repo: local
+    hooks:
+      - id: validate-agent-skills
+        name: validate-agent-skills
+        entry: python scripts/validate_skills.py
+        language: system
+        pass_filenames: false
+        files: (^|/)(AGENTS\.md|SKILL\.md|skills/.*|scripts/validate_skills\.py|tests/test_validate_skills\.py)$
+
+
+      - id: check-api-docs
+        name: check-api-docs
+        entry: python scripts/check_api_docs.py
+        language: system
+        pass_filenames: false
+        files: ^(docs/api_manifest\.yaml|docs/source/api_reference\.rst|docs/source/api/.*\.rst|docs/gdn\.md|mate/__init__\.py|mate/(deep_gemm|flashmla|gdn_decode|gdn_prefill|gemm|hash_topk|hyperconnection|kda|mha_interface|moe_fused_gate|sage_attention_interface)\.py|scripts/check_api_docs\.py|tests/test_check_api_docs\.py)$

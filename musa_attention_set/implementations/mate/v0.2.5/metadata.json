@@ -1,0 +1,28 @@
+{
+  "project": "mate",
+  "repository": "https://github.com/MooreThreads/mate",
+  "revision": "e3e10c32545931024565efb80ef5712ed9d1e0c8",
+  "revision_label": "v0.2.5",
+  "upstream_commit_date": "2026-08-02T06:39:09Z",
+  "retrieved_at": "2026-09-01",
+  "license": "Apache-2.0",
+  "operator_families": [
+    "flash_attention_3",
+    "fmha",
+    "flash_mla",
+    "flash_kda",
+    "sage_attention",
+    "msa"
+  ],
+  "hardware": ["S5000", "MP31"],
+  "software_requirements": ["MUSA Toolkit >= 4.3.6", "TorchMUSA >= 2.7"],
+  "dependency_revisions": {
+    "mutlass": "78b349514831ed54a797b717f2fc0534646acff2"
+  },
+  "source_scope": [
+    "complete upstream working tree except VCS/automation/agent instruction files",
+    "git submodule content is archived separately under implementations/mutlass"
+  ],
+  "archive_status": "source-archived",
+  "validation_status": "provenance-verified-not-built"
+}

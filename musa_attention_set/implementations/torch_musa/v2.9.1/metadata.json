@@ -1,0 +1,15 @@
+{
+  "project": "torch_musa",
+  "repository": "https://github.com/MooreThreads/torch_musa",
+  "revision": "467bb873388939c646ac4525f463bcdcc3eb570e",
+  "revision_label": "v2.9.1",
+  "upstream_commit_date": "2026-06-29T19:12:19+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "BSD-3-Clause",
+  "operator_families": ["scaled_dot_product_attention", "mudnn_flash_attention"],
+  "hardware": ["MUSA devices supported by the matching TorchMUSA release"],
+  "software_requirements": ["matching PyTorch and MUSA SDK release"],
+  "source_scope": ["README and torch_musa/csrc/aten/ops/attention"],
+  "archive_status": "source-archived-selective",
+  "validation_status": "provenance-verified-not-built"
+}

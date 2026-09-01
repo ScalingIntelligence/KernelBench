@@ -1,0 +1,209 @@
+#include <musa_runtime.h>
+
+#include <cstdint>
+
+#include "mate/gemm/deep_gemm/mp31_fp8_mqa_logits.hpp"
+#include "mate/gemm/deep_gemm/mpxx_clean_logits.hpp"
+#include "mutlass/device_kernel.h"
+#include "op_utils.hpp"
+
+using namespace mute;
+
+namespace {
+
+void clean_mqa_logits(
+  ffi::TensorView logits,
+  ffi::TensorView cu_seq_len_k_start,
+  ffi::TensorView cu_seq_len_k_end,
+  int64_t         seq_len,
+  int64_t         seq_len_kv,
+  uint64_t        stride_kv
+) {
+  constexpr int kNextN    = 1;
+  constexpr int kBlockKV  = 8192;
+  constexpr int kNumWarps = 8;
+  constexpr int kSmemSize = kBlockKV * sizeof(float);
+
+  CHECK_MUSA(logits);
+  CHECK_INPUT_TYPE(logits, dl_float32);
+  CHECK_INPUT(cu_seq_len_k_start);
+  CHECK_INPUT(cu_seq_len_k_end);
+  CHECK_INPUT_TYPE(cu_seq_len_k_start, dl_int32);
+  CHECK_INPUT_TYPE(cu_seq_len_k_end, dl_int32);
+  CHECK_DEVICE(cu_seq_len_k_start, logits);
+  CHECK_DEVICE(cu_seq_len_k_end, logits);
+
+  musaDeviceProp dprops{};
+  MATE_MUSA_RUNTIME_CHECK(musaGetDeviceProperties(&dprops, logits.device().device_id));
+  const int num_mps = dprops.multiProcessorCount;
+  TVM_FFI_ICHECK(num_mps > 0) << "No available MUSA MPs";
+
+  musaStream_t stream = get_stream(logits.device());
+  mate::deep_gemm::mpxx_clean_logits<kNextN, kBlockKV, kNumWarps>
+      <<<num_mps, kNumWarps * 32, kSmemSize, stream>>>(
+          static_cast<uint32_t>(seq_len),
+          static_cast<uint32_t>(seq_len_kv),
+          stride_kv,
+          static_cast<uint32_t const*>(cu_seq_len_k_start.data_ptr()),
+          static_cast<uint32_t*>(cu_seq_len_k_end.data_ptr()),
+          static_cast<float*>(logits.data_ptr()));
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+}
+
+}  // namespace
+
+ffi::Tensor {{ func_name }}(
+  ffi::TensorView q,
+  ffi::TensorView kv,
+  ffi::TensorView weights,
+  ffi::TensorView cu_seq_len_k_start,
+  ffi::TensorView cu_seq_len_k_end,
+  ffi::TensorView kv_scale,
+  bool            clean_logits,
+  int64_t         max_seq_len_k
+) {
+  CHECK_MUSA(q);
+  CHECK_MUSA(kv);
+  CHECK_INPUT(weights);
+  CHECK_INPUT(cu_seq_len_k_start);
+  CHECK_INPUT(cu_seq_len_k_end);
+  CHECK_MUSA(kv_scale);
+  CHECK_DIM(3, q);
+  CHECK_DIM(2, kv);
+  CHECK_DIM(2, weights);
+  CHECK_DIM(1, cu_seq_len_k_start);
+  CHECK_DIM(1, cu_seq_len_k_end);
+  CHECK_DIM(1, kv_scale);
+  CHECK_INPUT_TYPE(q, dl_float8_e4m3fn);
+  CHECK_INPUT_TYPE(kv, dl_float8_e4m3fn);
+  CHECK_INPUT_TYPE(weights, dl_float32);
+  CHECK_INPUT_TYPE(cu_seq_len_k_start, dl_int32);
+  CHECK_INPUT_TYPE(cu_seq_len_k_end, dl_int32);
+  CHECK_INPUT_TYPE(kv_scale, dl_float32);
+  CHECK_DEVICE(kv, q);
+  CHECK_DEVICE(weights, q);
+  CHECK_DEVICE(cu_seq_len_k_start, q);
+  CHECK_DEVICE(cu_seq_len_k_end, q);
+  CHECK_DEVICE(kv_scale, q);
+
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+
+  musaDeviceProp device_prop{};
+  MATE_MUSA_RUNTIME_CHECK(musaGetDeviceProperties(&device_prop, q.device().device_id));
+
+  musaStream_t stream = get_stream(q.device());
+
+  const int64_t seq_len    = q.size(0);
+  const int64_t num_heads  = q.size(1);
+  const int64_t head_dim   = q.size(2);
+  const int64_t seq_len_kv = kv.size(0);
+
+  constexpr bool kIsCompressedLogits = {{ compressed_logits_literal }};
+  constexpr int  kBlockKV            = {{ block_kv }};
+  constexpr int  kBlockQ             = {{ block_q }};
+  constexpr int  kNumHeads           = {{ num_heads }};
+  constexpr int  kHeadDim            = {{ head_dim }};
+
+  TVM_FFI_ICHECK(num_heads == kNumHeads) << "Unexpected num_heads for this JIT kernel";
+  TVM_FFI_ICHECK(head_dim == kHeadDim) << "Unexpected head_dim for this JIT kernel";
+  TVM_FFI_ICHECK(kv.size(1) == head_dim) << "kv.shape[1] must match q.shape[2]";
+  TVM_FFI_ICHECK(weights.size(0) == seq_len && weights.size(1) == num_heads)
+      << "weights shape must be [seq_len, num_heads]";
+  TVM_FFI_ICHECK(q.stride(-1) == 1) << "q must be contiguous at the last dimension";
+  TVM_FFI_ICHECK(q.stride(1) == head_dim && q.stride(0) == num_heads * head_dim)
+      << "q must be laid out as contiguous [seq_len, num_heads, head_dim]";
+  TVM_FFI_ICHECK(weights.stride(1) == 1 && weights.stride(0) == num_heads)
+      << "weights must be laid out as contiguous [seq_len, num_heads]";
+  TVM_FFI_ICHECK(kv.stride(-1) == 1) << "kv must be contiguous at the last dimension";
+  TVM_FFI_ICHECK(kv_scale.numel() == seq_len_kv) << "kv_scale.numel() must match kv.shape[0]";
+
+  if constexpr (kIsCompressedLogits) {
+    TVM_FFI_ICHECK(max_seq_len_k > 0) << "This JIT kernel expects compressed logits";
+    TVM_FFI_ICHECK(!clean_logits) << "clean_logits is not supported with compressed logits";
+    TVM_FFI_ICHECK(max_seq_len_k <= seq_len_kv) << "max_seq_len_k must be <= seq_len_kv";
+  } else {
+    TVM_FFI_ICHECK(max_seq_len_k <= 0) << "This JIT kernel expects full logits";
+  }
+
+  auto    ceil_div         = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
+  auto    align_to         = [&](int64_t a, int64_t b) -> int64_t { return ceil_div(a, b) * b; };
+  int32_t max_seq_kv_param = kIsCompressedLogits ? static_cast<int32_t>(max_seq_len_k)
+                                                 : static_cast<int32_t>(seq_len_kv);
+
+  const int64_t logits_cols     = static_cast<int64_t>(max_seq_kv_param);
+  const int64_t aligned_seq_len = align_to(seq_len, int64_t(kBlockQ));
+  const int64_t logits_stride   = kIsCompressedLogits ? align_to(logits_cols, int64_t(kBlockKV))
+                                                      : align_to(seq_len_kv + int64_t(kBlockKV), int64_t(8));
+
+  ffi::Tensor logits_storage = alloc_tensor(ffi::Shape{aligned_seq_len, logits_stride}, dl_float32, q.device());
+  ffi::Shape  logits_shape{seq_len, logits_cols};
+  ffi::Shape  logits_strides{logits_stride, 1};
+  ffi::Tensor out = logits_storage.as_strided(logits_shape, logits_strides);
+
+  auto stride_q      = make_stride(q.stride(1), _1{});
+  auto stride_k      = make_stride(kv.stride(0), _1{});
+  auto stride_sfk    = make_stride(kv_scale.stride(0), _0{});
+  auto stride_w      = make_stride(_1{}, int64_t(seq_len) * num_heads);
+  auto stride_logits = make_stride(out.stride(0), _1{});
+
+  using Element      = mutlass::float_e4m3_t;
+  using StrideQ      = decltype(stride_q);
+  using StrideK      = decltype(stride_k);
+  using StrideSFK    = decltype(stride_sfk);
+  using StrideW      = decltype(stride_w);
+  using StrideLogits = decltype(stride_logits);
+  using Kernel       = mate::deep_gemm::Mp31Fp8NonPagedMqaLogits<kIsCompressedLogits,
+                                                                 kBlockQ,
+                                                                 kNumHeads,
+                                                                 kHeadDim,
+                                                                 kBlockKV,
+                                                                 StrideQ,
+                                                                 StrideK,
+                                                                 StrideSFK,
+                                                                 StrideW,
+                                                                 StrideLogits>;
+
+  const int64_t q_groups = ceil_div(seq_len, int64_t(kBlockQ));
+  const int     num_mps  = device_prop.multiProcessorCount;
+  TVM_FFI_ICHECK(num_mps > 0) << "No available MUSA MPs";
+
+  typename Kernel::Arguments arguments{
+      .q_group        = static_cast<int32_t>(q_groups),
+      .seq_kv         = static_cast<int32_t>(seq_len_kv),
+      .num_heads      = static_cast<int32_t>(num_heads),
+      .head_dim       = static_cast<int32_t>(head_dim),
+      .total_seq_q    = static_cast<int32_t>(seq_len),
+      .ptr_q          = static_cast<Element const*>(q.data_ptr()),
+      .stride_q       = stride_q,
+      .ptr_k          = static_cast<Element const*>(kv.data_ptr()),
+      .stride_k       = stride_k,
+      .ptr_sfk        = static_cast<float*>(kv_scale.data_ptr()),
+      .stride_sfk     = stride_sfk,
+      .ptr_weights    = static_cast<float*>(weights.data_ptr()),
+      .stride_weights = stride_w,
+      .ptr_ks         = static_cast<int32_t*>(cu_seq_len_k_start.data_ptr()),
+      .ptr_ke         = static_cast<int32_t*>(cu_seq_len_k_end.data_ptr()),
+      .ptr_logits     = static_cast<float*>(out.data_ptr()),
+      .stride_logits  = stride_logits,
+      .max_seq_kv     = max_seq_kv_param,
+  };
+
+  auto params = Kernel::to_underlying_arguments(arguments);
+  mutlass::device_kernel<Kernel>
+      <<<static_cast<uint32_t>(num_mps), Kernel::MaxThreadsPerBlock,
+         Kernel::SharedStorageSize, stream>>>(params);
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+
+  if constexpr (!kIsCompressedLogits) {
+    if (clean_logits) {
+      clean_mqa_logits(out,
+                       cu_seq_len_k_start,
+                       cu_seq_len_k_end,
+                       seq_len,
+                       seq_len_kv,
+                       static_cast<uint64_t>(out.stride(0)));
+    }
+  }
+
+  return out;
+}

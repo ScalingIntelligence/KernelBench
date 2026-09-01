@@ -1,0 +1,18 @@
+{
+  "project": "mutlass",
+  "repository": "https://github.com/MooreThreads/mutlass",
+  "revision": "78b349514831ed54a797b717f2fc0534646acff2",
+  "revision_label": "main snapshot / MATE v0.2.6 dependency",
+  "upstream_commit_date": "2026-08-17T12:58:54+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "BSD-3-Clause",
+  "operator_families": ["fmha", "paged_fmha", "mla"],
+  "hardware": ["MP31"],
+  "software_requirements": ["MUSA Toolkit >= 4.3.4"],
+  "source_scope": [
+    "complete upstream working tree except VCS/automation/agent instruction files",
+    "exact dependency used by MATE v0.2.5 and v0.2.6"
+  ],
+  "archive_status": "source-archived",
+  "validation_status": "provenance-verified-not-built"
+}

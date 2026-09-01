@@ -1,0 +1,27 @@
+{
+  "project": "tilelang_musa",
+  "repository": "https://github.com/tile-ai/tilelang-musa",
+  "revision": "489df49a671356af0d9eb2d7c37e933b226a9063",
+  "revision_label": "maintained successor main snapshot",
+  "upstream_commit_date": "2026-08-28T16:27:23+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "MIT",
+  "operator_families": [
+    "flash_attention",
+    "flash_attention_backward",
+    "block_sparse_attention",
+    "attention_sink",
+    "flash_linear_attention",
+    "mla_decode",
+    "deepseek_native_sparse_attention",
+    "seer_attention"
+  ],
+  "hardware": ["MUSA common backend", "MP31-specific SQMMA/TME paths"],
+  "software_requirements": ["TileLang MUSA backend", "MUSA SDK"],
+  "source_scope": [
+    "MUSA compiler/runtime/backend and tests",
+    "attention-related examples, benchmarks, and documentation"
+  ],
+  "archive_status": "source-archived-selective",
+  "validation_status": "provenance-verified-not-built"
+}

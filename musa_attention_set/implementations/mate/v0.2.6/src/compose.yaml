@@ -1,0 +1,52 @@
+name: ${COMPOSE_PROJECT_NAME:-mate-dev}
+
+services:
+  dev-base:
+    image: ${MATE_DEV_BASE_IMAGE:-mate-dev-base:local}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev-base
+      network: host
+      args:
+        BASE_IMAGE: ${MATE_BASE_IMAGE:-registry.mthreads.com/mcconline/musa_sdk:5.2.0-devel-ubuntu22.04-s5000}
+
+  dev:
+    image: ${MATE_DEV_IMAGE:-mate-dev:local}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+      network: host
+      additional_contexts:
+        mate_dev_base: ${MATE_DEV_BASE_CONTEXT:-service:dev-base}
+      args:
+        USER_UID: ${MATE_USER_UID:-1000}
+        USER_GID: ${MATE_USER_GID:-1000}
+    runtime: mthreads
+    network_mode: host
+    ipc: host
+    init: true
+    stdin_open: true
+    tty: true
+    working_dir: /workspace/mate
+    command: ["sleep", "infinity"]
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
+    volumes:
+      - type: bind
+        source: ${MATE_SOURCE_DIR:-.}
+        target: /workspace/mate
+      - type: volume
+        source: mate-dev-cache
+        target: /home/devuser/.cache
+
+volumes:
+  mate-dev-cache:

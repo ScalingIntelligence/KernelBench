@@ -1,0 +1,4 @@
+furo==2025.12.19
+myst-parser==4.0.1
+packaging==25.0
+sphinx==8.1.3

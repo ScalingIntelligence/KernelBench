@@ -1,0 +1,700 @@
+// FlashAttention MUBIN launcher
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <optional>
+#include <string>
+
+#include <musa.h>
+#include <musa_bf16.h>
+#include <musa_fp16.h>
+#include <musa_runtime.h>
+#include <mutlass/fast_math.h>
+#include <mute/arch/copy_mp31_desc.hpp>
+#include <mute/layout.hpp>
+
+#include "op_utils.hpp"
+
+namespace {
+
+size_t logical_span_elements(ffi::TensorView tensor, const char* name) {
+  TVM_FFI_ICHECK(tensor.ndim() == 3 || tensor.ndim() == 4) << name << " must be a 3D or 4D tensor";
+  if (tensor.size(0) == 0) {
+    return 0;
+  }
+  for (int32_t dim = 0; dim < tensor.ndim(); ++dim) {
+    if (tensor.size(dim) == 0) {
+      return 0;
+    }
+    TVM_FFI_ICHECK_GE(tensor.stride(dim), 0) << name << " must have non-negative strides";
+  }
+  if (tensor.ndim() == 3) {
+    auto layout = mute::make_layout(mute::make_shape(tensor.size(0), tensor.size(1), tensor.size(2)),
+                                    mute::make_stride(tensor.stride(0), tensor.stride(1), tensor.stride(2)));
+    return static_cast<size_t>(mute::cosize(layout));
+  }
+  auto layout =
+      mute::make_layout(mute::make_shape(tensor.size(0), tensor.size(1), tensor.size(2), tensor.size(3)),
+                        mute::make_stride(tensor.stride(0), tensor.stride(1), tensor.stride(2), tensor.stride(3)));
+  return static_cast<size_t>(mute::cosize(layout));
+}
+
+struct DenseFlashAttentionParams {
+  void* output_ptr{};
+  void* out_lse_ptr{};
+  mute::RobustReg    robust_mask{};
+  MUtensorDescriptor q_desc{};
+  mute::RobustReg    robust_key{};
+  MUtensorDescriptor k_desc_0{};
+  MUtensorDescriptor k_desc_1{};
+  MUtensorDescriptor v_desc{};
+  MUtensorDescriptor out_desc{};
+  float scale{};
+  float rln2_scale{};
+  float nr_ln2{};
+  int32_t batch{};
+  int32_t nheads{};
+  int32_t kv_heads{};
+  int32_t seqlen_q{};
+  int32_t seqlen_kv{};
+  int32_t headdim_v{};
+  int32_t head_group_ori{};
+  uint32_t head_group_mul{};
+  uint32_t head_group_sft{};
+  int32_t ldg_key_stride{};
+  int32_t batch_stride_k{};
+  int32_t head_stride_k{};
+  int32_t seq_stride_k{};
+  int64_t batch_stride_mask{};
+  int64_t head_stride_mask{};
+  int32_t seq_stride_mask{};
+  int32_t batch_stride_out{};
+  int32_t head_stride_out{};
+  int32_t seq_stride_out{};
+  int32_t tile_size_q{};
+  int32_t tile_size_k{};
+  int32_t tile_size_v{};
+  int32_t tile_num{};
+  int32_t double_block_num_sub1{};
+  int32_t double_block_num{};
+  int32_t seqq_mul_heads_div{};
+  uint32_t seqq_mul_heads_mul{};
+  uint32_t seqq_mul_heads_sft{};
+  int32_t seqq_div{};
+  uint32_t seqq_mul{};
+  uint32_t seqq_sft{};
+  int32_t tile_q_dim0{};
+  int32_t tile_q_dim1{};
+  int32_t tile_q_dim2{};
+  int32_t tile_q_dim3{};
+  int32_t tile_k_dim0{};
+  int32_t tile_k_dim1{};
+  int32_t tile_k_dim2{};
+  int32_t tile_k_dim3{};
+  int32_t tile_v_dim0{};
+  int32_t tile_v_dim1{};
+  int32_t tile_v_dim2{};
+  int32_t tile_v_dim3{};
+  int32_t tile_out_dim0{};
+  int32_t tile_out_dim1{};
+  int32_t tile_out_dim2{};
+  int32_t tile_out_dim3{};
+};
+
+struct VarlenFlashAttentionParams {
+  void* output_ptr{};
+  void* out_lse_ptr{};
+  MUtensorDescriptor q_desc{};
+  mute::RobustReg    robust_key{};
+  MUtensorDescriptor k_desc{};
+  MUtensorDescriptor v_desc{};
+  int32_t* input_cu_seqlen_q_ptr{};
+  int32_t* input_cu_seqlen_k_ptr{};
+  float scale{};
+  float rln2_scale{};
+  float nr_ln2{};
+  int32_t batch{};
+  int32_t nheads{};
+  int32_t kv_heads{};
+  int32_t max_seqlen_q{};
+  int32_t max_seqlen_kv{};
+  int32_t headdim_v{};
+  int32_t head_group_ori{};
+  uint32_t head_group_mul{};
+  uint32_t head_group_sft{};
+  int32_t ldg_key_stride{};
+  int32_t total_seqlen_q{};
+  int32_t total_seqlen_stride_k{};
+  int32_t head_stride_k{};
+  int32_t total_seqlen_stride_out{};
+  int32_t head_stride_out{};
+  int32_t tile_size_q{};
+  int32_t tile_size_k{};
+  int32_t tile_size_v{};
+  int32_t tile_q_dim0{};
+  int32_t tile_q_dim1{};
+  int32_t tile_q_dim2{};
+  int32_t tile_k_dim0{};
+  int32_t tile_k_dim1{};
+  int32_t tile_k_dim2{};
+  int32_t tile_v_dim0{};
+  int32_t tile_v_dim1{};
+  int32_t tile_v_dim2{};
+};
+
+}  // namespace
+
+{# Validate varlen inputs and derive launch metadata. #}
+{% macro emit_varlen_validation() %}
+  CHECK_HAS_VALUE_WITH_MSG(input_cu_seqlen_q, "input_cu_seqlen_q must be provided for varlen flash attention");
+  CHECK_HAS_VALUE_WITH_MSG(input_cu_seqlen_k, "input_cu_seqlen_k must be provided for varlen flash attention");
+  CHECK_HAS_VALUE_WITH_MSG(max_seqlen_q, "max_seqlen_q must be provided for varlen flash attention");
+  CHECK_HAS_VALUE_WITH_MSG(max_seqlen_kv, "max_seqlen_kv must be provided for varlen flash attention");
+  auto input_cu_q = input_cu_seqlen_q.value();
+  auto input_cu_k = input_cu_seqlen_k.value();
+  CHECK_MUSA(input_cu_q);
+  CHECK_MUSA(input_cu_k);
+  CHECK_DEVICE(q, input_cu_q);
+  CHECK_DEVICE(q, input_cu_k);
+  CHECK_DIM(3, q);
+  CHECK_DIM(3, k);
+  CHECK_DIM(3, v);
+  CHECK_DIM(3, out);
+  CHECK_DIM(2, out_lse);
+  CHECK_DIM(1, input_cu_q);
+  CHECK_DIM(1, input_cu_k);
+  CHECK_CONTIGUOUS(input_cu_q);
+  CHECK_CONTIGUOUS(input_cu_k);
+  TVM_FFI_ICHECK(dtype_equal(input_cu_q.dtype(), dl_int32)) << "input_cu_seqlen_q must be int32";
+  TVM_FFI_ICHECK(dtype_equal(input_cu_k.dtype(), dl_int32)) << "input_cu_seqlen_k must be int32";
+  TVM_FFI_ICHECK_EQ(input_cu_k.size(0), input_cu_q.size(0))
+      << "input_cu_seqlen_q and input_cu_seqlen_k must have the same size";
+  TVM_FFI_ICHECK_GT(input_cu_k.size(0), 1) << "input_cu_seqlen_k must describe at least one batch";
+  TVM_FFI_ICHECK_GT(max_seqlen_q.value(), 0) << "max_seqlen_q must be positive";
+  TVM_FFI_ICHECK_GT(max_seqlen_kv.value(), 0) << "max_seqlen_kv must be positive";
+
+  {
+    auto total_seqlen_q = q.size(0);
+    auto nr_heads = q.size(1);
+    auto headdim_qk = q.size(2);
+    auto total_seqlen_kv = k.size(0);
+    auto nr_heads_kv = k.size(1);
+    auto headdim_v = v.size(2);
+    TVM_FFI_ICHECK_GT(total_seqlen_q, 0) << "total_seqlen_q must be positive";
+    TVM_FFI_ICHECK_GT(total_seqlen_kv, 0) << "total_seqlen_kv must be positive";
+    TVM_FFI_ICHECK_GT(headdim_qk, 0) << "headdim_qk must be positive";
+    TVM_FFI_ICHECK_GT(headdim_v, 0) << "headdim_v must be positive";
+    expect_shape(k, {total_seqlen_kv, nr_heads_kv, headdim_qk}, "k");
+    expect_shape(v, {total_seqlen_kv, nr_heads_kv, headdim_v}, "v");
+    expect_shape(out, {total_seqlen_q, nr_heads, headdim_v}, "out");
+    expect_shape(out_lse, {nr_heads, total_seqlen_q}, "out_lse");
+    TVM_FFI_ICHECK_GT(nr_heads_kv, 0) << "nr_heads_kv must be positive";
+    TVM_FFI_ICHECK_GE(nr_heads, nr_heads_kv) << "nr_heads must be >= nr_heads_kv";
+    TVM_FFI_ICHECK_EQ(nr_heads % nr_heads_kv, 0) << "nr_heads must be divisible by nr_heads_kv";
+{% if spec.headdim_qk == 128 %}
+    TVM_FFI_ICHECK_EQ(headdim_qk, headdim_v) << "HeadDim unsupported";
+    TVM_FFI_ICHECK_LE(headdim_qk, 128) << "HeadDim unsupported";
+{% else %}
+    TVM_FFI_ICHECK_EQ(headdim_qk, 192) << "HeadDim unsupported";
+    TVM_FFI_ICHECK_EQ(headdim_v, 128) << "HeadDim unsupported";
+{% endif %}
+  }
+{% endmacro %}
+
+{# Prepare fixed-dispatch views for batch-1 varlen inputs. #}
+{% macro emit_batch1_varlen_setup() %}
+  const bool has_varlen_metadata = input_cu_seqlen_q.has_value() || input_cu_seqlen_k.has_value();
+  ffi::TensorView dense_q = q;
+  ffi::TensorView dense_k = k;
+  ffi::TensorView dense_v = v;
+  ffi::TensorView dense_out = out;
+  ffi::TensorView dense_out_lse = out_lse;
+  std::array<int64_t, 4> q_shape{};
+  std::array<int64_t, 4> q_strides{};
+  std::array<int64_t, 4> k_shape{};
+  std::array<int64_t, 4> k_strides{};
+  std::array<int64_t, 4> v_shape{};
+  std::array<int64_t, 4> v_strides{};
+  std::array<int64_t, 4> out_shape{};
+  std::array<int64_t, 4> out_strides{};
+  std::array<int64_t, 3> out_lse_shape{};
+  std::array<int64_t, 3> out_lse_strides{};
+  if (has_varlen_metadata) {
+    CHECK_HAS_VALUE_WITH_MSG(input_cu_seqlen_q, "input_cu_seqlen_q must be provided for varlen flash attention");
+    CHECK_HAS_VALUE_WITH_MSG(input_cu_seqlen_k, "input_cu_seqlen_k must be provided for varlen flash attention");
+    CHECK_HAS_VALUE_WITH_MSG(max_seqlen_q, "max_seqlen_q must be provided for varlen flash attention");
+    CHECK_HAS_VALUE_WITH_MSG(max_seqlen_kv, "max_seqlen_kv must be provided for varlen flash attention");
+    auto input_cu_q = input_cu_seqlen_q.value();
+    auto input_cu_k = input_cu_seqlen_k.value();
+    CHECK_MUSA(input_cu_q);
+    CHECK_MUSA(input_cu_k);
+    CHECK_DEVICE(q, input_cu_q);
+    CHECK_DEVICE(q, input_cu_k);
+    CHECK_DIM(3, q);
+    CHECK_DIM(3, k);
+    CHECK_DIM(3, v);
+    CHECK_DIM(3, out);
+    CHECK_DIM(2, out_lse);
+    CHECK_DIM(1, input_cu_q);
+    CHECK_DIM(1, input_cu_k);
+    CHECK_CONTIGUOUS(input_cu_q);
+    CHECK_CONTIGUOUS(input_cu_k);
+    TVM_FFI_ICHECK(dtype_equal(input_cu_q.dtype(), dl_int32)) << "input_cu_seqlen_q must be int32";
+    TVM_FFI_ICHECK(dtype_equal(input_cu_k.dtype(), dl_int32)) << "input_cu_seqlen_k must be int32";
+    TVM_FFI_ICHECK_EQ(input_cu_q.size(0), 2) << "fixed dispatch only supports batch-1 varlen metadata";
+    TVM_FFI_ICHECK_EQ(input_cu_k.size(0), input_cu_q.size(0))
+        << "input_cu_seqlen_q and input_cu_seqlen_k must have the same size";
+    TVM_FFI_ICHECK_GT(max_seqlen_q.value(), 0) << "max_seqlen_q must be positive";
+    TVM_FFI_ICHECK_GT(max_seqlen_kv.value(), 0) << "max_seqlen_kv must be positive";
+
+    q_shape = {1, q.size(0), q.size(1), q.size(2)};
+    q_strides = {q.size(0) * q.stride(0), q.stride(0), q.stride(1), q.stride(2)};
+    k_shape = {1, k.size(0), k.size(1), k.size(2)};
+    k_strides = {k.size(0) * k.stride(0), k.stride(0), k.stride(1), k.stride(2)};
+    v_shape = {1, v.size(0), v.size(1), v.size(2)};
+    v_strides = {v.size(0) * v.stride(0), v.stride(0), v.stride(1), v.stride(2)};
+    out_shape = {1, out.size(0), out.size(1), out.size(2)};
+    out_strides = {out.size(0) * out.stride(0), out.stride(0), out.stride(1), out.stride(2)};
+    out_lse_shape = {1, out_lse.size(0), out_lse.size(1)};
+    out_lse_strides = {out_lse.size(0) * out_lse.stride(0), out_lse.stride(0), out_lse.stride(1)};
+    dense_q = q.as_strided(ffi::ShapeView(q_shape.data(), q_shape.size()),
+                           ffi::ShapeView(q_strides.data(), q_strides.size()));
+    dense_k = k.as_strided(ffi::ShapeView(k_shape.data(), k_shape.size()),
+                           ffi::ShapeView(k_strides.data(), k_strides.size()));
+    dense_v = v.as_strided(ffi::ShapeView(v_shape.data(), v_shape.size()),
+                           ffi::ShapeView(v_strides.data(), v_strides.size()));
+    dense_out = out.as_strided(ffi::ShapeView(out_shape.data(), out_shape.size()),
+                               ffi::ShapeView(out_strides.data(), out_strides.size()));
+    dense_out_lse = out_lse.as_strided(ffi::ShapeView(out_lse_shape.data(), out_lse_shape.size()),
+                                       ffi::ShapeView(out_lse_strides.data(), out_lse_strides.size()));
+  }
+{% endmacro %}
+
+{# Validate non-varlen tensor views. #}
+{% macro emit_non_varlen_validation() %}
+  CHECK_DIM(4, dense_q);
+  CHECK_DIM(4, dense_k);
+  CHECK_DIM(4, dense_v);
+  CHECK_DIM(4, dense_out);
+  CHECK_DIM(3, dense_out_lse);
+  {
+    auto batch = dense_q.size(0);
+    auto seqlen_q = dense_q.size(1);
+    auto nr_heads = dense_q.size(2);
+    auto headdim_qk = dense_q.size(3);
+    auto seqlen_kv = dense_k.size(1);
+    auto nr_heads_kv = dense_k.size(2);
+    auto headdim_v = dense_v.size(3);
+    TVM_FFI_ICHECK_GT(batch, 0) << "batch must be positive";
+    TVM_FFI_ICHECK_GT(seqlen_q, 0) << "seqlen_q must be positive";
+    TVM_FFI_ICHECK_GT(seqlen_kv, 0) << "seqlen_kv must be positive";
+    TVM_FFI_ICHECK_GT(headdim_qk, 0) << "headdim_qk must be positive";
+    TVM_FFI_ICHECK_GT(headdim_v, 0) << "headdim_v must be positive";
+    expect_shape(dense_k, {batch, seqlen_kv, nr_heads_kv, headdim_qk}, "k");
+    expect_shape(dense_v, {batch, seqlen_kv, nr_heads_kv, headdim_v}, "v");
+    expect_shape(dense_out, {batch, seqlen_q, nr_heads, headdim_v}, "out");
+    expect_shape(dense_out_lse, {batch, nr_heads, seqlen_q}, "out_lse");
+    TVM_FFI_ICHECK_GT(nr_heads_kv, 0) << "nr_heads_kv must be positive";
+    TVM_FFI_ICHECK_GE(nr_heads, nr_heads_kv) << "nr_heads must be >= nr_heads_kv";
+    TVM_FFI_ICHECK_EQ(nr_heads % nr_heads_kv, 0) << "nr_heads must be divisible by nr_heads_kv";
+{% if spec.headdim_qk == 128 %}
+    TVM_FFI_ICHECK_EQ(headdim_qk, headdim_v) << "HeadDim unsupported";
+    TVM_FFI_ICHECK_LE(headdim_qk, 128) << "HeadDim unsupported";
+{% else %}
+    TVM_FFI_ICHECK_EQ(headdim_qk, 192) << "HeadDim unsupported";
+    TVM_FFI_ICHECK_EQ(headdim_v, 128) << "HeadDim unsupported";
+{% endif %}
+  }
+{% endmacro %}
+
+{# Build and launch a varlen kernel. #}
+{% macro emit_varlen_launch() %}
+  static_cast<void>(num_mp);
+  auto batch = input_cu_q.size(0) - 1;
+  auto total_seqlen_q = q.size(0);
+  auto nr_heads = q.size(1);
+  auto headdim_qk = q.size(2);
+  auto total_seqlen_kv = k.size(0);
+  auto nr_heads_kv = k.size(1);
+  auto headdim_v = v.size(2);
+  auto max_q = max_seqlen_q.value();
+  auto max_kv = max_seqlen_kv.value();
+
+  TmeDesc tensor_desc_q(mute::make_tuple(headdim_qk, nr_heads, total_seqlen_q),
+                        mute::make_tuple(q.stride(1), q.stride(0)),
+                        q.data_ptr(),
+                        dl_dtype_to_tme_type(data_type));
+  TmeDesc tensor_desc_v(mute::make_tuple(headdim_v, nr_heads_kv, total_seqlen_kv),
+                        mute::make_tuple(v.stride(1), v.stride(0)),
+                        v.data_ptr(),
+                        dl_dtype_to_tme_type(data_type));
+
+  VarlenFlashAttentionParams params{};
+  params.output_ptr = out.data_ptr();
+  params.out_lse_ptr = out_lse.data_ptr();
+  params.q_desc = tensor_desc_q.desc;
+  params.v_desc = tensor_desc_v.desc;
+  params.robust_key = dtype_equal(data_type, dl_float16)
+                          ? mute::make_robust_desc(static_cast<mutlass::half_t*>(k.data_ptr()),
+                                                   logical_span_elements(k, "k"))
+                                .reg
+                          : mute::make_robust_desc(static_cast<mutlass::bfloat16_t*>(k.data_ptr()),
+                                                   logical_span_elements(k, "k"))
+                                .reg;
+  params.input_cu_seqlen_q_ptr = static_cast<int*>(input_cu_q.data_ptr());
+  params.input_cu_seqlen_k_ptr = static_cast<int*>(input_cu_k.data_ptr());
+  const double log2e = std::log2(std::exp(1.0));
+  params.scale = softmax_scale;
+  params.rln2_scale = softmax_scale * log2e;
+  params.nr_ln2 = 1.0 / log2e;
+  params.batch = static_cast<int32_t>(batch);
+  params.nheads = static_cast<int32_t>(nr_heads);
+  params.kv_heads = static_cast<int32_t>(nr_heads_kv);
+  params.max_seqlen_q = static_cast<int32_t>(max_q);
+  params.max_seqlen_kv = static_cast<int32_t>(max_kv);
+  params.headdim_v = static_cast<int32_t>(headdim_v);
+  auto fast_head_group = mutlass::FastDivmod(static_cast<int>(nr_heads / nr_heads_kv));
+  params.head_group_ori = fast_head_group.divisor;
+  params.head_group_mul = fast_head_group.multiplier;
+  params.head_group_sft = fast_head_group.shift_right;
+  params.ldg_key_stride = static_cast<int32_t>(k.stride(0) * tile_n * sizeof(mutlass::half_t));
+  params.total_seqlen_q = static_cast<int32_t>(total_seqlen_q);
+  params.total_seqlen_stride_k = static_cast<int32_t>(k.stride(0));
+  params.head_stride_k = static_cast<int32_t>(k.stride(1));
+  params.total_seqlen_stride_out = static_cast<int32_t>(out.stride(0));
+  params.head_stride_out = static_cast<int32_t>(out.stride(1));
+  params.tile_size_q = tile_m * tile_k * sizeof(mutlass::half_t);
+  params.tile_size_k = tile_n * tile_k * sizeof(mutlass::half_t);
+  params.tile_size_v = tile_hdim * tile_k * sizeof(mutlass::half_t);
+  params.tile_q_dim0 = tile_k;
+  params.tile_q_dim1 = 1;
+  params.tile_q_dim2 = tile_m;
+  params.tile_k_dim0 = tile_k;
+  params.tile_k_dim1 = 1;
+  params.tile_k_dim2 = tile_n;
+  params.tile_v_dim0 = tile_hdim;
+  params.tile_v_dim1 = 1;
+  params.tile_v_dim2 = tile_k;
+
+  MUlaunchConfig launch_config;
+  launch_config.blockDimX = nr_thr;
+  launch_config.blockDimY = 1;
+  launch_config.blockDimZ = 1;
+{% if spec.is_causal %}
+  launch_config.gridDimX = static_cast<unsigned int>(nr_heads);
+  launch_config.gridDimY = static_cast<unsigned int>(batch);
+  launch_config.gridDimZ = static_cast<unsigned int>(mutlass::ceil_div(static_cast<int>(max_q), tile_m));
+{% else %}
+  launch_config.gridDimX = static_cast<unsigned int>(mutlass::ceil_div(static_cast<int>(max_q), tile_m));
+  launch_config.gridDimY = static_cast<unsigned int>(nr_heads);
+  launch_config.gridDimZ = static_cast<unsigned int>(batch);
+{% endif %}
+  launch_config.hStream = reinterpret_cast<MUstream>(stream);
+  launch_config.sharedMemBytes = 0;
+  launch_config.attrs = NULL;
+  launch_config.numAttrs = 0;
+
+  void* kernel_params[] = {&params.output_ptr,
+                           &params.out_lse_ptr,
+                           &params.q_desc,
+                           &params.robust_key,
+                           &params.k_desc,
+                           &params.v_desc,
+                           &params.input_cu_seqlen_q_ptr,
+                           &params.input_cu_seqlen_k_ptr,
+                           &params.scale,
+                           &params.rln2_scale,
+                           &params.nr_ln2,
+                           &params.batch,
+                           &params.nheads,
+                           &params.kv_heads,
+                           &params.max_seqlen_q,
+                           &params.max_seqlen_kv,
+                           &params.headdim_v,
+                           &params.head_group_ori,
+                           &params.head_group_mul,
+                           &params.head_group_sft,
+                           &params.ldg_key_stride,
+                           &params.total_seqlen_q,
+                           &params.total_seqlen_stride_k,
+                           &params.head_stride_k,
+                           &params.total_seqlen_stride_out,
+                           &params.head_stride_out,
+                           &params.tile_size_q,
+                           &params.tile_size_k,
+                           &params.tile_size_v,
+                           &params.tile_q_dim0,
+                           &params.tile_q_dim1,
+                           &params.tile_q_dim2,
+                           &params.tile_k_dim0,
+                           &params.tile_k_dim1,
+                           &params.tile_k_dim2,
+                           &params.tile_v_dim0,
+                           &params.tile_v_dim1,
+                           &params.tile_v_dim2};
+  MATE_MUSA_DRIVER_CHECK(muLaunchKernelEx(&launch_config, asm_func, kernel_params, nullptr));
+{% endmacro %}
+
+{# Build and launch a non-varlen kernel. #}
+{% macro emit_non_varlen_launch() %}
+  auto launch_dense = [&](ffi::TensorView q,
+                          ffi::TensorView k,
+                          ffi::TensorView v,
+                          ffi::TensorView out,
+                          ffi::TensorView out_lse) {
+  static_cast<void>(input_cu_seqlen_q);
+  static_cast<void>(input_cu_seqlen_k);
+  static_cast<void>(max_seqlen_q);
+  static_cast<void>(max_seqlen_kv);
+
+  auto batch = q.size(0);
+  auto seqlen_q = q.size(1);
+  auto nr_heads = q.size(2);
+  auto headdim_qk = q.size(3);
+  auto seqlen_kv = k.size(1);
+  auto nr_heads_kv = k.size(2);
+  auto headdim_v = v.size(3);
+
+  TmeDesc tensor_desc_q(mute::make_tuple(headdim_qk, seqlen_q, nr_heads, batch),
+                        mute::make_tuple(q.stride(1), q.stride(2), q.stride(0)),
+                        q.data_ptr(),
+                        dl_dtype_to_tme_type(data_type));
+  TmeDesc tensor_desc_v(mute::make_tuple(headdim_v, seqlen_kv, nr_heads_kv, batch),
+                        mute::make_tuple(v.stride(1), v.stride(2), v.stride(0)),
+                        v.data_ptr(),
+                        dl_dtype_to_tme_type(data_type));
+  TmeDesc tensor_desc_out(mute::make_tuple(headdim_v, seqlen_q, nr_heads, batch),
+                          mute::make_tuple(out.stride(1), out.stride(2), out.stride(0)),
+                          out.data_ptr(),
+                          dl_dtype_to_tme_type(data_type));
+
+  DenseFlashAttentionParams params{};
+  params.output_ptr = out.data_ptr();
+  params.out_lse_ptr = out_lse.data_ptr();
+  params.q_desc = tensor_desc_q.desc;
+  params.v_desc = tensor_desc_v.desc;
+  params.out_desc = tensor_desc_out.desc;
+  params.robust_key = dtype_equal(data_type, dl_float16)
+                          ? mute::make_robust_desc(static_cast<mutlass::half_t*>(k.data_ptr()),
+                                                   logical_span_elements(k, "k"))
+                                .reg
+                          : mute::make_robust_desc(static_cast<mutlass::bfloat16_t*>(k.data_ptr()),
+                                                   logical_span_elements(k, "k"))
+                                .reg;
+  params.robust_mask = mute::make_robust_desc(static_cast<int32_t*>(nullptr), 0).reg;
+  const double log2e = std::log2(std::exp(1.0));
+  params.scale = softmax_scale;
+  params.rln2_scale = softmax_scale * log2e;
+  params.nr_ln2 = 1.0 / log2e;
+  params.batch = static_cast<int32_t>(batch);
+  params.nheads = static_cast<int32_t>(nr_heads);
+  params.kv_heads = static_cast<int32_t>(nr_heads_kv);
+  params.seqlen_q = static_cast<int32_t>(seqlen_q);
+  params.seqlen_kv = static_cast<int32_t>(seqlen_kv);
+  params.headdim_v = static_cast<int32_t>(headdim_v);
+  auto fast_head_group = mutlass::FastDivmod(static_cast<int>(nr_heads / nr_heads_kv));
+  params.head_group_ori = fast_head_group.divisor;
+  params.head_group_mul = fast_head_group.multiplier;
+  params.head_group_sft = fast_head_group.shift_right;
+  params.ldg_key_stride = static_cast<int32_t>(k.stride(1) * tile_n * sizeof(mutlass::half_t));
+  params.batch_stride_k = static_cast<int32_t>(k.stride(0));
+  params.head_stride_k = static_cast<int32_t>(k.stride(2));
+  params.seq_stride_k = static_cast<int32_t>(k.stride(1));
+  params.batch_stride_mask = 0;
+  params.head_stride_mask = 0;
+  params.seq_stride_mask = 0;
+  params.batch_stride_out = static_cast<int32_t>(out.stride(0));
+  params.head_stride_out = static_cast<int32_t>(out.stride(2));
+  params.seq_stride_out = static_cast<int32_t>(out.stride(1));
+  params.tile_size_q = tile_m * tile_k * sizeof(mutlass::half_t);
+  params.tile_size_k = tile_n * tile_k * sizeof(mutlass::half_t);
+  params.tile_size_v = tile_hdim * tile_k * sizeof(mutlass::half_t);
+  int seq_q_tile_num = mutlass::ceil_div(static_cast<int>(seqlen_q), tile_m);
+  params.tile_num = seq_q_tile_num * static_cast<int>(batch) * static_cast<int>(nr_heads);
+  int nr_persistence = std::min(num_mp, params.tile_num);
+  params.double_block_num_sub1 = 2 * nr_persistence - 1;
+  params.double_block_num = 2 * nr_persistence;
+  auto fast_seqq_mul_heads = mutlass::FastDivmod(static_cast<int>(nr_heads) * seq_q_tile_num);
+  params.seqq_mul_heads_div = fast_seqq_mul_heads.divisor;
+  params.seqq_mul_heads_mul = fast_seqq_mul_heads.multiplier;
+  params.seqq_mul_heads_sft = fast_seqq_mul_heads.shift_right;
+  auto fast_seqq = mutlass::FastDivmod(seq_q_tile_num);
+  params.seqq_div = fast_seqq.divisor;
+  params.seqq_mul = fast_seqq.multiplier;
+  params.seqq_sft = fast_seqq.shift_right;
+  params.tile_q_dim0 = tile_k;
+  params.tile_q_dim1 = tile_m;
+  params.tile_q_dim2 = 1;
+  params.tile_q_dim3 = 1;
+  params.tile_k_dim0 = tile_k;
+  params.tile_k_dim1 = tile_n;
+  params.tile_k_dim2 = 1;
+  params.tile_k_dim3 = 1;
+  params.tile_v_dim0 = tile_hdim;
+  params.tile_v_dim1 = tile_k;
+  params.tile_v_dim2 = 1;
+  params.tile_v_dim3 = 1;
+  params.tile_out_dim0 = static_cast<int32_t>(headdim_v);
+  params.tile_out_dim1 = 4;
+  params.tile_out_dim2 = 1;
+  params.tile_out_dim3 = 1;
+
+  MUlaunchConfig launch_config;
+  launch_config.blockDimX = nr_thr;
+  launch_config.blockDimY = 1;
+  launch_config.blockDimZ = 1;
+  launch_config.gridDimX = static_cast<unsigned int>(nr_persistence);
+  launch_config.gridDimY = 1;
+  launch_config.gridDimZ = 1;
+  launch_config.hStream = reinterpret_cast<MUstream>(stream);
+  launch_config.sharedMemBytes = 0;
+  launch_config.attrs = NULL;
+  launch_config.numAttrs = 0;
+
+  void* kernel_params[] = {&params.output_ptr,
+                           &params.out_lse_ptr,
+                           &params.robust_mask,
+                           &params.q_desc,
+                           &params.robust_key,
+                           &params.k_desc_0,
+                           &params.k_desc_1,
+                           &params.v_desc,
+                           &params.out_desc,
+                           &params.scale,
+                           &params.rln2_scale,
+                           &params.nr_ln2,
+                           &params.batch,
+                           &params.nheads,
+                           &params.kv_heads,
+                           &params.seqlen_q,
+                           &params.seqlen_kv,
+                           &params.headdim_v,
+                           &params.head_group_ori,
+                           &params.head_group_mul,
+                           &params.head_group_sft,
+                           &params.ldg_key_stride,
+                           &params.batch_stride_k,
+                           &params.head_stride_k,
+                           &params.seq_stride_k,
+                           &params.batch_stride_mask,
+                           &params.head_stride_mask,
+                           &params.seq_stride_mask,
+                           &params.batch_stride_out,
+                           &params.head_stride_out,
+                           &params.seq_stride_out,
+                           &params.tile_size_q,
+                           &params.tile_size_k,
+                           &params.tile_size_v,
+                           &params.tile_num,
+                           &params.double_block_num_sub1,
+                           &params.double_block_num,
+                           &params.seqq_mul_heads_div,
+                           &params.seqq_mul_heads_mul,
+                           &params.seqq_mul_heads_sft,
+                           &params.seqq_div,
+                           &params.seqq_mul,
+                           &params.seqq_sft,
+                           &params.tile_q_dim0,
+                           &params.tile_q_dim1,
+                           &params.tile_q_dim2,
+                           &params.tile_q_dim3,
+                           &params.tile_k_dim0,
+                           &params.tile_k_dim1,
+                           &params.tile_k_dim2,
+                           &params.tile_k_dim3,
+                           &params.tile_v_dim0,
+                           &params.tile_v_dim1,
+                           &params.tile_v_dim2,
+                           &params.tile_v_dim3,
+                           &params.tile_out_dim0,
+                           &params.tile_out_dim1,
+                           &params.tile_out_dim2,
+                           &params.tile_out_dim3};
+  MATE_MUSA_DRIVER_CHECK(muLaunchKernelEx(&launch_config, asm_func, kernel_params, nullptr));
+  };
+  launch_dense(dense_q, dense_k, dense_v, dense_out, dense_out_lse);
+{% endmacro %}
+
+void run_{{ func_name }}(const std::string&                 object_path,
+                               ffi::TensorView                    q,
+                               ffi::TensorView                    k,
+                               ffi::TensorView                    v,
+                               double                             softmax_scale,
+                               ffi::TensorView                    out,
+                               ffi::TensorView                    out_lse,
+                               std::optional<ffi::TensorView>     input_cu_seqlen_q,
+                               std::optional<ffi::TensorView>     input_cu_seqlen_k,
+                               std::optional<int64_t>             max_seqlen_q,
+                               std::optional<int64_t>             max_seqlen_kv) {
+  CHECK_MUSA(q);
+  CHECK_MUSA(k);
+  CHECK_MUSA(v);
+  CHECK_MUSA(out);
+  CHECK_MUSA(out_lse);
+  CHECK_DEVICE(q, k);
+  CHECK_DEVICE(q, v);
+  CHECK_DEVICE(q, out);
+  CHECK_DEVICE(q, out_lse);
+
+  DLDataType data_type = q.dtype();
+  TVM_FFI_ICHECK(dtype_equal(data_type, k.dtype()) && dtype_equal(data_type, v.dtype()) &&
+                 dtype_equal(data_type, out.dtype()))
+      << "q, k, v and out must have the same dtype";
+  TVM_FFI_ICHECK(dtype_equal(data_type, {{ "dl_float16" if asm_dtype == "half" else "dl_bfloat16" }}))
+      << "q, k, v and out dtype must match the generated kernel";
+  TVM_FFI_ICHECK(dtype_equal(out_lse.dtype(), dl_float32)) << "out_lse must be float32";
+
+{# Emit validation for the selected kernel family. #}
+{% if spec.is_varlen %}
+{{ emit_varlen_validation() }}
+{% else %}
+{{ emit_batch1_varlen_setup() }}
+{{ emit_non_varlen_validation() }}
+{% endif %}
+
+  TVM_FFI_ICHECK(q.size(-1) <= 1 || q.stride(-1) == 1) << "q must have contiguous last dimension";
+  TVM_FFI_ICHECK(k.size(-1) <= 1 || k.stride(-1) == 1) << "k must have contiguous last dimension";
+  TVM_FFI_ICHECK(v.size(-1) <= 1 || v.stride(-1) == 1) << "v must have contiguous last dimension";
+  CHECK_CONTIGUOUS(out);
+  CHECK_CONTIGUOUS(out_lse);
+  check_mp31(q.device(), "run_{{ func_name }}");
+
+  constexpr int nr_thr    = 512;
+  constexpr int tile_m    = 256;
+{% if spec.headdim_qk == 128 %}
+  constexpr int tile_n    = 128;
+{% else %}
+  constexpr int tile_n    = 64;
+{% endif %}
+  constexpr int tile_k    = 64;
+  constexpr int tile_hdim = 128;
+
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+  musaStream_t stream = get_stream(q.device());
+  musaDeviceProp dprops{};
+  MATE_MUSA_RUNTIME_CHECK(musaGetDeviceProperties(&dprops, q.device().device_id));
+  const int num_mp = dprops.multiProcessorCount;
+
+  static MUmodule asm_module = [&object_path]() {
+    MUmodule module;
+    MATE_MUSA_DRIVER_CHECK(muModuleLoad(&module, object_path.c_str()));
+    return module;
+  }();
+  static MUfunction asm_func = []() {
+    MUfunction func;
+    MATE_MUSA_DRIVER_CHECK(muModuleGetFunction(&func, asm_module, "{{ func_name }}"));
+    return func;
+  }();
+
+{# Emit launch setup for the selected kernel family. #}
+{% if spec.is_varlen %}
+{{ emit_varlen_launch() }}
+{% else %}
+{{ emit_non_varlen_launch() }}
+{% endif %}
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(run_{{ func_name }}, run_{{ func_name }});

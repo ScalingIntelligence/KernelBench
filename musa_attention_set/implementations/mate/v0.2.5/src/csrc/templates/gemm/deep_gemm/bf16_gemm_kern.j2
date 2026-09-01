@@ -1,0 +1,173 @@
+#include <algorithm>
+#include <mute/tensor.hpp>
+#include <mutlass/mutlass.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/kernel_hardware_info.h>
+
+#include "mate/gemm/deep_gemm/gemm_type.hpp"
+#include "mate/gemm/deep_gemm/mp31_bf16_gemm.hpp"
+
+#include "gemm_common_utils.hpp"
+#include "op_utils.hpp"
+
+using namespace mute;
+using namespace tvm;
+
+void {{ func_name }}(
+  ffi::TensorView a,
+  ffi::TensorView b,
+  ffi::TensorView d,
+  ffi::Optional<ffi::TensorView> grouped_layout,
+  int expected_m,
+  int num_mps
+) {
+  using ElementA = {{ element_a }};
+  using ElementB = {{ element_b }};
+  using ElementD = {{ element_d }};
+
+  constexpr auto     kType             = {{ gemm_type }};
+  using TileShape                      = Shape<Int<{{ tile_m }}>, Int<{{ tile_n }}>, Int<{{ tile_k }}>>;
+  constexpr uint32_t kStages           = {{ stages }};
+  constexpr uint32_t kNumMmaWarpSquads = {{ num_mma_warp_squads }};
+
+  constexpr bool kIsNormal = kType == mate::deep_gemm::GemmType::Normal;
+  constexpr bool kIsBatched = kType == mate::deep_gemm::GemmType::Batched;
+  constexpr bool kIsMasked = kType == mate::deep_gemm::GemmType::MGroupedMasked;
+  constexpr bool kIsGroupedContiguous =
+      kType == mate::deep_gemm::GemmType::MGroupedContiguous ||
+      kType == mate::deep_gemm::GemmType::MGroupedContiguousWithPsumLayout;
+  constexpr bool kUsesGroupedLayout = kIsGroupedContiguous || kIsMasked;
+  using TensorGroup = mate::deep_gemm::detail::GemmTensorGroupTraits<kType>;
+  constexpr bool kGroupA = TensorGroup::kA;
+  constexpr bool kGroupB = TensorGroup::kB;
+  constexpr bool kGroupD = TensorGroup::kD;
+  constexpr int kRankA = kGroupA ? 3 : 2;
+  constexpr int kRankB = kGroupB ? 3 : 2;
+  constexpr int kRankD = kGroupD ? 3 : 2;
+
+  CHECK_MUSA(a);
+  CHECK_MUSA(b);
+  CHECK_MUSA(d);
+  CHECK_DEVICE(b, a);
+  CHECK_DEVICE(d, a);
+  CHECK_INPUT_TYPE(a, {{ tvm_dtype_a }});
+  CHECK_INPUT_TYPE(b, {{ tvm_dtype_b }});
+  CHECK_INPUT_TYPE(d, {{ tvm_dtype_d }});
+  CHECK_LAST_DIM_CONTIGUOUS(a);
+  CHECK_LAST_DIM_CONTIGUOUS(b);
+  CHECK_LAST_DIM_CONTIGUOUS(d);
+
+  CHECK_DIM(kRankA, a);
+  CHECK_DIM(kRankB, b);
+  CHECK_DIM(kRankD, d);
+
+  if constexpr (kUsesGroupedLayout) {
+    TVM_FFI_ICHECK(grouped_layout.has_value()) << "grouped_layout must be provided";
+    auto grouped_layout_tensor = grouped_layout.value();
+    CHECK_MUSA(grouped_layout_tensor);
+    CHECK_DEVICE(grouped_layout_tensor, a);
+    CHECK_INPUT_TYPE(grouped_layout_tensor, dl_int32);
+    CHECK_LAST_DIM_CONTIGUOUS(grouped_layout_tensor);
+    if constexpr (kIsMasked) {
+      CHECK_DIM(1, grouped_layout_tensor);
+    }
+  }
+  ffi::MUSADeviceGuard device_guard(a.device().device_id);
+
+  int mp_count = mutlass::KernelHardwareInfo::query_device_multiprocessor_count();
+  int launch_num_mps = num_mps > 0 ? std::min(num_mps, mp_count) : mp_count;
+  musaStream_t stream = get_stream(a.device());
+
+  const int64_t G = [&]() {
+    if constexpr (kGroupA) {
+      return a.size(0);
+    } else if constexpr (kGroupB) {
+      return b.size(0);
+    } else {
+      return int64_t(1);
+    }
+  }();
+  const int64_t M = kGroupA ? a.size(1) : a.size(0);
+  const int64_t K = kGroupA ? a.size(2) : a.size(1);
+  const int64_t N = kGroupB ? b.size(1) : b.size(0);
+
+  if constexpr (kGroupB) {
+    TVM_FFI_ICHECK(b.size(0) == G) << "b.shape[0] must match logical group count";
+    TVM_FFI_ICHECK(b.size(2) == K) << "b.shape[2] must match logical K";
+  } else {
+    TVM_FFI_ICHECK(b.size(1) == K) << "b.shape[1] must match logical K";
+  }
+  if constexpr (kGroupD) {
+    TVM_FFI_ICHECK(d.size(0) == G) << "d.shape[0] must match logical group count";
+    TVM_FFI_ICHECK(d.size(1) == M) << "d.shape[1] must match logical M";
+    TVM_FFI_ICHECK(d.size(2) == N) << "d.shape[2] must match logical N";
+  } else {
+    TVM_FFI_ICHECK(d.size(0) == M) << "d.shape[0] must match logical M";
+    TVM_FFI_ICHECK(d.size(1) == N) << "d.shape[1] must match logical N";
+  }
+  if constexpr (kIsMasked) {
+    TVM_FFI_ICHECK(grouped_layout.value().size(0) == G)
+        << "grouped_layout.shape[0] must match logical group count";
+  }
+
+  check_mp31(a.device(), "{{ func_name }}");
+
+  if (mate::gemm::common::gemm_early_return(
+          static_cast<int>(M), static_cast<int>(N), static_cast<int>(K), d)) {
+    return;
+  }
+
+  auto stride_a = [&]() {
+    if constexpr (kGroupA) {
+      return make_stride(a.stride(1), _1{}, a.stride(0));
+    }
+    return make_stride(a.stride(0), _1{}, M * K);
+  }();
+
+  auto stride_b = [&]() {
+    if constexpr (kGroupB) {
+      return make_stride(b.stride(1), _1{}, b.stride(0));
+    }
+    return make_stride(b.stride(0), _1{}, N * K);
+  }();
+
+  auto stride_d = [&]() {
+    if constexpr (kGroupD) {
+      return make_stride(d.stride(1), _1{}, d.stride(0));
+    }
+    return make_stride(d.stride(0), _1{}, M * N);
+  }();
+
+  auto* gl_ptr = [&]() -> int32_t const* {
+    if constexpr (kUsesGroupedLayout) {
+      return static_cast<int32_t const*>(grouped_layout.value().data_ptr());
+    }
+    return nullptr;
+  }();
+
+  using Kernel = mate::deep_gemm::Mp31Bf16Gemm<
+      kType, ElementA, ElementB, ElementD,
+      decltype(stride_a), decltype(stride_b), decltype(stride_d),
+      TileShape, kStages, kNumMmaWarpSquads>;
+
+  typename Kernel::Arguments args{
+    .ptr_a              = reinterpret_cast<ElementA const*>(a.data_ptr()),
+    .ptr_b              = reinterpret_cast<ElementB const*>(b.data_ptr()),
+    .ptr_d              = reinterpret_cast<ElementD*>(d.data_ptr()),
+    .ptr_grouped_layout = gl_ptr,
+    .stride_a           = stride_a,
+    .stride_b           = stride_b,
+    .stride_d           = stride_d,
+    .m                  = static_cast<int>(M),
+    .n                  = static_cast<int>(N),
+    .k                  = static_cast<int>(K),
+    .num_groups         = static_cast<int>(G),
+    .expected_m         = kIsMasked ? expected_m : 0,
+    .num_mps            = launch_num_mps,
+  };
+  auto params = Kernel::to_underlying_arguments(args);
+
+  dim3 grid = Kernel::get_grid_shape_persistent(params);
+  mutlass::device_kernel<Kernel><<<grid, Kernel::MaxThreadsPerBlock,
+                                   Kernel::SharedStorageSize, stream>>>(params);
+}

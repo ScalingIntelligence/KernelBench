@@ -1,0 +1,316 @@
+#include <musa_runtime.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/half.h>
+
+#include <optional>
+
+#include "mate/flat/kda/chunk_kda.hpp"
+#include "op_utils.hpp"
+
+namespace {
+
+namespace kda = mate::flat::kda;
+
+using Element = {{ element }};
+using StateElement = {{ state_element }};
+using CuSeqlensElement = {{ cu_seqlens_element }};
+using HasStateInOption =
+    mate::flat::Option<mate::flat::Tag::HasStateIn, std::bool_constant<{{ has_state_in }}>>;
+using HasStateOutOption =
+    mate::flat::Option<mate::flat::Tag::HasStateOut, std::bool_constant<{{ has_state_out }}>>;
+using HasGateParamsOption = mate::flat::Option<mate::flat::Tag::HasGateParams,
+                                               std::bool_constant<{{ has_gate_params }}>>;
+using IsVarlenOption =
+    mate::flat::Option<mate::flat::Tag::IsVarlen, std::bool_constant<{{ is_varlen }}>>;
+using NormalizeQKOption =
+    mate::flat::Option<mate::flat::Tag::NormalizeQK, std::bool_constant<{{ normalize_qk }}>>;
+using TileShape = mute::Shape<mute::Int<32>, mute::Int<32>, mute::Int<128>>;
+using StrideQ = mute::Stride<int64_t, mute::_1, mute::Stride<int64_t, int64_t>>;
+using StrideK = StrideQ;
+using StrideV = mute::Stride<mute::_1, int64_t, mute::Stride<int64_t, int64_t>>;
+using StrideG = StrideQ;
+using StrideO = StrideV;
+using Kernel = typename kda::ChunkKdaBuilder<Element,
+                                             StateElement,
+                                             CuSeqlensElement,
+                                             TileShape,
+                                             StrideQ,
+                                             StrideK,
+                                             StrideV,
+                                             StrideG,
+                                             StrideO,
+                                             HasStateInOption,
+                                             HasStateOutOption,
+                                             HasGateParamsOption,
+                                             IsVarlenOption,
+                                             NormalizeQKOption>::Kernel;
+
+static constexpr int kHeadDim = Kernel::CollectiveMainloop::kHeadDim;
+
+void launch_chunk_kda_mutlass(Element const* q,
+                              Element const* k,
+                              Element const* v,
+                              Element const* g,
+                              Element const* beta,
+                              void const*    initial_state,
+                              Element*       out,
+                              void*          final_state,
+                              CuSeqlensElement const* cu_seqlens,
+                              float const*   A_log,
+                              float const*   dt_bias,
+                              StrideQ            q_stride,
+                              StrideK            k_stride,
+                              StrideV            v_stride,
+                              StrideG            g_stride,
+                              StrideO            out_stride,
+                              float             scale,
+                              float             lower_bound,
+                              int               B,
+                              int               T,
+                              int               Hqk,
+                              int               Hv,
+                              int               N,
+                              musaStream_t      stream) {
+  typename Kernel::Arguments arguments{
+      typename Kernel::ProblemSize{
+          B,
+          T,
+          Hv,
+          Hqk,
+          N,
+          {% if is_varlen == "true" %}
+          cu_seqlens,
+          {% endif %}
+      },
+      typename Kernel::CollectiveMainloop::Arguments{
+          q,
+          k,
+          v,
+          g,
+          beta,
+          initial_state,
+          out,
+          final_state,
+          A_log,
+          dt_bias,
+          q_stride,
+          k_stride,
+          v_stride,
+          g_stride,
+          out_stride,
+          scale,
+          lower_bound,
+      },
+  };
+
+  typename Kernel::Params params = Kernel::to_underlying_arguments(arguments);
+  auto                    kernel = mutlass::device_kernel<Kernel>;
+  MATE_MUSA_RUNTIME_CHECK(musaFuncSetAttribute(
+      kernel, musaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(Kernel::SharedStorageSize)));
+  kernel<<<Kernel::TileScheduler::get_grid_shape(params.scheduler), Kernel::MaxThreadsPerBlock, Kernel::SharedStorageSize, stream>>>(params);
+}
+
+inline StrideQ stride_q(ffi::TensorView x) {
+  return mute::make_stride(x.stride(1), mute::_1{}, mute::make_stride(x.stride(2), x.stride(0)));
+}
+
+inline StrideK stride_k(ffi::TensorView x) {
+  return mute::make_stride(x.stride(1), mute::_1{}, mute::make_stride(x.stride(2), x.stride(0)));
+}
+
+inline StrideG stride_g(ffi::TensorView x) {
+  return mute::make_stride(x.stride(1), mute::_1{}, mute::make_stride(x.stride(2), x.stride(0)));
+}
+
+inline StrideV stride_v(ffi::TensorView x) {
+  return mute::make_stride(mute::_1{}, x.stride(1), mute::make_stride(x.stride(2), x.stride(0)));
+}
+
+inline StrideO stride_o(ffi::TensorView x) {
+  return mute::make_stride(mute::_1{}, x.stride(1), mute::make_stride(x.stride(2), x.stride(0)));
+}
+
+inline void check_last_dim_contiguous(ffi::TensorView x, const char* name) {
+  TVM_FFI_ICHECK_EQ(x.stride(x.ndim() - 1), 1) << name << " last dimension must be contiguous";
+}
+
+inline void check_kda_tensor_4d(ffi::TensorView x, const char* name) {
+  CHECK_MUSA(x);
+  CHECK_DIM(4, x);
+  CHECK_INPUT_TYPE(x, {{ element_dtype }});
+  TVM_FFI_ICHECK_EQ(x.size(3), kHeadDim) << name << " last dimension must be " << kHeadDim;
+  check_last_dim_contiguous(x, name);
+}
+
+}  // namespace
+
+void {{ func_name }}(ffi::TensorView                q,
+                     ffi::TensorView                k,
+                     ffi::TensorView                v,
+                     ffi::TensorView                g,
+                     ffi::TensorView                beta,
+                     ffi::TensorView                out,
+                     std::optional<ffi::TensorView> initial_state,
+                     std::optional<ffi::TensorView> final_state,
+                     std::optional<ffi::TensorView> cu_seqlens,
+                     std::optional<ffi::TensorView> A_log,
+                     std::optional<ffi::TensorView> dt_bias,
+                     double                         scale,
+                     double                         lower_bound,
+                     bool                           use_qk_l2norm_in_kernel) {
+  check_mp31(q.device(), "{{ func_name }}");
+  check_kda_tensor_4d(q, "q");
+  check_kda_tensor_4d(k, "k");
+  check_kda_tensor_4d(v, "v");
+  check_kda_tensor_4d(g, "g");
+  check_kda_tensor_4d(out, "out");
+  CHECK_DEVICE(q, k);
+  CHECK_DEVICE(q, v);
+  CHECK_DEVICE(q, g);
+  CHECK_DEVICE(q, out);
+  CHECK_SHAPE(k, q);
+  check_shape_at_dims(v, q, {0, 1, 3}, "v", "q");
+  CHECK_SHAPE(g, v);
+  CHECK_SHAPE(out, v);
+
+  CHECK_MUSA(beta);
+  CHECK_DIM(3, beta);
+  CHECK_INPUT_TYPE(beta, {{ element_dtype }});
+  CHECK_CONTIGUOUS(beta);
+  CHECK_DEVICE(q, beta);
+  TVM_FFI_ICHECK_EQ(beta.size(0), q.size(0));
+  TVM_FFI_ICHECK_EQ(beta.size(1), q.size(1));
+  TVM_FFI_ICHECK_EQ(beta.size(2), v.size(2));
+
+  int B = static_cast<int>(q.size(0));
+  int T = static_cast<int>(q.size(1));
+  int Hqk = static_cast<int>(q.size(2));
+  int Hv = static_cast<int>(v.size(2));
+  TVM_FFI_ICHECK_GT(Hqk, 0);
+  TVM_FFI_ICHECK_GT(Hv, 0);
+  TVM_FFI_ICHECK_EQ(Hv % Hqk, 0) << "GVA requires value heads to be divisible by q/k heads";
+
+  bool           is_varlen = cu_seqlens.has_value();
+  TVM_FFI_ICHECK_EQ(is_varlen, {{ is_varlen }}) << "rendered KDA kernel varlen mode does not match inputs";
+  int                    N      = B;
+  CuSeqlensElement const* cu_ptr = nullptr;
+  if (is_varlen) {
+    auto cu = cu_seqlens.value();
+    CHECK_MUSA(cu);
+    CHECK_CONTIGUOUS(cu);
+    CHECK_DIM(1, cu);
+    CHECK_INPUT_TYPE(cu, {{ cu_seqlens_dtype }});
+    CHECK_DEVICE(q, cu);
+    TVM_FFI_ICHECK_EQ(B, 1) << "B must be 1 when cu_seqlens is provided";
+    N = static_cast<int>(cu.size(0) - 1);
+    TVM_FFI_ICHECK_GT(N, 0);
+    cu_ptr = static_cast<CuSeqlensElement const*>(cu.data_ptr());
+  }
+
+  bool         has_gate_params = A_log.has_value() || dt_bias.has_value();
+  TVM_FFI_ICHECK_EQ(has_gate_params, {{ has_gate_params }})
+      << "rendered KDA kernel gate-param mode does not match inputs";
+  float const* A_log_ptr       = nullptr;
+  float const* dt_bias_ptr     = nullptr;
+  if (has_gate_params) {
+    TVM_FFI_ICHECK(A_log.has_value() && dt_bias.has_value()) << "A_log and dt_bias must be provided together";
+    auto A = A_log.value();
+    auto D = dt_bias.value();
+    CHECK_MUSA(A);
+    CHECK_MUSA(D);
+    CHECK_DIM(1, A);
+    CHECK_DIM(2, D);
+    CHECK_INPUT_TYPE(A, dl_float32);
+    CHECK_INPUT_TYPE(D, dl_float32);
+    CHECK_CONTIGUOUS(A);
+    CHECK_CONTIGUOUS(D);
+    CHECK_DEVICE(q, A);
+    CHECK_DEVICE(q, D);
+    TVM_FFI_ICHECK_EQ(A.size(0), Hv);
+    TVM_FFI_ICHECK_EQ(D.size(0), Hv);
+    TVM_FFI_ICHECK_EQ(D.size(1), kHeadDim);
+    A_log_ptr   = static_cast<float const*>(A.data_ptr());
+    dt_bias_ptr = static_cast<float const*>(D.data_ptr());
+  }
+
+  bool        has_state_in      = initial_state.has_value();
+  bool        has_state_out     = final_state.has_value();
+  void const* initial_state_ptr = nullptr;
+  void*       final_state_ptr   = nullptr;
+
+  auto check_state = [&](ffi::TensorView s, const char* name) {
+    CHECK_MUSA(s);
+    CHECK_DIM(4, s);
+    CHECK_CONTIGUOUS(s);
+    CHECK_DEVICE(q, s);
+    TVM_FFI_ICHECK_EQ(s.size(0), N) << name << " must have shape [N, Hv, " << kHeadDim << ", " << kHeadDim << "]";
+    TVM_FFI_ICHECK_EQ(s.size(1), Hv) << name << " must have shape [N, Hv, " << kHeadDim << ", " << kHeadDim << "]";
+    TVM_FFI_ICHECK_EQ(s.size(2), kHeadDim) << name << " must have shape [N, Hv, " << kHeadDim << ", " << kHeadDim << "]";
+    TVM_FFI_ICHECK_EQ(s.size(3), kHeadDim) << name << " must have shape [N, Hv, " << kHeadDim << ", " << kHeadDim << "]";
+  };
+
+  if (has_state_in) {
+    auto s = initial_state.value();
+    check_state(s, "initial_state");
+    initial_state_ptr = s.data_ptr();
+  }
+  if (has_state_out) {
+    auto s = final_state.value();
+    check_state(s, "final_state");
+    if (has_state_in) {
+      TVM_FFI_ICHECK_EQ(s.dtype(), initial_state.value().dtype())
+          << "initial_state and final_state must have the same dtype";
+    }
+    final_state_ptr = s.data_ptr();
+  }
+  TVM_FFI_ICHECK_EQ(has_state_in, {{ has_state_in }})
+      << "rendered KDA kernel initial-state mode does not match inputs";
+  TVM_FFI_ICHECK_EQ(has_state_out, {{ has_state_out }})
+      << "rendered KDA kernel final-state mode does not match inputs";
+  TVM_FFI_ICHECK_EQ(use_qk_l2norm_in_kernel, {{ normalize_qk }})
+      << "rendered KDA kernel qk-normalization mode does not match inputs";
+
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+  musaStream_t         stream   = get_stream(q.device());
+  auto*                q_ptr    = static_cast<Element const*>(q.data_ptr());
+  auto*                k_ptr    = static_cast<Element const*>(k.data_ptr());
+  auto*                v_ptr    = static_cast<Element const*>(v.data_ptr());
+  auto*                g_ptr    = static_cast<Element const*>(g.data_ptr());
+  auto*                beta_ptr = static_cast<Element const*>(beta.data_ptr());
+  auto*                out_ptr  = static_cast<Element*>(out.data_ptr());
+
+  StrideQ             q_stride             = stride_q(q);
+  StrideK             k_stride             = stride_k(k);
+  StrideV             v_stride             = stride_v(v);
+  StrideG             g_stride             = stride_g(g);
+  StrideO             out_stride           = stride_o(out);
+
+  launch_chunk_kda_mutlass(q_ptr,
+                           k_ptr,
+                           v_ptr,
+                           g_ptr,
+                           beta_ptr,
+                           initial_state_ptr,
+                           out_ptr,
+                           final_state_ptr,
+                           cu_ptr,
+                           A_log_ptr,
+                           dt_bias_ptr,
+                           q_stride,
+                           k_stride,
+                           v_stride,
+                           g_stride,
+                           out_stride,
+                           static_cast<float>(scale),
+                           static_cast<float>(lower_bound),
+                           B,
+                           T,
+                           Hqk,
+                           Hv,
+                           N,
+                           stream);
+
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC({{ func_name }}, {{ func_name }});

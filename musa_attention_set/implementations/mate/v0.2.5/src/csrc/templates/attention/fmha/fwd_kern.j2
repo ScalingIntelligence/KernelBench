@@ -1,0 +1,490 @@
+#include <mute/tensor.hpp>
+
+#include <mutlass/mutlass.h>
+#include <mutlass/device_kernel.h>
+
+#include <tvm/ffi/extra/musa/device_guard.h>
+
+#include "mate/attention/fmha/fmha.hpp"
+#include "mate/attention/fmha/fmha_fwd_kernel.hpp"
+#include "mate/attention/fmha/mp31_fmha_fwd_tme_warpspecialized.hpp"
+#include "mate/attention/fmha/epilogue_fwd.hpp"
+#include "mate/attention/fmha/tile_scheduler.hpp"
+#include "mate/attention/fmha/metadata.hpp"
+
+#include "op_utils.hpp"
+
+using namespace mute;
+using namespace tvm;
+
+ffi::Array<ffi::Any> {{ func_name }} (
+  ffi::TensorView q,
+  ffi::TensorView k,
+  ffi::TensorView v,
+  ffi::Optional<ffi::TensorView> k_new,
+  ffi::Optional<ffi::TensorView> v_new,
+  ffi::Optional<ffi::TensorView> q_v,
+  ffi::Optional<ffi::TensorView> cu_seqlens_q,
+  ffi::Optional<ffi::TensorView> cu_seqlens_k,
+  ffi::Optional<ffi::TensorView> cu_seqlens_k_new,
+  ffi::Optional<ffi::TensorView> seqused_q,
+  ffi::Optional<ffi::TensorView> seqused_k,
+  ffi::Optional<int> max_seqlen_q,
+  ffi::Optional<int> max_seqlen_kv,
+  ffi::Optional<ffi::TensorView> page_table,
+  ffi::Optional<ffi::TensorView> kv_batch_idx,
+  ffi::Optional<ffi::TensorView> leftpad_k,
+  ffi::Optional<ffi::TensorView> rotary_cos,
+  ffi::Optional<ffi::TensorView> rotary_sin,
+  ffi::Optional<ffi::TensorView> seqlens_rotary,
+  ffi::Optional<ffi::TensorView> q_descale,
+  ffi::Optional<ffi::TensorView> k_descale,
+  ffi::Optional<ffi::TensorView> v_descale,
+  float const softmax_scale,
+  bool const is_causal,
+  int const window_size_left,
+  int const window_size_right,
+  int const attention_chunk,
+  float const softcap,
+  // bool const is_rotary_interleaved,  // Not used
+  int const mp_margin,
+  int const num_splits,
+  ffi::Optional<ffi::TensorView> metadata,
+  ffi::Optional<ffi::TensorView> learnable_sink,
+  ffi::TensorView out,
+  ffi::TensorView lse,
+  // CP params — non-CP callers pass cp_world_size=1, cp_rank=0, cp_tot_seqused_k=None
+  int const cp_world_size,
+  int const cp_rank,
+  ffi::Optional<ffi::TensorView> cp_tot_seqused_k
+) {
+  // FMHA config
+  constexpr bool HasQv = {{ 'true' if has_qv else 'false' }};
+  constexpr bool OnlyQv = {{ 'true' if only_qv else 'false' }};
+  constexpr bool HasCuseqlensQ = {{ 'true' if has_cu_seqlens_q else 'false' }};
+  constexpr bool HasCuseqlensK = {{ 'true' if has_cu_seqlens_k else 'false' }};
+  constexpr bool HasSequsedQ = {{ 'true' if has_seqused_q else 'false' }};
+  constexpr bool HasSequsedK = {{ 'true' if has_seqused_k else 'false' }};
+  constexpr bool HasCuseqlensKNew = {{ 'true' if has_cu_seqlens_k_new else 'false' }};
+  constexpr bool HasKvBatchIdx = {{ 'true' if has_kv_batch_idx else 'false' }};
+  constexpr bool HasLeftpadK = {{ 'true' if has_leftpad_k else 'false' }};
+  constexpr bool HasQDescale = {{ 'true' if has_q_descale else 'false' }};
+  constexpr bool HasKDescale = {{ 'true' if has_k_descale else 'false' }};
+  constexpr bool HasVDescale = {{ 'true' if has_v_descale else 'false' }};
+  constexpr bool PagedKV = {{ 'true' if paged_kv else 'false' }};
+  constexpr bool HasSoftcap = {{ 'true' if has_softcap else 'false' }};
+  constexpr bool IsAppendKV = {{ 'true' if is_append_kv else 'false' }};
+  constexpr bool HasLearnableSink = {{ 'true' if has_learnable_sink else 'false' }};
+  constexpr bool IsCausal = {{ 'true' if is_causal else 'false' }};
+  constexpr bool IsLocal = {{ 'true' if is_local else 'false' }};
+  constexpr int HeadRatio = {{ head_ratio }};
+  constexpr bool UseLsuLoadK = {{ 'true' if use_lsu_load_k else 'false' }};
+  constexpr bool UseLsuLoadV = {{ 'true' if use_lsu_load_v else 'false' }};
+  constexpr bool IsRotary = {{ 'true' if is_rotary else 'false' }};
+  constexpr bool IsRotaryInterleaved = {{ 'true' if is_rotary_interleaved else 'false' }};
+  constexpr bool HasSeqlensRotary = {{ 'true' if has_seqlens_rotary else 'false' }};
+
+  constexpr int TileM = {{ tile_m }};
+  constexpr int TileN = {{ tile_n }};
+  constexpr int HeadDimQK = {{ head_dim_qk }};
+  constexpr int HeadDimVO = {{ head_dim_vo }};
+  constexpr int StagesK = {{ stages_k }};
+  constexpr int StagesV = {{ stages_v }};
+  constexpr int NumQKConsumers = {{ consumers_qk }};
+  constexpr int NumPVConsumers = {{ consumers_pv }};
+  constexpr bool IsPackGQA = {{ 'true' if is_packgqa else 'false' }};
+  constexpr bool IsEvenHeadDim = {{ 'true' if is_even_headdim else 'false' }};
+  constexpr bool HasMetadata = {{ 'true' if has_metadata else 'false' }};
+  constexpr bool EnableCP = {{ 'true' if enable_cp else 'false' }};
+  constexpr bool HasAttentionChunk = {{ 'true' if has_attention_chunk else 'false' }};
+
+  // If no metadata, fallback to SingleTileScheduler without split.
+  constexpr bool IsSplit = HasMetadata;
+  int num_split = IsSplit ? num_splits : 1;
+
+  using Element = {{ element }};
+  using ElementOut = std::conditional_t<
+      std::is_same_v<Element, mutlass::float_e4m3_t> || std::is_same_v<Element, mutlass::float_e5m2_t>,
+      mutlass::bfloat16_t,
+      Element>;
+  using ElementAccumulator = float;
+  using ElementPartial = float;
+  using ElementSink = mutlass::bfloat16_t;
+
+  using TileShape = Shape<Int<TileM>, Int<TileN>, Int<HeadDimQK>>;
+
+  using CollectiveMainloop =
+    mate::attention::fmha::Mp31FmhaFwdTmeWarpSpecialized<Element,
+                                                         ElementAccumulator,
+                                                         TileShape,
+                                                         StagesK,
+                                                         StagesV,
+                                                         HeadDimVO,
+                                                         NumQKConsumers,
+                                                         HasCuseqlensQ,
+                                                         HasCuseqlensK,
+                                                         HasCuseqlensKNew,
+                                                         HasKvBatchIdx,
+                                                         HasSequsedQ,
+                                                         HasSequsedK,
+                                                         HasLeftpadK,
+                                                         HasQDescale,
+                                                         HasKDescale,
+                                                         HasVDescale,
+                                                         PagedKV,
+                                                         UseLsuLoadK,
+                                                         UseLsuLoadV,
+                                                         IsCausal,
+                                                         IsLocal,
+                                                         HasLearnableSink,
+                                                         HasSoftcap,
+                                                         IsAppendKV,
+                                                         HasQv,
+                                                         OnlyQv,
+                                                         HeadRatio,
+                                                         IsPackGQA,
+                                                         IsSplit /*Split*/,
+                                                         IsRotary,
+                                                         IsRotaryInterleaved,
+                                                         HasSeqlensRotary,
+                                                         EnableCP,
+                                                         HasAttentionChunk,
+                                                         NumPVConsumers>;
+  using CollectiveEpilogue =
+    mate::attention::fmha::CollectiveEpilogueFwd<ElementOut,
+                                                 CollectiveMainloop::TileShapePDV,
+                                                 HasCuseqlensQ,
+                                                 HasSequsedQ,
+                                                 IsPackGQA,
+                                                 CollectiveMainloop::NumMmaThreads,
+                                                 IsEvenHeadDim,
+                                                 HeadRatio>;
+
+  using TileScheduler = std::conditional_t<HasMetadata,
+    mate::attention::fmha::StaticPersistentTileScheduler<IsSplit>,
+    mate::attention::fmha::SingleTileScheduler<HasCuseqlensQ,
+                                               HasSequsedQ,
+                                               IsPackGQA,
+                                               TileM,
+                                               IsSplit>
+  >;
+
+  using Kernel = mate::attention::fmha::FmhaFwdKernelWarpSpecialized<
+    CollectiveMainloop,
+    CollectiveEpilogue,
+    TileScheduler>;
+
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+
+  int const num_head = static_cast<int>(q.size(-2));
+  int const num_head_kv = static_cast<int>(k.size(-2));
+  int const batch_size = static_cast<int>(HasCuseqlensQ ? cu_seqlens_q.value().size(0) - 1 : q.size(0));
+  int const seqlen_q = static_cast<int>(HasCuseqlensQ ? max_seqlen_q.value() : q.size(1));
+  int const max_num_pages_per_seq = PagedKV ? page_table.value().size(1) : 1;
+  int const num_pages = PagedKV ? static_cast<int>(k.size(0)) : 0;
+  int const page_size = PagedKV ? static_cast<int>(k.size(1)) : 1;
+  int const seqlen_k = PagedKV ? max_num_pages_per_seq * page_size : static_cast<int>(HasCuseqlensK ? max_seqlen_kv.value() : k.size(1));
+  int const total_q = static_cast<int>(HasCuseqlensQ ? q.size(0) : batch_size * q.size(1));
+  int const total_k = static_cast<int>(HasCuseqlensK ? k.size(0) : batch_size * k.size(1));
+  int const headdim = static_cast<int>(q.size(-1));
+  int const headdim_rounded = mate::attention::fmha::round_up_headdim(headdim);
+  int const headdim_v = static_cast<int>(v.size(-1));
+  int const headdim_v_rounded = mate::attention::fmha::round_up_headdim(headdim_v);
+  bool const is_varlen_k_new = IsAppendKV && HasCuseqlensKNew;
+  int const seqlen_k_new = !IsAppendKV ? 0 : (!is_varlen_k_new ? static_cast<int>(k_new.value().size(1)) : 0);
+  int const total_k_new = !IsAppendKV ? 0 : (!is_varlen_k_new ? batch_size * static_cast<int>(k_new.value().size(1))
+                                                                : static_cast<int>(k_new.value().size(0)));
+  int mp_count = mutlass::KernelHardwareInfo::query_device_multiprocessor_count();
+  int num_mp = mp_count - mp_margin;
+  int b_rounded = (batch_size + 4 - 1) / 4 * 4; // round up to multiple of 4
+  int32_t* metadata_ptr = HasMetadata ? static_cast<int32_t*>(metadata.value().data_ptr()) : nullptr;
+  int32_t* num_splits_dynamic_ptr = metadata_ptr;
+  int32_t* batch_table_ptr = HasMetadata ? metadata_ptr + b_rounded : nullptr;
+  int32_t* num_m_blocks_ptr = HasMetadata ? metadata_ptr + b_rounded * 2 : nullptr;
+
+  // Set Params
+  mate::attention::fmha::FmhaFwdParams params {
+     // QKV params
+    .q_ptr = static_cast<void*>(q.data_ptr()),
+    .k_ptr = static_cast<void*>(k.data_ptr()),
+    .v_ptr = static_cast<void*>(v.data_ptr()),
+    .q_batch_stride = HasCuseqlensQ ? 0 : q.stride(0),
+    .k_batch_stride = HasCuseqlensK ? 0 : k.stride(0),
+    .v_batch_stride = HasCuseqlensK ? 0 : v.stride(0),
+    .q_row_stride = q.stride(-3),
+    .k_row_stride = k.stride(-3),
+    .v_row_stride = v.stride(-3),
+    .q_head_stride = q.stride(-2),
+    .k_head_stride = k.stride(-2),
+    .v_head_stride = v.stride(-2),
+    .v_dim_stride = v.stride(-1),
+    .h = num_head,
+    .h_k = num_head_kv,
+
+    // Output
+    .o_ptr = static_cast<void*>(out.data_ptr()),
+    .o_batch_stride = HasCuseqlensQ ? 0 : out.stride(0),
+    .o_row_stride = out.stride(-3),
+    .o_head_stride = out.stride(-2),
+
+    // LSE
+    .softmax_lse_ptr = static_cast<void*>(lse.data_ptr()),
+    .lse_batch_stride = HasCuseqlensQ ? 0 : lse.stride(0),
+    .lse_head_stride = lse.stride(-2),
+
+    // FP8
+    .q_descale_ptr          = HasQDescale ? static_cast<float*>(q_descale.value().data_ptr()) : nullptr,
+    .k_descale_ptr          = HasKDescale ? static_cast<float*>(k_descale.value().data_ptr()) : nullptr,
+    .v_descale_ptr          = HasVDescale ? static_cast<float*>(v_descale.value().data_ptr()) : nullptr,
+    .q_descale_batch_stride = HasQDescale ? q_descale.value().stride(0) : 0,
+    .q_descale_head_stride  = HasQDescale ? q_descale.value().stride(1) : 0,
+    .k_descale_batch_stride = HasKDescale ? k_descale.value().stride(0) : 0,
+    .k_descale_head_stride  = HasKDescale ? k_descale.value().stride(1) : 0,
+    .v_descale_batch_stride = HasVDescale ? v_descale.value().stride(0) : 0,
+    .v_descale_head_stride  = HasVDescale ? v_descale.value().stride(1) : 0,
+
+    // Shape params
+    .b = batch_size,
+    .seqlen_q = seqlen_q,
+    .seqlen_k = seqlen_k,
+    .seqlen_knew = seqlen_k_new,
+    .total_q = total_q,
+    .total_k = total_k,
+    .total_knew = total_k_new,
+    .d = headdim,
+    .d_rounded = headdim_rounded,
+    .dv = headdim_v,
+    .dv_rounded = headdim_v_rounded,
+    .rotary_dim = IsRotary ? static_cast<int>(rotary_cos.value().size(1) * 2) : 0,
+
+    .b_k = HasKvBatchIdx ? static_cast<int>(PagedKV ? page_table.value().size(0) : k.size(0)) : batch_size,
+
+    // Scale factor
+    .scale_softmax = softmax_scale,
+    .softcap        = softcap,
+
+    // Ragged params
+    .cu_seqlens_q = HasCuseqlensQ ? static_cast<uint32_t*>(cu_seqlens_q.value().data_ptr()) : nullptr,
+    .cu_seqlens_k = HasCuseqlensK ? static_cast<uint32_t*>(cu_seqlens_k.value().data_ptr()) : nullptr,
+    .cu_seqlens_knew = is_varlen_k_new ? static_cast<uint32_t*>(cu_seqlens_k_new.value().data_ptr()) : nullptr,
+    .leftpad_k = HasLeftpadK ? static_cast<uint32_t*>(leftpad_k.value().data_ptr()) : nullptr,
+    .seqused_q = HasSequsedQ ? static_cast<uint32_t*>(seqused_q.value().data_ptr()) : nullptr,
+    .seqused_k = HasSequsedK ? static_cast<uint32_t*>(seqused_k.value().data_ptr()) : nullptr,
+
+    // AppendKV
+    .knew_ptr = IsAppendKV ? static_cast<void*>(k_new.value().data_ptr()) : nullptr,
+    .vnew_ptr = IsAppendKV ? static_cast<void*>(v_new.value().data_ptr()) : nullptr,
+    .knew_batch_stride = IsAppendKV && !is_varlen_k_new ? k_new.value().stride(0) : 0,
+    .vnew_batch_stride = IsAppendKV && !is_varlen_k_new ? v_new.value().stride(0) : 0,
+    .knew_row_stride = IsAppendKV ? k_new.value().stride(-3) : 0,
+    .vnew_row_stride = IsAppendKV ? v_new.value().stride(-3) : 0,
+    .knew_head_stride = IsAppendKV ? k_new.value().stride(-2) : 0,
+    .vnew_head_stride = IsAppendKV ? v_new.value().stride(-2) : 0,
+
+    // Qv
+    .qv_ptr = HasQv ? static_cast<void*>(q_v.value().data_ptr()) : nullptr,
+    .qv_batch_stride = HasQv && !HasCuseqlensQ ? q_v.value().stride(0) : 0,
+    .qv_row_stride = HasQv ? q_v.value().stride(-3) : 0,
+    .qv_head_stride = HasQv ? q_v.value().stride(-2) : 0,
+
+    // Rotary
+    .rotary_cos_ptr = IsRotary ? static_cast<void*>(rotary_cos.value().data_ptr()) : nullptr,
+    .rotary_sin_ptr = IsRotary ? static_cast<void*>(rotary_sin.value().data_ptr()) : nullptr,
+    .seqlens_rotary = IsRotary && HasSeqlensRotary ? static_cast<uint32_t*>(seqlens_rotary.value().data_ptr()) : nullptr,
+
+    .kv_batch_idx = HasKvBatchIdx ? static_cast<uint32_t*>(kv_batch_idx.value().data_ptr()) : nullptr,
+
+    // Learnable Sink
+    .learnable_sink_ptr =  HasLearnableSink ? static_cast<void*>(learnable_sink.value().data_ptr()) : nullptr,
+
+    // Paged params
+    .page_table = PagedKV ? static_cast<int*>(page_table.value().data_ptr()) : nullptr,
+    .page_table_batch_stride = PagedKV ? page_table.value().stride(0) : 0,
+    .page_size = page_size,
+    .num_pages = num_pages,
+
+    .num_mp = num_mp,
+    .num_splits = num_split,
+    .num_splits_dynamic_ptr = num_splits_dynamic_ptr,
+    .batch_table_ptr = batch_table_ptr,
+
+    .is_causal = IsCausal,
+    .is_local = IsLocal,
+    .is_rotary_interleaved = IsRotaryInterleaved,
+    .window_size_left = window_size_left,
+    .window_size_right = window_size_right,
+    .attention_chunk = attention_chunk,
+
+    .is_fp8 = std::is_same_v<Element, mutlass::float_e4m3_t> || std::is_same_v<Element, mutlass::float_e5m2_t>,
+  };
+  if (params.num_splits <= 0) {
+    params.num_splits = mate::attention::fmha::get_num_splits(params, TileM, TileN, false);
+    // std::cout << "Fwd heristic sets num_splits=" << params.num_splits << std::endl;
+  }
+  // std::cout << "Fwd final sets num_splits=" << params.num_splits << std::endl;
+
+  // SplitKV Tensors
+  ffi::Tensor o_accum = ffi::Tensor::FromEnvAlloc(
+    TVMFFIEnvTensorAlloc,
+    tvm::ffi::Shape({
+        HasCuseqlensQ ? 1 : batch_size,
+        num_head,
+        params.num_splits,
+        HasCuseqlensQ ? total_q : seqlen_q,
+        headdim_v
+    }), DLDataType{kDLFloat, 32, 1}, q.device());
+  ffi::Tensor lse_accum = ffi::Tensor::FromEnvAlloc(
+    TVMFFIEnvTensorAlloc,
+    tvm::ffi::Shape({
+        HasCuseqlensQ ? 1 : batch_size,
+        num_head,
+        params.num_splits,
+        HasCuseqlensQ ? total_q : seqlen_q
+    }), DLDataType{kDLFloat, 32, 1}, q.device());
+
+  // musaMemset(o_accum.data_ptr(), 0x0, 4*o_accum.numel());
+  // musaMemset(lse_accum.data_ptr(), 0x0, 4*lse_accum.numel());
+
+  params.oaccum_ptr = static_cast<ElementPartial*>(o_accum.data_ptr());
+  params.softmax_lseaccum_ptr = static_cast<ElementPartial*>(lse_accum.data_ptr());
+  params.oaccum_split_stride = o_accum.stride(2);
+  params.oaccum_batch_stride = HasCuseqlensQ ? 0 : o_accum.stride(0);
+  params.oaccum_row_stride = o_accum.stride(-2);
+  params.oaccum_head_stride = o_accum.stride(1);
+  params.lseaccum_split_stride = lse_accum.stride(2);
+  params.lseaccum_batch_stride = HasCuseqlensQ ? 0 : lse_accum.stride(0);
+  params.lseaccum_head_stride = lse_accum.stride(1);
+
+  // std::cout << params << std::endl;
+
+  int seqlen_q_mainloop = HasCuseqlensQ ? params.total_q : params.seqlen_q;
+  int batch_q_mainloop = HasCuseqlensQ ? 1 : params.b;
+  int batch_k_mainloop = HasCuseqlensK ? 1 : (HasKvBatchIdx ? params.b_k : params.b);
+
+  // Set Mainloop Args
+  typename CollectiveMainloop::Arguments mainloop_args {
+     // QKV Args
+    .ptr_Q = static_cast<Element const*>(params.q_ptr),
+    .shape_Q = {seqlen_q_mainloop, params.d, params.h, batch_q_mainloop},
+    .stride_Q = {params.q_row_stride, _1{}, params.q_head_stride, HasCuseqlensQ ? 0 : params.q_batch_stride},
+    .ptr_K = static_cast<Element*>(params.k_ptr),
+    .shape_K = {PagedKV ? params.page_size : (HasCuseqlensK ? params.total_k : params.seqlen_k), params.d, params.h_k,
+                PagedKV ? params.num_pages : batch_k_mainloop},
+    .stride_K = {params.k_row_stride, _1{}, params.k_head_stride, HasCuseqlensK ? 0 : params.k_batch_stride},
+    .ptr_V = static_cast<Element*>(params.v_ptr),
+    .headdim_V = params.dv,
+    .stride_V = {params.v_row_stride, _1{}, params.v_head_stride, HasCuseqlensK ? 0 : params.v_batch_stride},
+
+    // AppendKV
+    .ptr_K_new = static_cast<Element const*>(params.knew_ptr),
+    .shape_K_new = {HasCuseqlensKNew ? params.total_knew : params.seqlen_knew, params.d, params.h_k, HasCuseqlensKNew ? 1 : params.b},
+    .stride_K_new = {params.knew_row_stride, _1{}, params.knew_head_stride, HasCuseqlensKNew ? 0 : params.knew_batch_stride},
+    .ptr_V_new = static_cast<Element const*>(params.vnew_ptr),
+    .stride_V_new = {params.vnew_row_stride, _1{}, params.vnew_head_stride, HasCuseqlensKNew ? 0 : params.vnew_batch_stride},
+
+    // QV
+    .ptr_Qv = static_cast<Element const*>(params.qv_ptr),
+    .shape_Qv = {HasQv ? seqlen_q_mainloop : 0, HasQv ? params.dv : 0, HasQv ? params.h : 0, HasQv ? batch_q_mainloop : 0},
+    .stride_Qv = {HasQv ? params.qv_row_stride : 0, _1{}, HasQv ? params.qv_head_stride : 0, HasQv && !HasCuseqlensQ ? params.qv_batch_stride : 0},
+
+    // Rotary
+    .ptr_rotary_cos = static_cast<Element const*>(params.rotary_cos_ptr),
+    .shape_rotary = {params.seqlen_k, params.rotary_dim / 2},
+    .stride_rotary_cos = {params.rotary_dim / 2, _1{}},
+    .ptr_rotary_sin = static_cast<Element const*>(params.rotary_sin_ptr),
+    .stride_rotary_sin = {params.rotary_dim / 2, _1{}},
+    // .is_rotary_interleaved = params.is_rotary_interleaved,  // Not used.
+
+    // PageTable Args
+    .ptr_pagetable = params.page_table,
+    .shape_pagetable = {HasKvBatchIdx ? params.b_k : params.b, PagedKV ? params.seqlen_k / params.page_size : 0},
+    .stride_pagetable = {params.page_table_batch_stride, _1{}},
+
+    // Scale
+    .softmax_scale = params.scale_softmax,
+    .ptr_q_descale = static_cast<float const*>(params.q_descale_ptr),
+    .stride_q_descale = {params.q_descale_batch_stride, params.q_descale_head_stride},
+    .ptr_k_descale = static_cast<float const*>(params.k_descale_ptr),
+    .stride_k_descale = {params.k_descale_batch_stride, params.k_descale_head_stride},
+    .ptr_v_descale = static_cast<float const*>(params.v_descale_ptr),
+    .stride_v_descale = {params.v_descale_batch_stride, params.v_descale_head_stride},
+
+    // LocalMask
+    .window_size_left = window_size_left,
+    .window_size_right = window_size_right,
+    .attention_chunk = attention_chunk,
+
+    // Sink Tensor
+    .ptr_learnable_sink = static_cast<ElementSink const*>(params.learnable_sink_ptr),
+
+    .softcap_val = params.softcap,
+
+    .num_splits = params.num_splits,
+    .kv_batch_idx = static_cast<uint32_t const*>(params.kv_batch_idx),
+    .cu_seqlens_q = static_cast<uint32_t const*>(params.cu_seqlens_q),
+    .cu_seqlens_k = static_cast<uint32_t const*>(params.cu_seqlens_k),
+    .cu_seqlens_k_new = static_cast<uint32_t const*>(params.cu_seqlens_knew),
+    .seqused_q = static_cast<uint32_t const*>(params.seqused_q),
+    .seqused_k = static_cast<uint32_t const*>(params.seqused_k),
+    .leftpad_k = static_cast<uint32_t const*>(params.leftpad_k),
+    .seqlens_rotary = static_cast<uint32_t const*>(params.seqlens_rotary),
+
+    // CP params
+    .cp_world_size    = cp_world_size,
+    .cp_rank          = cp_rank,
+    .cp_tot_seqused_k = cp_tot_seqused_k.has_value()
+                        ? static_cast<uint32_t const*>(cp_tot_seqused_k.value().data_ptr())
+                        : nullptr,
+  };
+
+  typename CollectiveEpilogue::Arguments epilogue_args {
+    .ptr_O = static_cast<ElementOut*>(params.o_ptr),
+    .shape_O = {HasCuseqlensQ ? params.total_q : params.seqlen_q, params.dv, params.h, HasCuseqlensQ ? 1 : params.b, params.num_splits},
+    .stride_O = {params.o_row_stride, _1{}, params.o_head_stride, HasCuseqlensQ ? 0 : params.o_batch_stride, 0},
+    .ptr_O_partial = static_cast<ElementPartial*>(params.oaccum_ptr),
+    .stride_O_partial = {params.oaccum_row_stride, _1{}, params.oaccum_head_stride, HasCuseqlensQ ? 0 : params.oaccum_batch_stride, params.oaccum_split_stride},
+
+    .ptr_LSE = static_cast<float*>(params.softmax_lse_ptr),
+    .stride_LSE = {_1{}, params.lse_head_stride, HasCuseqlensQ ? 0 : params.lse_batch_stride, 0},
+    .ptr_LSE_partial = static_cast<ElementPartial*>(params.softmax_lseaccum_ptr),
+    .stride_LSE_partial = {_1{}, params.lseaccum_head_stride, HasCuseqlensQ ? 0 : params.lseaccum_batch_stride, params.lseaccum_split_stride},
+
+    .nheads_kv = params.h_k,
+    .cu_seqlens = static_cast<uint32_t const*>(params.cu_seqlens_q),
+    .seqused = static_cast<uint32_t const*>(params.seqused_q),
+  };
+
+  typename TileScheduler::Arguments scheduler_args {
+    .num_blocks = mutlass::ceil_div(params.seqlen_q * (IsPackGQA ? HeadRatio : 1), TileM),
+    .num_head = IsPackGQA ? params.h_k : params.h,
+    .num_batch = params.b,
+    .num_splits = params.num_splits,
+    .qhead_per_khead = HeadRatio,
+    .seqlen_q = params.seqlen_q,
+    .seqlen_k = params.seqlen_k,
+    .headdim = params.d,
+    .headdim_v = params.dv,
+    .element_size = sizeof(Element),
+    .cu_seqlens = params.cu_seqlens_q,
+    .seqused = params.seqused_q,
+
+    .num_splits_dynamic_ptr = num_splits_dynamic_ptr,
+    .batch_table_ptr = batch_table_ptr,
+    .num_m_blocks_ptr = num_m_blocks_ptr,
+  };
+
+  typename Kernel::Arguments kernel_arguments {
+    .mainloop = mainloop_args,
+    .epilogue = epilogue_args,
+    .scheduler = scheduler_args,
+  };
+
+  typename Kernel::Params kernel_params = Kernel::to_underlying_arguments(kernel_arguments);
+
+  musaStream_t stream = static_cast<musaStream_t>(TVMFFIEnvGetStream(q.device().device_type, q.device().device_id));
+  dim3 grid_dim = TileScheduler::get_grid_shape(kernel_params.scheduler, mp_count);
+  mutlass::device_kernel<Kernel><<<grid_dim, Kernel::MaxThreadsPerBlock, Kernel::SharedStorageSize, stream>>>(kernel_params);
+  MATE_CHECK_MUSA_KERNEL_LAUNCH();
+
+  return ffi::Array<ffi::Any>{ffi::Array<ffi::Tensor>{o_accum, lse_accum}, params.num_splits};
+}

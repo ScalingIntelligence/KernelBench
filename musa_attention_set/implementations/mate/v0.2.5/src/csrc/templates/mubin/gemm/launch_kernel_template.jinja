@@ -1,0 +1,539 @@
+// GEMM MUBIN launcher
+
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <string>
+
+#include <mute/arch/copy_mp31_desc.hpp>
+
+#include "dtype_utils.hpp"
+#include "mate_utils.hpp"
+#include "op_utils.hpp"
+#include "tvm_ffi_utils.hpp"
+
+struct GemmParams {
+  void* output_ptr{};
+  void* amax_ptr{};
+
+  MUtensorDescriptor a_desc{};
+  MUtensorDescriptor b_desc{};
+  MUtensorDescriptor c_desc{};
+  MUtensorDescriptor kpart_desc{};
+
+  mute::RobustReg robust_input_bias{};
+  mute::RobustReg robust_input_z{};
+  mute::RobustReg robust_input_a_scale{};
+  mute::RobustReg robust_input_b_scale{};
+  mute::RobustReg robust_input_a_scale1{};
+  mute::RobustReg robust_input_b_scale1{};
+  mute::RobustReg robust_input_d_scale{};
+  float rcp_scale_o{1.0f};
+  void* k_part_buffer{};
+  int32_t* k_part_flag{};
+
+  mute::RobustReg robust_group_idx{};
+  mute::RobustReg robust_group_scale_idx{};
+
+  int32_t* group_scale_a_robust_vec{};
+  int32_t* group_scale_b_robust_vec{};
+  int32_t* sync_out_flag_ptr{};
+
+  int32_t mask_blky_per_group{};
+
+  float alpha{1.0f};
+  float beta{0.0f};
+  float gamma{0.0f};
+  float act_param{0.0f};
+
+  int32_t scale_a_mode{};
+  int32_t scale_b_mode{};
+  int32_t scale_d_mode{};
+
+  int32_t scale_a_m{};
+  int32_t scale_a_k{};
+  int32_t scale_b_k{};
+  int32_t scale_b_n{};
+
+  int32_t batch_stride_scale_a{};
+  int32_t batch_stride_scale_b{};
+
+  int32_t quant_tile{128};
+  int32_t amax_mode{};
+  int32_t act_mode{};
+
+  int32_t m{};
+  int32_t n{};
+  int32_t k{};
+  int32_t num_expert{};
+
+  int32_t ldd{};
+  int32_t ldc{};
+
+  int32_t out_trans_stride{0};
+  int32_t fast_out_trans_ori{0};
+  int32_t fast_out_trans_mul{0};
+  int32_t fast_out_trans_sft{0};
+
+  int32_t total_tile{};
+
+  int32_t mask_m_max{};
+  int32_t macro_bidx_max{};
+
+  int64_t batch_stride_d{};
+  int64_t batch_stride_c{};
+
+  int32_t k_part{};
+  int32_t k_part_block{};
+  int32_t ldkpart{};
+  int64_t kpart_batch_stride_c{};
+
+  int32_t fast_xytile_ori{};
+  int32_t fast_xytile_mul{};
+  int32_t fast_xytile_sft{};
+
+  int32_t fast_batch_ori{};
+  int32_t fast_batch_mul{};
+  int32_t fast_batch_sft{};
+
+  int32_t fast_nr_block_group_ori{};
+  int32_t fast_nr_block_group_mul{};
+  int32_t fast_nr_block_group_sft{};
+
+  int32_t fast_gridx_ori{};
+  int32_t fast_gridx_mul{};
+  int32_t fast_gridx_sft{};
+
+  int32_t cluster_dimx{0};
+  int32_t macro_bid_max{};
+  int32_t switch_swizzle{};
+  int32_t max_tile_y{};
+
+  int32_t fast_macro_tile_x_ori{};
+  uint32_t fast_macro_tile_x_mul{};
+  uint32_t fast_macro_tile_x_sft{};
+
+  int32_t fast_res_tile_x_ori{};
+  uint32_t fast_res_tile_x_mul{};
+  uint32_t fast_res_tile_x_sft{};
+
+  int32_t fast_macro_tile_size_ori{};
+  uint32_t fast_macro_tile_size_mul{};
+  uint32_t fast_macro_tile_size_sft{};
+
+  int32_t tile_a_dim0{};
+  int32_t tile_a_dim1{};
+  int32_t tile_a_dim2{};
+  int32_t tile_b_dim0{};
+  int32_t tile_b_dim1{};
+  int32_t tile_b_dim2{};
+  int32_t tile_c_dim0{};
+  int32_t tile_c_dim1{};
+  int32_t tile_c_dim2{};
+  int32_t tile_x1_dim0{};
+  int32_t tile_x1_dim1{};
+  int32_t tile_x1_dim2{};
+};
+
+void run_{{ func_name }}(const std::string& object_path,
+                         ffi::TensorView a,
+                         ffi::TensorView b,
+                         ffi::TensorView out,
+                         std::optional<ffi::TensorView> scale_a,
+                         std::optional<ffi::TensorView> scale_b,
+                         std::optional<ffi::TensorView> scale_b1,
+                         std::optional<ffi::TensorView> token_info,
+                         int64_t m,
+                         int64_t n,
+                         int64_t k,
+                         int64_t num_expert,
+                         int64_t batch,
+                         int64_t quant_tile,
+                         int64_t total_mp_count,
+                         int64_t stride_m_a,
+                         int64_t stride_k_a,
+                         int64_t stride_batch_a,
+                         int64_t stride_n_b,
+                         int64_t stride_k_b,
+                         int64_t stride_batch_b,
+                         int64_t stride_m_out,
+                         int64_t stride_batch_out,
+                         int64_t scale_a_m,
+                         int64_t scale_a_k,
+                         int64_t scale_a_nr_elem,
+                         int64_t scale_b_n,
+                         int64_t scale_b_k,
+                         int64_t scale_b_nr_elem,
+                         int64_t group_idx_len,
+                         std::optional<ffi::TensorView> signal,
+                         int64_t target_mp_count,
+                         std::optional<ffi::TensorView> output_scale = std::nullopt) {
+  DLDevice device = a.device();
+  check_mp31(device, "run_{{ func_name }}");
+  ffi::MUSADeviceGuard device_guard(device.device_id);
+  musaStream_t stream = get_stream(device);
+
+  auto type_a = a.dtype();
+  auto type_b = b.dtype();
+  auto type_d = out.dtype();
+  auto type_scale_a = scale_a.has_value() ? scale_a.value().dtype() : dl_float32;
+  auto type_scale_b = scale_b.has_value() ? scale_b.value().dtype() : dl_float32;
+  auto p_a = a.data_ptr();
+  auto p_b = b.data_ptr();
+  auto p_d = out.data_ptr();
+  auto p_scale_a = scale_a.has_value() ? scale_a.value().data_ptr() : nullptr;
+  auto p_scale_b = scale_b.has_value() ? scale_b.value().data_ptr() : nullptr;
+  auto p_scale_b1 = scale_b1.has_value() ? scale_b1.value().data_ptr() : nullptr;
+  auto p_token_info = token_info.has_value() ? token_info.value().data_ptr() : nullptr;
+  auto p_scale_out = output_scale.has_value() ? output_scale.value().data_ptr() : nullptr;
+
+  GemmParams params;
+
+  constexpr int kNumThread = {{ num_thread }};
+  constexpr int kTileM = {{ tile_m }};
+  constexpr int kTileN = {{ tile_n }};
+  constexpr int kTileK = {{ tile_k }};
+{% if group_mode == "MoeGemmMode::Masked" %}
+  constexpr int kBlkPerMp = {{ blk_per_mp }};
+{% endif %}
+  constexpr int kNumSquadM = {{ num_squad_m }};
+  constexpr int kNumSquadN = {{ num_squad_n }};
+  constexpr int kMacroTileX = {{ macro_tile_x }};
+
+{% if group_mode == "MoeGemmMode::KContig" %}
+  int batch_b = 1;
+{% elif group_mode == "MoeGemmMode::NoGroup" %}
+  int batch_b = batch;
+{% else %}
+  int batch_b = num_expert;
+{% endif %}
+
+  int64_t tme_a_dim0;
+  int64_t tme_a_dim1;
+  int64_t tme_a_dim2;
+  int64_t tme_a_stride0;
+  int64_t tme_a_stride1;
+  int64_t tme_b_dim0;
+  int64_t tme_b_dim1;
+  int64_t tme_b_dim2;
+  int64_t tme_b_stride0;
+  int64_t tme_b_stride1;
+
+{% if major_a == "TensorMajor::MN" %}
+  tme_a_dim0 = m;
+  tme_a_dim1 = k;
+  tme_a_stride0 = stride_k_a;
+{% else %}
+  tme_a_dim0 = k;
+  tme_a_dim1 = m;
+  tme_a_stride0 = stride_m_a;
+{% endif %}
+  tme_a_dim2 = batch;
+  tme_a_stride1 = stride_batch_a;
+
+{% if b_pack_bits == 4 %}
+  tme_b_dim0 = k / 2;
+  tme_b_dim1 = n;
+  tme_b_stride0 = stride_n_b;
+{% elif major_b == "TensorMajor::MN" %}
+  tme_b_dim0 = n;
+  tme_b_dim1 = k;
+  tme_b_stride0 = stride_k_b;
+{% else %}
+  tme_b_dim0 = k;
+  tme_b_dim1 = n;
+  tme_b_stride0 = stride_n_b;
+{% endif %}
+  tme_b_dim2 = batch_b;
+  tme_b_stride1 = stride_batch_b;
+
+  TmeDesc tensor_desc_a(mute::make_tuple(tme_a_dim0, tme_a_dim1, tme_a_dim2),
+                        mute::make_tuple(tme_a_stride0, tme_a_stride1),
+                        p_a,
+                        dl_dtype_to_tme_type(type_a));
+  TmeDesc tensor_desc_b(mute::make_tuple(tme_b_dim0, tme_b_dim1, tme_b_dim2),
+                        mute::make_tuple(tme_b_stride0, tme_b_stride1),
+                        p_b,
+{% if b_pack_bits == 4 %}
+                        MU_TENSOR_DESCRIPTOR_DATA_TYPE_INT8);
+{% else %}
+                        dl_dtype_to_tme_type(type_b));
+{% endif %}
+  TmeDesc tensor_desc_c(mute::make_tuple(static_cast<size_t>(n), static_cast<size_t>(m), static_cast<size_t>(batch)),
+                        mute::make_tuple(stride_m_out, stride_batch_out),
+                        p_d,
+                        dl_dtype_to_tme_type(type_d));
+
+  int grid_x = mutlass::ceil_div(n, kTileN);
+  int grid_y = mutlass::ceil_div(m, kTileM);
+{% if group_mode == "MoeGemmMode::KContig" %}
+  int grid_z = num_expert;
+{% else %}
+  int grid_z = 1;
+{% endif %}
+
+  int gridy_in_group = grid_y;
+{% if group_mode == "MoeGemmMode::Masked" %}
+  int max_m = m / num_expert;
+  gridy_in_group = mutlass::ceil_div(max_m, kTileM);
+  grid_y = gridy_in_group * num_expert;
+{% elif group_mode == "MoeGemmMode::RaggedPSumLayout" %}
+  grid_y = mutlass::ceil_div(m, kTileM) + num_expert - 1;
+  gridy_in_group = grid_y;
+{% endif %}
+
+{% if switch_swizzle %}
+  int swizzle_dim0 = grid_y;
+  int swizzle_dim1 = grid_x;
+{% else %}
+  int swizzle_dim0 = grid_x;
+  int swizzle_dim1 = grid_y;
+{% endif %}
+  int macro_tile_size = kMacroTileX * swizzle_dim1;
+  int res_tile_x = swizzle_dim0 % kMacroTileX;
+
+  auto fast_macro_tile_x = mutlass::FastDivmod(kMacroTileX);
+  auto fast_res_tile_x = get_fast_div_mod(res_tile_x);
+  auto fast_macro_tile_size = mutlass::FastDivmod(macro_tile_size);
+  auto fast_batch = mutlass::FastDivmod(batch);
+  auto fast_xytile = mutlass::FastDivmod(grid_y * grid_x);
+  auto fast_gridx = mutlass::FastDivmod(grid_x);
+  auto fast_nr_block_group = mutlass::FastDivmod(gridy_in_group * grid_x);
+
+  params.output_ptr = p_d;
+{% if group_mode == "MoeGemmMode::NoGroup" %}
+  params.amax_ptr = p_scale_out;
+{% endif %}
+  params.a_desc = tensor_desc_a.desc;
+  params.b_desc = tensor_desc_b.desc;
+  params.c_desc = tensor_desc_c.desc;
+  params.kpart_desc = tensor_desc_c.desc;
+  params.robust_input_a_scale =
+      mute::make_robust_desc(static_cast<uint8_t*>(p_scale_a),
+                             static_cast<size_t>(scale_a_nr_elem) * dl_dtype_size(type_scale_a)).reg;
+  params.robust_input_b_scale =
+      mute::make_robust_desc(static_cast<uint8_t*>(p_scale_b),
+                             static_cast<size_t>(scale_b_nr_elem) * dl_dtype_size(type_scale_b)).reg;
+  if (scale_b1.has_value()) {
+    params.robust_input_b_scale1 =
+        mute::make_robust_desc(static_cast<uint8_t*>(p_scale_b1),
+                               scale_b1.value().numel() * sizeof(float)).reg;
+  }
+  params.robust_group_idx = mute::make_robust_desc(static_cast<int*>(p_token_info), group_idx_len).reg;
+{% if group_mode == "MoeGemmMode::KContig" %}
+  params.beta = 1.0f;
+  params.robust_input_z =
+      mute::make_robust_desc(static_cast<uint8_t*>(p_d),
+                             static_cast<size_t>(m) * n * num_expert * dl_dtype_size(type_d)).reg;
+{% endif %}
+{% if group_mode == "MoeGemmMode::Masked" %}
+  params.sync_out_flag_ptr = signal.has_value() ? static_cast<int32_t*>(signal.value().data_ptr()) : nullptr;
+  params.mask_blky_per_group = gridy_in_group;
+{% endif %}
+
+  params.scale_a_mode = static_cast<int>({{ quant_mode_a }});
+  params.scale_b_mode = static_cast<int>({{ quant_mode_b }});
+  params.scale_d_mode = 0;
+  params.scale_a_m = scale_a_m;
+  params.scale_a_k = scale_a_k;
+  params.scale_b_k = scale_b_k;
+  params.scale_b_n = scale_b_n;
+  params.batch_stride_scale_a = params.scale_a_m * params.scale_a_k;
+  params.batch_stride_scale_b = params.scale_b_k * params.scale_b_n;
+  params.m = m;
+  params.n = n;
+  params.k = k;
+  params.num_expert = num_expert;
+  params.ldd = n;
+  params.ldc = n;
+  params.total_tile = grid_x * grid_y * grid_z;
+  params.mask_m_max = m / num_expert;
+  params.macro_bidx_max = swizzle_dim0 / kMacroTileX * kMacroTileX;
+  params.macro_bid_max = swizzle_dim0 / kMacroTileX * kMacroTileX * swizzle_dim1;
+  params.batch_stride_d = stride_batch_out;
+  params.batch_stride_c = params.batch_stride_d;
+  params.k_part = 0;
+  params.k_part_block = k;
+  params.ldkpart = mutlass::ceil_div(n, kTileN) * kTileN;
+  params.kpart_batch_stride_c = static_cast<int64_t>(mutlass::ceil_div(m, kTileM)) * kTileM * params.ldkpart;
+  params.fast_xytile_ori = fast_xytile.divisor;
+  params.fast_xytile_mul = fast_xytile.multiplier;
+  params.fast_xytile_sft = fast_xytile.shift_right;
+  params.fast_batch_ori = fast_batch.divisor;
+  params.fast_batch_mul = fast_batch.multiplier;
+  params.fast_batch_sft = fast_batch.shift_right;
+  params.fast_nr_block_group_ori = fast_nr_block_group.divisor;
+  params.fast_nr_block_group_mul = fast_nr_block_group.multiplier;
+  params.fast_nr_block_group_sft = fast_nr_block_group.shift_right;
+  params.fast_gridx_ori = fast_gridx.divisor;
+  params.fast_gridx_mul = fast_gridx.multiplier;
+  params.fast_gridx_sft = fast_gridx.shift_right;
+  params.switch_swizzle = {{ 1 if switch_swizzle else 0 }};
+  params.max_tile_y = swizzle_dim1 - 1;
+  params.quant_tile = quant_tile;
+  params.fast_macro_tile_x_ori = fast_macro_tile_x.divisor;
+  params.fast_macro_tile_x_mul = fast_macro_tile_x.multiplier;
+  params.fast_macro_tile_x_sft = fast_macro_tile_x.shift_right;
+  params.fast_res_tile_x_ori = fast_res_tile_x.divisor;
+  params.fast_res_tile_x_mul = fast_res_tile_x.multiplier;
+  params.fast_res_tile_x_sft = fast_res_tile_x.shift_right;
+  params.fast_macro_tile_size_ori = fast_macro_tile_size.divisor;
+  params.fast_macro_tile_size_mul = fast_macro_tile_size.multiplier;
+  params.fast_macro_tile_size_sft = fast_macro_tile_size.shift_right;
+
+{% if major_a == "TensorMajor::MN" %}
+  params.tile_a_dim0 = kTileM / kNumSquadM;
+  params.tile_a_dim1 = kTileK / dl_dtype_size(type_a);
+{% else %}
+  params.tile_a_dim0 = kTileK / dl_dtype_size(type_a);
+  params.tile_a_dim1 = kTileM / kNumSquadM;
+{% endif %}
+  params.tile_a_dim2 = 1;
+
+{% if b_pack_bits == 4 %}
+  params.tile_b_dim0 = kTileK / 2;
+  params.tile_b_dim1 = kTileN / kNumSquadN;
+{% elif major_b == "TensorMajor::MN" %}
+  params.tile_b_dim0 = kTileN / kNumSquadN;
+  params.tile_b_dim1 = kTileK / dl_dtype_size(type_b);
+{% else %}
+  params.tile_b_dim0 = kTileK / dl_dtype_size(type_b);
+  params.tile_b_dim1 = kTileN / kNumSquadN;
+{% endif %}
+  params.tile_b_dim2 = 1;
+
+  params.tile_c_dim0 = 128 / dl_dtype_size(type_d);
+  params.tile_c_dim1 = 4;
+  params.tile_c_dim2 = 1;
+  params.tile_x1_dim0 = 160 % 128;
+  params.tile_x1_dim1 = 128;
+  params.tile_x1_dim2 = 1;
+
+  MUlaunchConfig launch_config;
+  launch_config.blockDimX = kNumThread;
+  launch_config.blockDimY = 1;
+  launch_config.blockDimZ = 1;
+  int launch_block_count = static_cast<int>(std::min<int64_t>(total_mp_count, params.total_tile));
+  launch_config.gridDimX = launch_block_count;
+  launch_config.gridDimY = 1;
+  launch_config.gridDimZ = 1;
+  launch_config.hStream = reinterpret_cast<MUstream>(stream);
+  launch_config.sharedMemBytes = 0;
+  launch_config.attrs = NULL;
+  launch_config.numAttrs = 0;
+
+{% if group_mode == "MoeGemmMode::Masked" %}
+  int64_t max_blk_cnt = total_mp_count == target_mp_count ? total_mp_count * kBlkPerMp : target_mp_count;
+  launch_config.gridDimX = static_cast<int>(std::min<int64_t>(max_blk_cnt, params.total_tile));
+{% endif %}
+
+  static MUmodule asm_module = [&object_path]() {
+    MUmodule module;
+    MATE_MUSA_DRIVER_CHECK(muModuleLoad(&module, object_path.c_str()));
+    return module;
+  }();
+  static MUfunction asm_func = []() {
+    MUfunction func;
+    MATE_MUSA_DRIVER_CHECK(muModuleGetFunction(&func, asm_module, "{{ func_name }}"));
+    return func;
+  }();
+
+  void* kernel_params[] = {&params.output_ptr,
+                           &params.amax_ptr,
+                            &params.a_desc,
+                            &params.b_desc,
+                            &params.c_desc,
+                            &params.kpart_desc,
+                            &params.robust_input_bias,
+                            &params.robust_input_z,
+                           &params.robust_input_a_scale,
+                           &params.robust_input_b_scale,
+                           &params.robust_input_a_scale1,
+                           &params.robust_input_b_scale1,
+                           &params.robust_input_d_scale,
+                           &params.rcp_scale_o,
+                           &params.k_part_buffer,
+                           &params.k_part_flag,
+                           &params.robust_group_idx,
+                           &params.robust_group_scale_idx,
+                           &params.group_scale_a_robust_vec,
+                           &params.group_scale_b_robust_vec,
+                           &params.sync_out_flag_ptr,
+                           &params.mask_blky_per_group,
+                            &params.alpha,
+                            &params.beta,
+                            &params.gamma,
+                            &params.act_param,
+                            &params.scale_a_mode,
+                           &params.scale_b_mode,
+                           &params.scale_d_mode,
+                           &params.scale_a_m,
+                           &params.scale_a_k,
+                           &params.scale_b_k,
+                           &params.scale_b_n,
+                           &params.batch_stride_scale_a,
+                           &params.batch_stride_scale_b,
+                           &params.quant_tile,
+                           &params.amax_mode,
+                           &params.act_mode,
+                           &params.m,
+                           &params.n,
+                           &params.k,
+                           &params.num_expert,
+                           &params.ldd,
+                           &params.ldc,
+                           &params.out_trans_stride,
+                           &params.fast_out_trans_ori,
+                           &params.fast_out_trans_mul,
+                           &params.fast_out_trans_sft,
+                           &params.total_tile,
+                           &params.mask_m_max,
+                           &params.macro_bidx_max,
+                           &params.batch_stride_d,
+                           &params.batch_stride_c,
+                           &params.k_part,
+                           &params.k_part_block,
+                           &params.ldkpart,
+                           &params.kpart_batch_stride_c,
+                           &params.fast_xytile_ori,
+                           &params.fast_xytile_mul,
+                           &params.fast_xytile_sft,
+                           &params.fast_batch_ori,
+                           &params.fast_batch_mul,
+                           &params.fast_batch_sft,
+                           &params.fast_nr_block_group_ori,
+                           &params.fast_nr_block_group_mul,
+                           &params.fast_nr_block_group_sft,
+                           &params.fast_gridx_ori,
+                           &params.fast_gridx_mul,
+                           &params.fast_gridx_sft,
+                           &params.cluster_dimx,
+                           &params.macro_bid_max,
+                           &params.switch_swizzle,
+                           &params.max_tile_y,
+                           &params.fast_macro_tile_x_ori,
+                           &params.fast_macro_tile_x_mul,
+                           &params.fast_macro_tile_x_sft,
+                           &params.fast_res_tile_x_ori,
+                           &params.fast_res_tile_x_mul,
+                           &params.fast_res_tile_x_sft,
+                           &params.fast_macro_tile_size_ori,
+                           &params.fast_macro_tile_size_mul,
+                           &params.fast_macro_tile_size_sft,
+                           &params.tile_a_dim0,
+                           &params.tile_a_dim1,
+                           &params.tile_a_dim2,
+                           &params.tile_b_dim0,
+                           &params.tile_b_dim1,
+                           &params.tile_b_dim2,
+                           &params.tile_c_dim0,
+                           &params.tile_c_dim1,
+                           &params.tile_c_dim2,
+                           &params.tile_x1_dim0,
+                           &params.tile_x1_dim1,
+                           &params.tile_x1_dim2};
+
+  MATE_MUSA_DRIVER_CHECK(muLaunchKernelEx(&launch_config, asm_func, kernel_params, nullptr));
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(run_{{ func_name }}, run_{{ func_name }});

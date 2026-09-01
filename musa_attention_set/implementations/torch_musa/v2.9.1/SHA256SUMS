@@ -1,0 +1,7 @@
+109a341a21aeb8cd73a9e61054f41e900df8de8f8a53747187a96856eac90c4e  LICENSE.upstream
+15675969c0dd643c6af0c5f7413e740bbf85dfb5a4eb5d70908905cfbe7b8b2a  src/README.md
+fcbef59cd2fe68d62ed323dc40fcaec86c8a17618445acb38d18f80e0e2081e6  src/torch_musa/csrc/aten/ops/attention/mudnn/Attention.cpp
+3dd4c95ba7c74498d2ec09521ac291858475d1c25e21f756bd9f3bcf70d0b792  src/torch_musa/csrc/aten/ops/attention/mudnn/README.md
+f85163e6a288fed1e50800673e0e94307907ea86a3587f84d695f35c0d63c18e  src/torch_musa/csrc/aten/ops/attention/mudnn/SDP.cpp
+c5c5cd4ef18a786c3f81291f116f11be6e4d0c07ca516eb1afc9c6119e313856  src/torch_musa/csrc/aten/ops/attention/mudnn/SDPBackendSelect.cpp
+43aac44311e38da214739ef4897afe1273743aeb4cb3f552ade2189da7061831  src/torch_musa/csrc/aten/ops/attention/mudnn/SDPUtils.h

@@ -1,0 +1,144 @@
+#include <mute/tensor.hpp>
+
+#include <mutlass/mutlass.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/kernel_hardware_info.h>
+
+#include <tvm/ffi/extra/musa/device_guard.h>
+
+#include "mate/attention/fmha/fmha.hpp"
+#include "mate/attention/fmha/metadata.hpp"
+#include "mate_utils.hpp"
+
+using namespace mute;
+using namespace tvm;
+
+void {{ func_name }} (
+  int batch_size,
+  int num_heads_q,
+  int num_heads_kv,
+  int headdim,
+  int headdim_v,
+  int max_seqlen_q,
+  int max_seqlen_k,
+  int max_seqlen_k_new,
+  ffi::Optional<ffi::TensorView> cu_seqlens_q,
+  ffi::Optional<ffi::TensorView> cu_seqlens_k,
+  ffi::Optional<ffi::TensorView> seqused_q,
+  ffi::Optional<ffi::TensorView> seqused_k,
+  ffi::Optional<ffi::TensorView> cu_seqlens_k_new,
+  int window_size_left,
+  int window_size_right,
+  ffi::Optional<ffi::TensorView> leftpad_k,
+  ffi::TensorView metadata,
+  int num_splits,
+  int TileM,
+  int TileN,
+  int mp_margin
+) {
+  // FMHA config
+  constexpr bool HasCuseqlensQ = {{ 'true' if has_cu_seqlens_q else 'false' }};
+  constexpr bool HasCuseqlensK = {{ 'true' if has_cu_seqlens_k else 'false' }};
+  constexpr bool HasSequsedQ = {{ 'true' if has_seqused_q else 'false' }};
+  constexpr bool HasSequsedK = {{ 'true' if has_seqused_k else 'false' }};
+  constexpr bool HasCuseqlensKNew = {{ 'true' if has_cu_seqlens_k_new else 'false' }};
+  constexpr bool HasLeftpadK = {{ 'true' if has_leftpad_k else 'false' }};
+  constexpr bool IsCausal = {{ 'true' if is_causal else 'false' }};
+  constexpr bool IsLocal = {{ 'true' if is_local else 'false' }};
+  constexpr int HeadRatio = {{ head_ratio }};
+
+  constexpr bool IsPackGQA = {{ 'true' if is_packgqa else 'false' }};
+
+  int const seqlen_q = static_cast<int>(max_seqlen_q);
+  int const seqlen_k = static_cast<int>(max_seqlen_k);
+  int const seqlen_k_new = static_cast<int>(max_seqlen_k_new);
+  int mp_count = mutlass::KernelHardwareInfo::query_device_multiprocessor_count();
+  int num_mp = mp_count - mp_margin;
+
+  using Element = {{ element }};
+  // Schedule Config
+  constexpr bool Sort = {{ 'true' if sort else 'false' }};
+  constexpr bool L2Swizzle = true;
+  constexpr int NumWarps = {{ num_warps }};
+  int num_ctas = mutlass::ceil_div(batch_size, 31 * mutlass::NumThreadsPerWarp);
+  int num_threads = NumWarps * mutlass::NumThreadsPerWarp;
+  int const size_l2 = 1.5 * 1024 * 1024; // 1.5 MB
+  int element_size = {{ element_size }};
+  int const size_one_kvblock = TileN * (headdim + headdim_v) * element_size;
+  int max_kvblocks_in_l2 = size_l2 / size_one_kvblock;
+  int b_rounded = (batch_size + 4 - 1) / 4 * 4; // round up to multiple of 4
+  int32_t* metadata_ptr = static_cast<int32_t*>(metadata.data_ptr());
+  int32_t* num_splits_dynamic_ptr = metadata_ptr;
+  int32_t* batch_table_ptr = metadata_ptr + b_rounded;
+  int32_t* num_m_blocks_ptr = metadata_ptr + b_rounded * 2;
+  int32_t* num_nheads_in_l2_ptr = metadata_ptr + b_rounded * 3;
+
+  // Set Params
+  mate::attention::fmha::FmhaFwdParams params {
+    // QKV params
+    .h = num_heads_q,
+    .h_k = num_heads_kv,
+
+    // Shape params
+    .b = batch_size,
+    .seqlen_q = seqlen_q,
+    .seqlen_k = seqlen_k,
+    .seqlen_knew = seqlen_k_new,
+    .d = headdim,
+    .dv = headdim_v,
+    .b_k = batch_size,
+
+    // Ragged params
+    .cu_seqlens_q = HasCuseqlensQ ? static_cast<uint32_t*>(cu_seqlens_q.value().data_ptr()) : nullptr,
+    .cu_seqlens_k = HasCuseqlensK ? static_cast<uint32_t*>(cu_seqlens_k.value().data_ptr()) : nullptr,
+    .cu_seqlens_knew = HasCuseqlensKNew ? static_cast<uint32_t*>(cu_seqlens_k_new.value().data_ptr()) : nullptr,
+    .leftpad_k = HasLeftpadK ? static_cast<uint32_t*>(leftpad_k.value().data_ptr()) : nullptr,
+    .seqused_q = HasSequsedQ ? static_cast<uint32_t*>(seqused_q.value().data_ptr()) : nullptr,
+    .seqused_k = HasSequsedK ? static_cast<uint32_t*>(seqused_k.value().data_ptr()) : nullptr,
+
+    .num_mp = num_mp,
+    .num_splits = num_splits,
+    .num_splits_dynamic_ptr = num_splits_dynamic_ptr,
+    .batch_table_ptr = batch_table_ptr,
+
+    .is_causal = IsCausal,
+    .is_local = IsLocal,
+    .window_size_left = window_size_left,
+    .window_size_right = window_size_right,
+
+    .is_fp8 = std::is_same_v<Element, mutlass::float_e4m3_t> || std::is_same_v<Element, mutlass::float_e5m2_t>,
+  };
+  if (params.num_splits <= 0) {
+    params.num_splits = mate::attention::fmha::get_num_splits(params, TileM, TileN, false);
+    // std::cout << "Metadata heristic sets num_splits=" << params.num_splits << std::endl;
+  }
+  // std::cout << "Metadata final sets num_splits=" << params.num_splits << std::endl;
+
+  ffi::MUSADeviceGuard device_guard(metadata.device().device_id);
+
+  musaStream_t stream = static_cast<musaStream_t>(TVMFFIEnvGetStream(
+    metadata.device().device_type, metadata.device().device_id));
+
+  // Schedule Kernel
+  mate::attention::fmha::get_metadata_kernel<
+    NumWarps, Sort,
+    IsPackGQA, IsCausal, IsLocal, L2Swizzle,
+    HasCuseqlensQ, HasSequsedQ,
+    HasCuseqlensK, HasSequsedK,
+    HasCuseqlensKNew, HasLeftpadK
+  ><<<num_ctas, num_threads, 0, stream>>>(
+    params.seqlen_q, params.seqlen_k, params.seqlen_knew,
+    params.cu_seqlens_q, params.cu_seqlens_k, params.cu_seqlens_knew,
+    params.seqused_q, params.seqused_k, params.leftpad_k,
+    params.b, !IsPackGQA ? params.h : params.h_k, HeadRatio,
+    num_mp, params.num_splits,
+    mutlass::FastDivmod(TileM), mutlass::FastDivmod(TileN),
+    params.window_size_left, params.window_size_right,
+    num_m_blocks_ptr,
+    num_splits_dynamic_ptr,
+    batch_table_ptr,
+    num_nheads_in_l2_ptr,
+    max_kvblocks_in_l2
+  );
+  MATE_CHECK_MUSA_KERNEL_LAUNCH();
+}

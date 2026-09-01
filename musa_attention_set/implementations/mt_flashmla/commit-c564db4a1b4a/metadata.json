@@ -1,0 +1,21 @@
+{
+  "project": "mt_flashmla",
+  "repository": "https://github.com/MooreThreads/MT-flashMLA",
+  "revision": "c564db4a1b4a447c78973a2978a07b0fa6385843",
+  "revision_label": "main snapshot",
+  "upstream_commit_date": "2025-02-26T23:35:49+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "MIT",
+  "operator_families": ["mla_decode", "paged_kv_attention"],
+  "hardware": ["MP31"],
+  "software_requirements": ["MUSA >= 4.0.0", "TorchMUSA >= 2.5.0"],
+  "dependency_revisions": {
+    "mutlass": "68f1bf1806f5435246518bbeecd3aa810704e3ae"
+  },
+  "source_scope": [
+    "complete upstream working tree except VCS/automation/agent instruction files",
+    "mutlass submodule archived separately under implementations/mutlass/v0.2.0"
+  ],
+  "archive_status": "source-archived",
+  "validation_status": "provenance-verified-not-built"
+}

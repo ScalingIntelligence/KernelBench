@@ -1,0 +1,32 @@
+# MUSA/MT self-built wheels, published on the Moore Threads index:
+#   https://dl.mthreads.com/repo/api/pypi/pypi/simple
+#
+# Install these with the Moore Threads index as the sole --index-url (see
+# docker/musa.Dockerfile). Do NOT add --index-url/--extra-index-url directives to
+# this file: it is pulled in by requirements/musa.txt (and thus setup.py
+# install_requires), and a pip index directive in a requirements file applies to
+# the whole invocation. It would then route the ordinary public-PyPI deps
+# (torchada, numpy, transformers, ...) at the Moore Threads index, which does not
+# carry torchada and mirrors the rest only at versions that miss the common.txt
+# pins. Names such as torch, mate and apache-tvm-ffi also exist as unrelated
+# projects on public PyPI, so they must resolve from the Moore Threads index
+# only. Versions below track the MUSA release_5.2.0 Python Wheel guide.
+
+torch==2.11.0.post1+musa5.2.0
+torch_musa==2.11.0.post1+musa5.2.0
+torchvision==0.26.0.post1+musa5.2.0
+torchaudio==2.11.0+musa5.2.0
+mate==0.2.6
+mate-mubin==0.2.6
+flash_attn_3==0.2.6+musa
+flash_mla==0.2.6+musa
+deep-gemm==0.2.6+musa
+flashinfer-python==0.2.6+musa
+sageattention==0.2.6+musa
+deep_ep==1.1.0+musa5.2.0torch2.11.0.post1
+tilelang_musa==0.1.12+musa.2
+# The MUSA 5.2.0 Triton backend remains pinned independently of the PyTorch
+# release; verify this pin in the 2.11 image before changing it.
+triton==3.2.0
+apache-tvm-ffi==0.1.11.post1+musa.1
+torch-c-dlpack-ext==0.1.5

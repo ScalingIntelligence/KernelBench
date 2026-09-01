@@ -1,0 +1,677 @@
+// SageAttention MUBIN launcher
+
+#include <cmath>
+#include <cstdint>
+#include <optional>
+#include <string>
+
+#include <musa.h>
+#include <musa_runtime.h>
+#include <mutlass/fast_math.h>
+#include <mutlass/numeric_types.h>
+#include <mute/arch/copy_mp31_desc.hpp>
+#include <mute/layout.hpp>
+
+#include "op_utils.hpp"
+
+namespace {
+
+struct DenseSageAttentionParams {
+  void* output_ptr{};
+  void* output_scale_ptr{};
+  void* out_lse_ptr{};
+
+  mute::RobustReg    robust_mask{};
+  MUtensorDescriptor q_desc{};
+  mute::RobustReg    robust_key{};
+  MUtensorDescriptor k_desc_0{};
+  MUtensorDescriptor k_desc_1{};
+  MUtensorDescriptor v_desc{};
+  MUtensorDescriptor out_desc{};
+  mute::RobustReg    robust_q_scale{};
+  mute::RobustReg    robust_k_scale{};
+  mute::RobustReg    robust_v_scale{};
+  bool               is_qk_int8{};
+
+  int32_t q_scale_batch_stride{};
+  int32_t q_scale_seq_stride{};
+  int32_t q_scale_head_stride{};
+  int32_t k_scale_batch_stride{};
+  int32_t k_scale_seq_stride{};
+  int32_t k_scale_head_stride{};
+  int32_t v_scale_batch_stride{};
+  int32_t v_scale_seq_stride{};
+  int32_t v_scale_head_stride{};
+
+  float scale{};
+  float rln2_scale{};
+  float nr_ln2{};
+
+  int32_t batch{};
+  int32_t nheads{};
+  int32_t kv_heads{};
+  int32_t seqlen_q{};
+  int32_t seqlen_kv{};
+  int32_t headdim_v{};
+
+  int32_t  head_group_ori{};
+  uint32_t head_group_mul{};
+  uint32_t head_group_sft{};
+  int32_t  ldg_key_stride{};
+
+  int32_t batch_stride_k{};
+  int32_t head_stride_k{};
+  int32_t seq_stride_k{};
+
+  int64_t batch_stride_mask{};
+  int64_t head_stride_mask{};
+  int32_t seq_stride_mask{};
+
+  int32_t batch_stride_out{};
+  int32_t head_stride_out{};
+  int32_t seq_stride_out{};
+
+  int32_t tile_size_q{};
+  int32_t tile_size_k{};
+  int32_t tile_size_v{};
+  int32_t tile_size_key_scale{};
+  int32_t tile_num{};
+
+  int32_t  double_block_num_sub1{};
+  int32_t  double_block_num_div{};
+  uint32_t double_block_num_mul{};
+  uint32_t double_block_num_sft{};
+
+  int32_t  seqq_mul_heads_div{};
+  uint32_t seqq_mul_heads_mul{};
+  uint32_t seqq_mul_heads_sft{};
+  int32_t  seqq_div{};
+  uint32_t seqq_mul{};
+  uint32_t seqq_sft{};
+
+  int32_t tile_q_dim0{};
+  int32_t tile_q_dim1{};
+  int32_t tile_q_dim2{};
+  int32_t tile_q_dim3{};
+  int32_t tile_k_dim0{};
+  int32_t tile_k_dim1{};
+  int32_t tile_k_dim2{};
+  int32_t tile_k_dim3{};
+  int32_t tile_v_dim0{};
+  int32_t tile_v_dim1{};
+  int32_t tile_v_dim2{};
+  int32_t tile_v_dim3{};
+  int32_t tile_out_dim0{};
+  int32_t tile_out_dim1{};
+  int32_t tile_out_dim2{};
+  int32_t tile_out_dim3{};
+};
+
+struct KVCacheSageAttentionParams {
+  void* output_ptr{};
+  void* output_scale_ptr{};
+  void* out_lse_ptr{};
+
+  MUtensorDescriptor q_desc{};
+  MUtensorDescriptor k_desc{};
+  MUtensorDescriptor v_desc{};
+  MUtensorDescriptor out_desc{};
+  mute::RobustReg    robust_mask{};
+  mute::RobustReg    robust_key{};
+  mute::RobustReg    robust_block_table{};
+  mute::RobustReg    robust_cache_seqlens{};
+  mute::RobustReg    robust_q_scale{};
+  mute::RobustReg    robust_k_scale{};
+  mute::RobustReg    robust_v_scale{};
+
+  int32_t batch_stride_block_table{};
+  int32_t num_blocks_stride_k_cache{};
+  int32_t page_block_size_stride_k_cache{};
+  int32_t nheads_k_stride_k_cache{};
+
+  int32_t q_scale_batch_stride{};
+  int32_t q_scale_seq_stride{};
+  int32_t q_scale_head_stride{};
+  int32_t k_scale_block_stride{};
+  int32_t k_scale_page_stride{};
+  int32_t k_scale_head_stride{};
+  int32_t v_scale_batch_stride{};
+  int32_t v_scale_head_stride{};
+
+  float scale{};
+  float rln2_scale{};
+  float nr_ln2{};
+
+  int32_t batch{};
+  int32_t nheads{};
+  int32_t kv_heads{};
+  int32_t seqlen_q{};
+  int32_t seqlen_kv{};
+  int32_t headdim_v{};
+
+  int32_t  head_group_ori{};
+  uint32_t head_group_mul{};
+  uint32_t head_group_sft{};
+
+  int64_t batch_stride_mask{};
+  int64_t head_stride_mask{};
+  int32_t seq_stride_mask{};
+  int32_t batch_stride_out{};
+  int32_t head_stride_out{};
+  int32_t seq_stride_out{};
+
+  int32_t tile_size_q{};
+  int32_t tile_size_k{};
+  int32_t tile_size_v{};
+  int32_t tile_size_key_scale{};
+  int32_t tile_num{};
+
+  int32_t  double_block_num_sub1{};
+  int32_t  double_block_num_div{};
+  uint32_t double_block_num_mul{};
+  uint32_t double_block_num_sft{};
+  int32_t  seqq_mul_heads_div{};
+  uint32_t seqq_mul_heads_mul{};
+  uint32_t seqq_mul_heads_sft{};
+  int32_t  seqq_div{};
+  uint32_t seqq_mul{};
+  uint32_t seqq_sft{};
+
+  int32_t tile_q_dim0{};
+  int32_t tile_q_dim1{};
+  int32_t tile_q_dim2{};
+  int32_t tile_q_dim3{};
+  int32_t tile_k_dim0{};
+  int32_t tile_k_dim1{};
+  int32_t tile_k_dim2{};
+  int32_t tile_k_dim3{};
+  int32_t tile_v_dim0{};
+  int32_t tile_v_dim1{};
+  int32_t tile_v_dim2{};
+  int32_t tile_v_dim3{};
+  int32_t tile_out_dim0{};
+  int32_t tile_out_dim1{};
+  int32_t tile_out_dim2{};
+  int32_t tile_out_dim3{};
+};
+
+}  // namespace
+
+{% if spec.is_kv_cache %}
+void run_{{ func_name }}(const std::string&       object_path,
+                         ffi::TensorView                out,
+                         std::optional<ffi::TensorView> out_scale,
+                         ffi::TensorView                out_lse,
+                         ffi::TensorView                q,
+                         ffi::TensorView                k_cache,
+                         ffi::TensorView                v_cache,
+                         ffi::TensorView                page_table,
+                         ffi::TensorView                cache_seqlens,
+                         ffi::TensorView                q_scale,
+                         ffi::TensorView                k_scale,
+                         ffi::TensorView                v_scale,
+                         double                         softmax_scale) {
+{% else %}
+void run_{{ func_name }}(const std::string&       object_path,
+                         ffi::TensorView                out,
+                         std::optional<ffi::TensorView> out_scale,
+                         ffi::TensorView                out_lse,
+                         ffi::TensorView                q,
+                         ffi::TensorView                k,
+                         ffi::TensorView                v,
+                         ffi::TensorView                q_scale,
+                         ffi::TensorView                k_scale,
+                         ffi::TensorView                v_scale,
+                         double                         softmax_scale) {
+{% endif %}
+  check_mp31(q.device(), "run_{{ func_name }}");
+
+  constexpr int nr_thr    = 512;
+  constexpr int tile_m    = 256;
+  constexpr int tile_n    = 128;
+  constexpr int tile_k    = 64;
+  constexpr int tile_hdim = 128;
+  constexpr bool is_qk_int8 = {{ "true" if spec.is_qk_int8 else "false" }};
+  constexpr bool fp8_output = {{ "true" if spec.fp8_output else "false" }};
+  constexpr int quant_mode = {{ spec.quant_mode }};
+
+  TVM_FFI_ICHECK_EQ(out_scale.has_value(), fp8_output) << "SageAttention mubin fp8_output mode mismatch";
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+  musaStream_t stream = get_stream(q.device());
+
+  static MUmodule asm_module = [&object_path]() {
+    MUmodule module;
+    MATE_MUSA_DRIVER_CHECK(muModuleLoad(&module, object_path.c_str()));
+    return module;
+  }();
+  static MUfunction asm_func = []() {
+    MUfunction func;
+    MATE_MUSA_DRIVER_CHECK(muModuleGetFunction(&func, asm_module, "{{ func_name }}"));
+    return func;
+  }();
+
+  const double log2e = std::log2(std::exp(1.0));
+
+{% if spec.is_kv_cache %}
+  auto batch = q.size(0);
+  auto seqlen_q = q.size(1);
+  auto nr_heads = q.size(2);
+  auto headdim_qk = q.size(3);
+  auto num_blocks = k_cache.size(0);
+  auto page_block_size = k_cache.size(1);
+  auto nr_heads_kv = k_cache.size(2);
+  auto headdim_v = v_cache.size(3);
+  auto head_group = static_cast<int>(nr_heads / nr_heads_kv);
+
+  TmeDesc tensor_desc_q(mute::make_tuple(headdim_qk, nr_heads, seqlen_q, batch),
+                        mute::make_tuple(q.stride(2), q.stride(1), q.stride(0)),
+                        q.data_ptr(),
+                        dl_dtype_to_tme_type(q.dtype()));
+  TmeDesc tensor_desc_k(mute::make_tuple(headdim_qk, nr_heads_kv, page_block_size, num_blocks),
+                        mute::make_tuple(headdim_qk,
+                                         nr_heads_kv * headdim_qk,
+                                         nr_heads_kv * headdim_qk * page_block_size),
+                        k_cache.data_ptr(),
+                        dl_dtype_to_tme_type(k_cache.dtype()));
+  TmeDesc tensor_desc_v(mute::make_tuple(headdim_v, nr_heads_kv, page_block_size, num_blocks),
+                        mute::make_tuple(headdim_v,
+                                         nr_heads_kv * headdim_v,
+                                         nr_heads_kv * headdim_v * page_block_size),
+                        v_cache.data_ptr(),
+                        dl_dtype_to_tme_type(v_cache.dtype()));
+  TmeDesc tensor_desc_out(mute::make_tuple(headdim_v, nr_heads, seqlen_q, batch),
+                          mute::make_tuple(out.stride(2), out.stride(1), out.stride(0)),
+                          out.data_ptr(),
+                          dl_dtype_to_tme_type(out.dtype()));
+
+  KVCacheSageAttentionParams params{};
+  params.output_ptr = out.data_ptr();
+  params.output_scale_ptr = fp8_output ? out_scale.value().data_ptr() : nullptr;
+  params.out_lse_ptr = out_lse.data_ptr();
+  params.q_desc = tensor_desc_q.desc;
+  params.k_desc = tensor_desc_k.desc;
+  params.v_desc = tensor_desc_v.desc;
+  params.out_desc = tensor_desc_out.desc;
+  params.robust_key = mute::make_robust_desc(static_cast<mutlass::float_e4m3_t*>(k_cache.data_ptr()), k_cache.numel()).reg;
+  params.robust_mask = mute::make_robust_desc(static_cast<int32_t*>(nullptr), 0).reg;
+  params.robust_block_table = mute::make_robust_desc(static_cast<int32_t*>(page_table.data_ptr()), page_table.numel()).reg;
+  params.robust_cache_seqlens = mute::make_robust_desc(static_cast<int32_t*>(cache_seqlens.data_ptr()), cache_seqlens.numel()).reg;
+  params.robust_q_scale = mute::make_robust_desc(static_cast<float*>(q_scale.data_ptr()), q_scale.numel()).reg;
+  params.robust_k_scale = mute::make_robust_desc(static_cast<float*>(k_scale.data_ptr()), k_scale.numel()).reg;
+  params.robust_v_scale = mute::make_robust_desc(static_cast<float*>(v_scale.data_ptr()), v_scale.numel()).reg;
+  params.batch_stride_block_table = static_cast<int32_t>(page_table.stride(0));
+  params.num_blocks_stride_k_cache = static_cast<int32_t>(k_cache.stride(0));
+  params.page_block_size_stride_k_cache = static_cast<int32_t>(k_cache.stride(1));
+  params.nheads_k_stride_k_cache = static_cast<int32_t>(k_cache.stride(2));
+  params.q_scale_batch_stride = q_scale.size(0) == 1 ? 0 : static_cast<int32_t>(q_scale.stride(0));
+  params.q_scale_seq_stride = q_scale.size(1) == 1 ? 0 : static_cast<int32_t>(q_scale.stride(1));
+  params.q_scale_head_stride = q_scale.size(2) == 1 ? 0 : static_cast<int32_t>(q_scale.stride(2));
+  params.k_scale_block_stride = k_scale.size(0) == 1 ? 0 : static_cast<int32_t>(k_scale.stride(0));
+  params.k_scale_page_stride = k_scale.size(1) == 1 ? 0 : static_cast<int32_t>(k_scale.stride(1));
+  params.k_scale_head_stride = k_scale.size(2) == 1 ? 0 : static_cast<int32_t>(k_scale.stride(2));
+  params.v_scale_batch_stride = v_scale.size(0) == 1 ? 0 : static_cast<int32_t>(v_scale.stride(0));
+  params.v_scale_head_stride = v_scale.size(2) == 1 ? 0 : static_cast<int32_t>(v_scale.stride(2));
+  params.scale = static_cast<float>(softmax_scale);
+  params.rln2_scale = static_cast<float>(softmax_scale * log2e);
+  params.nr_ln2 = static_cast<float>(1.0 / log2e);
+  params.batch = static_cast<int32_t>(batch);
+  params.nheads = static_cast<int32_t>(nr_heads);
+  params.kv_heads = static_cast<int32_t>(nr_heads_kv);
+  params.seqlen_q = static_cast<int32_t>(seqlen_q);
+  params.seqlen_kv = static_cast<int32_t>(page_block_size);
+  params.headdim_v = static_cast<int32_t>(headdim_v);
+  auto fast_head_group = mutlass::FastDivmod(head_group);
+  params.head_group_ori = fast_head_group.divisor;
+  params.head_group_mul = fast_head_group.multiplier;
+  params.head_group_sft = fast_head_group.shift_right;
+  params.batch_stride_mask = 0;
+  params.head_stride_mask = 0;
+  params.seq_stride_mask = 0;
+  params.batch_stride_out = static_cast<int32_t>(out.stride(0));
+  params.head_stride_out = static_cast<int32_t>(out.stride(2));
+  params.seq_stride_out = static_cast<int32_t>(out.stride(1));
+  params.tile_size_q = tile_m * tile_k * sizeof(mutlass::float_e4m3_t);
+  params.tile_size_k = tile_n * tile_k * sizeof(mutlass::float_e4m3_t);
+  params.tile_size_v = tile_hdim * tile_k * sizeof(mutlass::float_e4m3_t);
+  params.tile_size_key_scale = (quant_mode == 6 ? tile_n / 16 : tile_n) * sizeof(float);
+  int seq_q_tile_num = mutlass::ceil_div(static_cast<int>(seqlen_q), tile_m);
+  params.tile_num = seq_q_tile_num * static_cast<int>(batch) * static_cast<int>(nr_heads);
+  int block_num = 1;
+  params.double_block_num_sub1 = 2 * block_num - 1;
+  int double_block_num = 2 * block_num;
+  auto fast_double_block_num = mutlass::FastDivmod(double_block_num);
+  params.double_block_num_div = fast_double_block_num.divisor;
+  params.double_block_num_mul = fast_double_block_num.multiplier;
+  params.double_block_num_sft = fast_double_block_num.shift_right;
+  auto fast_seqq_mul_heads = mutlass::FastDivmod(static_cast<int>(nr_heads) * seq_q_tile_num);
+  params.seqq_mul_heads_div = fast_seqq_mul_heads.divisor;
+  params.seqq_mul_heads_mul = fast_seqq_mul_heads.multiplier;
+  params.seqq_mul_heads_sft = fast_seqq_mul_heads.shift_right;
+  auto fast_seqq = mutlass::FastDivmod(seq_q_tile_num);
+  params.seqq_div = fast_seqq.divisor;
+  params.seqq_mul = fast_seqq.multiplier;
+  params.seqq_sft = fast_seqq.shift_right;
+  params.tile_q_dim0 = tile_k;
+  params.tile_q_dim1 = 1;
+  params.tile_q_dim2 = tile_m;
+  params.tile_q_dim3 = 1;
+  params.tile_k_dim0 = tile_k;
+  params.tile_k_dim1 = 1;
+  params.tile_k_dim2 = tile_n;
+  params.tile_k_dim3 = 1;
+  params.tile_v_dim0 = tile_hdim;
+  params.tile_v_dim1 = 1;
+  params.tile_v_dim2 = tile_k;
+  params.tile_v_dim3 = 1;
+  params.tile_out_dim0 = static_cast<int32_t>(headdim_v);
+  params.tile_out_dim1 = 1;
+  params.tile_out_dim2 = 4;
+  params.tile_out_dim3 = 1;
+
+  MUlaunchConfig launch_config;
+  launch_config.blockDimX = nr_thr;
+  launch_config.blockDimY = 1;
+  launch_config.blockDimZ = 1;
+{% if spec.is_causal %}
+  launch_config.gridDimX = static_cast<unsigned int>(block_num);
+  launch_config.gridDimY = 1;
+  launch_config.gridDimZ = 1;
+{% else %}
+  launch_config.gridDimX = static_cast<unsigned int>(seq_q_tile_num);
+  launch_config.gridDimY = static_cast<unsigned int>(nr_heads);
+  launch_config.gridDimZ = static_cast<unsigned int>(batch);
+{% endif %}
+  launch_config.hStream = reinterpret_cast<MUstream>(stream);
+  launch_config.sharedMemBytes = 0;
+  launch_config.attrs = NULL;
+  launch_config.numAttrs = 0;
+
+  void* kernel_params[] = {&params.output_ptr,
+                           &params.output_scale_ptr,
+                           &params.out_lse_ptr,
+                           &params.q_desc,
+                           &params.k_desc,
+                           &params.v_desc,
+                           &params.out_desc,
+                           &params.robust_mask,
+                           &params.robust_key,
+                           &params.robust_block_table,
+                           &params.robust_cache_seqlens,
+                           &params.robust_q_scale,
+                           &params.robust_k_scale,
+                           &params.robust_v_scale,
+                           &params.batch_stride_block_table,
+                           &params.num_blocks_stride_k_cache,
+                           &params.page_block_size_stride_k_cache,
+                           &params.nheads_k_stride_k_cache,
+                           &params.q_scale_batch_stride,
+                           &params.q_scale_seq_stride,
+                           &params.q_scale_head_stride,
+                           &params.k_scale_block_stride,
+                           &params.k_scale_page_stride,
+                           &params.k_scale_head_stride,
+                           &params.v_scale_batch_stride,
+                           &params.v_scale_head_stride,
+                           &params.scale,
+                           &params.rln2_scale,
+                           &params.nr_ln2,
+                           &params.batch,
+                           &params.nheads,
+                           &params.kv_heads,
+                           &params.seqlen_q,
+                           &params.seqlen_kv,
+                           &params.headdim_v,
+                           &params.head_group_ori,
+                           &params.head_group_mul,
+                           &params.head_group_sft,
+                           &params.batch_stride_mask,
+                           &params.head_stride_mask,
+                           &params.seq_stride_mask,
+                           &params.batch_stride_out,
+                           &params.head_stride_out,
+                           &params.seq_stride_out,
+                           &params.tile_size_q,
+                           &params.tile_size_k,
+                           &params.tile_size_v,
+                           &params.tile_size_key_scale,
+                           &params.tile_num,
+                           &params.double_block_num_sub1,
+                           &params.double_block_num_div,
+                           &params.double_block_num_mul,
+                           &params.double_block_num_sft,
+                           &params.seqq_mul_heads_div,
+                           &params.seqq_mul_heads_mul,
+                           &params.seqq_mul_heads_sft,
+                           &params.seqq_div,
+                           &params.seqq_mul,
+                           &params.seqq_sft,
+                           &params.tile_q_dim0,
+                           &params.tile_q_dim1,
+                           &params.tile_q_dim2,
+                           &params.tile_q_dim3,
+                           &params.tile_k_dim0,
+                           &params.tile_k_dim1,
+                           &params.tile_k_dim2,
+                           &params.tile_k_dim3,
+                           &params.tile_v_dim0,
+                           &params.tile_v_dim1,
+                           &params.tile_v_dim2,
+                           &params.tile_v_dim3,
+                           &params.tile_out_dim0,
+                           &params.tile_out_dim1,
+                           &params.tile_out_dim2,
+                           &params.tile_out_dim3};
+{% else %}
+  auto batch = q.size(0);
+  auto seqlen_q = q.size(1);
+  auto nr_heads = q.size(2);
+  auto headdim_qk = q.size(3);
+  auto seqlen_kv = k.size(1);
+  auto nr_heads_kv = k.size(2);
+  auto headdim_v = v.size(3);
+  auto head_group = static_cast<int>(nr_heads / nr_heads_kv);
+
+  TmeDesc tensor_desc_q(mute::make_tuple(headdim_qk, seqlen_q, nr_heads, batch),
+                        mute::make_tuple(q.stride(1), q.stride(2), q.stride(0)),
+                        q.data_ptr(),
+                        dl_dtype_to_tme_type(q.dtype()));
+  TmeDesc tensor_desc_k(mute::make_tuple(headdim_qk, seqlen_kv, nr_heads_kv, batch),
+                        mute::make_tuple(k.stride(1), k.stride(2), k.stride(0)),
+                        k.data_ptr(),
+                        dl_dtype_to_tme_type(k.dtype()));
+  TmeDesc tensor_desc_v(mute::make_tuple(headdim_v, seqlen_kv, nr_heads_kv, batch),
+                        mute::make_tuple(v.stride(1), v.stride(2), v.stride(0)),
+                        v.data_ptr(),
+                        dl_dtype_to_tme_type(v.dtype()));
+  TmeDesc tensor_desc_out(mute::make_tuple(headdim_v, seqlen_q, nr_heads, batch),
+                          mute::make_tuple(out.stride(1), out.stride(2), out.stride(0)),
+                          out.data_ptr(),
+                          dl_dtype_to_tme_type(out.dtype()));
+
+  DenseSageAttentionParams params{};
+  params.output_ptr = out.data_ptr();
+  params.output_scale_ptr = fp8_output ? out_scale.value().data_ptr() : nullptr;
+  params.out_lse_ptr = out_lse.data_ptr();
+  params.q_desc = tensor_desc_q.desc;
+  params.k_desc_0 = tensor_desc_k.desc;
+  params.k_desc_1 = tensor_desc_k.desc;
+  params.v_desc = tensor_desc_v.desc;
+  params.out_desc = tensor_desc_out.desc;
+  params.is_qk_int8 = is_qk_int8;
+  params.robust_key = is_qk_int8
+                          ? mute::make_robust_desc(static_cast<int8_t*>(k.data_ptr()), k.numel()).reg
+                          : mute::make_robust_desc(static_cast<mutlass::float_e4m3_t*>(k.data_ptr()), k.numel()).reg;
+  params.robust_mask = mute::make_robust_desc(static_cast<int32_t*>(nullptr), 0).reg;
+  params.robust_q_scale = mute::make_robust_desc(static_cast<float*>(q_scale.data_ptr()), q_scale.numel()).reg;
+  params.robust_k_scale = mute::make_robust_desc(static_cast<float*>(k_scale.data_ptr()), k_scale.numel()).reg;
+  params.robust_v_scale = mute::make_robust_desc(static_cast<float*>(v_scale.data_ptr()), v_scale.numel()).reg;
+  params.q_scale_batch_stride = q_scale.size(0) == 1 ? 0 : static_cast<int32_t>(q_scale.stride(0));
+  params.q_scale_seq_stride = q_scale.size(1) == 1 ? 0 : static_cast<int32_t>(q_scale.stride(1));
+  params.q_scale_head_stride = q_scale.size(2) == 1 ? 0 : static_cast<int32_t>(q_scale.stride(2));
+  params.k_scale_batch_stride = k_scale.size(0) == 1 ? 0 : static_cast<int32_t>(k_scale.stride(0));
+  params.k_scale_seq_stride = k_scale.size(1) == 1 ? 0 : static_cast<int32_t>(k_scale.stride(1));
+  params.k_scale_head_stride = k_scale.size(2) == 1 ? 0 : static_cast<int32_t>(k_scale.stride(2));
+  params.v_scale_batch_stride = v_scale.size(0) == 1 ? 0 : static_cast<int32_t>(v_scale.stride(0));
+  params.v_scale_seq_stride = v_scale.size(1) == 1 ? 0 : static_cast<int32_t>(v_scale.stride(1));
+  params.v_scale_head_stride = v_scale.size(2) == 1 ? 0 : static_cast<int32_t>(v_scale.stride(2));
+  params.scale = static_cast<float>(softmax_scale);
+  params.rln2_scale = static_cast<float>(softmax_scale * log2e);
+  params.nr_ln2 = static_cast<float>(1.0 / log2e);
+  params.batch = static_cast<int32_t>(batch);
+  params.nheads = static_cast<int32_t>(nr_heads);
+  params.kv_heads = static_cast<int32_t>(nr_heads_kv);
+  params.seqlen_q = static_cast<int32_t>(seqlen_q);
+  params.seqlen_kv = static_cast<int32_t>(seqlen_kv);
+  params.headdim_v = static_cast<int32_t>(headdim_v);
+  auto fast_head_group = mutlass::FastDivmod(head_group);
+  params.head_group_ori = fast_head_group.divisor;
+  params.head_group_mul = fast_head_group.multiplier;
+  params.head_group_sft = fast_head_group.shift_right;
+  const int qk_element_size = is_qk_int8 ? static_cast<int>(sizeof(int8_t)) : static_cast<int>(sizeof(mutlass::float_e4m3_t));
+  params.ldg_key_stride = static_cast<int32_t>(k.stride(1) * tile_n * qk_element_size);
+  params.batch_stride_k = static_cast<int32_t>(k.stride(0));
+  params.head_stride_k = static_cast<int32_t>(k.stride(2));
+  params.seq_stride_k = static_cast<int32_t>(k.stride(1));
+  params.batch_stride_mask = 0;
+  params.head_stride_mask = 0;
+  params.seq_stride_mask = 0;
+  params.batch_stride_out = static_cast<int32_t>(out.stride(0));
+  params.head_stride_out = static_cast<int32_t>(out.stride(2));
+  params.seq_stride_out = static_cast<int32_t>(out.stride(1));
+  params.tile_size_q = tile_m * tile_k * qk_element_size;
+  params.tile_size_k = tile_n * tile_k * qk_element_size;
+  params.tile_size_v = tile_hdim * tile_k * sizeof(mutlass::float_e4m3_t);
+  params.tile_size_key_scale = (quant_mode == 6 ? tile_n / 16 : tile_n) * sizeof(float);
+  int seq_q_tile_num = mutlass::ceil_div(static_cast<int>(seqlen_q), tile_m);
+  params.tile_num = seq_q_tile_num * static_cast<int>(batch) * static_cast<int>(nr_heads);
+  int block_num = 1;
+  params.double_block_num_sub1 = 2 * block_num - 1;
+  int double_block_num = 2 * block_num;
+  auto fast_double_block_num = mutlass::FastDivmod(double_block_num);
+  params.double_block_num_div = fast_double_block_num.divisor;
+  params.double_block_num_mul = fast_double_block_num.multiplier;
+  params.double_block_num_sft = fast_double_block_num.shift_right;
+  auto fast_seqq_mul_heads = mutlass::FastDivmod(static_cast<int>(nr_heads) * seq_q_tile_num);
+  params.seqq_mul_heads_div = fast_seqq_mul_heads.divisor;
+  params.seqq_mul_heads_mul = fast_seqq_mul_heads.multiplier;
+  params.seqq_mul_heads_sft = fast_seqq_mul_heads.shift_right;
+  auto fast_seqq = mutlass::FastDivmod(seq_q_tile_num);
+  params.seqq_div = fast_seqq.divisor;
+  params.seqq_mul = fast_seqq.multiplier;
+  params.seqq_sft = fast_seqq.shift_right;
+  params.tile_q_dim0 = tile_k;
+  params.tile_q_dim1 = tile_m;
+  params.tile_q_dim2 = 1;
+  params.tile_q_dim3 = 1;
+  params.tile_k_dim0 = tile_k;
+  params.tile_k_dim1 = tile_n;
+  params.tile_k_dim2 = 1;
+  params.tile_k_dim3 = 1;
+  params.tile_v_dim0 = tile_hdim;
+  params.tile_v_dim1 = tile_k;
+  params.tile_v_dim2 = 1;
+  params.tile_v_dim3 = 1;
+  params.tile_out_dim0 = static_cast<int32_t>(headdim_v);
+  params.tile_out_dim1 = 4;
+  params.tile_out_dim2 = 1;
+  params.tile_out_dim3 = 1;
+
+  MUlaunchConfig launch_config;
+  launch_config.blockDimX = nr_thr;
+  launch_config.blockDimY = 1;
+  launch_config.blockDimZ = 1;
+{% if spec.is_causal %}
+  launch_config.gridDimX = static_cast<unsigned int>(nr_heads);
+  launch_config.gridDimY = static_cast<unsigned int>(batch);
+  launch_config.gridDimZ = static_cast<unsigned int>(seq_q_tile_num);
+{% else %}
+  launch_config.gridDimX = static_cast<unsigned int>(seq_q_tile_num);
+  launch_config.gridDimY = static_cast<unsigned int>(nr_heads);
+  launch_config.gridDimZ = static_cast<unsigned int>(batch);
+{% endif %}
+  launch_config.hStream = reinterpret_cast<MUstream>(stream);
+  launch_config.sharedMemBytes = 0;
+  launch_config.attrs = NULL;
+  launch_config.numAttrs = 0;
+
+  void* kernel_params[] = {&params.output_ptr,
+                           &params.output_scale_ptr,
+                           &params.out_lse_ptr,
+                           &params.robust_mask,
+                           &params.q_desc,
+                           &params.robust_key,
+                           &params.k_desc_0,
+                           &params.k_desc_1,
+                           &params.v_desc,
+                           &params.out_desc,
+                           &params.robust_q_scale,
+                           &params.robust_k_scale,
+                           &params.robust_v_scale,
+                           &params.q_scale_batch_stride,
+                           &params.q_scale_seq_stride,
+                           &params.q_scale_head_stride,
+                           &params.k_scale_batch_stride,
+                           &params.k_scale_seq_stride,
+                           &params.k_scale_head_stride,
+                           &params.v_scale_batch_stride,
+                           &params.v_scale_seq_stride,
+                           &params.v_scale_head_stride,
+                           &params.scale,
+                           &params.rln2_scale,
+                           &params.nr_ln2,
+                           &params.batch,
+                           &params.nheads,
+                           &params.kv_heads,
+                           &params.seqlen_q,
+                           &params.seqlen_kv,
+                           &params.headdim_v,
+                           &params.head_group_ori,
+                           &params.head_group_mul,
+                           &params.head_group_sft,
+                           &params.ldg_key_stride,
+                           &params.batch_stride_k,
+                           &params.head_stride_k,
+                           &params.seq_stride_k,
+                           &params.batch_stride_mask,
+                           &params.head_stride_mask,
+                           &params.seq_stride_mask,
+                           &params.batch_stride_out,
+                           &params.head_stride_out,
+                           &params.seq_stride_out,
+                           &params.tile_size_q,
+                           &params.tile_size_k,
+                           &params.tile_size_v,
+                           &params.tile_size_key_scale,
+                           &params.tile_num,
+                           &params.double_block_num_sub1,
+                           &params.double_block_num_div,
+                           &params.double_block_num_mul,
+                           &params.double_block_num_sft,
+                           &params.seqq_mul_heads_div,
+                           &params.seqq_mul_heads_mul,
+                           &params.seqq_mul_heads_sft,
+                           &params.seqq_div,
+                           &params.seqq_mul,
+                           &params.seqq_sft,
+                           &params.tile_q_dim0,
+                           &params.tile_q_dim1,
+                           &params.tile_q_dim2,
+                           &params.tile_q_dim3,
+                           &params.tile_k_dim0,
+                           &params.tile_k_dim1,
+                           &params.tile_k_dim2,
+                           &params.tile_k_dim3,
+                           &params.tile_v_dim0,
+                           &params.tile_v_dim1,
+                           &params.tile_v_dim2,
+                           &params.tile_v_dim3,
+                           &params.tile_out_dim0,
+                           &params.tile_out_dim1,
+                           &params.tile_out_dim2,
+                           &params.tile_out_dim3};
+{% endif %}
+  MATE_MUSA_DRIVER_CHECK(muLaunchKernelEx(&launch_config, asm_func, kernel_params, nullptr));
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(run_{{ func_name }}, run_{{ func_name }});

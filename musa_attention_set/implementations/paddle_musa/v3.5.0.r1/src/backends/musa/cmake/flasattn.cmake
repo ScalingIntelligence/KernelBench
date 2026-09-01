@@ -1,0 +1,1 @@
+../../Paddle/cmake/external/flashattn.cmake

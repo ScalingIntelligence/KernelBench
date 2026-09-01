@@ -1,0 +1,15 @@
+BasedOnStyle: Google
+IndentWidth: 2
+ColumnLimit: 120
+BreakBeforeBraces: Custom
+AlignTrailingComments: true
+AllowShortFunctionsOnASingleLine: None
+AllowShortBlocksOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AlignAfterOpenBracket: Align
+AlignConsecutiveDeclarations: true
+AlignConsecutiveAssignments: true
+BinPackArguments: false
+BinPackParameters: false
+CommentPragmas: false

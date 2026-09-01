@@ -1,0 +1,28 @@
+{
+  "latest": "0.2.6",
+  "versions": [
+    {
+      "version": "0.2.6",
+      "aliases": ["latest"]
+    },
+    {
+      "version": "0.2.5",
+      "ref": "v0.2.5"
+    },
+    {
+      "version": "0.2.4",
+      "ref": "v0.2.4",
+      "overlay_current_ui": true
+    },
+    {
+      "version": "0.2.3",
+      "ref": "v0.2.3",
+      "overlay_current_ui": true
+    },
+    {
+      "version": "0.2.2",
+      "ref": "v0.2.2",
+      "overlay_current_ui": true
+    }
+  ]
+}

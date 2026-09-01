@@ -1,0 +1,90 @@
+#include <algorithm>
+#include <cstdint>
+
+#include <mutlass/bfloat16.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/float8.h>
+#include <mutlass/kernel_hardware_info.h>
+
+#include <mute/tensor.hpp>
+
+#include "mate/gemm/deep_gemm/mp31_masked_moe_gemm_mixed_dtype.hpp"
+
+#include "op_utils.hpp"
+
+void {{ func_name }}(
+    ffi::TensorView a,
+    ffi::TensorView scale_a,
+    ffi::TensorView b,
+    ffi::TensorView scale_b,
+    ffi::TensorView d,
+    ffi::TensorView masked_m,
+    int expected_m,
+    int num_mps) {
+  using namespace mute;
+
+  using ElementA = {{ element_a }};
+  using ElementB = mute::int4_t;
+  using ElementScaleA = {{ element_scale_a }};
+  using ElementScaleB = {{ element_scale_b }};
+  using ElementD = {{ element_d }};
+  constexpr uint32_t kStages = {{ stages }};
+  using TileShape = mute::Shape<mute::Int<{{ tile_m }}>, mute::Int<{{ tile_n }}>, mute::Int<{{ tile_k }}>>;
+  using Kernel = mate::gemm::masked_moe_gemm_mixed_dtype::Mp31MixedDtypeMaskedMoeGEMMS4FP8<
+      ElementA, ElementB, ElementScaleA, ElementScaleB, ElementD, TileShape, kStages,
+      {{ scale_a_block_k }}, {{ "true" if scale_a_major == "M" else "false" }}>;
+
+  const int64_t groups = a.size(0);
+  const int64_t m      = a.size(1);
+  const int64_t k      = a.size(2);
+  const int64_t n      = b.size(1);
+
+  auto stride_a = make_stride(a.stride(1), _1{}, a.stride(0));
+  auto stride_b = make_stride(b.stride(1) * 2, _1{}, b.stride(0) * 2);
+{% if scale_a_major == "M" %}
+  TVM_FFI_ICHECK_EQ(scale_a.stride(1), 1) << "M-major Scale-A must be contiguous in the M dimension";
+  auto stride_scale_a = make_stride(_1{}, scale_a.stride(2), scale_a.stride(0));
+{% else %}
+{% if scale_a_block_k != -1 %}
+  TVM_FFI_ICHECK_EQ(scale_a.stride(2), 1) << "K-major Scale-A must be contiguous in the K-block dimension";
+{% endif %}
+  auto stride_scale_a = make_stride(scale_a.stride(1), _1{}, scale_a.stride(0));
+{% endif %}
+  auto stride_scale_b = make_stride(scale_b.stride(1), _1{}, scale_b.stride(0));
+  auto stride_d       = make_stride(d.stride(1), _1{}, d.stride(0));
+
+  if (groups == 0 || m == 0 || n == 0 || k == 0) {
+    return;
+  }
+
+  check_mp31(a.device(), "{{ func_name }}");
+  ffi::MUSADeviceGuard device_guard(a.device().device_id);
+  const int mp_count       = mutlass::KernelHardwareInfo::query_device_multiprocessor_count();
+  const int launch_num_mps = num_mps > 0 ? std::min(num_mps, mp_count) : mp_count;
+  musaStream_t stream = get_stream(a.device());
+
+  typename Kernel::Arguments args{
+      .ptr_a        = reinterpret_cast<ElementA const*>(a.data_ptr()),
+      .ptr_scale_a  = reinterpret_cast<ElementScaleA const*>(scale_a.data_ptr()),
+      .ptr_b        = reinterpret_cast<ElementB const*>(b.data_ptr()),
+      .ptr_scale_b  = reinterpret_cast<ElementScaleB const*>(scale_b.data_ptr()),
+      .ptr_masked_m = reinterpret_cast<int32_t const*>(masked_m.data_ptr()),
+      .ptr_d        = reinterpret_cast<ElementD*>(d.data_ptr()),
+      .stride_a       = stride_a,
+      .stride_b       = stride_b,
+      .stride_scale_a = stride_scale_a,
+      .stride_scale_b = stride_scale_b,
+      .stride_d       = stride_d,
+      .m            = static_cast<int>(m),
+      .n            = static_cast<int>(n),
+      .k            = static_cast<int>(k),
+      .num_groups   = static_cast<int>(groups),
+      .expected_m   = expected_m,
+      .num_mps      = launch_num_mps,
+  };
+
+  auto params = Kernel::to_underlying_arguments(args);
+  dim3 grid   = Kernel::get_grid_shape(params);
+  mutlass::device_kernel<Kernel><<<grid, Kernel::MaxThreadsPerBlock, Kernel::SharedStorageSize, stream>>>(params);
+  MATE_CHECK_MUSA_KERNEL_LAUNCH();
+}

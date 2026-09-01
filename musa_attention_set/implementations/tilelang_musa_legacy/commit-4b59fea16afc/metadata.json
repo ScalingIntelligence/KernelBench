@@ -1,0 +1,25 @@
+{
+  "project": "tilelang_musa_legacy",
+  "repository": "https://github.com/MooreThreads/tilelang_musa",
+  "revision": "4b59fea16afce49d39d7bca0eb936a14bf472dd1",
+  "revision_label": "final deprecated MooreThreads snapshot",
+  "upstream_commit_date": "2026-06-05T17:44:05+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "MIT",
+  "operator_families": [
+    "flash_attention",
+    "flash_attention_backward",
+    "flash_linear_attention",
+    "mla_decode",
+    "deepseek_sparse_attention",
+    "native_sparse_attention"
+  ],
+  "hardware": ["S5000", "S4000", "M1000"],
+  "software_requirements": ["TileLang-MUSA legacy toolchain", "MUSA SDK"],
+  "source_scope": [
+    "MUSA-specific attention/DSA/NSA tests",
+    "attention-related examples and programming guide"
+  ],
+  "archive_status": "source-archived-selective-deprecated",
+  "validation_status": "upstream-claimed-tested-devices-not-locally-built"
+}

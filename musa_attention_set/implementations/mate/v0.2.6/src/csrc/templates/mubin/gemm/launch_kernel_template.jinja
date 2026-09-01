@@ -1,0 +1,830 @@
+// GEMM MUBIN launcher
+{% set is_ragged = group_mode == "MoeGemmMode::Ragged" %}
+{% set is_masked = group_mode == "MoeGemmMode::Masked" %}
+{% set is_k_contig = group_mode == "MoeGemmMode::KContig" %}
+{% set is_ragged_psum = group_mode == "MoeGemmMode::RaggedPSumLayout" %}
+{% set is_no_group = group_mode == "MoeGemmMode::NoGroup" %}
+{% set is_packed4 = b_pack_bits == 4 %}
+{% set is_fp4 = b_type == "fp4_e2m1" %}
+{% set quant_tile = 32 if is_fp4 else 128 %}
+{% set has_quant = quant_mode_a != "TensorQuantMode::NO_QUANT" %}
+{% set k_major_a = major_a == "TensorMajor::K" %}
+{% set k_major_b = major_b == "TensorMajor::K" %}
+
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <string>
+
+#include <mute/arch/copy_mp31_desc.hpp>
+
+#include "dtype_utils.hpp"
+#include "mate_utils.hpp"
+#include "op_utils.hpp"
+#include "tvm_ffi_utils.hpp"
+
+struct GemmParams {
+  void* output_ptr{};
+  void* amax_ptr{};
+
+  MUtensorDescriptor a_desc{};
+  MUtensorDescriptor b_desc{};
+  MUtensorDescriptor c_desc{};
+  MUtensorDescriptor kpart_desc{};
+
+  mute::RobustReg robust_input_bias{};
+  mute::RobustReg robust_input_z{};
+  mute::RobustReg robust_input_a_scale{};
+  mute::RobustReg robust_input_b_scale{};
+  mute::RobustReg robust_input_a_scale1{};
+  mute::RobustReg robust_input_b_scale1{};
+  mute::RobustReg robust_input_d_scale{};
+  float rcp_scale_o{1.0f};
+  void* k_part_buffer{};
+  int32_t* k_part_flag{};
+
+  mute::RobustReg robust_group_idx{};
+  mute::RobustReg robust_group_scale_idx{};
+
+  int32_t* group_scale_a_robust_vec{};
+  int32_t* group_scale_b_robust_vec{};
+  int32_t* sync_out_flag_ptr{};
+
+  int32_t mask_blky_per_group{};
+
+  float alpha{1.0f};
+  float beta{0.0f};
+  float gamma{0.0f};
+  float act_param{0.0f};
+
+  int32_t scale_a_mode{};
+  int32_t scale_b_mode{};
+  int32_t scale_d_mode{};
+
+  int32_t scale_a_m{};
+  int32_t scale_a_k{};
+  int32_t scale_b_k{};
+  int32_t scale_b_n{};
+
+  int32_t batch_stride_scale_a{};
+  int32_t batch_stride_scale_b{};
+
+  int32_t quant_tile{128};
+  int32_t amax_mode{};
+  int32_t act_mode{};
+
+  int32_t m{};
+  int32_t n{};
+  int32_t k{};
+  int32_t num_expert{};
+
+  int32_t ldd{};
+  int32_t ldc{};
+
+  int32_t out_trans_stride{0};
+  int32_t fast_out_trans_ori{0};
+  int32_t fast_out_trans_mul{0};
+  int32_t fast_out_trans_sft{0};
+
+  int32_t total_tile{};
+
+  int32_t mask_m_max{};
+  int32_t macro_bidx_max{};
+
+  int64_t batch_stride_d{};
+  int64_t batch_stride_c{};
+
+  int32_t k_part{};
+  int32_t k_part_block{};
+  int32_t ldkpart{};
+  int64_t kpart_batch_stride_c{};
+
+  int32_t fast_xytile_ori{};
+  int32_t fast_xytile_mul{};
+  int32_t fast_xytile_sft{};
+
+  int32_t fast_batch_ori{};
+  int32_t fast_batch_mul{};
+  int32_t fast_batch_sft{};
+
+  int32_t fast_nr_block_group_ori{};
+  int32_t fast_nr_block_group_mul{};
+  int32_t fast_nr_block_group_sft{};
+
+  int32_t fast_gridx_ori{};
+  int32_t fast_gridx_mul{};
+  int32_t fast_gridx_sft{};
+
+  int32_t cluster_dimx{0};
+  int32_t macro_bid_max{};
+  int32_t switch_swizzle{};
+  int32_t max_tile_y{};
+
+  int32_t fast_macro_tile_x_ori{};
+  uint32_t fast_macro_tile_x_mul{};
+  uint32_t fast_macro_tile_x_sft{};
+
+  int32_t fast_res_tile_x_ori{};
+  uint32_t fast_res_tile_x_mul{};
+  uint32_t fast_res_tile_x_sft{};
+
+  int32_t fast_macro_tile_size_ori{};
+  uint32_t fast_macro_tile_size_mul{};
+  uint32_t fast_macro_tile_size_sft{};
+
+  int32_t tile_a_dim0{};
+  int32_t tile_a_dim1{};
+  int32_t tile_a_dim2{};
+  int32_t tile_b_dim0{};
+  int32_t tile_b_dim1{};
+  int32_t tile_b_dim2{};
+  int32_t tile_c_dim0{};
+  int32_t tile_c_dim1{};
+  int32_t tile_c_dim2{};
+  int32_t tile_x1_dim0{};
+  int32_t tile_x1_dim1{};
+  int32_t tile_x1_dim2{};
+};
+
+{% macro emit_non_quantized_validation() %}
+{# Check A and B dtypes. #}
+  TVM_FFI_ICHECK(is_bf16_or_fp16_dtype(type_a)) << "a must be bf16 or fp16";
+  TVM_FFI_ICHECK(is_bf16_or_fp16_dtype(type_b)) << "b must be bf16 or fp16";
+
+{# Check D dtype. #}
+{% if is_k_contig %}
+  TVM_FFI_ICHECK(dtype_equal(type_a, type_b)) << "a and b must have the same dtype";
+  TVM_FFI_ICHECK(dtype_equal(type_d, dl_float32) ||
+                 (dtype_equal(type_d, dl_bfloat16) && dtype_equal(type_a, dl_bfloat16)))
+      << "out must be fp32, or bf16 when a and b are bf16";
+{% else %}
+  TVM_FFI_ICHECK(is_bf16_or_fp16_dtype(type_d)) << "out must be bf16 or fp16";
+  TVM_FFI_ICHECK(dtype_equal(type_a, type_b) && dtype_equal(type_a, type_d))
+      << "a, b, out must have the same dtype";
+{% endif %} {# Check D dtype END #}
+
+  const int64_t scale_a_m = 0;
+  const int64_t scale_a_k = 0;
+  const int64_t scale_a_nr_elem = 0;
+  const int64_t scale_b_n = 0;
+  const int64_t scale_b_k = 0;
+  const int64_t scale_b_nr_elem = 0;
+{% endmacro %}
+
+{% macro emit_quantized_validation() %}
+{# Check A dtype. #}
+  TVM_FFI_ICHECK(is_fp8_dtype(type_a)) << "a must be fp8";
+
+{% if is_fp4 %}
+  TVM_FFI_ICHECK(dtype_equal(type_a, dl_float8_e4m3fn)) << "FP4FP8 a must be float8_e4m3fn";
+{% endif %} {# Check A dtype END #}
+
+{# Check B dtype. #}
+{% if is_packed4 %}
+  TVM_FFI_ICHECK(dtype_equal(type_b, dl_int8)) << "packed b must be int8";
+{% else %}
+  TVM_FFI_ICHECK(is_fp8_dtype(type_b)) << "b must be fp8";
+{% endif %} {# Check B dtype END #}
+
+{# Check D dtype. #}
+{% if is_k_contig %}
+  TVM_FFI_ICHECK(dtype_equal(type_d, dl_float32)) << "out must be float32";
+{% elif is_no_group %}
+  TVM_FFI_ICHECK(dtype_equal(type_d, dl_float8_e4m3fn)) << "out must be float8_e4m3fn";
+{% else %}
+
+{% if is_fp4 %}
+  TVM_FFI_ICHECK(dtype_equal(type_d, dl_bfloat16)) << "FP4FP8 out must be bfloat16";
+{% else %}
+  TVM_FFI_ICHECK(is_bf16_or_fp16_dtype(type_d)) << "out must be bf16 or fp16";
+{% endif %}
+
+{% endif %} {# Check D dtype END #}
+
+{# Check scale tensors. #}
+  CHECK_HAS_VALUE_WITH_MSG(scale_a, "scale_a must be provided");
+  CHECK_HAS_VALUE_WITH_MSG(scale_b, "scale_b must be provided");
+  CHECK_DEVICE(a, scale_a.value());
+  CHECK_DEVICE(a, scale_b.value());
+  CHECK_INPUT_TYPE(scale_a.value(), dl_float32);
+
+{# Check scale tensor ranks. #}
+{% if is_masked %}
+  CHECK_DIM(3, scale_a.value());
+  CHECK_DIM(3, scale_b.value());
+  TVM_FFI_ICHECK_EQ(scale_a.value().size(0), num_expert) << "scale_a.size(0) must match num_expert";
+  TVM_FFI_ICHECK_EQ(scale_a.value().size(1), max_m) << "scale_a.size(1) must match max_m";
+  TVM_FFI_ICHECK_EQ(scale_b.value().size(0), num_expert) << "scale_b.size(0) must match num_expert";
+{% elif is_ragged or is_ragged_psum %}
+  CHECK_DIM(2, scale_a.value());
+  CHECK_DIM(3, scale_b.value());
+  TVM_FFI_ICHECK_EQ(scale_a.value().size(0), m) << "scale_a.size(0) must match m";
+  TVM_FFI_ICHECK_EQ(scale_b.value().size(0), num_expert) << "scale_b.size(0) must match num_expert";
+{% else %}
+  CHECK_DIM(2, scale_a.value());
+  CHECK_DIM(2, scale_b.value());
+{% endif %} {# Check scale tensor ranks END #}
+
+{# Check B scale format. #}
+{% if is_fp4 %}
+  CHECK_INPUT_TYPE(scale_b.value(), dl_uint8);
+  CHECK_HAS_VALUE_WITH_MSG(scale_b1, "scale_b1 must be provided for FP4FP8");
+  CHECK_DEVICE(a, scale_b1.value());
+  CHECK_DIM(2, scale_b1.value());
+  CHECK_INPUT_TYPE(scale_b1.value(), dl_float32);
+  TVM_FFI_ICHECK(scale_b1.value().numel() == 0 || scale_b1.value().IsContiguous())
+      << "scale_b1 must be contiguous";
+  TVM_FFI_ICHECK_EQ(scale_b1.value().size(0), num_expert) << "scale_b1.size(0) must match num_expert";
+  TVM_FFI_ICHECK_EQ(scale_b1.value().size(1), n) << "scale_b1.size(1) must match n";
+{% elif is_packed4 %}
+  CHECK_INPUT_TYPE(scale_b.value(), dl_bfloat16);
+{% else %}
+  CHECK_INPUT_TYPE(scale_b.value(), dl_float32);
+{% endif %} {# Check B scale format END #}
+
+  TVM_FFI_ICHECK(scale_b.value().numel() == 0 || scale_b.value().IsContiguous())
+      << "scale_b must be contiguous";
+
+{# Check A scale layout. #}
+{% if is_masked and fixed_scale_layout_a %}
+  if (scale_a.value().numel() != 0) {
+    TVM_FFI_ICHECK_EQ(scale_a.value().stride(-2), 1) << "fixed-layout scale_a must be contiguous in m";
+    TVM_FFI_ICHECK_EQ(scale_a.value().stride(-1), max_m)
+        << "fixed-layout scale_a has unexpected k stride";
+    TVM_FFI_ICHECK_EQ(scale_a.value().stride(0), max_m * scale_a.value().size(-1))
+        << "fixed-layout scale_a has unexpected expert stride";
+  }
+{% else %}
+  TVM_FFI_ICHECK(scale_a.value().numel() == 0 || scale_a.value().IsContiguous())
+      << "scale_a must be contiguous";
+{% endif %} {# Check A scale layout END #}
+
+{# Derive scale metadata. #}
+  const int64_t scale_a_nr_elem = scale_a.value().numel();
+  const int64_t scale_b_nr_elem = scale_b.value().numel();
+
+{% if is_masked %}
+  const int64_t scale_a_m = {{ "scale_a.value().size(1)" if fixed_scale_layout_a else "scale_a.value().size(0) * scale_a.value().size(1)" }};
+  const int64_t scale_a_k = scale_a.value().size(2);
+{% elif fixed_scale_layout_a %}
+  const int64_t scale_a_m = scale_a.value().size(-1);
+  const int64_t scale_a_k = scale_a.value().size(-2);
+{% else %}
+  const int64_t scale_a_m = scale_a.value().size(-2);
+  const int64_t scale_a_k = scale_a.value().size(-1);
+{% endif %}
+
+  const int64_t scale_b_n = kMajorB ? scale_b.value().size(-2) : scale_b.value().size(-1);
+  const int64_t scale_b_k = kMajorB ? scale_b.value().size(-1) : scale_b.value().size(-2);
+{# Derive scale metadata END #}
+
+{# Check scale metadata. #}
+{% if is_k_contig %}
+  TVM_FFI_ICHECK_EQ(scale_a_m, m) << "scale_a must have logical m matching a";
+  TVM_FFI_ICHECK_EQ(scale_b_n, n) << "scale_b must have logical n matching b";
+  TVM_FFI_ICHECK_EQ(scale_a_k, scale_b_k)
+      << "scale_a and scale_b must have matching grouped k extents";
+{% else %}
+{% if is_no_group %}
+  TVM_FFI_ICHECK_EQ(scale_a_m, m) << "scale_a must have logical m matching a";
+{% endif %}
+
+  const int64_t expected_scale_a_k =
+      {{ "1" if quant_mode_a == "TensorQuantMode::CHANNEL" else "mutlass::ceil_div(k, kQuantTile)" }};
+  constexpr bool kScaleBBlock = {{ "true" if quant_mode_b == "TensorQuantMode::BLOCK" else "false" }};
+  const int64_t expected_scale_b_n = kScaleBBlock ? mutlass::ceil_div(n, kQuantTile) : n;
+  TVM_FFI_ICHECK_EQ(scale_a_k, expected_scale_a_k) << "scale_a has unexpected k extent";
+  TVM_FFI_ICHECK_EQ(scale_b_k, mutlass::ceil_div(k, kQuantTile)) << "scale_b has unexpected k extent";
+  TVM_FFI_ICHECK_EQ(scale_b_n, expected_scale_b_n) << "scale_b has unexpected n extent";
+{% endif %} {# Check scale metadata END #}
+{% endmacro %}
+
+void run_{{ func_name }}(const std::string& object_path,
+                         ffi::TensorView a,
+                         ffi::TensorView b,
+                         ffi::TensorView out,
+                         std::optional<ffi::TensorView> scale_a,
+                         std::optional<ffi::TensorView> scale_b,
+                         std::optional<ffi::TensorView> scale_b1,
+                         std::optional<ffi::TensorView> token_info,
+                         std::optional<ffi::TensorView> signal,
+                         std::optional<ffi::TensorView> output_scale = std::nullopt,
+                         std::optional<int64_t> num_target_mp = std::nullopt) {
+  DLDevice device = a.device();
+  auto type_a = a.dtype();
+  auto type_b = b.dtype();
+  auto type_d = out.dtype();
+  constexpr int64_t batch = 1;
+  constexpr int64_t kQuantTile = {{ quant_tile }};
+  constexpr bool kMajorA = {{ "true" if k_major_a else "false" }};
+  constexpr bool kMajorB = {{ "true" if k_major_b else "false" }};
+
+  CHECK_MUSA(a);
+  CHECK_DEVICE(a, b);
+  CHECK_DEVICE(a, out);
+  CHECK_CONTIGUOUS(out);
+
+{# Check tensor shapes. #}
+{% if is_masked %}
+  CHECK_DIM(3, a);
+  CHECK_DIM(3, b);
+  CHECK_DIM(3, out);
+  const int64_t num_expert = a.size(0);
+  const int64_t max_m = kMajorA ? a.size(1) : a.size(2);
+  const int64_t m = num_expert * max_m;
+  const int64_t k = kMajorA ? a.size(2) : a.size(1);
+  const int64_t n = kMajorB ? b.size(1) : b.size(2);
+  TVM_FFI_ICHECK_EQ(b.size(0), num_expert) << "b.size(0) must match num_expert";
+  TVM_FFI_ICHECK_EQ(out.size(0), num_expert) << "out.size(0) must match num_expert";
+  TVM_FFI_ICHECK_EQ(out.size(1), max_m) << "out.size(1) must match max_m";
+  TVM_FFI_ICHECK_EQ(out.size(2), n) << "out.size(2) must match n";
+{% elif is_k_contig %}
+  CHECK_DIM(2, a);
+  CHECK_DIM(2, b);
+  CHECK_DIM(3, out);
+  const int64_t m = kMajorA ? a.size(0) : a.size(1);
+  const int64_t k = kMajorA ? a.size(1) : a.size(0);
+  const int64_t n = kMajorB ? b.size(0) : b.size(1);
+  const int64_t num_expert = out.size(0);
+  TVM_FFI_ICHECK_EQ(out.size(0), num_expert) << "out.size(0) must match num_expert";
+  TVM_FFI_ICHECK_EQ(out.size(1), m) << "out.size(1) must match m";
+  TVM_FFI_ICHECK_EQ(out.size(2), n) << "out.size(2) must match n";
+{% elif is_no_group %}
+  CHECK_DIM(2, a);
+  CHECK_DIM(2, b);
+  CHECK_DIM(2, out);
+  const int64_t m = kMajorA ? a.size(0) : a.size(1);
+  const int64_t k = kMajorA ? a.size(1) : a.size(0);
+  const int64_t n = kMajorB ? b.size(0) : b.size(1);
+  constexpr int64_t num_expert = 1;
+  TVM_FFI_ICHECK_EQ(out.size(0), m) << "out.size(0) must match m";
+  TVM_FFI_ICHECK_EQ(out.size(1), n) << "out.size(1) must match n";
+{% else %}
+  CHECK_DIM(2, a);
+  CHECK_DIM(3, b);
+  CHECK_DIM(2, out);
+  const int64_t m = kMajorA ? a.size(0) : a.size(1);
+  const int64_t k = kMajorA ? a.size(1) : a.size(0);
+  const int64_t num_expert = b.size(0);
+  const int64_t n = kMajorB ? b.size(1) : b.size(2);
+  TVM_FFI_ICHECK_EQ(out.size(0), m) << "out.size(0) must match m";
+  TVM_FFI_ICHECK_EQ(out.size(1), n) << "out.size(1) must match n";
+{% endif %} {# Check tensor shapes END #}
+
+{# Check token info. #}
+{% if not is_no_group %}
+  CHECK_HAS_VALUE_WITH_MSG(token_info, "token_info must be provided");
+  auto token_info_view = token_info.value();
+  CHECK_DEVICE(a, token_info_view);
+  CHECK_DIM(1, token_info_view);
+  TVM_FFI_ICHECK(dtype_equal(token_info_view.dtype(), dl_int32)) << "token_info must be int32";
+  TVM_FFI_ICHECK(token_info_view.IsContiguous()) << "token_info must be contiguous";
+{% if is_ragged %}
+  TVM_FFI_ICHECK_EQ(token_info_view.size(0), m) << "token_info.size(0) must match m";
+{% else %}
+  TVM_FFI_ICHECK_EQ(token_info_view.size(0), num_expert) << "token_info.size(0) must match num_expert";
+{% endif %}
+{% endif %} {# Check token info END #}
+
+  const int64_t b_storage_k = kMajorB ? b.size(-1) : b.size(-2);
+
+{# Check B storage layout. #}
+{% if is_packed4 %}
+  TVM_FFI_ICHECK_EQ(b_storage_k * 2, k) << "packed b must have logical k matching a";
+  CHECK_CONTIGUOUS(b);
+{% else %}
+  TVM_FFI_ICHECK_EQ(b_storage_k, k) << "b must have logical k matching a";
+  TVM_FFI_ICHECK(b.size(-1) <= 1 || b.stride(-1) == 1)
+      << "b must be contiguous at the last dimension";
+{% endif %} {# Check B storage layout END #}
+
+  TVM_FFI_ICHECK(a.size(-1) <= 1 || a.stride(-1) == 1)
+      << "a must be contiguous at the last dimension";
+
+{# Check dtypes and scales. #}
+{% if has_quant %}
+{{ emit_quantized_validation() }}
+{% else %}
+{{ emit_non_quantized_validation() }}
+{% endif %} {# Check dtypes and scales END #}
+
+{# Check signal. #}
+{% if is_masked %}
+  if (signal.has_value()) {
+    CHECK_DEVICE(a, signal.value());
+    CHECK_DIM(1, signal.value());
+    CHECK_INPUT_TYPE(signal.value(), dl_int32);
+    CHECK_CONTIGUOUS(signal.value());
+    TVM_FFI_ICHECK_EQ(signal.value().size(0), num_expert * mutlass::ceil_div(max_m, int64_t{64}))
+        << "signal has unexpected shape";
+  }
+{% endif %} {# Check signal END #}
+
+{# Check output scale. #}
+{% if is_no_group %}
+  CHECK_HAS_VALUE_WITH_MSG(output_scale, "output_scale must be provided");
+  CHECK_DEVICE(a, output_scale.value());
+  CHECK_DIM(2, output_scale.value());
+  CHECK_INPUT_TYPE(output_scale.value(), dl_float32);
+  CHECK_CONTIGUOUS(output_scale.value());
+  TVM_FFI_ICHECK_EQ(output_scale.value().size(0), m) << "output_scale.size(0) must match m";
+  TVM_FFI_ICHECK_EQ(output_scale.value().size(1), mutlass::ceil_div(n, kQuantTile))
+      << "output_scale has unexpected n extent";
+{% endif %} {# Check output scale END #}
+
+  int64_t stride_m_a = kMajorA ? a.stride(-2) : a.stride(-1);
+  int64_t stride_k_a = kMajorA ? a.stride(-1) : a.stride(-2);
+  int64_t stride_batch_a = a.ndim() == 3 ? a.stride(0) * a.size(0) : a.numel();
+  int64_t stride_n_b = kMajorB ? b.stride(-2) : b.stride(-1);
+  int64_t stride_k_b = kMajorB ? b.stride(-1) : b.stride(-2);
+  int64_t stride_batch_b = b.ndim() == 3 ? b.stride(0) : b.numel();
+  int64_t stride_m_out = out.stride(-2);
+
+{# Derive output batch stride. #}
+{% if is_k_contig %}
+  int64_t stride_batch_out = out.stride(0);
+{% else %}
+  int64_t stride_batch_out = out.ndim() == 3 ? out.stride(0) * out.size(0) : out.numel();
+{% endif %} {# Derive output batch stride END #}
+
+  int64_t group_idx_len = token_info.has_value() ? token_info.value().numel() : 0;
+
+  musaDeviceProp device_properties{};
+  MATE_MUSA_RUNTIME_CHECK(musaGetDeviceProperties(&device_properties, device.device_id));
+  TVM_FFI_ICHECK(device_properties.major > 3 ||
+                 (device_properties.major == 3 && device_properties.minor >= 1))
+      << "run_{{ func_name }} requires MP31 or above";
+  const int64_t total_mp_count = device_properties.multiProcessorCount;
+  const int64_t target_mp_count = num_target_mp.value_or(total_mp_count);
+  ffi::MUSADeviceGuard device_guard(device.device_id);
+  musaStream_t stream = get_stream(device);
+
+{# Handle zero-sized inputs. #}
+{% if is_k_contig %}
+  if (m == 0 || n == 0 || k == 0) {
+    return;
+  }
+{% else %}
+  if (m == 0 || n == 0) {
+    return;
+  }
+  if (k == 0) {
+{% if is_masked %}
+    TVM_FFI_ICHECK(!signal.has_value()) << "masked overlap is not supported when k is zero";
+{% endif %}
+    const size_t bytes = static_cast<size_t>(out.numel()) * dl_dtype_size(out.dtype());
+    MATE_MUSA_RUNTIME_CHECK(musaMemsetAsync(out.data_ptr(), 0, bytes, stream));
+    return;
+  }
+{% endif %} {# Handle zero-sized inputs END #}
+
+{% if not is_no_group %}
+  TVM_FFI_ICHECK_GT(num_expert, 0) << "num_expert must be greater than zero";
+{% endif %}
+
+  auto type_scale_a = scale_a.has_value() ? scale_a.value().dtype() : dl_float32;
+  auto type_scale_b = scale_b.has_value() ? scale_b.value().dtype() : dl_float32;
+  auto p_a = a.data_ptr();
+  auto p_b = b.data_ptr();
+  auto p_d = out.data_ptr();
+  auto p_scale_a = scale_a.has_value() ? scale_a.value().data_ptr() : nullptr;
+  auto p_scale_b = scale_b.has_value() ? scale_b.value().data_ptr() : nullptr;
+  auto p_scale_b1 = scale_b1.has_value() ? scale_b1.value().data_ptr() : nullptr;
+  auto p_token_info = token_info.has_value() ? token_info.value().data_ptr() : nullptr;
+  auto p_scale_out = output_scale.has_value() ? output_scale.value().data_ptr() : nullptr;
+
+  GemmParams params;
+
+  constexpr int kNumThread = {{ num_thread }};
+  constexpr int kTileM = {{ tile_m }};
+  constexpr int kTileN = {{ tile_n }};
+  constexpr int kTileK = {{ tile_k }};
+
+{# Define masked launch constants. #}
+{% if is_masked %}
+  constexpr int kBlkPerMp = {{ blk_per_mp }};
+{% endif %} {# Define masked launch constants END #}
+
+  constexpr int kNumSquadM = {{ num_squad_m }};
+  constexpr int kNumSquadN = {{ num_squad_n }};
+  constexpr int kMacroTileX = {{ macro_tile_x }};
+
+  int batch_b = {{ "1" if is_k_contig or is_no_group else "num_expert" }};
+
+  int64_t tme_a_dim0;
+  int64_t tme_a_dim1;
+  int64_t tme_a_dim2;
+  int64_t tme_a_stride0;
+  int64_t tme_a_stride1;
+  int64_t tme_b_dim0;
+  int64_t tme_b_dim1;
+  int64_t tme_b_dim2;
+  int64_t tme_b_stride0;
+  int64_t tme_b_stride1;
+
+  tme_a_dim0 = {{ "k" if k_major_a else "m" }};
+  tme_a_dim1 = {{ "m" if k_major_a else "k" }};
+  tme_a_stride0 = {{ "stride_m_a" if k_major_a else "stride_k_a" }};
+  tme_a_dim2 = batch;
+  tme_a_stride1 = stride_batch_a;
+
+{# Configure B descriptor layout. #}
+{% if is_packed4 %}
+  tme_b_dim0 = k / 2;
+  tme_b_dim1 = n;
+  tme_b_stride0 = stride_n_b;
+{% else %}
+  tme_b_dim0 = {{ "k" if k_major_b else "n" }};
+  tme_b_dim1 = {{ "n" if k_major_b else "k" }};
+  tme_b_stride0 = {{ "stride_n_b" if k_major_b else "stride_k_b" }};
+{% endif %} {# Configure B descriptor layout END #}
+
+  tme_b_dim2 = batch_b;
+  tme_b_stride1 = stride_batch_b;
+
+  TmeDesc tensor_desc_a(mute::make_tuple(tme_a_dim0, tme_a_dim1, tme_a_dim2),
+                        mute::make_tuple(tme_a_stride0, tme_a_stride1),
+                        p_a,
+                        dl_dtype_to_tme_type(type_a));
+  TmeDesc tensor_desc_b(mute::make_tuple(tme_b_dim0, tme_b_dim1, tme_b_dim2),
+                        mute::make_tuple(tme_b_stride0, tme_b_stride1),
+                        p_b,
+{# Configure B descriptor dtype. #}
+{% if is_packed4 %}
+                        MU_TENSOR_DESCRIPTOR_DATA_TYPE_INT8);
+{% else %}
+                        dl_dtype_to_tme_type(type_b));
+{% endif %} {# Configure B descriptor dtype END #}
+  TmeDesc tensor_desc_c(mute::make_tuple(static_cast<size_t>(n), static_cast<size_t>(m), static_cast<size_t>(batch)),
+                        mute::make_tuple(stride_m_out, stride_batch_out),
+                        p_d,
+                        dl_dtype_to_tme_type(type_d));
+
+  int grid_x = mutlass::ceil_div(n, kTileN);
+  int grid_y = mutlass::ceil_div(m, kTileM);
+  int grid_z = {{ "num_expert" if is_k_contig else "1" }};
+
+  int gridy_in_group = grid_y;
+
+{# Adjust grid for group mode. #}
+{% if is_masked %}
+  gridy_in_group = mutlass::ceil_div(max_m, kTileM);
+  grid_y = gridy_in_group * num_expert;
+{% elif is_ragged_psum %}
+  grid_y = mutlass::ceil_div(m, kTileM) + num_expert - 1;
+  gridy_in_group = grid_y;
+{% endif %} {# Adjust grid for group mode END #}
+
+  int swizzle_dim0 = {{ "grid_y" if switch_swizzle else "grid_x" }};
+  int swizzle_dim1 = {{ "grid_x" if switch_swizzle else "grid_y" }};
+  int macro_tile_size = kMacroTileX * swizzle_dim1;
+  int res_tile_x = swizzle_dim0 % kMacroTileX;
+
+  auto fast_macro_tile_x = mutlass::FastDivmod(kMacroTileX);
+  auto fast_res_tile_x = get_fast_div_mod(res_tile_x);
+  auto fast_macro_tile_size = mutlass::FastDivmod(macro_tile_size);
+  auto fast_batch = mutlass::FastDivmod(batch);
+  auto fast_xytile = mutlass::FastDivmod(grid_y * grid_x);
+  auto fast_gridx = mutlass::FastDivmod(grid_x);
+  auto fast_nr_block_group = mutlass::FastDivmod(gridy_in_group * grid_x);
+
+  params.output_ptr = p_d;
+
+{# Set output scale pointer. #}
+{% if is_no_group %}
+  params.amax_ptr = p_scale_out;
+{% endif %} {# Set output scale pointer END #}
+
+  params.a_desc = tensor_desc_a.desc;
+  params.b_desc = tensor_desc_b.desc;
+  params.c_desc = tensor_desc_c.desc;
+  params.kpart_desc = tensor_desc_c.desc;
+  params.robust_input_a_scale =
+      mute::make_robust_desc(static_cast<uint8_t*>(p_scale_a),
+                             static_cast<size_t>(scale_a_nr_elem) * dl_dtype_size(type_scale_a)).reg;
+  params.robust_input_b_scale =
+      mute::make_robust_desc(static_cast<uint8_t*>(p_scale_b),
+                             static_cast<size_t>(scale_b_nr_elem) * dl_dtype_size(type_scale_b)).reg;
+  if (scale_b1.has_value()) {
+    params.robust_input_b_scale1 =
+        mute::make_robust_desc(static_cast<uint8_t*>(p_scale_b1),
+                               scale_b1.value().numel() * sizeof(float)).reg;
+  }
+  params.robust_group_idx = mute::make_robust_desc(static_cast<int*>(p_token_info), group_idx_len).reg;
+
+{# Configure K-contiguous output accumulation. #}
+{% if is_k_contig %}
+  params.beta = 1.0f;
+  params.robust_input_z =
+      mute::make_robust_desc(static_cast<uint8_t*>(p_d),
+                             static_cast<size_t>(m) * n * num_expert * dl_dtype_size(type_d)).reg;
+{% endif %} {# Configure K-contiguous output accumulation END #}
+
+{# Configure masked synchronization. #}
+{% if is_masked %}
+  params.sync_out_flag_ptr = signal.has_value() ? static_cast<int32_t*>(signal.value().data_ptr()) : nullptr;
+  params.mask_blky_per_group = gridy_in_group;
+{% endif %} {# Configure masked synchronization END #}
+
+  params.scale_a_mode = static_cast<int>({{ quant_mode_a }});
+  params.scale_b_mode = static_cast<int>({{ quant_mode_b }});
+  params.scale_d_mode = 0;
+  params.scale_a_m = scale_a_m;
+  params.scale_a_k = scale_a_k;
+  params.scale_b_k = scale_b_k;
+  params.scale_b_n = scale_b_n;
+  params.batch_stride_scale_a = params.scale_a_m * params.scale_a_k;
+  params.batch_stride_scale_b = params.scale_b_k * params.scale_b_n;
+  params.m = m;
+  params.n = n;
+  params.k = k;
+  params.num_expert = num_expert;
+  params.ldd = n;
+  params.ldc = n;
+  params.total_tile = grid_x * grid_y * grid_z;
+  params.mask_m_max = m / num_expert;
+  params.macro_bidx_max = swizzle_dim0 / kMacroTileX * kMacroTileX;
+  params.macro_bid_max = swizzle_dim0 / kMacroTileX * kMacroTileX * swizzle_dim1;
+  params.batch_stride_d = stride_batch_out;
+  params.batch_stride_c = params.batch_stride_d;
+  params.k_part = 0;
+  params.k_part_block = k;
+  params.ldkpart = mutlass::ceil_div(n, kTileN) * kTileN;
+  params.kpart_batch_stride_c = static_cast<int64_t>(mutlass::ceil_div(m, kTileM)) * kTileM * params.ldkpart;
+  params.fast_xytile_ori = fast_xytile.divisor;
+  params.fast_xytile_mul = fast_xytile.multiplier;
+  params.fast_xytile_sft = fast_xytile.shift_right;
+  params.fast_batch_ori = fast_batch.divisor;
+  params.fast_batch_mul = fast_batch.multiplier;
+  params.fast_batch_sft = fast_batch.shift_right;
+  params.fast_nr_block_group_ori = fast_nr_block_group.divisor;
+  params.fast_nr_block_group_mul = fast_nr_block_group.multiplier;
+  params.fast_nr_block_group_sft = fast_nr_block_group.shift_right;
+  params.fast_gridx_ori = fast_gridx.divisor;
+  params.fast_gridx_mul = fast_gridx.multiplier;
+  params.fast_gridx_sft = fast_gridx.shift_right;
+  params.switch_swizzle = {{ 1 if switch_swizzle else 0 }};
+  params.max_tile_y = swizzle_dim1 - 1;
+  params.quant_tile = kQuantTile;
+  params.fast_macro_tile_x_ori = fast_macro_tile_x.divisor;
+  params.fast_macro_tile_x_mul = fast_macro_tile_x.multiplier;
+  params.fast_macro_tile_x_sft = fast_macro_tile_x.shift_right;
+  params.fast_res_tile_x_ori = fast_res_tile_x.divisor;
+  params.fast_res_tile_x_mul = fast_res_tile_x.multiplier;
+  params.fast_res_tile_x_sft = fast_res_tile_x.shift_right;
+  params.fast_macro_tile_size_ori = fast_macro_tile_size.divisor;
+  params.fast_macro_tile_size_mul = fast_macro_tile_size.multiplier;
+  params.fast_macro_tile_size_sft = fast_macro_tile_size.shift_right;
+
+  params.tile_a_dim0 = {{ "kTileK / dl_dtype_size(type_a)" if k_major_a else "kTileM / kNumSquadM" }};
+  params.tile_a_dim1 = {{ "kTileM / kNumSquadM" if k_major_a else "kTileK / dl_dtype_size(type_a)" }};
+  params.tile_a_dim2 = 1;
+
+{# Configure B tile layout. #}
+{% if is_packed4 %}
+  params.tile_b_dim0 = kTileK / 2;
+  params.tile_b_dim1 = kTileN / kNumSquadN;
+{% else %}
+  params.tile_b_dim0 = {{ "kTileK / dl_dtype_size(type_b)" if k_major_b else "kTileN / kNumSquadN" }};
+  params.tile_b_dim1 = {{ "kTileN / kNumSquadN" if k_major_b else "kTileK / dl_dtype_size(type_b)" }};
+{% endif %} {# Configure B tile layout END #}
+
+  params.tile_b_dim2 = 1;
+
+  params.tile_c_dim0 = 128 / dl_dtype_size(type_d);
+  params.tile_c_dim1 = 4;
+  params.tile_c_dim2 = 1;
+  params.tile_x1_dim0 = 160 % 128;
+  params.tile_x1_dim1 = 128;
+  params.tile_x1_dim2 = 1;
+
+  MUlaunchConfig launch_config;
+  launch_config.blockDimX = kNumThread;
+  launch_config.blockDimY = 1;
+  launch_config.blockDimZ = 1;
+  int launch_block_count = static_cast<int>(std::min<int64_t>(target_mp_count, params.total_tile));
+  launch_config.gridDimX = launch_block_count;
+  launch_config.gridDimY = 1;
+  launch_config.gridDimZ = 1;
+  launch_config.hStream = reinterpret_cast<MUstream>(stream);
+  launch_config.sharedMemBytes = 0;
+  launch_config.attrs = NULL;
+  launch_config.numAttrs = 0;
+
+{# Adjust masked launch grid. #}
+{% if is_masked %}
+  int64_t max_blk_cnt =
+      target_mp_count == total_mp_count ? total_mp_count * kBlkPerMp : target_mp_count;
+  launch_config.gridDimX = static_cast<int>(std::min<int64_t>(max_blk_cnt, params.total_tile));
+{% endif %} {# Adjust masked launch grid END #}
+
+  static MUmodule asm_module = [&object_path]() {
+    MUmodule module;
+    MATE_MUSA_DRIVER_CHECK(muModuleLoad(&module, object_path.c_str()));
+    return module;
+  }();
+  static MUfunction asm_func = []() {
+    MUfunction func;
+    MATE_MUSA_DRIVER_CHECK(muModuleGetFunction(&func, asm_module, "{{ func_name }}"));
+    return func;
+  }();
+
+  void* kernel_params[] = {&params.output_ptr,
+                           &params.amax_ptr,
+                            &params.a_desc,
+                            &params.b_desc,
+                            &params.c_desc,
+                            &params.kpart_desc,
+                            &params.robust_input_bias,
+                            &params.robust_input_z,
+                           &params.robust_input_a_scale,
+                           &params.robust_input_b_scale,
+                           &params.robust_input_a_scale1,
+                           &params.robust_input_b_scale1,
+                           &params.robust_input_d_scale,
+                           &params.rcp_scale_o,
+                           &params.k_part_buffer,
+                           &params.k_part_flag,
+                           &params.robust_group_idx,
+                           &params.robust_group_scale_idx,
+                           &params.group_scale_a_robust_vec,
+                           &params.group_scale_b_robust_vec,
+                           &params.sync_out_flag_ptr,
+                           &params.mask_blky_per_group,
+                            &params.alpha,
+                            &params.beta,
+                            &params.gamma,
+                            &params.act_param,
+                            &params.scale_a_mode,
+                           &params.scale_b_mode,
+                           &params.scale_d_mode,
+                           &params.scale_a_m,
+                           &params.scale_a_k,
+                           &params.scale_b_k,
+                           &params.scale_b_n,
+                           &params.batch_stride_scale_a,
+                           &params.batch_stride_scale_b,
+                           &params.quant_tile,
+                           &params.amax_mode,
+                           &params.act_mode,
+                           &params.m,
+                           &params.n,
+                           &params.k,
+                           &params.num_expert,
+                           &params.ldd,
+                           &params.ldc,
+                           &params.out_trans_stride,
+                           &params.fast_out_trans_ori,
+                           &params.fast_out_trans_mul,
+                           &params.fast_out_trans_sft,
+                           &params.total_tile,
+                           &params.mask_m_max,
+                           &params.macro_bidx_max,
+                           &params.batch_stride_d,
+                           &params.batch_stride_c,
+                           &params.k_part,
+                           &params.k_part_block,
+                           &params.ldkpart,
+                           &params.kpart_batch_stride_c,
+                           &params.fast_xytile_ori,
+                           &params.fast_xytile_mul,
+                           &params.fast_xytile_sft,
+                           &params.fast_batch_ori,
+                           &params.fast_batch_mul,
+                           &params.fast_batch_sft,
+                           &params.fast_nr_block_group_ori,
+                           &params.fast_nr_block_group_mul,
+                           &params.fast_nr_block_group_sft,
+                           &params.fast_gridx_ori,
+                           &params.fast_gridx_mul,
+                           &params.fast_gridx_sft,
+                           &params.cluster_dimx,
+                           &params.macro_bid_max,
+                           &params.switch_swizzle,
+                           &params.max_tile_y,
+                           &params.fast_macro_tile_x_ori,
+                           &params.fast_macro_tile_x_mul,
+                           &params.fast_macro_tile_x_sft,
+                           &params.fast_res_tile_x_ori,
+                           &params.fast_res_tile_x_mul,
+                           &params.fast_res_tile_x_sft,
+                           &params.fast_macro_tile_size_ori,
+                           &params.fast_macro_tile_size_mul,
+                           &params.fast_macro_tile_size_sft,
+                           &params.tile_a_dim0,
+                           &params.tile_a_dim1,
+                           &params.tile_a_dim2,
+                           &params.tile_b_dim0,
+                           &params.tile_b_dim1,
+                           &params.tile_b_dim2,
+                           &params.tile_c_dim0,
+                           &params.tile_c_dim1,
+                           &params.tile_c_dim2,
+                           &params.tile_x1_dim0,
+                           &params.tile_x1_dim1,
+                           &params.tile_x1_dim2};
+
+  MATE_MUSA_DRIVER_CHECK(muLaunchKernelEx(&launch_config, asm_func, kernel_params, nullptr));
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(run_{{ func_name }}, run_{{ func_name }});

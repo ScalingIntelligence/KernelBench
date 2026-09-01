@@ -1,0 +1,77 @@
+#include <musa_runtime.h>
+#include <type_traits>
+
+#include "mate/gemm/deep_gemm/mp31_fp8_paged_mqa_logits.hpp"
+#include "op_utils.hpp"
+
+using namespace mute;
+
+void get_paged_mqa_logits_metadata(
+    ffi::TensorView context_lens,
+    int64_t         block_kv,
+    ffi::TensorView schedule_meta)
+{
+  CHECK_MUSA(context_lens);
+  CHECK_MUSA(schedule_meta);
+  CHECK_CONTIGUOUS(context_lens);
+  CHECK_CONTIGUOUS(schedule_meta);
+  CHECK_INPUT_TYPE(context_lens, dl_int32);
+  CHECK_INPUT_TYPE(schedule_meta, dl_int32);
+  CHECK_DEVICE(schedule_meta, context_lens);
+  TVM_FFI_ICHECK(context_lens.dim() == 1 || context_lens.dim() == 2)
+      << "context_lens must be 1D [batch] or 2D [batch, next_n]";
+  CHECK_DIM(2, schedule_meta);
+  TVM_FFI_ICHECK(block_kv > 0) << "block_kv must be positive";
+
+  ffi::MUSADeviceGuard device_guard(context_lens.device().device_id);
+
+  const bool is_context_lens_2d = (context_lens.dim() == 2);
+  const int  batch_size         = static_cast<int>(context_lens.size(0));
+  const int  next_n             = is_context_lens_2d
+                                    ? static_cast<int>(context_lens.size(1)) : 1;
+
+  TVM_FFI_ICHECK(!is_context_lens_2d || next_n == 1 || next_n == 2 || next_n == 4)
+      << "2D context_lens: next_n must be 1, 2 or 4, got " << next_n;
+
+  musaDeviceProp dprops{};
+  MATE_MUSA_RUNTIME_CHECK(musaGetDeviceProperties(&dprops, context_lens.device().device_id));
+  const int64_t num_mps = schedule_meta.size(0) - 1;
+  TVM_FFI_ICHECK(schedule_meta.size(1) == 2) << "schedule_meta shape must be [num_mps + 1, 2]";
+  TVM_FFI_ICHECK(num_mps > 0 && num_mps <= dprops.multiProcessorCount)
+      << "num_mps must be in range [1, " << dprops.multiProcessorCount << "]";
+
+  constexpr int kAlignedBatch       = {{ aligned_batch_size }};  {# baked in at JIT time #}
+  constexpr int num_math_warpsquads = 4;
+  constexpr int num_threads         = 32;
+  const int     split_kv            = block_kv * num_math_warpsquads;
+  const int     smem_size           = kAlignedBatch * static_cast<int>(sizeof(int));
+
+  TVM_FFI_ICHECK(smem_size <= 192 * 1024) << "smem_size exceeds 192KB";
+
+  musaStream_t stream = get_stream(context_lens.device());
+
+  auto* ctx_ptr  = static_cast<uint32_t*>(context_lens.data_ptr());
+  auto* meta_ptr = static_cast<uint32_t*>(schedule_meta.data_ptr());
+
+  auto launch = [&](auto IsContextLens2DTag, auto NextNTag) {
+    constexpr bool kIs2D  = decltype(IsContextLens2DTag)::value;
+    constexpr int  kNextN = decltype(NextNTag)::value;
+    mate::deep_gemm::mpxx_paged_mqa_logits_metadata<kAlignedBatch, kIs2D, kNextN>
+        <<<1, num_threads, smem_size, stream>>>(
+            batch_size, ctx_ptr, meta_ptr, split_kv, num_mps);
+  };
+
+  auto dispatch_next_n = [&](auto IsContextLens2DTag) {
+    if      (next_n == 1) launch(IsContextLens2DTag, mute::_1{});
+    else if (next_n == 2) launch(IsContextLens2DTag, mute::_2{});
+    else                  launch(IsContextLens2DTag, mute::_4{});
+  };
+
+  if (is_context_lens_2d) {
+    dispatch_next_n(std::true_type{});
+  } else {
+    dispatch_next_n(std::false_type{});
+  }
+
+  MATE_MUSA_RUNTIME_CHECK(musaGetLastError());
+}

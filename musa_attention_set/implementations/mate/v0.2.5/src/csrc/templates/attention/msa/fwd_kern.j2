@@ -1,0 +1,233 @@
+#include <cstdint>
+
+#include <musa_runtime.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/mutlass.h>
+
+#include "mate/attention/msa/msa_fwd.hpp"
+#include "op_utils.hpp"
+
+namespace {
+
+using Element = {{ element }};
+
+static constexpr bool kIsCausal = {{ "true" if causal else "false" }};
+// Both local GQA ratios use physical M16 SQMMA. Ratio-8 prefill dispatches
+// to the two-query pair-union kernel; decode and ratio-16 use one query/CTA.
+static constexpr int  kHeadRatio = {{ head_ratio }};
+static constexpr int  kHeadDim   = {{ head_dim }};
+static constexpr int  kTileKV    = {{ tile_kv }};
+static constexpr int  kTopK      = {{ topk }};
+
+namespace msa = mate::attention::msa;
+
+template <class T>
+struct KernelTag {
+  using Type = T;
+};
+
+template <int HeadRatio>
+using Builder = msa::MsaFwdBuilder<
+    Element,
+    HeadRatio,
+    msa::IsCausal<std::integral_constant<bool, kIsCausal>>>;
+using KernelRatio8  = typename Builder<8>::Kernel;
+using KernelRatio16 = typename Builder<16>::Kernel;
+using KernelRatio8PairUnion = typename msa::MsaFwdPairUnionBuilder<
+    Element,
+    msa::IsCausal<std::integral_constant<bool, kIsCausal>>>::Kernel;
+
+}  // namespace
+
+void {{ func_name }}(
+    ffi::TensorView q,
+    ffi::TensorView k,
+    ffi::TensorView v,
+    ffi::TensorView kv_block_indexes,
+    ffi::TensorView cu_seqlens_q,
+    ffi::TensorView seqused_k,
+    ffi::TensorView qo_offset,
+    ffi::TensorView page_table,
+    ffi::Optional<ffi::TensorView> kv_page_indptr,
+    int64_t max_seqlen_q,
+    int64_t max_seqlen_k,
+    double softmax_scale,
+    double k_scale,
+    double v_scale,
+    bool causal,
+    ffi::TensorView out,
+    ffi::TensorView lse) {
+  CHECK_MUSA(q);
+  CHECK_MUSA(k);
+  CHECK_MUSA(v);
+  CHECK_MUSA(kv_block_indexes);
+  CHECK_MUSA(cu_seqlens_q);
+  CHECK_MUSA(seqused_k);
+  CHECK_MUSA(qo_offset);
+  CHECK_MUSA(page_table);
+  CHECK_MUSA(out);
+  CHECK_MUSA(lse);
+
+  CHECK_DIM(3, q);
+  CHECK_DIM(4, k);
+  CHECK_DIM(4, v);
+  CHECK_DIM(3, kv_block_indexes);
+  CHECK_DIM(1, cu_seqlens_q);
+  CHECK_DIM(1, seqused_k);
+  CHECK_DIM(1, qo_offset);
+  CHECK_DIM(3, out);
+  CHECK_DIM(2, lse);
+
+  CHECK_INPUT_TYPE(q, {{ element_dtype }});
+  CHECK_INPUT_TYPE(k, {{ element_dtype }});
+  CHECK_INPUT_TYPE(v, {{ element_dtype }});
+  CHECK_INPUT_TYPE(kv_block_indexes, dl_int32);
+  CHECK_INPUT_TYPE(cu_seqlens_q, dl_int32);
+  CHECK_INPUT_TYPE(seqused_k, dl_int32);
+  CHECK_INPUT_TYPE(qo_offset, dl_int32);
+  CHECK_INPUT_TYPE(page_table, dl_int32);
+  CHECK_INPUT_TYPE(out, {{ element_dtype }});
+  CHECK_INPUT_TYPE(lse, dl_float32);
+
+  CHECK_CONTIGUOUS(q);
+  CHECK_CONTIGUOUS(k);
+  CHECK_CONTIGUOUS(v);
+  CHECK_CONTIGUOUS(kv_block_indexes);
+  CHECK_CONTIGUOUS(cu_seqlens_q);
+  CHECK_CONTIGUOUS(seqused_k);
+  CHECK_CONTIGUOUS(qo_offset);
+  CHECK_CONTIGUOUS(page_table);
+  CHECK_CONTIGUOUS(out);
+  CHECK_CONTIGUOUS(lse);
+
+  CHECK_DEVICE(k, q);
+  CHECK_DEVICE(v, q);
+  CHECK_DEVICE(kv_block_indexes, q);
+  CHECK_DEVICE(cu_seqlens_q, q);
+  CHECK_DEVICE(seqused_k, q);
+  CHECK_DEVICE(qo_offset, q);
+  CHECK_DEVICE(page_table, q);
+  CHECK_DEVICE(out, q);
+  CHECK_DEVICE(lse, q);
+
+  if (kv_page_indptr.has_value()) {
+    CHECK_MUSA(kv_page_indptr.value());
+    CHECK_DIM(1, kv_page_indptr.value());
+    CHECK_INPUT_TYPE(kv_page_indptr.value(), dl_int32);
+    CHECK_CONTIGUOUS(kv_page_indptr.value());
+    CHECK_DEVICE(kv_page_indptr.value(), q);
+    CHECK_DIM(1, page_table);
+  } else {
+    CHECK_DIM(2, page_table);
+  }
+
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+
+  int batch_size   = static_cast<int>(cu_seqlens_q.size(0) - 1);
+  int total_q      = static_cast<int>(q.size(0));
+  int num_q_heads  = static_cast<int>(q.size(1));
+  int num_kv_heads = static_cast<int>(k.size(2));
+  int num_pages    = static_cast<int>(k.size(0));
+  int total_k      = num_pages * kTileKV;
+
+  TVM_FFI_ICHECK_GE(batch_size, 0);
+  TVM_FFI_ICHECK_EQ(seqused_k.size(0), batch_size);
+  TVM_FFI_ICHECK_EQ(qo_offset.size(0), batch_size);
+  TVM_FFI_ICHECK_EQ(q.size(2), kHeadDim);
+  TVM_FFI_ICHECK_EQ(k.size(1), kTileKV);
+  TVM_FFI_ICHECK_EQ(k.size(3), kHeadDim);
+  TVM_FFI_ICHECK_EQ(v.size(0), k.size(0));
+  TVM_FFI_ICHECK_EQ(v.size(1), k.size(1));
+  TVM_FFI_ICHECK_EQ(v.size(2), k.size(2));
+  TVM_FFI_ICHECK_EQ(v.size(3), k.size(3));
+  TVM_FFI_ICHECK_GT(num_kv_heads, 0);
+  TVM_FFI_ICHECK_EQ(num_q_heads % num_kv_heads, 0);
+  int const head_ratio = num_q_heads / num_kv_heads;
+  TVM_FFI_ICHECK(head_ratio == 8 || head_ratio == kHeadRatio);
+  TVM_FFI_ICHECK_EQ(kv_block_indexes.size(0), total_q);
+  TVM_FFI_ICHECK_EQ(kv_block_indexes.size(1), num_kv_heads);
+  TVM_FFI_ICHECK_EQ(kv_block_indexes.size(2), kTopK);
+  TVM_FFI_ICHECK_EQ(out.size(0), total_q);
+  TVM_FFI_ICHECK_EQ(out.size(1), num_q_heads);
+  TVM_FFI_ICHECK_EQ(out.size(2), kHeadDim);
+  TVM_FFI_ICHECK_EQ(lse.size(0), total_q);
+  TVM_FFI_ICHECK_EQ(lse.size(1), num_q_heads);
+  TVM_FFI_ICHECK_EQ(causal, kIsCausal);
+  TVM_FFI_ICHECK_GT(max_seqlen_q, 0);
+  TVM_FFI_ICHECK_GT(max_seqlen_k, 0);
+
+  if (kv_page_indptr.has_value()) {
+    TVM_FFI_ICHECK_EQ(kv_page_indptr.value().size(0), batch_size + 1);
+  } else {
+    TVM_FFI_ICHECK_EQ(page_table.size(0), batch_size);
+    TVM_FFI_ICHECK_EQ(page_table.size(1), (max_seqlen_k + kTileKV - 1) / kTileKV);
+  }
+
+  if (total_q == 0) {
+    return;
+  }
+
+  auto launch = [&](auto kernel_tag) {
+    using Kernel = typename decltype(kernel_tag)::Type;
+    typename Kernel::ProblemSize problem_size{
+        batch_size,
+        total_q,
+        total_k,
+        num_q_heads,
+        num_kv_heads,
+        static_cast<int>(max_seqlen_q),
+        static_cast<int>(max_seqlen_k),
+    };
+
+    typename Kernel::Arguments arguments{
+        problem_size,
+        {
+            static_cast<Element const*>(q.data_ptr()),
+            static_cast<Element const*>(k.data_ptr()),
+            static_cast<Element const*>(v.data_ptr()),
+            static_cast<int32_t const*>(kv_block_indexes.data_ptr()),
+            static_cast<int32_t const*>(page_table.data_ptr()),
+            kv_page_indptr.has_value()
+                ? static_cast<int32_t const*>(kv_page_indptr.value().data_ptr())
+                : nullptr,
+            static_cast<float>(softmax_scale),
+            static_cast<float>(k_scale),
+            static_cast<float>(v_scale),
+        },
+        {
+            static_cast<Element*>(out.data_ptr()),
+            static_cast<float*>(lse.data_ptr()),
+        },
+        {
+            static_cast<int32_t const*>(cu_seqlens_q.data_ptr()),
+            static_cast<int32_t const*>(seqused_k.data_ptr()),
+            static_cast<int32_t const*>(qo_offset.data_ptr()),
+        },
+    };
+    arguments.hw_info.device_id = q.device().device_id;
+    arguments.hw_info.sm_count =
+        mutlass::KernelHardwareInfo::query_device_multiprocessor_count(q.device().device_id);
+
+    TVM_FFI_ICHECK(Kernel::can_implement(arguments));
+    typename Kernel::Params params = Kernel::to_underlying_arguments(arguments);
+
+    auto kernel = mutlass::device_kernel<Kernel>;
+    MATE_MUSA_RUNTIME_CHECK(musaFuncSetAttribute(
+        kernel, musaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(Kernel::SharedStorageSize)));
+    musaStream_t stream = get_stream(q.device());
+    kernel<<<Kernel::get_grid_shape(params), Kernel::MaxThreadsPerBlock, Kernel::SharedStorageSize, stream>>>(params);
+    MATE_CHECK_MUSA_KERNEL_LAUNCH();
+  };
+
+  if (head_ratio == 8) {
+    if (max_seqlen_q > 1) {
+      launch(KernelTag<KernelRatio8PairUnion>{});
+    } else {
+      launch(KernelTag<KernelRatio8>{});
+    }
+  } else {
+    launch(KernelTag<KernelRatio16>{});
+  }
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC({{ func_name }}, {{ func_name }});

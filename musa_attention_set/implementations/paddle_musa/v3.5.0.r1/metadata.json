@@ -1,0 +1,22 @@
+{
+  "project": "paddle_musa",
+  "repository": "https://github.com/MooreThreads/paddle_musa",
+  "revision": "607ef3c045a88d0cda868771c91e862c052be0da",
+  "revision_label": "v3.5.0.r1",
+  "upstream_commit_date": "2026-07-06T14:21:34+08:00",
+  "retrieved_at": "2026-09-01",
+  "license": "Apache-2.0",
+  "operator_families": [
+    "flash_attention_forward",
+    "flash_attention_backward",
+    "flash_attention_kv_cache_mate"
+  ],
+  "hardware": ["S5000"],
+  "software_requirements": ["MUSA SDK >= 4.3.5", "MUSA SDK 5.1.0 recommended", "PaddlePaddle"],
+  "source_scope": [
+    "FlashAttention registration and MATE KV-cache bridge",
+    "build rule, framework patch, and unit test"
+  ],
+  "archive_status": "source-archived-selective",
+  "validation_status": "provenance-verified-not-built"
+}

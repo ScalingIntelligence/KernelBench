@@ -1,0 +1,189 @@
+#include <cstdint>
+
+#include <musa_runtime.h>
+#include <mutlass/device_kernel.h>
+#include <mutlass/mutlass.h>
+
+#include "mate/attention/msa/msa_maxscore.hpp"
+#include "op_utils.hpp"
+
+namespace {
+
+using Element = {{ element }};
+
+static constexpr bool kIsPagedKV = {{ "true" if is_paged_kv else "false" }};
+static constexpr bool kIsCausal  = {{ "true" if causal else "false" }};
+static constexpr int  kHeadDim   = {{ head_dim }};
+static constexpr int  kHeadRatio = {{ head_ratio }};
+static constexpr int  kTileQ     = {{ tile_q }};
+static constexpr int  kTileKV    = 128;
+static constexpr int  kQStages   = {{ q_stages }};
+static constexpr int  kKStages   = {{ k_stages }};
+static constexpr bool kParallelKTiles = {{ "true" if parallel_k_tiles else "false" }};
+
+namespace msa = mate::attention::msa;
+
+using TileShape = mute::Shape<mute::Int<kTileQ>, mute::Int<kTileKV>, mute::Int<kHeadDim>>;
+using Builder   = msa::MsaMaxScoreBuilder<Element,
+                                          TileShape,
+                                          kHeadRatio,
+                                          kQStages,
+                                          kKStages,
+                                          kParallelKTiles,
+                                          msa::IsPagedKV<std::integral_constant<bool, kIsPagedKV>>,
+                                          msa::IsCausal<std::integral_constant<bool, kIsCausal>>>;
+using Kernel    = typename Builder::Kernel;
+
+}  // namespace
+
+void {{ func_name }}(
+    ffi::TensorView q,
+    ffi::TensorView k,
+    ffi::TensorView cu_seqlens_q,
+    ffi::TensorView cu_seqlens_k,
+    ffi::TensorView qo_offset,
+    ffi::Optional<ffi::TensorView> page_table,
+    ffi::Optional<ffi::TensorView> kv_page_indptr,
+    ffi::TensorView max_score,
+    int64_t max_seqlen_q,
+    int64_t max_seqlen_k,
+    bool causal) {
+  CHECK_MUSA(q);
+  CHECK_MUSA(k);
+  CHECK_MUSA(cu_seqlens_q);
+  CHECK_MUSA(cu_seqlens_k);
+  CHECK_MUSA(qo_offset);
+  CHECK_MUSA(max_score);
+  CHECK_DIM(3, q);
+  CHECK_DIM(kIsPagedKV ? 4 : 3, k);
+  CHECK_DIM(1, cu_seqlens_q);
+  CHECK_DIM(1, cu_seqlens_k);
+  CHECK_DIM(1, qo_offset);
+  CHECK_DIM(3, max_score);
+  CHECK_INPUT_TYPE(q, {{ element_dtype }});
+  CHECK_INPUT_TYPE(k, {{ element_dtype }});
+  CHECK_INPUT_TYPE(cu_seqlens_q, dl_int32);
+  CHECK_INPUT_TYPE(cu_seqlens_k, dl_int32);
+  CHECK_INPUT_TYPE(qo_offset, dl_int32);
+  CHECK_INPUT_TYPE(max_score, dl_float32);
+  CHECK_CONTIGUOUS(q);
+  CHECK_CONTIGUOUS(k);
+  CHECK_CONTIGUOUS(cu_seqlens_q);
+  CHECK_CONTIGUOUS(cu_seqlens_k);
+  CHECK_CONTIGUOUS(qo_offset);
+  CHECK_CONTIGUOUS(max_score);
+  CHECK_DEVICE(k, q);
+  CHECK_DEVICE(cu_seqlens_q, q);
+  CHECK_DEVICE(cu_seqlens_k, q);
+  CHECK_DEVICE(qo_offset, q);
+  CHECK_DEVICE(max_score, q);
+
+  if constexpr (kIsPagedKV) {
+    TVM_FFI_ICHECK(page_table.has_value()) << "paged maxscore requires page_table";
+    CHECK_MUSA(page_table.value());
+    if (kv_page_indptr.has_value()) {
+      CHECK_DIM(1, page_table.value());
+      CHECK_MUSA(kv_page_indptr.value());
+      CHECK_DIM(1, kv_page_indptr.value());
+      CHECK_INPUT_TYPE(kv_page_indptr.value(), dl_int32);
+      CHECK_CONTIGUOUS(kv_page_indptr.value());
+      CHECK_DEVICE(kv_page_indptr.value(), q);
+    } else {
+      CHECK_DIM(2, page_table.value());
+    }
+    CHECK_INPUT_TYPE(page_table.value(), dl_int32);
+    CHECK_CONTIGUOUS(page_table.value());
+    CHECK_DEVICE(page_table.value(), q);
+  } else {
+    TVM_FFI_ICHECK(!page_table.has_value()) << "contiguous maxscore does not accept page_table";
+    TVM_FFI_ICHECK(!kv_page_indptr.has_value()) << "contiguous maxscore does not accept kv_page_indptr";
+  }
+
+  ffi::MUSADeviceGuard device_guard(q.device().device_id);
+
+  int batch_size        = static_cast<int>(cu_seqlens_q.size(0) - 1);
+  int total_q           = static_cast<int>(q.size(0));
+  int num_qo_heads      = static_cast<int>(q.size(1));
+  int head_dim          = static_cast<int>(q.size(2));
+  int num_kv_heads      = kIsPagedKV ? static_cast<int>(k.size(2)) : static_cast<int>(k.size(1));
+  int page_size         = kIsPagedKV ? static_cast<int>(k.size(1)) : 1;
+  int max_pages_per_seq = kIsPagedKV ? (static_cast<int>(max_seqlen_k) + kTileKV - 1) / kTileKV : 0;
+  int max_k_tiles       = static_cast<int>(max_score.size(2));
+  int total_k           = kIsPagedKV ? static_cast<int>(k.size(0) * k.size(1)) : static_cast<int>(k.size(0));
+
+  TVM_FFI_ICHECK(batch_size >= 0);
+  TVM_FFI_ICHECK_EQ(cu_seqlens_k.size(0), cu_seqlens_q.size(0));
+  TVM_FFI_ICHECK_EQ(qo_offset.size(0), batch_size);
+  TVM_FFI_ICHECK_GT(num_qo_heads, 0);
+  TVM_FFI_ICHECK_GT(num_kv_heads, 0);
+  TVM_FFI_ICHECK_EQ(num_qo_heads % num_kv_heads, 0);
+  TVM_FFI_ICHECK_EQ(num_qo_heads / num_kv_heads, kHeadRatio);
+  TVM_FFI_ICHECK_EQ(head_dim, kHeadDim);
+  TVM_FFI_ICHECK_EQ(causal, kIsCausal) << "rendered maxscore causal mode does not match inputs";
+  TVM_FFI_ICHECK_GT(max_seqlen_q, 0);
+  TVM_FFI_ICHECK_GT(max_seqlen_k, 0);
+  TVM_FFI_ICHECK_EQ(max_score.size(0), total_q);
+  TVM_FFI_ICHECK_EQ(max_score.size(1), num_qo_heads);
+  TVM_FFI_ICHECK_EQ(max_score.stride(2), 1);
+  TVM_FFI_ICHECK_EQ(k.size(kIsPagedKV ? 3 : 2), head_dim);
+  TVM_FFI_ICHECK_EQ(k.stride(kIsPagedKV ? 3 : 2), 1);
+  if constexpr (kIsPagedKV) {
+    TVM_FFI_ICHECK_EQ(page_size, kTileKV)
+        << "paged maxscore requires page_size == maxscore/sparse block size == 128";
+    if (kv_page_indptr.has_value()) {
+      TVM_FFI_ICHECK_EQ(kv_page_indptr.value().size(0), batch_size + 1);
+    } else {
+      TVM_FFI_ICHECK_EQ(page_table.value().size(0), batch_size);
+      TVM_FFI_ICHECK_EQ(page_table.value().size(1), max_pages_per_seq);
+    }
+  }
+
+  if (total_q == 0 || max_k_tiles == 0) {
+    return;
+  }
+
+  typename Kernel::ProblemSize problem_size{
+      batch_size,
+      total_q,
+      total_k,
+      num_qo_heads,
+      num_kv_heads,
+      static_cast<int>(max_seqlen_q),
+      static_cast<int>(max_seqlen_k),
+      max_k_tiles,
+  };
+
+  typename Kernel::Arguments arguments{
+      problem_size,
+      {
+          static_cast<Element const*>(q.data_ptr()),
+          static_cast<Element const*>(k.data_ptr()),
+          kIsPagedKV ? static_cast<int32_t const*>(page_table.value().data_ptr()) : nullptr,
+          kIsPagedKV && kv_page_indptr.has_value()
+              ? static_cast<int32_t const*>(kv_page_indptr.value().data_ptr())
+              : nullptr,
+          static_cast<int32_t const*>(cu_seqlens_q.data_ptr()),
+          static_cast<int32_t const*>(cu_seqlens_k.data_ptr()),
+          static_cast<int32_t const*>(qo_offset.data_ptr()),
+          static_cast<float*>(max_score.data_ptr()),
+      },
+      {
+          static_cast<int32_t const*>(cu_seqlens_q.data_ptr()),
+          static_cast<int32_t const*>(cu_seqlens_k.data_ptr()),
+      },
+  };
+  arguments.hw_info.device_id = q.device().device_id;
+  arguments.hw_info.sm_count = mutlass::KernelHardwareInfo::query_device_multiprocessor_count(q.device().device_id);
+  typename Kernel::Params params = Kernel::to_underlying_arguments(arguments);
+
+  MATE_CHECK_MUSA_KERNEL_LAUNCH();
+  auto kernel = mutlass::device_kernel<Kernel>;
+  MATE_MUSA_RUNTIME_CHECK(musaFuncSetAttribute(
+      kernel, musaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(Kernel::SharedStorageSize)));
+
+  musaStream_t stream = get_stream(q.device());
+  kernel<<<Kernel::get_grid_shape(params), Kernel::MaxThreadsPerBlock, Kernel::SharedStorageSize, stream>>>(params);
+  MATE_CHECK_MUSA_KERNEL_LAUNCH();
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC({{ func_name }}, {{ func_name }});

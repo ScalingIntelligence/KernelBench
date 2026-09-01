@@ -1,0 +1,14 @@
+# Copy this file to compose.local.yaml and pass
+# MATE_COMPOSE_OVERRIDE=compose.local.yaml to the Make targets.
+services:
+  dev:
+    # The default service uses host networking and needs no ports section.
+    # Switch to bridge networking when explicit Docker port publishing is
+    # preferred.
+    network_mode: bridge
+    ports:
+      - "${MATE_DEV_HOST_PORT:-8888}:8888"
+    volumes:
+      - type: bind
+        source: ${MATE_EXTRA_SOURCE_DIR:?Set MATE_EXTRA_SOURCE_DIR}
+        target: /workspace/extra
