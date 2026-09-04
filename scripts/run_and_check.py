@@ -344,46 +344,64 @@ def main(config: ScriptConfig):
 
         with app.run():
             print("[INFO] Evaluating kernel against reference code (MODAL)")
-            # Evaluate kernel against reference code
-            kernel_eval_result = EvalFunc.with_options(
-                gpu=config.gpu
-            )().evaluate_single_sample_src_modal.remote(
-                ref_arch_src=ref_arch_src,
-                kernel_src=kernel_src,
-                configs=config.to_dict(),
-                gpu_arch=gpu_arch
-            )
+            try:
+                # Evaluate kernel against reference code
+                kernel_eval_result = EvalFunc.with_options(
+                    gpu=config.gpu,
+                    timeout=config.timeout,
+                )().evaluate_single_sample_src_modal.remote(
+                    ref_arch_src=ref_arch_src,
+                    kernel_src=kernel_src,
+                    configs=config.to_dict(),
+                    gpu_arch=gpu_arch,
+                )
+            except Exception as e:
+                print(f"[ERROR] Modal evaluation failed: {e}")
+                kernel_eval_result = kernel_eval.KernelExecResult(
+                    compiled=False,
+                    correctness=False,
+                    metadata={"error": str(e)},
+                    runtime=-1.0,
+                    runtime_stats={},
+                )
             kernel_exec_time = kernel_eval_result.runtime
 
-            # Measure baseline time
-            print("[INFO] Measuring reference program time (PyTorch Eager)")
-            ref_time_eager_result = EvalFunc.with_options(
-                gpu=config.gpu
-            )().measure_program_time_modal.remote(
-                ref_arch_src=ref_arch_src,
-                num_trials=config.num_perf_trials,
-                use_torch_compile=False,
-                torch_compile_backend=None,
-                torch_compile_options=None,
-                gpu_arch=gpu_arch,
-                precision=config.precision,
-            )
-            ref_exec_eager_time = ref_time_eager_result.get("mean", None)
+            if kernel_eval_result.correctness:
+                # Measure baseline time
+                print("[INFO] Measuring reference program time (PyTorch Eager)")
+                ref_time_eager_result = EvalFunc.with_options(
+                    gpu=config.gpu,
+                    timeout=config.timeout,
+                )().measure_program_time_modal.remote(
+                    ref_arch_src=ref_arch_src,
+                    num_trials=config.num_perf_trials,
+                    use_torch_compile=False,
+                    torch_compile_backend=None,
+                    torch_compile_options=None,
+                    gpu_arch=gpu_arch,
+                    precision=config.precision,
+                )
+                ref_exec_eager_time = ref_time_eager_result.get("mean", None)
 
-            # Measure Torch Compile time
-            print("[INFO] Measuring reference program time (torch.compile)")
-            ref_time_compile_result = EvalFunc.with_options(
-                gpu=config.gpu
-            )().measure_program_time_modal.remote(
-                ref_arch_src=ref_arch_src,
-                num_trials=config.num_perf_trials,
-                use_torch_compile=True,
-                torch_compile_backend="inductor",
-                torch_compile_options="default",
-                gpu_arch=gpu_arch,
-                precision=config.precision,
-            )
-            ref_exec_compile_time = ref_time_compile_result.get("mean", None)
+                # Measure Torch Compile time
+                print("[INFO] Measuring reference program time (torch.compile)")
+                ref_time_compile_result = EvalFunc.with_options(
+                    gpu=config.gpu,
+                    timeout=config.timeout,
+                )().measure_program_time_modal.remote(
+                    ref_arch_src=ref_arch_src,
+                    num_trials=config.num_perf_trials,
+                    use_torch_compile=True,
+                    torch_compile_backend="inductor",
+                    torch_compile_options="default",
+                    gpu_arch=gpu_arch,
+                    precision=config.precision,
+                )
+                ref_exec_compile_time = ref_time_compile_result.get("mean", None)
+            else:
+                print("[INFO] Skipping reference baseline timing as kernel did not pass correctness.")
+                ref_exec_eager_time = -1.0
+                ref_exec_compile_time = -1.0
 
     print("="*40)
     print(f"[Eval] Kernel eval result: {kernel_eval_result}")

@@ -231,7 +231,7 @@ class ModalEvaluator:
                 backend=backend,
                 precision=get_torch_dtype_from_string(precision),
             )
-        except (torch.cuda.CudaError, torch.AcceleratorError) as e:
+        except (RuntimeError, torch.cuda.CudaError, torch.AcceleratorError) as e:
             # GPU error detected - retire this container to prevent contamination
             gpu_corrupted = True
             # TODO: Replace with more stable API in the future, thanks modal team for temp workaround.
@@ -248,7 +248,15 @@ class ModalEvaluator:
             )
 
         if not gpu_corrupted:
-            torch.cuda.empty_cache()
+            try:
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+            except Exception as sync_err:
+                gpu_corrupted = True
+                modal.experimental.stop_fetching_inputs()
+                result.correctness = False
+                result.runtime = -1.0
+                result.metadata["cuda_sync_error"] = str(sync_err)
 
         return result
 
@@ -482,7 +490,7 @@ def batch_eval_modal(
                 
                 # Override GPU if different from default in decorator
                 # .with_options() overrides the decorator's parameters
-                evaluator_cls = ModalEvaluator.with_options(gpu=config.gpu) if config.gpu != "A10G" else ModalEvaluator
+                evaluator_cls = ModalEvaluator.with_options(gpu=config.gpu, timeout=config.timeout)
                 
                 # Spawn all tasks in parallel
                 # Modal assigns these to available containers
@@ -524,8 +532,25 @@ def batch_eval_modal(
                         results.append((problem_id, sample_id, fail_result))
                     else:
                         try:
-                            result = future.get()
+                            elapsed_time = time.time() - start_time
+                            remaining_time = max(0.0, (config.timeout + 60) - elapsed_time)
+                            result = future.get(timeout=remaining_time)
                             results.append((problem_id, sample_id, result))
+                        except (TimeoutError, modal.exception.TimeoutError) as e:
+                            try:
+                                future.cancel(terminate_containers=True)
+                            except Exception as cancel_err:
+                                print(f"[WARNING] Could not cancel Modal container: {cancel_err}")
+                            error_msg = str(e)
+                            print(f"[ERROR] Modal evaluation TIMED OUT for Problem ID: {problem_id}, Sample ID: {sample_id}: {error_msg}")
+                            fail_result = KernelExecResult(
+                                compiled=False,
+                                correctness=False,
+                                metadata={"error": f"Timeout after {config.timeout}s: {error_msg}"},
+                                runtime=-1.0,
+                                runtime_stats={},
+                            )
+                            results.append((problem_id, sample_id, fail_result))
                         except Exception as e:
                             # OUTER CATCH: Modal infrastructure or remote execution failures
                             # - GPU attachment failures after retries
