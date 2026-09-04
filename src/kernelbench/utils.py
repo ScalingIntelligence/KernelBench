@@ -387,30 +387,32 @@ def remove_code_block_header(code, code_language_type):
     return code
 
 
-def extract_first_code(output_string: str, code_language_types: list[str]) -> str:
+def extract_first_code(output_string: str, code_language_types: list[str]) -> str | None:
     """
     Extract first code block from model output, specified by code_language_type
     """
     if output_string is None:
         return None
-    
+
     trimmed = output_string.strip()
 
-    # Extracting the first occurrence of content between backticks
-    code_match = re.search(r"```(.*?)```", trimmed, re.DOTALL)
+    # Find closed code blocks
+    closed_matches = list(re.finditer(r"```([a-zA-Z0-9_\+\-]*)[ \t]*\r?\n(.*?)```", trimmed, re.DOTALL))
+    last_closed = closed_matches[-1] if closed_matches else None
 
-    if code_match:
-        # Strip leading and trailing whitespace from the extracted code
-        code = code_match.group(1).strip()
+    # Iterate through all closed code blocks to find the first matching one
+    for match in closed_matches:
+        lang = match.group(1).strip().lower()
+        code = match.group(2).strip()
+        if not lang or not code_language_types or lang in [t.lower() for t in code_language_types]:
+            return code
 
-        # depends on code_language_type: cpp, python, etc.
-        # sometimes the block of code is ```cpp ... ``` instead of ``` ... ```
-        # in this case strip the cpp out
-        for code_type in code_language_types:
-            if code.startswith(code_type):
-                code = code[len(code_type) :].strip()
-
-        return code
+    unclosed_match = re.search(r"```([a-zA-Z0-9_\+\-]*)[ \t]*\r?\n((?:(?!```).)*)$", trimmed, re.DOTALL)
+    if unclosed_match and (not last_closed or unclosed_match.start() >= last_closed.end()):
+        lang = unclosed_match.group(1).strip().lower()
+        code = unclosed_match.group(2).strip()
+        if not lang or not code_language_types or lang in [t.lower() for t in code_language_types]:
+            return code
 
     return None
 
@@ -419,24 +421,30 @@ def extract_last_code(output_string: str, code_language_types: list[str]) -> str
     """
     Extract last code block from model output, specified by code_language_type
     """
+    if output_string is None:
+        return None
+
     trimmed = output_string.strip()
 
-    # Find all matches of code blocks
-    code_matches = re.finditer(r"```(.*?)```", trimmed, re.DOTALL)
-    
-    # Get the last match by converting to list and taking the last element
-    matches_list = list(code_matches)
-    if matches_list:
-        last_match = matches_list[-1]
-        code = last_match.group(1).strip()
+    # Find closed code blocks
+    closed_matches = list(re.finditer(r"```([a-zA-Z0-9_\+\-]*)[ \t]*\r?\n(.*?)```", trimmed, re.DOTALL))
+    last_closed = closed_matches[-1] if closed_matches else None
 
-        # Remove language type headers
-        for code_type in code_language_types:
-            if code.startswith(code_type):
-                code = code[len(code_type):].strip()
+    # Check unclosed code block at end of string first if it appears after the last closed block
+    unclosed_match = re.search(r"```([a-zA-Z0-9_\+\-]*)[ \t]*\r?\n((?:(?!```).)*)$", trimmed, re.DOTALL)
+    if unclosed_match and (not last_closed or unclosed_match.start() >= last_closed.end()):
+        lang = unclosed_match.group(1).strip().lower()
+        code = unclosed_match.group(2).strip()
+        if not lang or not code_language_types or lang in [t.lower() for t in code_language_types]:
+            return code
 
-        return code
-    
+    # If no valid unclosed block at end, find the last matching closed block
+    for match in reversed(closed_matches):
+        lang = match.group(1).strip().lower()
+        code = match.group(2).strip()
+        if not lang or not code_language_types or lang in [t.lower() for t in code_language_types]:
+            return code
+
     return None
 
 def extract_code_blocks(text, code_language_types: list[str]) -> str:

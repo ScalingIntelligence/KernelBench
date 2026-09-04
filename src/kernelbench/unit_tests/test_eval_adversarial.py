@@ -1,4 +1,6 @@
 import os
+import pytest
+import torch
 
 from kernelbench.dataset import KERNEL_BENCH_PATH
 from kernelbench.eval import eval_kernel_against_ref
@@ -11,6 +13,11 @@ Through a few targeted adversarial kernels.
 Run with pytest
 pytest src/unit_tests/test_eval_adversarial.py
 """
+
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason="CUDA is not available, cannot run Eval",
+)
 
 def run_test_kernel(problem_name, 
                     kernel_filename, 
@@ -77,7 +84,8 @@ def test_input_modification():
     print(result)
 
 
-def test_non_default_stream(timing_method="do_bench", threshold=1.5):
+def test_non_default_stream():
+    timing_method = "do_bench"
     """
     Test that we will flag adversarial kernels that cheat by assigning work to non-default CUDA streams.
 
