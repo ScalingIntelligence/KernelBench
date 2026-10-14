@@ -391,6 +391,41 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     return input_tensor.to(device=device)
 
 
+def _input_set_nbytes(inputs: list) -> int:
+    return sum(x.numel() * x.element_size() for x in inputs if isinstance(x, torch.Tensor))
+
+
+def build_perf_input_pool(
+    get_inputs,
+    num_sets: int,
+    max_pool_bytes: int,
+    seed: int,
+    device,
+    backend: str = "cuda",
+    precision: torch.dtype = torch.float32,
+) -> list[list]:
+    """
+    Build distinct input sets for the timed trials to rotate through (see timing.get_trial_args).
+
+    Each set is drawn with its own seed, so sets differ in tensor identity, address and values.
+    The pool holds up to num_sets sets, capped so it stays under max_pool_bytes, and at least 2
+    so no two consecutive timed calls share inputs.
+    See https://github.com/ScalingIntelligence/KernelBench/issues/171
+    """
+    def make_set(i):
+        set_seed(seed + i)
+        return [_process_input_tensor(x, device, backend, precision) for x in get_inputs()]
+
+    pool = [make_set(1)]
+    set_bytes = _input_set_nbytes(pool[0])
+    if set_bytes > 0:
+        num_sets = min(num_sets, max_pool_bytes // set_bytes)
+    num_sets = max(2, num_sets)
+    for i in range(2, num_sets + 1):
+        pool.append(make_set(i))
+    return pool
+
+
 def eval_kernel_against_ref(
     original_model_src: str,
     custom_model_src: str,
@@ -410,6 +445,8 @@ def eval_kernel_against_ref(
     # Guard against potential reward hacking [optional but ongoing enhancement]
     check_for_excessive_speedup: bool = True,
     excessive_speedup_threshold: float = 10, # flag if the kernel is more than <excessive_speedup_threshold>x faster than the reference
+    rotate_perf_inputs: bool = True, # time on distinct input sets so memoizing on input identity does not pay off
+    perf_input_pool_max_bytes: Optional[int] = None, # memory cap for the rotated inputs, defaults to 25% of free device memory
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -423,6 +460,7 @@ def eval_kernel_against_ref(
     backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
     timing_method: str, method to time kernel, see timing.py for more details 
+    rotate_perf_inputs: rotate timed trials over distinct input sets (up to one per trial), see build_perf_input_pool
 
     ONGOING EFFORT to refactor and modularize this, and adding more tests for eval.
     """
@@ -604,6 +642,21 @@ def eval_kernel_against_ref(
             compiled=True, correctness=False, metadata=metadata
         )
 
+    # Distinct input sets for timed trials, shared by the custom and reference timing below
+    perf_input_pool = None
+
+    def get_perf_input_pool():
+        if perf_input_pool is not None:
+            return perf_input_pool
+        max_bytes = perf_input_pool_max_bytes
+        if max_bytes is None:
+            free_bytes, _ = torch.cuda.mem_get_info(device)
+            max_bytes = free_bytes // 4
+        # timing functions run num_perf_trials + discard_first (default 1) timed calls
+        return build_perf_input_pool(
+            get_inputs, num_perf_trials + 1, max_bytes, seed_num, device, backend, precision
+        )
+
     # Measure Performance [Optional] | conditioned on compilation + correctness + no exception so far
     if measure_performance:
         try:
@@ -616,6 +669,10 @@ def eval_kernel_against_ref(
                 inputs = get_inputs()
                 # Convert inputs for performance measurement
                 inputs = [_process_input_tensor(x, device, backend, precision) for x in inputs]
+
+                if rotate_perf_inputs:
+                    perf_input_pool = get_perf_input_pool()
+                    kernel_exec_result.metadata["perf_input_pool_size"] = len(perf_input_pool)
                 
                 model_new = custom_model.to(device=device, dtype=precision)
                 torch.cuda.synchronize(device=device)
@@ -628,6 +685,7 @@ def eval_kernel_against_ref(
                     num_trials=num_perf_trials,
                     verbose=verbose,
                     device=device,
+                    args_pool=perf_input_pool,
                 )
                 runtime_stats = timing.get_timing_stats(elapsed_times, device=device)
 
@@ -668,12 +726,15 @@ def eval_kernel_against_ref(
         # time PyTorch reference function
         # same timing_fn as specified from before
         timing_fn = timing.get_timing_function(timing_method)
+        if rotate_perf_inputs:
+            perf_input_pool = get_perf_input_pool()
         reference_elapsed_times = timing_fn(
             original_model,
             inputs, # ideally cloned for extra safety but handled already in correctness check
             num_trials=num_perf_trials,
             verbose=verbose,
             device=device,
+            args_pool=perf_input_pool, # same inputs as the custom kernel was timed on
         )
         reference_runtime_stats = timing.get_timing_stats(reference_elapsed_times, device=device)
         kernel_exec_result.ref_runtime = reference_runtime_stats["mean"]

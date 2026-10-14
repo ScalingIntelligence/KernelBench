@@ -2,6 +2,7 @@ import torch
 import json
 import numpy as np
 import time
+import itertools
 from typing import Any, Optional, Union
 import os
 
@@ -152,6 +153,22 @@ def clear_l2_cache_triton(cache=None, device: str = "cuda"):
         triton_runtime.driver.active.clear_cache(cache)
 
 
+def get_trial_args(args: list[Any], args_pool: Optional[list[list[Any]]], trial: int) -> list[Any]:
+    """
+    Pick the arguments for one timed call.
+
+    If args_pool is given, timed calls rotate through its input sets so consecutive
+    calls never see the same tensor objects. Otherwise a kernel that memoizes on input
+    identity (e.g. `if x is self._last_x: return self._last_out`) is correct on every
+    correctness trial but is timed from its cache. Warmup always uses `args`, so the
+    pool entries are not seen before the first timed call.
+    See https://github.com/ScalingIntelligence/KernelBench/issues/171
+    """
+    if not args_pool:
+        return args
+    return args_pool[trial % len(args_pool)]
+
+
 def get_timing_function(
     method: str = "cuda_event", # by default 
 ) -> callable:
@@ -206,6 +223,7 @@ def time_execution_with_cuda_event(
     discard_first: int = 1, # set to 0 to disable
     verbose: bool = True,
     device: torch.device = None,
+    args_pool: Optional[list[list[Any]]] = None,
 ) -> list[float]:
     """
     Time a CUDA kernel function over multiple trials using torch.cuda.event
@@ -219,6 +237,7 @@ def time_execution_with_cuda_event(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        args_pool: Optional distinct input sets to rotate through on timed calls, see get_trial_args
         num_warmup: Number of warmup iterations before timing
         num_trials: Number of timing trials to run
         discard_first: Number of first trials to discard, for consistency with host_time, set to 0 to disable
@@ -260,7 +279,7 @@ def time_execution_with_cuda_event(
 
             # note cuda events mark event on current stream
             start_event.record()
-            _ = kernel_fn(*args)
+            _ = kernel_fn(*get_trial_args(args, args_pool, trial))
             end_event.record() 
 
             # waits for all streams on that device
@@ -289,7 +308,8 @@ def time_execution_with_do_bench_interface(
     num_trials: int = 10,
     discard_first: int = 1, # not used here
     verbose: bool = True,
-    device: torch.device | None = None) -> list[float]:
+    device: torch.device | None = None,
+    args_pool: Optional[list[list[Any]]] = None) -> list[float]:
     """
     Wrapper around Triton's do_bench for kernel timing.
 
@@ -302,6 +322,7 @@ def time_execution_with_do_bench_interface(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        args_pool: Optional distinct input sets to rotate through on timed calls, see get_trial_args
         num_warmup: (ignored) Triton controls warmup
         num_trials: (ignored) Triton controls trial count  
         discard_first: (ignored) Not used
@@ -320,7 +341,12 @@ def time_execution_with_do_bench_interface(
 
 
     from triton import testing as triton_testing
-    do_bench_fn = lambda : kernel_fn(*args) # wrap function with arguments
+    if args_pool:
+        # triton controls the loop, so cycle through the pool on every call
+        pool_iter = itertools.cycle(args_pool)
+        do_bench_fn = lambda : kernel_fn(*next(pool_iter))
+    else:
+        do_bench_fn = lambda : kernel_fn(*args) # wrap function with arguments
     with torch.cuda.device(device):
         return triton_testing.do_bench(fn=do_bench_fn,
             warmup=25,
@@ -337,7 +363,8 @@ def time_execution_with_do_bench_impl(
     num_trials: int = 10,
     discard_first: int = 1, # not used here
     verbose: bool = True,
-    device: torch.device | None = None) -> list[float]:
+    device: torch.device | None = None,
+    args_pool: Optional[list[list[Any]]] = None) -> list[float]:
     """
     This is modifying the triton do_bench codebase
     See Triton's implementation for more details
@@ -352,6 +379,7 @@ def time_execution_with_do_bench_impl(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        args_pool: Optional distinct input sets to rotate through on timed calls, see get_trial_args
         num_warmup: Number of warmup iterations
         num_trials: Number of timing trials
         discard_first: (not used) Trials to discard
@@ -420,7 +448,7 @@ def time_execution_with_do_bench_impl(
             triton_runtime.driver.active.clear_cache(cache)
             # record time of `fn`
             start_event[i].record()
-            kernel_fn(*args)
+            kernel_fn(*get_trial_args(args, args_pool, i))
             end_event[i].record()
         # Record clocks
         di.synchronize(device=device)
@@ -438,6 +466,7 @@ def time_execution_with_host_time(
     discard_first: int = 1, # to reduce impact of initialization overhead
     verbose: bool = True,
     device: torch.device | None = None,
+    args_pool: Optional[list[list[Any]]] = None,
 ) -> list[float]:
     """
     Time a CUDA kernel function over multiple trials using Host (CPU) side timing
@@ -449,6 +478,7 @@ def time_execution_with_host_time(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        args_pool: Optional distinct input sets to rotate through on timed calls, see get_trial_args
         num_trials: Number of timing trials to run
         discard_first: Number of first few trials to discard (due to some initialization overhead)
         verbose: Whether to print per-trial timing info
@@ -483,7 +513,7 @@ def time_execution_with_host_time(
 
         # CPU-side wall clock time using perf_counter (high-resolution timer)
         start_time = time.perf_counter()
-        kernel_fn(*args)
+        kernel_fn(*get_trial_args(args, args_pool, trial))
         torch.cuda.synchronize(device=device) # wait for all stream to finish
         # this blocks the CPU until all GPU work on device is done
         # this means all kernels on all streams
@@ -506,7 +536,8 @@ def time_execution_with_nsight_python(
     num_trials: int = 10,
     discard_first: int = 1, # not used here
     verbose: bool = True,
-    device: torch.device | None = None) -> list[float]:
+    device: torch.device | None = None,
+    args_pool: Optional[list[list[Any]]] = None) -> list[float]:
     """
     Time a CUDA kernel function using nsight-python.
     
@@ -545,8 +576,9 @@ def time_execution_with_nsight_python(
         
         # Profile with nsight - returns average time in nanoseconds
         # Wrap kernel function
+        pool_iter = itertools.cycle(args_pool) if args_pool else None
         def wrapped_kernel():
-            return kernel_fn(*args)
+            return kernel_fn(*(next(pool_iter) if pool_iter else args))
         
         # Profile with nsight, use gpu_time_duration.sum metric for GPU time
         metric_values = profile_with_nsight(

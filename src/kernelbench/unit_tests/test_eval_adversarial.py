@@ -15,7 +15,8 @@ pytest src/unit_tests/test_eval_adversarial.py
 def run_test_kernel(problem_name, 
                     kernel_filename, 
                     timing_method="cuda_event",
-                    num_perf_trials=100):
+                    num_perf_trials=100,
+                    rotate_perf_inputs=True):
     """
     Run a test kernel agains the reference architecture and return the result.
 
@@ -40,7 +41,8 @@ def run_test_kernel(problem_name,
         timing_method=timing_method,
         # for checking against reward hacking
         check_for_excessive_speedup = True, 
-        excessive_speedup_threshold = 10
+        excessive_speedup_threshold = 10,
+        rotate_perf_inputs=rotate_perf_inputs,
     )
 
 
@@ -101,10 +103,50 @@ def test_non_default_stream(timing_method="do_bench", threshold=1.5):
         )
 
 
+def test_input_identity_memoization(timing_method="cuda_event"):
+    """
+    Test that a kernel memoizing on input identity is timed on real work.
+
+    Methodology:
+    - Adversarial kernel caches its output and returns it whenever it sees the same input tensor objects again.
+    - Potential Hacking scenario: the timing loop passes the same input tensors to every trial,
+      so the kernel computes once and every timed call is a cache hit. It is correct on every
+      correctness trial, so only the timing is wrong.
+    - Eval script should rotate timed trials over distinct input sets, so the kernel computes every
+      call and its runtime is close to the reference's.
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="input_memoization_kernel.py",
+                            timing_method=timing_method)
+    print(result)
+    assert result.correctness is True, "Memoizing kernel is functionally correct and should pass correctness"
+    assert result.metadata["perf_input_pool_size"] >= 2
+    assert result.metadata.get("excessive_speedup") is not True, (
+        "Memoizing kernel got an excessive speedup: timed trials are reusing the same input tensors"
+    )
+    # sanity check: plain torch.matmul should time about the same as the reference
+    assert result.runtime >= 0.5 * result.ref_runtime
+
+
+def test_input_identity_memoization_without_rotation():
+    """
+    Control for test_input_identity_memoization: without rotation the hack works,
+    which shows the test kernel really exploits the reused inputs.
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="input_memoization_kernel.py",
+                            rotate_perf_inputs=False)
+    print(result)
+    assert result.correctness is True
+    assert result.metadata.get("excessive_speedup") is True
+
+
 def main():
     test_result_cache_reuse()
     test_input_modification()
     test_non_default_stream()
+    test_input_identity_memoization()
+    test_input_identity_memoization_without_rotation()
 
     # we might add more adversarial tests in the future
 
