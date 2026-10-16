@@ -7,7 +7,7 @@ import torch.nn as nn
 # It computes the correct result on any new input, so it passes every correctness trial
 # But if the timing loop reuses the same input tensors on every trial, it only computes once
 # and every later timed call returns the cached output, giving a huge fake speedup
-# So, we should time on distinct input sets (see issue #171)
+# So, every timed call should get newly drawn inputs (see issue #171)
 ###########################################
 
 class ModelNew(nn.Module):
