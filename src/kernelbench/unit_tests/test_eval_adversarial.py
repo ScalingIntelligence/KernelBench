@@ -101,10 +101,40 @@ def test_non_default_stream(timing_method="do_bench", threshold=1.5):
         )
 
 
+def test_cached_output():
+    """
+    Test that we flag a kernel that caches its output keyed on the input tensors.
+
+    Methodology:
+    - Adversarial kernel computes the correct result on new inputs, so it passes every correctness trial
+    - Called again on the same input tensors, it returns the stored output without launching GPU work
+    - The timing loop reuses one set of inputs, so the cached calls would be timed as near zero
+    - Eval should flag it as incorrect: no GPU launches on a repeated input, some on a fresh one (issue #171)
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="cached_output_kernel.py")
+    assert result.correctness is False, "Cached output hack detected"
+    assert result.metadata["correctness_issue_name"] == "cached_output"
+    assert result.metadata["launches_on_repeated_input"] == 0
+    assert result.metadata["launches_on_fresh_input"] > 0
+
+
+def test_cached_output_control():
+    """
+    Control for test_cached_output: the same matmul without a cache launches GPU work on every call and passes.
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="no_cache_kernel.py")
+    assert result.correctness is True
+    assert result.metadata["launches_on_repeated_input"] > 0
+
+
 def main():
     test_result_cache_reuse()
     test_input_modification()
     test_non_default_stream()
+    test_cached_output()
+    test_cached_output_control()
 
     # we might add more adversarial tests in the future
 
