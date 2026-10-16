@@ -2,7 +2,7 @@ import torch
 import json
 import numpy as np
 import time
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 import os
 
 
@@ -206,6 +206,7 @@ def time_execution_with_cuda_event(
     discard_first: int = 1, # set to 0 to disable
     verbose: bool = True,
     device: torch.device = None,
+    fresh_args: Optional[Callable[[int], list[Any]]] = None,
 ) -> list[float]:
     """
     Time a CUDA kernel function over multiple trials using torch.cuda.event
@@ -219,6 +220,7 @@ def time_execution_with_cuda_event(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        fresh_args: Optional fresh_args(call) that returns new inputs for each timed call (see eval.make_fresh_inputs)
         num_warmup: Number of warmup iterations before timing
         num_trials: Number of timing trials to run
         discard_first: Number of first trials to discard, for consistency with host_time, set to 0 to disable
@@ -249,7 +251,11 @@ def time_execution_with_cuda_event(
         elapsed_times: list[float] = [] # in ms
 
         # Timing trials
+        trial_args = args
         for trial in range(num_trials + discard_first):
+            if fresh_args is not None:
+                trial_args = None # free the previous inputs before making the next
+                trial_args = fresh_args(trial) # untimed, before the sync below
             torch.cuda.synchronize(device=device) # block on all streams
 
             # create event marker default is not interprocess
@@ -260,7 +266,7 @@ def time_execution_with_cuda_event(
 
             # note cuda events mark event on current stream
             start_event.record()
-            _ = kernel_fn(*args)
+            _ = kernel_fn(*trial_args)
             end_event.record() 
 
             # waits for all streams on that device
@@ -289,7 +295,8 @@ def time_execution_with_do_bench_interface(
     num_trials: int = 10,
     discard_first: int = 1, # not used here
     verbose: bool = True,
-    device: torch.device | None = None) -> list[float]:
+    device: torch.device | None = None,
+    fresh_args: Optional[Callable[[int], list[Any]]] = None) -> list[float]:
     """
     Wrapper around Triton's do_bench for kernel timing.
 
@@ -302,6 +309,7 @@ def time_execution_with_do_bench_interface(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        fresh_args: Optional fresh_args(call) that returns new inputs for each timed call (see eval.make_fresh_inputs)
         num_warmup: (ignored) Triton controls warmup
         num_trials: (ignored) Triton controls trial count  
         discard_first: (ignored) Not used
@@ -318,6 +326,11 @@ def time_execution_with_do_bench_interface(
             print(f"Using current device: {torch.cuda.current_device()}")
         device = torch.cuda.current_device()
 
+
+    if fresh_args is not None:
+        # do_bench owns its loop, so making inputs per call would land inside the timed region
+        print("[Profiling] Warning: do_bench reuses the same inputs on every call, "
+              "use cuda_event, do_bench_impl or host_time to time on fresh inputs")
 
     from triton import testing as triton_testing
     do_bench_fn = lambda : kernel_fn(*args) # wrap function with arguments
@@ -337,7 +350,8 @@ def time_execution_with_do_bench_impl(
     num_trials: int = 10,
     discard_first: int = 1, # not used here
     verbose: bool = True,
-    device: torch.device | None = None) -> list[float]:
+    device: torch.device | None = None,
+    fresh_args: Optional[Callable[[int], list[Any]]] = None) -> list[float]:
     """
     This is modifying the triton do_bench codebase
     See Triton's implementation for more details
@@ -352,6 +366,7 @@ def time_execution_with_do_bench_impl(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        fresh_args: Optional fresh_args(call) that returns new inputs for each timed call (see eval.make_fresh_inputs)
         num_warmup: Number of warmup iterations
         num_trials: Number of timing trials
         discard_first: (not used) Trials to discard
@@ -407,7 +422,11 @@ def time_execution_with_do_bench_impl(
         di.synchronize(device=device) 
         
         # Benchmark
+        trial_args = args
         for i in range(num_trials):
+            if fresh_args is not None:
+                trial_args = None # free the previous inputs before making the next
+                trial_args = fresh_args(i) # enqueued before start_event, so untimed
             # All KernelBench functions are forward passes, so we don't need to reset gradients
             # we don't want `fn` to accumulate gradient values
             # if it contains a backward pass. So we clear the
@@ -420,7 +439,7 @@ def time_execution_with_do_bench_impl(
             triton_runtime.driver.active.clear_cache(cache)
             # record time of `fn`
             start_event[i].record()
-            kernel_fn(*args)
+            kernel_fn(*trial_args)
             end_event[i].record()
         # Record clocks
         di.synchronize(device=device)
@@ -438,6 +457,7 @@ def time_execution_with_host_time(
     discard_first: int = 1, # to reduce impact of initialization overhead
     verbose: bool = True,
     device: torch.device | None = None,
+    fresh_args: Optional[Callable[[int], list[Any]]] = None,
 ) -> list[float]:
     """
     Time a CUDA kernel function over multiple trials using Host (CPU) side timing
@@ -449,6 +469,7 @@ def time_execution_with_host_time(
     Args:
         kernel_fn: Function to time
         args: Arguments to pass to kernel_fn
+        fresh_args: Optional fresh_args(call) that returns new inputs for each timed call (see eval.make_fresh_inputs)
         num_trials: Number of timing trials to run
         discard_first: Number of first few trials to discard (due to some initialization overhead)
         verbose: Whether to print per-trial timing info
@@ -474,7 +495,11 @@ def time_execution_with_host_time(
     torch.cuda.empty_cache()
 
     # Actual trials
+    trial_args = args
     for trial in range(num_trials + discard_first):
+        if fresh_args is not None:
+            trial_args = None # free the previous inputs before making the next
+            trial_args = fresh_args(trial) # untimed, before the sync below
         # block all streams on device
         torch.cuda.synchronize(device=device)
 
@@ -483,7 +508,7 @@ def time_execution_with_host_time(
 
         # CPU-side wall clock time using perf_counter (high-resolution timer)
         start_time = time.perf_counter()
-        kernel_fn(*args)
+        kernel_fn(*trial_args)
         torch.cuda.synchronize(device=device) # wait for all stream to finish
         # this blocks the CPU until all GPU work on device is done
         # this means all kernels on all streams
@@ -506,7 +531,8 @@ def time_execution_with_nsight_python(
     num_trials: int = 10,
     discard_first: int = 1, # not used here
     verbose: bool = True,
-    device: torch.device | None = None) -> list[float]:
+    device: torch.device | None = None,
+    fresh_args: Optional[Callable[[int], list[Any]]] = None) -> list[float]:
     """
     Time a CUDA kernel function using nsight-python.
     
@@ -529,6 +555,11 @@ def time_execution_with_nsight_python(
             "NSight profiling requires NVIDIA GPU. "
             "Use timing_method='cuda_event' or 'do_bench' for AMD."
         )
+
+    if fresh_args is not None:
+        # nsight owns its loop, so making inputs per call would land inside the profiled region
+        print("[Profiling] Warning: nsight_python_time reuses the same inputs on every call, "
+              "use cuda_event, do_bench_impl or host_time to time on fresh inputs")
 
     with torch.cuda.device(device):
         # Warm ups

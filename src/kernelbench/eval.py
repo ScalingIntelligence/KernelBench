@@ -391,6 +391,34 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     return input_tensor.to(device=device)
 
 
+def make_fresh_inputs(get_inputs, seed: int, device, backend: str = "cuda", precision: torch.dtype = torch.float32):
+    """
+    Return fresh_args(call), which draws a new input set for each timed call.
+
+    If timed calls reuse the same inputs, a kernel that memoizes on them (by tensor
+    identity, device address, or a fingerprint of a few values) is correct on every
+    correctness trial but is timed from its cache. Each call gets its own seed
+    (seed + 1 + call), so inputs are new tensors with new values and stay
+    reproducible. The timing loops free the previous set before drawing the next,
+    so only one set is live at a time.
+    Inputs are drawn directly on the device, which is much faster than drawing
+    large inputs on the CPU and copying them over; get_inputs that cannot run
+    there fall back to the CPU.
+    See https://github.com/ScalingIntelligence/KernelBench/issues/171
+    """
+    def fresh_args(call: int) -> list:
+        set_seed(seed + 1 + call)
+        try:
+            with torch.device(device):
+                inputs = get_inputs()
+        except Exception:
+            set_seed(seed + 1 + call)
+            inputs = get_inputs()
+        return [_process_input_tensor(x, device, backend, precision) for x in inputs]
+
+    return fresh_args
+
+
 def eval_kernel_against_ref(
     original_model_src: str,
     custom_model_src: str,
@@ -410,6 +438,7 @@ def eval_kernel_against_ref(
     # Guard against potential reward hacking [optional but ongoing enhancement]
     check_for_excessive_speedup: bool = True,
     excessive_speedup_threshold: float = 10, # flag if the kernel is more than <excessive_speedup_threshold>x faster than the reference
+    fresh_perf_inputs: bool = True, # draw new inputs for each timed call, so memoizing on inputs does not pay off
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -423,6 +452,7 @@ def eval_kernel_against_ref(
     backend: str, one of 'cuda', 'triton', 'tilelang', or 'cute'
     precision: torch.dtype for computation (note: tilelang only supports fp16)
     timing_method: str, method to time kernel, see timing.py for more details 
+    fresh_perf_inputs: time each call on newly drawn inputs, see make_fresh_inputs
 
     ONGOING EFFORT to refactor and modularize this, and adding more tests for eval.
     """
@@ -620,6 +650,11 @@ def eval_kernel_against_ref(
                 model_new = custom_model.to(device=device, dtype=precision)
                 torch.cuda.synchronize(device=device)
 
+                fresh_args = (
+                    make_fresh_inputs(get_inputs, seed_num, device, backend, precision)
+                    if fresh_perf_inputs else None
+                )
+
                 # support multiple timing backend
                 timing_fn = timing.get_timing_function(timing_method)
                 elapsed_times = timing_fn(
@@ -628,6 +663,7 @@ def eval_kernel_against_ref(
                     num_trials=num_perf_trials,
                     verbose=verbose,
                     device=device,
+                    fresh_args=fresh_args,
                 )
                 runtime_stats = timing.get_timing_stats(elapsed_times, device=device)
 
@@ -674,6 +710,11 @@ def eval_kernel_against_ref(
             num_trials=num_perf_trials,
             verbose=verbose,
             device=device,
+            # same per-call inputs as the custom kernel was timed on
+            fresh_args=(
+                make_fresh_inputs(get_inputs, seed_num, device, backend, precision)
+                if fresh_perf_inputs else None
+            ),
         )
         reference_runtime_stats = timing.get_timing_stats(reference_elapsed_times, device=device)
         kernel_exec_result.ref_runtime = reference_runtime_stats["mean"]
