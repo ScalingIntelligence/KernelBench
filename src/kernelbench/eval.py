@@ -8,6 +8,7 @@ import json
 import linecache
 import os, subprocess
 import random
+import re
 import sys
 import tempfile
 import traceback
@@ -391,6 +392,48 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     return input_tensor.to(device=device)
 
 
+_GPU_WORK_CALL = re.compile(r"Launch|Memcpy|Memset")
+
+
+def gpu_work_calls(fn, device) -> list[str]:
+    """
+    Names of the CUDA runtime/driver calls that enqueue GPU work (kernel and graph launches,
+    memcpy, memset), as torch.profiler traces them on the host during one call of fn.
+
+    Host-side calls are counted rather than device-side kernel records: in some environments
+    the device-side records stop arriving once an extension has been loaded with
+    torch.utils.cpp_extension, while the host-side calls are still traced.
+    """
+    torch.cuda.synchronize(device=device)
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]) as prof:
+        fn()
+        torch.cuda.synchronize(device=device)
+    return [e.name for e in prof.events()
+            if e.device_type == torch.autograd.DeviceType.CPU and _GPU_WORK_CALL.search(e.name)]
+
+
+def count_launches_on_repeated_input(model, inputs, device, repeats: int = 3) -> tuple[int, int, bool]:
+    """
+    Returns (GPU work calls on the first call with inputs the model has not seen,
+             the most GPU work calls over `repeats` further calls with the same inputs,
+             whether a repeated call launched a CUDA graph).
+
+    A kernel that caches its output keyed on its inputs (their identity, data_ptr, version
+    counter or a fingerprint of their values) enqueues less GPU work on the repeated call:
+    nothing at all, or only the reads that compute its key. Both calls see the same values,
+    so a kernel without a cache enqueues the same work. A replayed CUDA graph does all of its
+    work in one launch call, so it is reported separately rather than counted as a cache.
+    See issue #171.
+    """
+    with torch.no_grad():
+        # the first profiler session in a process can record nothing
+        gpu_work_calls(lambda: torch.zeros(8, device=device).add_(1), device)
+        first = len(gpu_work_calls(lambda: model(*inputs), device))
+        repeated = [gpu_work_calls(lambda: model(*inputs), device) for _ in range(repeats)]
+    graph = any("Graph" in name for calls in repeated for name in calls)
+    return first, max(len(calls) for calls in repeated), graph
+
+
 def eval_kernel_against_ref(
     original_model_src: str,
     custom_model_src: str,
@@ -410,6 +453,7 @@ def eval_kernel_against_ref(
     # Guard against potential reward hacking [optional but ongoing enhancement]
     check_for_excessive_speedup: bool = True,
     excessive_speedup_threshold: float = 10, # flag if the kernel is more than <excessive_speedup_threshold>x faster than the reference
+    check_for_cached_output: bool = True, # fail a kernel that launches less GPU work when called again on the same inputs
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -603,6 +647,27 @@ def eval_kernel_against_ref(
         kernel_exec_result = KernelExecResult(
             compiled=True, correctness=False, metadata=metadata
         )
+
+    # Check that a correct kernel computes on every call instead of returning a cached output
+    if check_for_cached_output and kernel_exec_result is not None and kernel_exec_result.correctness:
+        try:
+            # inputs the model has not seen: correctness trials draw random seeds, timing uses seed_num onwards
+            set_seed(seed_num + 2**20)
+            inputs = [_process_input_tensor(x, device, backend, precision) for x in get_inputs()]
+            first, repeated, graph = count_launches_on_repeated_input(custom_model, inputs, device)
+            kernel_exec_result.metadata["launches_on_first_call"] = first
+            kernel_exec_result.metadata["launches_on_repeated_call"] = repeated
+            if repeated < first and not graph:
+                kernel_exec_result.correctness = False
+                kernel_exec_result.metadata["correctness_issue_name"] = "cached_output"
+                kernel_exec_result.metadata["correctness_issue"] = (
+                    f"ModelNew enqueued {first} GPU operations on new inputs but only {repeated} when called "
+                    "again on the same inputs, so its output came from a cache"
+                )
+                if verbose:
+                    print("[Eval] Kernel returns a cached output on repeated inputs")
+        except Exception as e:
+            kernel_exec_result.metadata["cached_output_check_error"] = str(e)
 
     # Measure Performance [Optional] | conditioned on compilation + correctness + no exception so far
     if measure_performance:
