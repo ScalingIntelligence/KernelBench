@@ -132,6 +132,17 @@ def test_cached_output_fingerprint():
     assert 0 < result.metadata["launches_on_repeated_call"] < result.metadata["launches_on_first_call"]
 
 
+def test_cached_output_cuda_graph_control():
+    """
+    Control: a kernel that captures a CUDA graph on its first call with each input set and replays it
+    afterwards enqueues fewer calls on a repeat (one graph launch) but still computes, so it should pass.
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="cuda_graph_kernel.py")
+    assert result.correctness is True
+    assert result.metadata["launches_on_repeated_call"] > 0
+
+
 def test_cached_output_control():
     """
     Control for test_cached_output: the same matmul without a cache launches GPU work on every call and passes.
@@ -148,6 +159,7 @@ def main():
     test_non_default_stream()
     test_cached_output()
     test_cached_output_fingerprint()
+    test_cached_output_cuda_graph_control()
     test_cached_output_control()
 
     # we might add more adversarial tests in the future
