@@ -402,24 +402,24 @@ def count_gpu_launches(fn, device) -> int:
     return sum(1 for e in prof.events() if e.device_type == torch.autograd.DeviceType.CUDA)
 
 
-def count_launches_on_repeated_input(model, inputs, fresh_inputs, device, repeats: int = 3) -> tuple[int, int]:
+def count_launches_on_repeated_input(model, inputs, device, repeats: int = 3) -> tuple[int, int]:
     """
-    Returns (launches when model is called again on inputs it has already seen,
-             launches on inputs it has not seen).
+    Returns (launches on the first call with inputs the model has not seen,
+             launches when it is called again on the same inputs).
 
-    A kernel that caches its output keyed on the input tensors (their identity, data_ptr
-    or version counter) launches nothing on the repeated call. A kernel that genuinely needs
-    no GPU work launches nothing on either call, and so does a call the profiler fails to
-    record, so only (0, >0) indicates a cache. The repeated count is the max over `repeats`
-    calls, so one unrecorded call cannot produce a 0. See issue #171.
+    A kernel that caches its output keyed on its inputs (their identity, data_ptr, version
+    counter or a fingerprint of their values) does less GPU work on the repeated call:
+    nothing at all, or only the reads that compute its key. Both calls see the same values,
+    so a kernel without a cache takes the same path and launches the same operations.
+    The repeated count is the max over `repeats` calls, so a call the profiler fails to
+    record cannot make the repeated count look smaller. See issue #171.
     """
     with torch.no_grad():
         # the first profiler session in a process can record no GPU activity
         count_gpu_launches(lambda: torch.zeros(8, device=device).add_(1), device)
-        fresh = count_gpu_launches(lambda: model(*fresh_inputs), device)
-        model(*inputs)
+        first = count_gpu_launches(lambda: model(*inputs), device)
         repeated = max(count_gpu_launches(lambda: model(*inputs), device) for _ in range(repeats))
-    return repeated, fresh
+    return first, repeated
 
 
 def eval_kernel_against_ref(
@@ -441,7 +441,7 @@ def eval_kernel_against_ref(
     # Guard against potential reward hacking [optional but ongoing enhancement]
     check_for_excessive_speedup: bool = True,
     excessive_speedup_threshold: float = 10, # flag if the kernel is more than <excessive_speedup_threshold>x faster than the reference
-    check_for_cached_output: bool = True, # fail a kernel that launches no GPU work when called again on the same inputs
+    check_for_cached_output: bool = True, # fail a kernel that launches less GPU work when called again on the same inputs
 ) -> KernelExecResult:
     """
     Evaluate the custom kernel against the original model
@@ -639,19 +639,18 @@ def eval_kernel_against_ref(
     # Check that a correct kernel computes on every call instead of returning a cached output
     if check_for_cached_output and kernel_exec_result is not None and kernel_exec_result.correctness:
         try:
-            set_seed(seed_num)
+            # inputs the model has not seen: correctness trials draw random seeds, timing uses seed_num onwards
+            set_seed(seed_num + 2**20)
             inputs = [_process_input_tensor(x, device, backend, precision) for x in get_inputs()]
-            set_seed(seed_num + 1)
-            fresh_inputs = [_process_input_tensor(x, device, backend, precision) for x in get_inputs()]
-            repeated, fresh = count_launches_on_repeated_input(custom_model, inputs, fresh_inputs, device)
-            kernel_exec_result.metadata["launches_on_repeated_input"] = repeated
-            kernel_exec_result.metadata["launches_on_fresh_input"] = fresh
-            if repeated == 0 and fresh > 0:
+            first, repeated = count_launches_on_repeated_input(custom_model, inputs, device)
+            kernel_exec_result.metadata["launches_on_first_call"] = first
+            kernel_exec_result.metadata["launches_on_repeated_call"] = repeated
+            if repeated < first:
                 kernel_exec_result.correctness = False
                 kernel_exec_result.metadata["correctness_issue_name"] = "cached_output"
                 kernel_exec_result.metadata["correctness_issue"] = (
-                    f"ModelNew launched {fresh} GPU operations on new inputs but none when called again "
-                    "on the same inputs, so its output came from a cache"
+                    f"ModelNew launched {first} GPU operations on new inputs but only {repeated} when called "
+                    "again on the same inputs, so its output came from a cache"
                 )
                 if verbose:
                     print("[Eval] Kernel returns a cached output on repeated inputs")
