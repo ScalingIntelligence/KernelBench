@@ -22,6 +22,7 @@ import torch.nn as nn
 from pydantic import BaseModel
 
 from . import timing, dataset
+from .correctness import output_mismatch_reason
 
 REPO_TOP_PATH = os.path.abspath(
     os.path.join(
@@ -800,17 +801,18 @@ def run_and_check_correctness(
                 # kernelbench v0 and v0.1 uses fp32, atol = rtol = 1e-02
                 # now we will return the tolerance from get_tolerance_for_precision
                 tolerance = get_tolerance_for_precision(precision)
-                # check output value difference
-                if not torch.allclose(
-                    output, output_new, atol=tolerance, rtol=tolerance
-                ):  # fail
+                # allclose alone accepts an all-zero candidate when the reference
+                # sits inside atol. output_mismatch_reason keeps that test and
+                # rejects those trivial matches.
+                mismatch_reason = output_mismatch_reason(output, output_new, tolerance)
+                if mismatch_reason is not None:  # fail
                     max_diff = torch.max(torch.abs(output - output_new)).item()
                     avg_diff = torch.mean(torch.abs(output - output_new)).item()
                     metadata.setdefault("max_difference", []).append(f"{max_diff:.6f}")
                     metadata.setdefault("avg_difference", []).append(f"{avg_diff:.6f}")
-                    metadata["correctness_issue"] = "Output mismatch"
+                    metadata["correctness_issue"] = mismatch_reason
                     if verbose:
-                        print(f"[FAIL] trial {trial}: Output mismatch")
+                        print(f"[FAIL] trial {trial}: {mismatch_reason}")
                 else:  # pass
                     pass_count += 1
                     if verbose:
