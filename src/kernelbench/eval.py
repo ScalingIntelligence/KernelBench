@@ -13,6 +13,7 @@ import tempfile
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+from pathlib import Path
 from typing import Union, Optional
 
 import numpy as np
@@ -148,6 +149,12 @@ def load_original_model_and_inputs(
     return (Model, get_init_inputs_fn, get_inputs_fn)
 
 
+def _remove_temp_module(path):
+    """Remove the temporary source and the bytecode created by its import."""
+    Path(path).unlink(missing_ok=True)
+    Path(importlib.util.cache_from_source(path)).unlink(missing_ok=True)
+
+
 def load_custom_model_with_tempfile(model_custom_src, entry_point="ModelNew"):
     """
     Writes the provided Python code string to a temporary .py file,
@@ -172,10 +179,12 @@ def load_custom_model_with_tempfile(model_custom_src, entry_point="ModelNew"):
     spec = importlib.util.spec_from_file_location("temp_module", tempfile_path)
     # Create a new module based on that spec
     temp_module = importlib.util.module_from_spec(spec)
-    # Execute the code in the module's namespace
-    spec.loader.exec_module(temp_module)
-
-    ModelNew = getattr(temp_module, entry_point)
+    try:
+        spec.loader.exec_module(temp_module)
+        ModelNew = getattr(temp_module, entry_point)
+    except BaseException:
+        _remove_temp_module(tempfile_path)
+        raise
 
     # Return the object (class, function, etc.) that was defined in the code
     return ModelNew, temp_file
@@ -240,7 +249,7 @@ def graceful_eval_cleanup(
         )  # Wait for all CUDA operations to complete
     if tempfile:
         tempfile.close()
-        os.remove(tempfile.name)
+        _remove_temp_module(tempfile.name)
 
     # _cleanup_cuda_extensions() # SIMON NOTE: is this necessary?
 
@@ -525,23 +534,10 @@ def eval_kernel_against_ref(
         print(
             f"Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
         )
-        # TODO: add metadata for compilation error (how to we get the compilation error message?)
-
-        if "lock" in str(e) or "No such file or directory" in str(e):
-            # this is a lock file error, likely due to concurrent compilation
-            # this does not necessarily mean the compilation failed, but we should retry
-            print(
-                f"[Eval] Lock file error during compilation, Please retry. Error: {e}"
-            )
-            graceful_eval_cleanup(context, device, tempfile)
-            return None
-        else:
-            metadata["compilation_error_name"] = get_error_name(e)
-            metadata["compilation_error"] = e
-            graceful_eval_cleanup(context, device, tempfile)
-            return KernelExecResult(
-                compiled=False, metadata=metadata
-            )  # skip further steps
+        metadata["compilation_error_name"] = get_error_name(e)
+        metadata["compilation_error"] = e
+        graceful_eval_cleanup(context, device, tempfile)
+        return KernelExecResult(compiled=False, metadata=metadata)
 
     # Check if ModelNew was successfully loaded (load_custom_model returns None on syntax errors)
     if ModelNew is None:
