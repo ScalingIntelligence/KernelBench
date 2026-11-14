@@ -31,7 +31,7 @@ class Model(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
         
         self.transformer = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dim_feedforward=mlp_dim, dropout=dropout),
+            nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dim_feedforward=mlp_dim, dropout=dropout, batch_first=True),
             num_layers=depth
         )
         
@@ -52,7 +52,7 @@ class Model(nn.Module):
         """
         p = self.patch_size
         
-        x = img.unfold(2, p, p).unfold(3, p, p).reshape(img.shape[0], -1, p*p*img.shape[1])
+        x = F.unfold(img, kernel_size=p, stride=p).transpose(1, 2)
         x = self.patch_to_embedding(x)
         
         cls_tokens = self.cls_token.expand(img.shape[0], -1, -1)
