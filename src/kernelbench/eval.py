@@ -384,8 +384,9 @@ def _process_input_tensor(input, device, backend="cuda", precision=torch.float32
     if not isinstance(input, torch.Tensor):
         return input
     
-    # cast to the desired percision dtype for activations
-    input_tensor = input.to(dtype=precision)
+    # cast to the desired percision dtype for activations; integer tensors (e.g. class-index
+    # targets for cross_entropy, embedding indices) must keep their dtype
+    input_tensor = input.to(dtype=precision) if input.is_floating_point() else input
     
     # Default for all other backends and float types
     return input_tensor.to(device=device)
